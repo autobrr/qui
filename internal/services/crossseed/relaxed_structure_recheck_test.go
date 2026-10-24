@@ -73,11 +73,10 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		return &CrossSeedRequest{
 			StartPaused: &startPaused,
 			SearchDecision: searchDecisionProvenance{
-				Class:              searchCandidateClassExactSizeFallback,
-				SourceInstanceID:   1,
-				SourceHash:         "matchedhash",
-				RelaxedDifferences: []string{"season"},
-				Relaxed:            differencesOf(differenceSeason),
+				Class:            searchCandidateClassExactSizeFallback,
+				SourceInstanceID: 1,
+				SourceHash:       "matchedhash",
+				Relaxed:          differencesOf(differenceSeason),
 			},
 		}
 	}
@@ -103,7 +102,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed episode is dropped when rechecks are disabled", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.RelaxedDifferences = []string{"episode"}
 		req.SearchDecision.Relaxed = differencesOf(differenceEpisode)
 		req.SkipRecheck = true
 
@@ -116,7 +114,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed group forces a paused add and a recheck", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.RelaxedDifferences = []string{"group"}
 		req.SearchDecision.Relaxed = differencesOf(differenceGroup)
 
 		result, sync := run(t, req)
@@ -127,7 +124,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed group is dropped when rechecks are disabled", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.RelaxedDifferences = []string{"group"}
 		req.SearchDecision.Relaxed = differencesOf(differenceGroup)
 		req.SkipRecheck = true
 
@@ -140,7 +136,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("soft relaxations keep the unverified fast path", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.RelaxedDifferences = []string{"codec"}
 		req.SearchDecision.Relaxed = differencesOf(differenceCodec)
 
 		result, sync := run(t, req)
@@ -207,11 +202,10 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 					StartPaused: &startPaused,
 					SkipRecheck: true,
 					SearchDecision: searchDecisionProvenance{
-						Class:              searchCandidateClassExactSizeFallback,
-						SourceInstanceID:   1,
-						SourceHash:         boundHash,
-						RelaxedDifferences: []string{"group"},
-						Relaxed:            differencesOf(differenceGroup),
+						Class:            searchCandidateClassExactSizeFallback,
+						SourceInstanceID: 1,
+						SourceHash:       boundHash,
+						Relaxed:          differencesOf(differenceGroup),
 					},
 				},
 				service.releaseCache.Parse(renameOnlySourceFile),

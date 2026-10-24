@@ -198,9 +198,6 @@ type matchVerdict struct {
 	// ChecksumOnly means that the one-sided CRC tag is the only difference.
 	ChecksumOnly          bool
 	GroupFallbackIdentity string
-	// StrictChecksumReplay marks a strict match with a one-sided CRC tag that
-	// also matches in reverse once the tag is equal. Apply compares in reverse.
-	StrictChecksumReplay bool
 	// MappedEpisode names the episode map equality that the verdict used.
 	MappedEpisode string
 	RejectReason  string
@@ -245,15 +242,12 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 	class := searchCandidateClassStrict
 	switch {
 	case strict.matched():
-		// Apply compares the pair in reverse, where a CRC tag on the local name
-		// only is a strict difference.
-		verdict.StrictChecksumReplay = verdict.OneSidedChecksum &&
-			m.compareReleases(candidate, source, evidence.CandidateTitles, evidence.SourceTitles, policy.IndividualEpisodes, false).
-				differences.without(differenceChecksumMissing) == 0
 	// A one-sided CRC tag with a source difference goes to exact size, which
-	// records the checksum.
+	// records the checksum. The relabel needs both sizes: a path without them,
+	// such as apply for another local torrent, keeps the strict compare.
 	case (!verdict.OneSidedChecksum || strict.differences.first() != differenceSource) &&
 		isWebSourceRelabel(source, candidate, strict) &&
+		evidence.SourceSize > 0 && evidence.CandidateSize > 0 &&
 		(ignoreSizeCheck || m.isSizeWithinTolerance(evidence.SourceSize, evidence.CandidateSize, policy.SizeTolerancePercent)):
 		class = searchCandidateClassWebSourceRelabel
 	case policy.TitleRescue && strict.differences.first() == differenceTitle && exactSize:

@@ -25,10 +25,13 @@ func TestWebSourceRelabel(t *testing.T) {
 		webdlSpaced  = "Law & Order: Special Victims Unit S05 1080p AMZN WEB-DL DD+ 2.0 H.264-NTb"
 	)
 
+	const size int64 = 50_000_000_000
+
 	tests := []struct {
 		name          string
 		sourceName    string
 		candidateName string
+		noSizes       bool
 		want          bool
 	}{
 		{
@@ -36,6 +39,13 @@ func TestWebSourceRelabel(t *testing.T) {
 			sourceName:    webripDotted,
 			candidateName: webdlDotted,
 			want:          true,
+		},
+		{
+			name:          "a relabel needs both sizes",
+			sourceName:    webripDotted,
+			candidateName: webdlDotted,
+			noSizes:       true,
+			want:          false,
 		},
 		{
 			name:          "symmetric: WEB-DL source vs WEBRip relabel",
@@ -73,10 +83,14 @@ func TestWebSourceRelabel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
+			evidence := matchEvidence{SourceSize: size, CandidateSize: size}
+			if tt.noSizes {
+				evidence = matchEvidence{}
+			}
 			verdict := s.matchVerdict(
 				namedRelease{release: &source, rawName: tt.sourceName},
 				namedRelease{release: &candidate, rawName: tt.candidateName},
-				matchEvidence{},
+				evidence,
 				matchPolicy{SizeTolerancePercent: 5},
 			)
 			require.Equal(t, tt.want, verdict.Class == searchCandidateClassWebSourceRelabel)

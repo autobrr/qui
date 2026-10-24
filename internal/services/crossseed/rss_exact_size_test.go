@@ -76,7 +76,6 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, normalizeHash(sourceHash), captured.SearchDecision.SourceHash)
 	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
-	require.Equal(t, []string{"codec"}, captured.SearchDecision.RelaxedDifferences)
 	require.Empty(t, captured.Category)
 	require.Equal(t, []string{"rss"}, captured.Tags)
 	require.True(t, captured.InheritSourceTags)

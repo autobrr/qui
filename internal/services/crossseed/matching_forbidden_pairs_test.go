@@ -6,8 +6,11 @@ package crossseed
 import (
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestIsTVEpisode(t *testing.T) {
@@ -264,4 +267,80 @@ func TestRejectReasonConstant(t *testing.T) {
 	require.NotEmpty(t, rejectReasonSeasonPackFromEpisode)
 	require.Contains(t, rejectReasonSeasonPackFromEpisode, "Season packs")
 	require.Contains(t, rejectReasonSeasonPackFromEpisode, "single-episode")
+}
+
+// A stored verdict for one local episode never lets a downloaded season pack
+// through, whatever the individual episodes setting. The listing named the
+// episode, so the download check alone passes the pack when individual
+// episodes is on.
+func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) {
+	const (
+		instanceID  = 1
+		sourceHash  = "local-episode"
+		episodeName = "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"
+		packName    = "Kaiju.Squad.S02.1080p.WEB.H264-GRP"
+		size        = int64(1_000_000)
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: episodeName, Size: size, TotalSize: size, Progress: 1}
+	service := manualMatchTestService(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+		sourceHash: {{Name: episodeName + ".mkv", Size: size}},
+	})
+
+	find := func(download string, individualEpisodes bool) []CrossSeedCandidate {
+		response, err := service.FindCandidates(t.Context(), &FindCandidatesRequest{
+			TorrentName:            download,
+			TargetInstanceIDs:      []int{instanceID},
+			FindIndividualEpisodes: individualEpisodes,
+			SearchDecision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: episodeName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
+			},
+		})
+		require.NoError(t, err)
+		return response.Candidates
+	}
+
+	for _, individualEpisodes := range []bool{false, true} {
+		require.Len(t, find(episodeName, individualEpisodes), 1, "the episode download: individual episodes %v", individualEpisodes)
+		require.Empty(t, find(packName, individualEpisodes), "the pack download: individual episodes %v", individualEpisodes)
+	}
+}
+
+// Apply has no sizes for a local torrent that search did not compare, so the
+// web source relabel does not admit it. The stored relabel verdict of the
+// torrent that search compared still holds.
+func TestFindCandidatesRelabelNeedsTheStoredVerdict(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "local-webrip"
+		localName  = "Kaiju.Squad.S02E05.1080p.AMZN.WEBRip.DD2.0.x264-GRP"
+		listing    = "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP"
+		size       = int64(1_000_000)
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: localName, Size: size, TotalSize: size, Progress: 1}
+	service := manualMatchTestService(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+		sourceHash: {{Name: localName + ".mkv", Size: size}},
+	})
+
+	find := func(decision searchDecisionProvenance) []CrossSeedCandidate {
+		response, err := service.FindCandidates(t.Context(), &FindCandidatesRequest{
+			TorrentName:       listing,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision:    decision,
+		})
+		require.NoError(t, err)
+		return response.Candidates
+	}
+
+	require.Empty(t, find(searchDecisionProvenance{}), "a new verdict without sizes")
+	require.Len(t, find(searchDecisionProvenance{
+		Class:               searchCandidateClassWebSourceRelabel,
+		SearchCandidateName: listing,
+		SourceInstanceID:    instanceID,
+		SourceHash:          sourceHash,
+	}), 1, "the stored relabel verdict")
 }

@@ -42,7 +42,7 @@ const (
 )
 
 // searchCandidateInput contains the two release views and size evidence used by
-// search classification, alternate-query checks, and apply-time decision replay.
+// search classification and alternate-query checks.
 type searchCandidateInput struct {
 	Source          namedRelease
 	Candidate       namedRelease
@@ -67,10 +67,7 @@ type searchCandidateDecision struct {
 	Accepted     bool
 	Class        searchCandidateClass
 	SizeEvidence searchSizeEvidence
-	// StrictChecksumReplay preserves a directional strict match when apply sees
-	// only the same one-sided checksum in reverse.
-	StrictChecksumReplay bool
-	// SearchCandidateName binds replay to the Torznab name search evaluated.
+	// SearchCandidateName is the listing that search judged.
 	SearchCandidateName   string
 	GroupFallbackIdentity string
 	SourceTitles          []string
@@ -86,19 +83,15 @@ type searchCandidateDecision struct {
 	SizeRejected bool
 }
 
-// searchDecisionProvenance is the private, replayable part of a search
-// decision. It travels as one value from classification through cached results
+// searchDecisionProvenance is the private part of a search decision that apply
+// keeps. It travels as one value from classification through cached results
 // to apply so adding a safety field cannot leave one transport path behind.
 type searchDecisionProvenance struct {
 	Class searchCandidateClass
-	// StrictChecksumReplay is separate from RelaxedDifferences because search did
-	// not relax a mismatch and the result keeps strict ranking.
-	StrictChecksumReplay bool
 	// SearchCandidateName lets apply reject new metadata in the downloaded name.
 	SearchCandidateName string
 	SourceInstanceID    int
 	SourceHash          string
-	RelaxedDifferences  []string
 	// Relaxed is the set of differences that the exact size class accepted.
 	// Verification reads it.
 	Relaxed               matchDifferences
@@ -111,9 +104,7 @@ type searchDecisionProvenance struct {
 func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 	return searchDecisionProvenance{
 		Class:                 decision.Class,
-		StrictChecksumReplay:  decision.StrictChecksumReplay,
 		SearchCandidateName:   decision.SearchCandidateName,
-		RelaxedDifferences:    slices.Clone(decision.RelaxedDifferences),
 		Relaxed:               decision.Relaxed,
 		GroupFallbackIdentity: decision.GroupFallbackIdentity,
 		SourceTitles:          slices.Clone(decision.SourceTitles),
@@ -123,7 +114,6 @@ func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 }
 
 func (provenance searchDecisionProvenance) clone() searchDecisionProvenance {
-	provenance.RelaxedDifferences = slices.Clone(provenance.RelaxedDifferences)
 	provenance.SourceTitles = slices.Clone(provenance.SourceTitles)
 	provenance.CandidateTitles = slices.Clone(provenance.CandidateTitles)
 	return provenance
@@ -155,7 +145,7 @@ const (
 )
 
 // classifySearchCandidate asks the Match verdict about one search result and
-// adds the score and the provenance that apply replays.
+// adds the score and the provenance that apply keeps.
 func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
 	verdict := m.matchVerdict(input.Source, input.Candidate, matchEvidence{
 		SourceSize:      input.SourceSize,
@@ -172,7 +162,6 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	decision := searchCandidateDecision{
 		Class:                 searchCandidateClassRejected,
 		SizeEvidence:          classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
-		StrictChecksumReplay:  verdict.StrictChecksumReplay,
 		SearchCandidateName:   input.Candidate.rawName,
 		GroupFallbackIdentity: verdict.GroupFallbackIdentity,
 		RejectReason:          verdict.RejectReason,
@@ -273,28 +262,6 @@ func (m matcher) hasOneSidedChecksum(source, candidate *rls.Release) bool {
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
 	return (sourceSum == "") != (candidateSum == "")
-}
-
-// oneSidedChecksumIsOnlyStrictDifference checks the normal matcher again after
-// equalizing a missing CRC. This preserves strict matches in either checksum
-// direction without weakening the exact-size fallback's group and resolution
-// requirements for any additional mismatch.
-func (m matcher) oneSidedChecksumIsOnlyStrictDifference(input searchCandidateInput) bool {
-	if !m.hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		return false
-	}
-	replayInput, ok := m.withRelaxedDifferenceNeutralized(input, "checksum")
-	if !ok {
-		return false
-	}
-	matches, _ := m.namedReleasesMatchWithReasonAndTitles(
-		replayInput.Source,
-		replayInput.Candidate,
-		replayInput.SourceTitles,
-		replayInput.CandidateTitles,
-		replayInput.FindIndividualEpisodes,
-	)
-	return matches
 }
 
 // positiveExactSize requires both search APIs to report the same non-zero byte
@@ -402,251 +369,55 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	return true, ""
 }
 
-// validateExactSizeFallback keeps hard release identity strict and permits only
-// mismatch categories explicitly observed in search or authorized by its cached
-// decision. It removes one actual strict rejection at a time and returns only
-// the differences it had to spend. This distinction matters when an indexer
-// merely omitted a field: absence is not permission for the downloaded torrent
-// to replace that field with a conflicting value.
-func (m matcher) validateExactSizeFallback(input searchCandidateInput, mismatchReason string, allowedDifferences []string) ([]string, bool, string) {
-	if ok, reason := m.validateExactSizeSearchIdentity(input); !ok {
-		return nil, false, reason
-	}
-	return m.replayRelaxedDifferences(input, mismatchReason, allowedDifferences)
-}
-
-// replayRelaxedDifferences removes only the strict rejection categories search
-// recorded, one at a time. Each removal exposes the next current rejection.
-func (m matcher) replayRelaxedDifferences(input searchCandidateInput, mismatchReason string, allowedDifferences []string) ([]string, bool, string) {
-	variantsCompatible, variantReason := checkVariantsCompatible(input.Source.release, input.Candidate.release)
-	replayInput := input
-	usedDifferences := make([]string, 0, len(allowedDifferences))
-	for {
-		difference, ok := exactSizeRelaxedDifferenceForReason(replayInput, mismatchReason)
-		if !ok || !slices.Contains(allowedDifferences, difference) || slices.Contains(usedDifferences, difference) {
-			return nil, false, mismatchReason
-		}
-		usedDifferences = append(usedDifferences, difference)
-
-		replayInput, ok = m.withRelaxedDifferenceNeutralized(replayInput, difference)
-		if !ok {
-			return nil, false, "invalid recorded release difference"
-		}
-		matches, reason := m.namedReleasesMatchWithReasonAndTitles(
-			replayInput.Source,
-			replayInput.Candidate,
-			replayInput.SourceTitles,
-			replayInput.CandidateTitles,
-			replayInput.FindIndividualEpisodes,
-		)
-		if matches {
-			// Collection, cut, and edition can also carry variant tokens. Removing
-			// their earlier metadata rejection must not erase an independently
-			// failing IMAX/HYBRID/REPACK/PROPER rule from replay provenance.
-			if !variantsCompatible && !slices.Contains(usedDifferences, "variant") {
-				if !slices.Contains(allowedDifferences, "variant") {
-					return nil, false, variantReason
-				}
-				usedDifferences = append(usedDifferences, "variant")
-			}
-			return usedDifferences, true, ""
-		}
-		mismatchReason = reason
-	}
-}
-
-// searchCandidateMetadataConsistent binds replay to the values the indexer
-// advertised. Apply may tolerate omitted tags and categories search already
-// recorded, but an unrelated populated field cannot silently change while an
-// earlier mismatch hides it.
-func (m matcher) searchCandidateMetadataConsistent(
-	advertisedName string,
-	actual namedRelease,
-	allowedDifferences []string,
-	actualTitles []string,
-	episodeMap *models.EpisodeMap,
-	findIndividualEpisodes bool,
-) (bool, string) {
-	if advertisedName == "" || actual.release == nil {
-		return true, ""
-	}
-
-	advertised := m.parseReleaseName(advertisedName)
-	actualRelease := *actual.release
-	advertisedRelease := *advertised
-	normalizer := m.normalizer()
-	advertisedSum := normalizer.Normalize(advertisedRelease.Sum)
-	actualSum := normalizer.Normalize(actualRelease.Sum)
-	if advertisedSum != "" && actualSum != "" && advertisedSum != actualSum {
-		return false, checksumMismatchReason
-	}
-
-	// Group provenance and checksum direction are validated against the bound
-	// local source. Ignore them here so this check owns only advertised field
-	// values that the asymmetric local comparison could otherwise miss.
-	advertisedRelease.Group = ""
-	advertisedRelease.Site = ""
-	advertisedRelease.Sum = ""
-	actualRelease.Group = ""
-	actualRelease.Site = ""
-	actualRelease.Sum = ""
-	input := searchCandidateInput{
-		Source: namedRelease{
-			release: &advertisedRelease,
-			rawName: advertisedName,
-		},
-		Candidate: namedRelease{
-			release:   &actualRelease,
-			rawName:   actual.rawName,
-			tagOrigin: actual.tagOrigin,
-		},
-		CandidateTitles:        slices.Clone(actualTitles),
-		EpisodeMap:             episodeMap,
-		FindIndividualEpisodes: findIndividualEpisodes,
-	}
-	input.Source, input.Candidate, _ = applyEpisodeMap(input.Source, input.Candidate, episodeMap)
-	matches, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
-		input.Source,
-		input.Candidate,
-		input.SourceTitles,
-		input.CandidateTitles,
-		findIndividualEpisodes,
-	)
-	if matches {
-		return true, ""
-	}
-	_, ok, reason := m.replayRelaxedDifferences(input, mismatchReason, allowedDifferences)
-	return ok, reason
-}
-
-// withRelaxedDifferenceNeutralized removes one release-field rejection so the
-// strict matcher can expose the next one. Callers iterate until strict matching
-// succeeds or an unrecorded difference appears.
-func (m matcher) withRelaxedDifferenceNeutralized(input searchCandidateInput, difference string) (searchCandidateInput, bool) {
-	if input.Source.release == nil || input.Candidate.release == nil {
-		return input, false
-	}
-
-	source := *input.Source.release
-	candidate := *input.Candidate.release
-	switch difference {
-	case "source":
-		candidate.Source = source.Source
-	case "collection":
-		candidate.Collection = source.Collection
-	case "codec":
-		candidate.Codec = slices.Clone(source.Codec)
-	case "hdr":
-		candidate.HDR = slices.Clone(source.HDR)
-	case "bit-depth":
-		candidate.BitDepth = source.BitDepth
-	case "cut":
-		candidate.Cut = slices.Clone(source.Cut)
-	case "edition":
-		candidate.Edition = slices.Clone(source.Edition)
-	case "language":
-		candidate.Language = slices.Clone(source.Language)
-	case "version":
-		candidate.Version = source.Version
-	case "disc":
-		candidate.Disc = source.Disc
-	case "platform":
-		candidate.Platform = source.Platform
-	case "architecture":
-		candidate.Arch = source.Arch
-	case "checksum":
-		candidate.Sum = source.Sum
-	case "season":
-		candidate.Series = source.Series
-	case "episode":
-		candidate.Episode = source.Episode
-	case "group":
-		normalizer := m.normalizer()
-		if m.normalizedGroupSiteIdentity(&source) == m.normalizedGroupSiteIdentity(&candidate) {
-			return input, false
-		}
-		identity, ok := m.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
-		if !ok {
-			return input, false
-		}
-		source.Group = normalizer.Normalize(identity)
-		source.Site = ""
-		candidate.Group = source.Group
-		candidate.Site = ""
-	case "variant":
-		candidate.Collection = source.Collection
-		candidate.Other = slices.Clone(source.Other)
-		candidate.Edition = slices.Clone(source.Edition)
-		candidate.Cut = slices.Clone(source.Cut)
+// listedDifferences are the fields in which the listing differs from the local
+// torrent that search compared, as the stored verdict records them. Title
+// rescue compares no field after the title.
+func (provenance searchDecisionProvenance) listedDifferences() matchDifferences {
+	switch provenance.Class {
+	case searchCandidateClassWebSourceRelabel:
+		return differencesOf(differenceSource)
+	case searchCandidateClassTitleRescue:
+		return differencesOf(differenceTitle)
 	default:
-		return input, false
+		return provenance.Relaxed
 	}
-
-	input.Source.release = &source
-	input.Candidate.release = &candidate
-	return input, true
 }
 
-func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchReason string) (string, bool) {
-	reason := strings.ToLower(strings.TrimSpace(mismatchReason))
-	reason = strings.TrimSuffix(reason, " mismatch")
-	difference := strings.ReplaceAll(reason, " ", "-")
-	// Season and episode are the identity fields indexers rewrite: a tracker with
-	// one entry per cour stamps S01 on every season, and absolute numbering meets
-	// renumbered candidates. Only a like-for-like shape may retire that number.
-	// compareTVStructure reports a season mismatch BEFORE it compares pack
-	// against episode, so without these guards a differing season would skip the
-	// shape check entirely.
-	switch difference {
-	case "season":
-		if isTVSeasonPack(input.Source.release) && isTVSeasonPack(input.Candidate.release) {
-			return difference, true
-		}
-		return "", false
-	case "episode":
-		if isTVEpisode(input.Source.release) && isTVEpisode(input.Candidate.release) {
-			return difference, true
-		}
-		return "", false
-	// A group rejection means the two identities differ, which
-	// validateExactSizeSearchIdentity has already re-derived the cross-field
-	// evidence for. It runs first and returns early, so there is nothing left to
-	// prove here.
-	case "group":
-		return difference, true
-	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum":
-		return difference, true
-	}
-
-	compatible, variantReason := checkVariantsCompatible(input.Source.release, input.Candidate.release)
-	if !compatible && strings.EqualFold(strings.TrimSpace(mismatchReason), variantReason) {
-		return "variant", true
-	}
-
-	return "", false
-}
-
-// searchRelaxedStructure reports whether the strict rejection that apply sees
-// is the season or episode number itself. Equal reported sizes cannot confirm
-// which episode a torrent holds, so those pairings must be hashed before they
-// seed.
-func searchRelaxedStructure(strictMismatchReason string) bool {
-	switch normalizedMismatchReason(strictMismatchReason) {
-	case seasonMismatchReason, episodeMismatchReason:
+// downloadReadsAsListing reports whether the downloaded torrent reads the same
+// as the listing that search judged, apart from the fields that the stored
+// verdict lists as different. Apply keeps that verdict for the local torrent
+// that search compared, so the download must not bring a new difference. A CRC
+// tag on one name only does not count, because indexer titles drop it.
+func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local, download namedRelease, findIndividualEpisodes bool) bool {
+	if decision.SearchCandidateName == "" {
 		return true
 	}
-	return false
-}
-
-// searchRelaxationRequiresVerification reports whether the strict rejection
-// that apply sees is one that equal reported sizes cannot settle: the season or
-// episode number, or a group identity admitted on cross-field evidence. Those
-// pairings must be hashed before they seed.
-func searchRelaxationRequiresVerification(strictMismatchReason string) bool {
-	if searchRelaxedStructure(strictMismatchReason) {
-		return true
+	listed := decision.listedDifferences()
+	// The listing can drop the group, the fansub tag, or the CRC tag. A tag on the
+	// local torrent and another on the download still prove another release.
+	var tags releaseComparison
+	m.compareGroupSiteAndChecksum(&tags, local, download)
+	if tags.differences.without(differenceGroupMissing, differenceChecksumMissing)&^listed != 0 {
+		return false
 	}
-	return normalizedMismatchReason(strictMismatchReason) == groupMismatchReason
+	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
+	// The download can name the local torrent or another title of the show that
+	// search resolved. Only the download is held against those titles, so a
+	// listing that matches its own alias cannot admit a download of another show.
+	titles := m.appendReleaseTitles(slices.Concat(decision.SourceTitles, decision.CandidateTitles), local.release, local.rawName)
+	comparison := m.compareReleases(listing, download, titles, nil, findIndividualEpisodes, false)
+	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
+		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
+	}
+	if comparison.differences.without(differenceChecksumMissing)&^listed != 0 {
+		return false
+	}
+	// A relaxed verdict rests on the group of the listing, so a selected file
+	// or a raw name that names another group breaks it.
+	if decision.Class != searchCandidateClassStrict && !m.explicitGroupsAgree(listing, download) {
+		return false
+	}
+	return !listed.has(differenceGroup) || m.explicitGroupsFitFallbackIdentity(download, decision.GroupFallbackIdentity)
 }
 
 // candidateRequiresVerification reports whether search provenance for the
@@ -669,25 +440,6 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
 		req.SearchDecision.Relaxed.needsVerification()
-}
-
-// searchRelaxationAuthorizesCurrentReason reports whether apply may spend a
-// search decision on the rejection it is looking at now. Search and apply can
-// observe different independently recorded differences after file-derived TV
-// structure is merged back into a torrent name. They may compose only within
-// a compatible verification class: a soft rejection must never authorize a
-// hard one without a hash check. A stored hard rejection may authorize a
-// recorded soft difference because that pairing is still forced through the
-// full verification the stored differences require.
-func searchRelaxationAuthorizesCurrentReason(stored matchDifferences, currentReason string) bool {
-	if searchRelaxationRequiresVerification(currentReason) {
-		return stored.needsVerification()
-	}
-	return true
-}
-
-func normalizedMismatchReason(reason string) string {
-	return strings.ToLower(strings.TrimSpace(reason))
 }
 
 // crossFieldGroupSiteFallback reports whether a group mismatch carries the
