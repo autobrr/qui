@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -123,14 +122,15 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 var localMatchPolicy = matchPolicy{SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
 
 // localMatchPrefilter selects the candidates whose file lists are worth a
-// fetch, from the cached torrent fields alone. nameOrRelease is the tier the
-// candidate gets if its file sizes pair with the source. ok is false for a
-// candidate that cannot be a cross-seed.
+// fetch, from the cached torrent fields and the Read releases. nameOrRelease
+// is the tier the candidate gets if its file sizes pair with the source. ok is
+// false for a candidate that cannot be a cross-seed.
 func (s *Service) localMatchPrefilter(
 	sameInstance bool,
 	source *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	candidate *qbittorrent.CrossInstanceTorrentView,
+	candidateRead namedRelease,
 	normalizedContentPath string,
 ) (nameOrRelease string, ok bool) {
 	sourceName := normalizeLowerTrim(source.Name)
@@ -138,8 +138,6 @@ func (s *Service) localMatchPrefilter(
 		return matchTypeName, true
 	}
 
-	sourceRead := namedRelease{release: sourceRelease, rawName: source.Name}
-	candidateRead := namedRelease{release: s.releaseCache.Parse(candidate.Name), rawName: candidate.Name}
 	verdict := s.matcher().matchVerdict(sourceRead, candidateRead,
 		matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(candidate.Torrent)},
 		localMatchPolicy,

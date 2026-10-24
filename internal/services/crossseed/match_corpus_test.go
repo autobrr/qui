@@ -67,9 +67,7 @@ type corpusDifference struct {
 
 // corpusTickets are the open issues that known differences name. Add a ticket
 // with its first known difference, and remove it with its last one.
-var corpusTickets = []int{
-	3430, // read local torrents from files when the name lacks a title
-}
+var corpusTickets = []int{}
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
 	return corpusDifference{verdict: verdict, reason: reason}
@@ -168,12 +166,11 @@ const (
 	reasonNoAlternateTitles = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
 	reasonNoEpisodeMap      = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonDedupNoRelabel    = "Missing input: sizes. Dedup reads names only, and the web source relabel needs both sizes."
+	reasonDedupNoRelabel    = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
+	reasonDedupNoExactSize  = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
-	reasonDedupNoSizes      = "Dedup reads names only, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
+	reasonDedupNoSizes      = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
-	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
-	reasonSeasonFolderName  = "This path reads the local torrent names without their files. A season folder name has no title, so it pairs with no release."
 )
 
 var corpusRows = []corpusRow{
@@ -339,13 +336,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
 		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathWebhook:      knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-		},
 	},
 	{
 		name:           "AKA title",
@@ -554,12 +544,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-		},
 	},
 	{
 		name:          "two-sided CRC that differs",
@@ -637,10 +621,7 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
 		},
 	},
 	{
@@ -653,10 +634,7 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
 		},
 	},
 	{
@@ -770,7 +748,6 @@ var corpusRows = []corpusRow{
 	},
 	{
 		// The season folder name has no title, so the Read release takes it from the files.
-		// The sizes are equal, so the webhook check reads the local files too.
 		name:           "season folder pack against its season pack listing",
 		source:         "Season 2",
 		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
@@ -779,17 +756,10 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-		},
 	},
 	{
 		// The CRC tag of an episode file does not name the pack, so the pack listing
-		// still matches when its size is rounded. The sizes differ, so the webhook
-		// check reads the local name only.
+		// still matches when its size is rounded.
 		name:           "season folder pack of CRC-tagged episodes against its season pack listing",
 		source:         "Season 2",
 		candidate:      "[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)",
@@ -798,13 +768,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Season 2", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
 		candidateFiles: corpusPackFiles("[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathWebhook:      knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-		},
 	},
 	{
 		// The bonus video is the largest file, and it names no season, so the Read
@@ -817,12 +780,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackWithBonus("Season 2"),
 		candidateFiles: corpusPackWithBonus("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-		},
 	},
 	{
 		// The special is the largest file, and it names season 0, so the Read
@@ -835,12 +792,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackWithSpecial("Season 2"),
 		candidateFiles: corpusPackWithSpecial("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
-		},
 	},
 	{
 		name:           "season folder pack of another show",
@@ -851,6 +802,9 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Season 2", "Harbor Lights (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
 	},
 	{
 		// Files of another season lend the season folder name nothing.
