@@ -5163,6 +5163,14 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents while planning autobrr apply")
 			continue
 		}
+		// Read the sources as the webhook check reads them, so apply adds what the check accepted.
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
+			for torrent := range viewTorrents(torrents) {
+				if torrent.Progress == 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+					return
+				}
+			}
+		})
 		for _, torrentView := range torrents {
 			if torrentView.Torrent == nil {
 				continue
@@ -5186,6 +5194,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
 				episodeMap:             episodeMap,
+				sourceReads:            sourceReads,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
