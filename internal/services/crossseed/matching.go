@@ -169,8 +169,10 @@ func (k releaseKey) String() string {
 
 // compareReleases runs the release rules on a pair and records each field
 // that differs. It returns after a title difference, because no rule relaxes
-// one over the rest of the set: title rescue runs its own compare.
-func (m matcher) compareReleases(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) releaseComparison {
+// one over the rest of the set: title rescue runs its own compare. With
+// stopAtFirst it returns after the first group of rules that finds a
+// difference, which is enough for a caller that reads only the first reason.
+func (m matcher) compareReleases(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes, stopAtFirst bool) releaseComparison {
 	var comparison releaseComparison
 	if sourceSide.release == candidateSide.release {
 		return comparison
@@ -182,7 +184,7 @@ func (m matcher) compareReleases(sourceSide, candidateSide namedRelease, sourceT
 	if m.compareTitles(&comparison, source, candidate, sourceSide.rawName, candidateSide.rawName, sourceTitles, candidateTitles); !comparison.matched() {
 		return comparison
 	}
-	return m.compareExceptTitle(comparison, sourceSide, candidateSide, findIndividualEpisodes, false, false)
+	return m.compareExceptTitle(comparison, sourceSide, candidateSide, findIndividualEpisodes, stopAtFirst, false)
 }
 
 // compareExceptTitle runs every release rule after the title rule, in the

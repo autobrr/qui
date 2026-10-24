@@ -259,7 +259,13 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 	ignoreSizeCheck := policy.IndividualEpisodes &&
 		isTVSeasonPack(source.release) && isTVEpisode(candidate.release)
 
-	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes)
+	// Only the relabel and the exact size class read past the first difference,
+	// and both need two sizes. A path without them, such as dedup, stops at the
+	// first group of rules that differs. A missing tag that the policy allows
+	// is removed after the compare, so it must not stop the compare early.
+	stopAtFirst := (sourceSize <= 0 || candidateSize <= 0) &&
+		!policy.AllowMissingCandidateGroup && !policy.AllowMissingCandidateChecksum
+	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes, stopAtFirst)
 	if policy.AllowMissingCandidateGroup {
 		strict.differences = strict.differences.without(differenceGroupMissing)
 	}

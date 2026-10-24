@@ -167,7 +167,7 @@ func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 			strict := svc.matcher().compareReleases(
 				namedRelease{release: svc.releaseCache.Parse(tt.source), rawName: tt.source},
 				namedRelease{release: svc.releaseCache.Parse(tt.target), rawName: tt.target},
-				nil, nil, false,
+				nil, nil, false, true,
 			)
 			require.False(t, strict.matched(), "strict matching must still reject this pairing")
 			require.Equal(t, groupMismatchReason, strict.reason())
@@ -322,7 +322,7 @@ func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
 
 	bracketSide := namedRelease{release: bracketRelease, rawName: bracket}
 	spaceJoinedSide := namedRelease{release: spaceJoinedRelease, rawName: spaceJoined}
-	strict := svc.matcher().compareReleases(bracketSide, spaceJoinedSide, nil, nil, false)
+	strict := svc.matcher().compareReleases(bracketSide, spaceJoinedSide, nil, nil, false, true)
 	require.False(t, strict.matched())
 	require.Equal(t, sourceMismatchReason, strict.reason())
 
@@ -1172,7 +1172,7 @@ func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
 		pairInput := input(pair[0], pair[1])
 		strict := svc.matcher().compareReleases(
 			namedRelease{release: pairInput.Source.release, rawName: pair[0]},
-			namedRelease{release: pairInput.Candidate.release, rawName: pair[1]}, nil, nil, false)
+			namedRelease{release: pairInput.Candidate.release, rawName: pair[1]}, nil, nil, false, true)
 		require.False(t, strict.matched())
 		require.Equal(t, sourceMismatchReason, strict.reason())
 
@@ -1200,7 +1200,7 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	m := svc.matcher()
 	sited := namedRelease{release: svc.releaseCache.Parse(bracket), rawName: bracket}
 	strictPair := func(source, candidate namedRelease) (bool, string) {
-		comparison := m.compareReleases(source, candidate, nil, nil, false)
+		comparison := m.compareReleases(source, candidate, nil, nil, false, true)
 		return comparison.matched(), comparison.reason()
 	}
 	strict := func(grouped namedRelease) (bool, string) { return strictPair(grouped, sited) }

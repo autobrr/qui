@@ -402,7 +402,7 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local
 	// search resolved. Only the download is held against those titles, so a
 	// listing that matches its own alias cannot admit a download of another show.
 	titles := m.appendReleaseTitles(slices.Concat(decision.SourceTitles, decision.CandidateTitles), local.release, local.rawName)
-	comparison := m.compareReleases(listing, download, titles, nil, findIndividualEpisodes)
+	comparison := m.compareReleases(listing, download, titles, nil, findIndividualEpisodes, false)
 	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
 		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
 	}

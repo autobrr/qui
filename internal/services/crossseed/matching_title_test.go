@@ -15,7 +15,7 @@ import (
 // strictCompare is the strict compare of two releases without raw names or
 // Sonarr alternate titles.
 func (m matcher) strictCompare(source, candidate *rls.Release, findIndividualEpisodes bool) releaseComparison {
-	return m.compareReleases(namedRelease{release: source}, namedRelease{release: candidate}, nil, nil, findIndividualEpisodes)
+	return m.compareReleases(namedRelease{release: source}, namedRelease{release: candidate}, nil, nil, findIndividualEpisodes, true)
 }
 
 func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
@@ -445,7 +445,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 				comparison := s.strictCompare(&tt.source, &tt.candidate, false)
 				match, reason = comparison.matched(), comparison.reason()
 			} else {
-				comparison := s.compareReleases(namedRelease{release: &tt.source}, namedRelease{release: &tt.candidate, rawName: tt.candidateName}, nil, nil, false)
+				comparison := s.compareReleases(namedRelease{release: &tt.source}, namedRelease{release: &tt.candidate, rawName: tt.candidateName}, nil, nil, false, true)
 				match, reason = comparison.matched(), comparison.reason()
 			}
 
@@ -500,7 +500,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidate)
 
-			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidate}, nil, nil, false)
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidate}, nil, nil, false, true)
 			match, reason := comparison.matched(), comparison.reason()
 
 			if tt.wantMatch {
@@ -591,7 +591,7 @@ func TestReleasesMatch_SeasonNumeral(t *testing.T) {
 			}
 			candidate := rls.ParseString(tt.candidateName)
 
-			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidateName}, nil, nil, false)
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidateName}, nil, nil, false, true)
 			match, reason := comparison.matched(), comparison.reason()
 
 			require.Equal(t, tt.wantReason, reason)
@@ -627,7 +627,7 @@ func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
 
 	aliases := []string{"Haibara's Teenage New Game+"}
 	withAliases := func(candidate *rls.Release) releaseComparison {
-		return s.compareReleases(namedRelease{release: &source}, namedRelease{release: candidate}, aliases, nil, false)
+		return s.compareReleases(namedRelease{release: &source}, namedRelease{release: candidate}, aliases, nil, false, true)
 	}
 	comparison = withAliases(&candidate)
 	require.True(t, comparison.matched(), "got reason %q", comparison.reason())
