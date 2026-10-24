@@ -68,7 +68,6 @@ type corpusDifference struct {
 // corpusTickets are the open issues that known differences name. Add a ticket
 // with its first known difference, and remove it with its last one.
 var corpusTickets = []int{
-	3037, // decide every match through one verdict
 	3430, // read local torrents from files when the name lacks a title
 }
 
@@ -173,7 +172,6 @@ const (
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonDedupNoSizes      = "Dedup reads names only, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
-	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 	reasonSeasonFolderName  = "This path reads the local torrent names without their files. A season folder name has no title, so it pairs with no release."
 )
@@ -586,21 +584,16 @@ var corpusRows = []corpusRow{
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3037, reasonDirectionalCRC),
-		},
 	},
 	{
-		name:          "one-sided CRC on the source at a rounded size",
-		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234].mkv",
-		candidate:     "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv",
-		sourceSize:    corpusEpisodeSize,
-		candidateSize: corpusRoundedSize,
-		want:          corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathWebhook: allowedDifference(corpusMatch, "IRC (the chat that announces releases to autobrr) rounds sizes, so the webhook check cannot reach the exact-size checksum relaxation that apply uses. So it accepts a CRC tag on one name, and apply checks the pair again with the downloaded torrent."),
-			pathDedup:   knownDifference(corpusMatch, 3037, reasonDirectionalCRC),
-		},
+		// Only the announce rounds the size. The torrent holds the file of the source.
+		name:           "one-sided CRC on the source at a rounded size",
+		source:         "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234].mkv",
+		candidate:      "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusRoundedSize,
+		candidateFiles: qbt.TorrentFiles{{Name: "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv", Size: corpusEpisodeSize}},
+		want:           corpusMatch,
 	},
 	{
 		name:          "WEB against WEB-DL",

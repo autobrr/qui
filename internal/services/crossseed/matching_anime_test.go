@@ -253,7 +253,7 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 			description: "same checksum should match",
 		},
 		{
-			name: "source has sum, candidate does not - should not match",
+			name: "source has sum, candidate does not - should match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -267,8 +267,8 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 				Episode: 11,
 				Site:    "SubsPlease",
 			},
-			wantMatch:   false,
-			description: "candidate must have matching checksum when source has one",
+			wantMatch:   true,
+			description: "a checksum on one name only is not enforced",
 		},
 		{
 			name: "candidate has sum, source does not - should match",
@@ -351,7 +351,7 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Site:       "AnoZu",
 	}
 
-	// Source without checksum can match candidate with or without checksum
+	// A checksum on one name only is not enforced, in either direction
 	subsPleaseNoSum := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,
@@ -366,8 +366,8 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 	require.True(t, s.strictCompare(&subsPlease, &subsPleaseMatchingSum, false).matched(),
 		"same SubsPlease release with matching checksum should match")
 
-	require.False(t, s.strictCompare(&subsPlease, &subsPleaseNoSum, false).matched(),
-		"source has checksum so candidate must have matching checksum")
+	require.True(t, s.strictCompare(&subsPlease, &subsPleaseNoSum, false).matched(),
+		"source with checksum can match candidate without checksum")
 
 	require.True(t, s.strictCompare(&subsPleaseNoSum, &subsPlease, false).matched(),
 		"source without checksum can match candidate with checksum")

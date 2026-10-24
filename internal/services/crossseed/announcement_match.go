@@ -30,12 +30,6 @@ type announcementMatchPolicy struct {
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
 	episodeMap *models.EpisodeMap
-	// tolerateOneSidedChecksum lets the advisory webhook check pass a candidate
-	// whose only strict failure is a CRC tag on one side. IRC announce sizes are
-	// rounded, so the check cannot reach the exact-size checksum relaxation that
-	// apply gets from the real torrent bytes. A false positive here costs one
-	// torrent download; apply re-validates and stays authoritative.
-	tolerateOneSidedChecksum bool
 }
 
 type announcementCandidateDecision struct {
@@ -88,14 +82,6 @@ func (s *Service) classifyWebhookAnnouncementSource(
 
 	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
 	decision := s.matcher().classifySearchCandidate(input)
-	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
-		s.matcher().hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		withSum := *input.Candidate.release
-		withSum.Sum = input.Source.release.Sum
-		relaxed := input
-		relaxed.Candidate.release = &withSum
-		decision = s.matcher().classifySearchCandidate(relaxed)
-	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected

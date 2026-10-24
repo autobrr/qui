@@ -12571,13 +12571,12 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 			}
 			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announcedCandidate, int64(req.Size), announcementMatchPolicy{
-				findIndividualEpisodes:   findIndividualEpisodes,
-				rescueTitleMismatches:    settings.RescueTitleMismatches && !settings.SkipRecheck,
-				allowUnknownSize:         req.Size == 0,
-				skipRecheck:              settings.SkipRecheck,
-				candidateTitles:          aliasTitles,
-				episodeMap:               episodeMap,
-				tolerateOneSidedChecksum: true,
+				findIndividualEpisodes: findIndividualEpisodes,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+				allowUnknownSize:       req.Size == 0,
+				skipRecheck:            settings.SkipRecheck,
+				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
 				continue
