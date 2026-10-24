@@ -7427,6 +7427,16 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	return query, ok
 }
 
+// TitlesMatch reports whether two release names pass the title rule of the
+// Match verdict. A bare title numeral counts as a season only when it names the
+// season of the other name. Dir Scan has no Service, so it parses through the
+// default parser.
+func TitlesMatch(source *rls.Release, sourceName string, candidate *rls.Release, candidateName string) bool {
+	var comparison releaseComparison
+	matcher{}.compareTitles(&comparison, withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source), sourceName, candidateName, nil, nil)
+	return comparison.matched()
+}
+
 // alternateTitleQuery reads a Read release. season is the inferred Season
 // numeral when the query is the title without it, so that the retry searches
 // that season, and 0 otherwise.

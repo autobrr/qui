@@ -25,8 +25,9 @@ import (
 // GLOSSARY.md). A path that gives a verdict other than the row expects fails the
 // test, unless the row lists that difference with a reason.
 //
-// Known gap: Dir Scan is not in the corpus. Its comparison lives in the dirscan
-// package, and #3064 moves it to the Read release.
+// Dir Scan is not in the corpus, because the dirscan package imports this one.
+// Its title check runs the title rule of the Match verdict, and
+// TestRefineDirScanMatchDecision_TitlesMatch pins its pairs.
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.
