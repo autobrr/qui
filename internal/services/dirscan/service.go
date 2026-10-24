@@ -32,7 +32,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Config holds configuration for the directory scanner service.
@@ -2708,12 +2707,6 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	searcheeTitle := normalizedTitleIdentity(searcheeMeta.Title)
-	candidateTitle := normalizedTitleIdentity(candidateMeta.Title)
-	if searcheeTitle == "" || candidateTitle == "" {
-		return false
-	}
-
 	if searcheeMeta.Year > 0 && candidateMeta.Year > 0 && searcheeMeta.Year != candidateMeta.Year {
 		return false
 	}
@@ -2722,7 +2715,10 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	return searcheeTitle == candidateTitle
+	searcheeKeys := crossseed.TitleKeys(searcheeMeta.Release, searcheeMeta.CleanedName)
+	return slices.ContainsFunc(crossseed.TitleKeys(candidateMeta.Release, candidateMeta.CleanedName), func(key string) bool {
+		return slices.Contains(searcheeKeys, key)
+	})
 }
 
 func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
@@ -2747,14 +2743,6 @@ func hasEpisodicMarkers(meta *SearcheeMetadata) bool {
 	}
 
 	return meta.Season != nil || meta.Episode != nil
-}
-
-func normalizedTitleIdentity(title string) string {
-	title = cleanForSearch(title)
-	if title == "" {
-		return ""
-	}
-	return stringutils.NormalizeForMatching(title)
 }
 
 func sampleDirScanSearcheeFiles(files []*ScannedFile, limit int) []string {

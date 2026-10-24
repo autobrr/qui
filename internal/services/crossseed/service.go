@@ -7427,6 +7427,12 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	return query, ok
 }
 
+// TitleKeys returns the Title keys of a release name (GLOSSARY.md), each once.
+// Dir Scan has no Service, so it parses through the default parser.
+func TitleKeys(release *rls.Release, releaseName string) []string {
+	return matcher{}.titleKeys(namedRelease{release: release, rawName: releaseName})
+}
+
 // alternateTitleQuery reads a Read release. season is the inferred Season
 // numeral when the query is the title without it, so that the retry searches
 // that season, and 0 otherwise.
