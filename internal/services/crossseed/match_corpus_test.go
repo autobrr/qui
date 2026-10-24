@@ -73,6 +73,7 @@ func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
 	return corpusDifference{verdict: verdict, reason: reason}
 }
 
+//nolint:unused // No row has a known difference now. The next bug row uses it.
 func knownDifference(verdict corpusVerdict, issue int, reason string) corpusDifference {
 	if issue == 0 {
 		panic("a known difference must name a ticket: " + reason)
