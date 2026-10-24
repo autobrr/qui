@@ -42,6 +42,7 @@ type orphanOnlyOptions struct {
 	scheduled           bool
 	autoCleanupMaxFiles int
 	scanCategoryPaths   bool
+	wrapBackend         func(b fsops.Backend, defaultSavePath string) fsops.Backend
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -69,7 +70,11 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	require.NoError(t, err)
 
 	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	var backend fsops.Backend = local.NewBackend()
+	if opts.wrapBackend != nil {
+		backend = opts.wrapBackend(backend, defaultSavePath)
+	}
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, backend))
 	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
