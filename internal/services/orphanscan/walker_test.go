@@ -1165,7 +1165,7 @@ func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
 func TestScanWalker_FileWithoutAKeyMarksIdentityIncomplete(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join(string(filepath.Separator), "data")
+	root := t.TempDir()
 	inUse := filepath.Join(root, "in-use.mkv")
 	orphan := filepath.Join(root, "orphan.mkv")
 	ignored := filepath.Join(root, "ignored", "file.mkv")

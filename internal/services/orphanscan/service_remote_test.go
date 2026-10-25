@@ -259,6 +259,9 @@ func sftpPath(p string) string {
 // serves the fixture's tree, with the row's tier set to tier.
 func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models.SSHTier) (*modeFixture, *sshtest.Server) {
 	t.Helper()
+	if exec == sshtest.ExecGNU && runtime.GOOS != "linux" {
+		t.Skip("the fake exec handler runs the local GNU find and stat")
+	}
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, exec)
