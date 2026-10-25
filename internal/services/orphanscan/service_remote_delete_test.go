@@ -518,3 +518,85 @@ func TestExecuteScan_RemoteIgnoredTorrentDirWalk(t *testing.T) {
 		})
 	}
 }
+
+// changeAfterRemoveBackend changes the instance after its first Remove, as an
+// SSH change that raced the routes' check would.
+type changeAfterRemoveBackend struct {
+	fsops.Backend
+	once   *sync.Once
+	change func()
+}
+
+func (b changeAfterRemoveBackend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
+	err := b.Backend.Remove(ctx, path, opts)
+	b.once.Do(b.change)
+	return err
+}
+
+// The remote backend redials with the instance's current row, so a change to
+// the SSH endpoint or the pin during a deletion stops it before the next
+// entry, in the file loop and in the directory loop.
+func TestExecuteDeletion_RemoteSSHChangeStopsTheLoop(t *testing.T) {
+	t.Parallel()
+
+	user := func(inst *models.Instance) { inst.SSHUsername = "someone-else" }
+	for _, tc := range []struct {
+		name   string
+		change func(*models.Instance)
+		// lastFile leaves one file to delete, so the change lands before the directories.
+		lastFile bool
+	}{
+		{"endpoint", user, false},
+		{"pin", func(inst *models.Instance) { inst.SSHHostKeyEncrypted = "enc-v2" }, false},
+		{"endpoint after the last file", user, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var f *modeFixture
+			f = newModeFixture(t, "orphanscan-remote-ssh-change-mid-delete", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+				return changeAfterRemoveBackend{
+					Backend: countingBackend{Backend: newTestBackend(), removes: f.removes},
+					once:    &sync.Once{},
+					change: func() {
+						f.instance.mu.Lock()
+						defer f.instance.mu.Unlock()
+						tc.change(&f.instance.inst)
+					},
+				}
+			})
+			f.setTier(models.SSHTierExec)
+			root := filepath.Dir(f.orphan)
+			if !tc.lastFile {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "a-later.mkv"), []byte("later"), 0o600))
+			}
+			emptyDir := filepath.Join(root, "empty")
+			require.NoError(t, os.Mkdir(emptyDir, 0o750))
+
+			run := f.scan(t, "manual")
+			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+			require.NoError(t, f.store.InsertFiles(t.Context(), run.ID, []models.OrphanScanFile{{FilePath: emptyDir, IsAbandonedDir: true, Status: "pending"}}))
+			f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+			done := f.run(t, run.ID)
+			require.Equal(t, "completed", done.Status, "run error: %s", done.ErrorMessage)
+			require.Equal(t, 1, done.FilesDeleted)
+			require.Contains(t, done.ErrorMessage, FilesystemModeChangedMessage)
+			require.EqualValues(t, 1, f.removes.Load(), "no Remove may follow the change")
+			require.DirExists(t, emptyDir)
+			require.FileExists(t, f.owned)
+
+			files, err := f.store.ListFiles(t.Context(), run.ID, 100, 0, "")
+			require.NoError(t, err)
+			statuses := map[string]int{}
+			for _, file := range files {
+				statuses[file.Status]++
+			}
+			skipped := 2
+			if tc.lastFile {
+				skipped = 1
+			}
+			require.Equal(t, map[string]int{"deleted": 1, "skipped": skipped}, statuses)
+		})
+	}
+}

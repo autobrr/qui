@@ -407,3 +407,42 @@ func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *databa
 	require.NoError(t, err)
 	require.Equal(t, []int64{want}, ids)
 }
+
+func TestOrphanScanStore_HasDeletingRun(t *testing.T) {
+	t.Parallel()
+	runHasDeletingRun(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_HasDeletingRunPostgresIntegration(t *testing.T) {
+	runHasDeletingRun(t, testdb.NewMigratedPostgres)
+}
+
+func runHasDeletingRun(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-has-deleting")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	other, err := instances.Create(ctx, "other", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	runID, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+	require.NoError(t, err)
+	for _, status := range []string{"scanning", "preview_ready", "completed"} {
+		require.NoError(t, store.UpdateRunStatus(ctx, runID, status))
+		deleting, err := store.HasDeletingRun(ctx, instance.ID)
+		require.NoError(t, err)
+		require.False(t, deleting, status)
+	}
+
+	require.NoError(t, store.UpdateRunStatus(ctx, runID, "deleting"))
+	deleting, err := store.HasDeletingRun(ctx, instance.ID)
+	require.NoError(t, err)
+	require.True(t, deleting)
+	deleting, err = store.HasDeletingRun(ctx, other.ID)
+	require.NoError(t, err)
+	require.False(t, deleting, "another instance's deletion")
+}

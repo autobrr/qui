@@ -672,12 +672,17 @@ func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T)
 
 // fakeOrphanScan records the instances whose remote previews were failed.
 type fakeOrphanScan struct {
-	failed []int
+	failed   []int
+	deleting bool
 }
 
 func (f *fakeOrphanScan) FailRemotePreviews(_ context.Context, instanceID int) error {
 	f.failed = append(f.failed, instanceID)
 	return nil
+}
+
+func (f *fakeOrphanScan) DeletionInProgress(context.Context, int) (bool, error) {
+	return f.deleting, nil
 }
 
 // A saved SSH change can point an old remote preview at another server with
@@ -705,4 +710,37 @@ func TestSSHChangesFailRemoteOrphanPreviews(t *testing.T) {
 	mismatch := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(sshtest.NewSigner().PublicKey()))
 	require.Equal(t, http.StatusConflict, mismatch.Code)
 	require.Len(t, scans.failed, 2, "a refused replace")
+}
+
+// A running orphan scan deletion redials with the stored SSH settings, so a
+// credentials save or a pin replace waits for it to finish.
+func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
+	f := newSSHFixture(t, "ssh-wait-orphan-deletion")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	scans := &fakeOrphanScan{deleting: true}
+	f.handler.orphanScan = scans
+	before, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+
+	host, port := f.endpoint()
+	body, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "someone-else", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	save := f.do(http.MethodPut, "/ssh-credentials", string(body))
+	require.Equal(t, http.StatusConflict, save.Code, save.Body.String())
+	require.Contains(t, save.Body.String(), "orphan scan is deleting")
+
+	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
+	require.Equal(t, http.StatusConflict, replace.Code, replace.Body.String())
+	require.Contains(t, replace.Body.String(), "orphan scan is deleting")
+
+	after, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, before.SSHUsername, after.SSHUsername)
+	require.Equal(t, before.SSHHostKeyEncrypted, after.SSHHostKeyEncrypted)
+	require.Empty(t, scans.failed)
+
+	scans.deleting = false
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
 }

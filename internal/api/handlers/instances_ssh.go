@@ -96,6 +96,10 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	if h.refuseDuringOrphanDeletion(w, r, instanceID) {
+		return
+	}
+
 	if err := h.instanceStore.SetSSHCredentials(r.Context(), instanceID, req.Host, req.Port, req.Username, req.PrivateKey); err != nil {
 		switch {
 		case errors.Is(err, models.ErrInstanceNotFound):
@@ -264,6 +268,10 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	case !pinned && replace:
 		RespondError(w, http.StatusConflict, models.ErrSSHHostKeyNotPinned.Error())
+		return
+	}
+
+	if replace && h.refuseDuringOrphanDeletion(w, r, instance.ID) {
 		return
 	}
 

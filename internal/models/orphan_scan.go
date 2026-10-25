@@ -627,6 +627,15 @@ func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID in
 	return ids, rows.Err()
 }
 
+// HasDeletingRun reports whether the instance has a run in deleting status.
+func (s *OrphanScanStore) HasDeletingRun(ctx context.Context, instanceID int) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM orphan_scan_runs WHERE instance_id = ? AND status = 'deleting'
+	`, instanceID).Scan(&n)
+	return n > 0, err
+}
+
 // StartRunDeletion moves a run from preview_ready to deleting, and reports
 // whether it did.
 func (s *OrphanScanStore) StartRunDeletion(ctx context.Context, runID int64) (bool, error) {

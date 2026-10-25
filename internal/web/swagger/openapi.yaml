@@ -1210,7 +1210,9 @@ paths:
       description: |
         Store the SSH endpoint and private key qui dials to reach this instance's
         files. Changing the host or port drops any confirmed host-key pin. The
-        private key is write-only and never appears in a response.
+        private key is write-only and never appears in a response. Saving fails
+        the instance's remote orphan scan previews, and is refused while an
+        orphan scan deletion runs on the instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1243,8 +1245,10 @@ paths:
           description: Invalid instance ID, request body, endpoint or key
         '404':
           description: Instance not found
+        '409':
+          description: An orphan scan deletion is running on the instance
         '500':
-          description: Failed to store SSH credentials
+          description: Failed to store SSH credentials, or to check for a running orphan scan deletion
     delete:
       tags:
         - Instances
@@ -1329,7 +1333,9 @@ paths:
         Overwrite an existing pin after the user has seen a mismatch and decided
         the host was legitimately re-keyed. The server re-dials and refuses unless
         the host presents this exact key. An instance with nothing pinned is
-        refused.
+        refused. Replacing the pin fails the instance's remote orphan scan
+        previews, and is refused while an orphan scan deletion runs on the
+        instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1346,11 +1352,11 @@ paths:
         '404':
           description: Instance not found
         '409':
-          description: The host presented a different key, the instance is not pinned, or its endpoint changed
+          description: The host presented a different key, the instance is not pinned, its endpoint changed, or an orphan scan deletion is running on it
         '502':
           description: The host could not be reached or the SSH handshake failed
         '500':
-          description: Failed to load the instance, read the stored credentials, or store the pin
+          description: Failed to load the instance, read the stored credentials, store the pin, or check for a running orphan scan deletion
 
   /api/instances/{instanceID}/app-info:
     get:

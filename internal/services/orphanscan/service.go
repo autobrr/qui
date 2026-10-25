@@ -627,6 +627,13 @@ func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error 
 	return nil
 }
 
+// DeletionInProgress reports whether an orphan scan is deleting on the
+// instance. A deletion interrupted by a restart is failed at startup, so the
+// status is current.
+func (s *Service) DeletionInProgress(ctx context.Context, instanceID int) (bool, error) {
+	return s.store.HasDeletingRun(ctx, instanceID)
+}
+
 // failChangedPreview fails a preview walked through access the instance no
 // longer has. ErrFilesystemModeChanged means this call failed the run, which a
 // scheduled caller notifies about.
@@ -1347,6 +1354,32 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var filesDeleted int
 	var bytesReclaimed int64
 
+	// The remote backend redials with the instance's current row, so an SSH
+	// change mid-run would send the remaining deletes to another server. The
+	// SSH routes refuse a change while a deletion runs, and this catches one
+	// that raced that check. The pin is compared as stored, so this is one
+	// database read per entry.
+	var sshChanged bool
+	checkSSH := func() bool {
+		if mode != models.FilesystemModeRemote {
+			return false
+		}
+		current, err := s.instances.Get(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot reload the instance")
+			sshChanged = true
+		} else if walkedEndpoint(current) != run.FilesystemEndpoint || current.SSHHostKeyEncrypted != instance.SSHHostKeyEncrypted {
+			log.Info().Int64("run", runID).Msg("orphanscan: stopping deletion, the SSH settings changed during it")
+			sshChanged = true
+		}
+		return sshChanged
+	}
+	skipRest := func(entries []*models.OrphanScanFile) {
+		for _, e := range entries {
+			s.updateFileStatus(ctx, e.ID, "skipped", "the SSH settings changed during the deletion")
+		}
+	}
+
 	// Track deletion failures for user-facing error reporting
 	var failedDeletes int
 	var sawReadOnly bool
@@ -1365,10 +1398,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// Delete files
-	for _, f := range fileEntries {
+	for i, f := range fileEntries {
 		if ctx.Err() != nil {
 			// Canceled mid-deletion - mark remaining as skipped
 			log.Warn().Msg("orphanscan: deletion canceled mid-progress")
+			break
+		}
+		if checkSSH() {
+			skipRest(fileEntries[i:])
 			break
 		}
 
@@ -1416,8 +1453,16 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// Remove the abandoned directories the preview listed. safeDeleteEmptyDir
 	// refuses a non-empty directory, so anything that gained content since the
 	// scan is reported rather than removed.
-	for _, dir := range dirEntries {
+	if sshChanged {
+		skipRest(dirEntries)
+		dirEntries = nil
+	}
+	for i, dir := range dirEntries {
 		if ctx.Err() != nil {
+			break
+		}
+		if checkSSH() {
+			skipRest(dirEntries[i:])
 			break
 		}
 
@@ -1494,11 +1539,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s). Check the details for specific errors.", failedDeletes)
 		}
 	}
+	if sshChanged {
+		failureMessage = strings.TrimSpace(failureMessage + "\n\n" + FilesystemModeChangedMessage)
+	}
 
 	// Determine final status based on deletion results. A run that removed
 	// directories did work, even when no file could go, and UpdateRunFailed
 	// records neither count.
-	if failedDeletes > 0 && filesDeleted == 0 && foldersDeleted == 0 {
+	if (failedDeletes > 0 || sshChanged) && filesDeleted == 0 && foldersDeleted == 0 {
 		// All deletions failed - mark as failed
 		failureMessage = strings.TrimSpace(run.ErrorMessage + "\n\n" + failureMessage)
 		if err := s.store.UpdateRunFailed(ctx, runID, failureMessage); err != nil {
@@ -1523,7 +1571,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	warningMessage := run.ErrorMessage
-	if failedDeletes > 0 {
+	if failureMessage != "" {
 		warningMessage = strings.TrimSpace(warningMessage + "\n\n" + failureMessage)
 	}
 
