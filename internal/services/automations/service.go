@@ -1950,6 +1950,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	// The plan reads file lists, so in a live run the timeout also bounds the plan step.
+	if !dryRun {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.cfg.ApplyTimeout)
+		defer cancel()
+	}
+
 	plan := s.buildRunPlan(ctx, runPlanInput{
 		instanceID:    instanceID,
 		states:        states,
@@ -1966,9 +1973,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	summary := newAutomationSummary()
-
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
-	defer cancel()
 
 	// Apply speed limits and track success
 	uploadSuccess := s.applySpeedLimits(ctx, instanceID, plan.uploadLimits.byTarget, "upload", s.syncManager.SetTorrentUploadLimit, summary, plan.uploadLimits.rules, torrentByHash)
