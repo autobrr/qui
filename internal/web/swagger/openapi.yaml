@@ -6050,7 +6050,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Trigger orphan scan
-      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance cannot be confirmed, so the new scan cancels it instead of returning 409.
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance that did not read every file's identity (`identityComplete` false) cannot be confirmed, so the new scan cancels it instead of returning 409.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6206,7 +6206,7 @@ paths:
         '400':
           description: Run is not in preview_ready status
         '409':
-          description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance, where deletion is not supported yet and the run stays preview_ready, and when the instance's filesystem access changed since the scan, which marks the run failed.
+          description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance that does not report file identity, or whose scan did not read it for every file, where the run stays preview_ready. And when the instance's filesystem access or SSH endpoint changed since the scan, which marks the run failed.
         '403':
           description: Instance does not have local filesystem access enabled
         '404':
@@ -7199,7 +7199,7 @@ components:
 
     FilesystemCapabilities:
       type: object
-      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find and stat.
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read` and `write`, and `identity` when its SSH key can run GNU find and stat.
       required: [read, identity, trustedIdentity, write, content]
       properties:
         read:
@@ -9628,7 +9628,10 @@ components:
         filesystemMode:
           type: string
           enum: [none, local, remote]
-          description: How qui reached the instance's files when this run scanned them. Deletion is refused for `remote` runs and for runs whose mode no longer matches the instance.
+          description: How qui reached the instance's files when this run scanned them. Deletion is refused for runs whose mode no longer matches the instance, and for `remote` runs without `identityComplete` or whose SSH endpoint changed since the scan.
+        identityComplete:
+          type: boolean
+          description: True when the scan read a file identity for every regular file it listed or protected. A `remote` run can be deleted only when it is true, since without identity a second path to a torrent's file looks like an orphan.
         errorMessage:
           type: string
           nullable: true

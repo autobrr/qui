@@ -190,6 +190,26 @@ func (f *modeFixture) run(t *testing.T, runID int64) *models.OrphanScanRun {
 	return run
 }
 
+func (f *modeFixture) setTier(tier models.SSHTier) {
+	f.instance.mu.Lock()
+	defer f.instance.mu.Unlock()
+	f.instance.inst.SSHTier = tier
+}
+
+// requireCompleted waits for the deletion the test started to finish.
+func (f *modeFixture) requireCompleted(t *testing.T) notifications.Event {
+	t.Helper()
+
+	select {
+	case event := <-f.events:
+		require.Equal(t, notifications.EventOrphanScanCompleted, event.Type, event.ErrorMessage)
+		return event
+	case <-time.After(10 * time.Second):
+		t.Fatal("deletion did not finish")
+		return notifications.Event{}
+	}
+}
+
 func (f *modeFixture) requireNothingDeleted(t *testing.T) {
 	t.Helper()
 
@@ -432,7 +452,8 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 	}
 }
 
-func TestConfirmDeletion_RemoteRunIsRefusedAndKeepsItsPreview(t *testing.T) {
+// The sftp tier reports no file identity, so its preview can be exported but not deleted.
+func TestConfirmDeletion_RemoteSFTPTierRunIsRefusedAndKeepsItsPreview(t *testing.T) {
 	t.Parallel()
 
 	f := newModeFixture(t, "orphanscan-remote-refuse", models.FilesystemModeRemote, nil)
@@ -562,14 +583,14 @@ func TestConfirmDeletion_RunWithoutARecordedModeConfirmsAsLocal(t *testing.T) {
 	require.FileExists(t, f.owned)
 }
 
-func TestMaybeAutoCleanup_RemoteRunKeepsItsPreviewWithAWarning(t *testing.T) {
+func TestMaybeAutoCleanup_RemoteSFTPTierRunKeepsItsPreviewWithAWarning(t *testing.T) {
 	t.Parallel()
 
 	f := newModeFixture(t, "orphanscan-remote-autoclean", models.FilesystemModeRemote, nil)
 	run := f.scan(t, "scheduled")
 
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
-	require.Contains(t, run.ErrorMessage, "Automatic cleanup does not run for remote instances")
+	require.Equal(t, AutoCleanupNoIdentityMessage, run.ErrorMessage)
 	f.requireNothingDeleted(t)
 	f.requireNoFailureEvent(t)
 }
@@ -639,7 +660,7 @@ func TestCheckScheduledScans_AdmitsLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
-// An SSH preview never completes, and the next scan replaces it, so pacing by
+// An sftp-tier preview never completes, and the next scan replaces it, so pacing by
 // completed runs alone scheduled a remote instance on every tick.
 func TestCheckScheduledScans_RemotePreviewWaitsForTheInterval(t *testing.T) {
 	t.Parallel()
@@ -794,7 +815,7 @@ func TestMaybeAutoCleanup_ModeChangedOnACanceledRunDoesNotNotify(t *testing.T) {
 	f.requireNoFailureEvent(t)
 }
 
-// An SSH preview can never be confirmed, so it must not strand later scans.
+// An sftp-tier preview can never be confirmed, so it must not strand later scans.
 func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 	t.Parallel()
 
@@ -951,24 +972,21 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// With Write (#2942) and the exec tier's Identity, canDeleteOrphans passes on a
-// remote instance, so the recorded-mode gate is what keeps remote deletes off
-// until #3236 turns them on. A remote run on an exec-tier instance is still
-// refused at confirm and keeps its preview.
-func TestConfirmDeletion_RemoteExecTierRunIsStillRefused(t *testing.T) {
+// An exec-tier run whose walk read every file's identity is confirmed like a
+// local one (#3236), and keeps the files a torrent owns.
+func TestConfirmDeletion_RemoteExecTierRunDeletes(t *testing.T) {
 	t.Parallel()
 
-	f := newModeFixture(t, "orphanscan-remote-exec-refuse", models.FilesystemModeRemote, nil)
-	f.instance.mu.Lock()
-	f.instance.inst.SSHTier = models.SSHTierExec
-	f.instance.mu.Unlock()
-	require.True(t, canDeleteOrphans(models.FilesystemCapabilitiesOf(&f.instance.inst)), "the capability gate alone would admit this instance")
+	f := newModeFixture(t, "orphanscan-remote-exec-delete", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
+	require.True(t, run.IdentityComplete)
 
-	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
-	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
-	f.requireNothingDeleted(t)
+	require.NoError(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID))
+	f.requireCompleted(t)
+	require.NoFileExists(t, f.orphan)
+	require.FileExists(t, f.owned)
 }

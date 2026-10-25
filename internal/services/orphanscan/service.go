@@ -568,23 +568,16 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}
 	if current := models.FilesystemAccessMode(instance); current != run.FilesystemMode {
 		logModeChanged(runID, run.FilesystemMode, current)
-		// Conditional on preview_ready, so a racing confirm cannot fail a run that is already deleting.
-		failed, updateErr := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
-		if updateErr != nil {
-			return fmt.Errorf("fail run %d after a filesystem access change: %w", runID, updateErr)
-		}
-		// ErrFilesystemModeChanged means this call failed the run, which a scheduled caller notifies about.
-		if !failed {
-			return fmt.Errorf("%w: the run is no longer preview_ready", ErrInvalidRunStatus)
-		}
-		s.emitRun(instanceID, runID)
-		return ErrFilesystemModeChanged
+		return s.failChangedPreview(ctx, instanceID, runID)
+	}
+	// Before the capability check, since saving SSH credentials also resets the
+	// tier. A run from before the endpoint was recorded has none and keeps its preview.
+	if run.FilesystemEndpoint != "" && walkedEndpoint(instance) != run.FilesystemEndpoint {
+		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed since the scan")
+		return s.failChangedPreview(ctx, instanceID, runID)
 	}
 	// Refused before the lock and without touching the run, so the preview stays reviewable.
-	// A remote run is refused by its recorded mode, not only by capabilities: with
-	// Write (#2942) and the exec tier's Identity both present, the capability gate
-	// alone would admit it. Remote deletes land with #3236.
-	if run.FilesystemMode == models.FilesystemModeRemote || !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+	if !runCanDelete(run, models.FilesystemCapabilitiesOf(instance)) {
 		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
 	}
 
@@ -610,6 +603,22 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}()
 
 	return nil
+}
+
+// failChangedPreview fails a preview walked through access the instance no
+// longer has. ErrFilesystemModeChanged means this call failed the run, which a
+// scheduled caller notifies about.
+func (s *Service) failChangedPreview(ctx context.Context, instanceID int, runID int64) error {
+	// Conditional on preview_ready, so a racing confirm cannot fail a run that is already deleting.
+	failed, err := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
+	if err != nil {
+		return fmt.Errorf("fail run %d after a filesystem access change: %w", runID, err)
+	}
+	if !failed {
+		return fmt.Errorf("%w: the run is no longer preview_ready", ErrInvalidRunStatus)
+	}
+	s.emitRun(instanceID, runID)
+	return ErrFilesystemModeChanged
 }
 
 // PathDialect is the path grammar of the backend instanceID is scanned through.
@@ -640,6 +649,16 @@ func walkedEndpoint(instance *models.Instance) string {
 // (a bind mount inside the scanned tree) only by its file identity.
 func canDeleteOrphans(caps models.FilesystemCapabilities) bool {
 	return caps.Write && caps.Identity
+}
+
+// runCanDelete reports whether run's preview can be deleted through an instance
+// with caps. A remote run also needs its walk to have read every file's
+// identity, since the exec tier walks over sftp when find fails.
+func runCanDelete(run *models.OrphanScanRun, caps models.FilesystemCapabilities) bool {
+	if run.FilesystemMode == models.FilesystemModeRemote && !run.IdentityComplete {
+		return false
+	}
+	return canDeleteOrphans(caps)
 }
 
 // logModeChanged records the modes a refused run was scanned under and would
@@ -828,6 +847,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
 			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+			// The torrent files below the cut were never keyed, so their twins
+			// in other roots can be listed.
+			keys.incomplete = true
 			continue
 		}
 
@@ -851,6 +873,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
 			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+			keys.incomplete = true
 		}
 	}
 
@@ -1171,7 +1194,7 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
 			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
-			warning := "Automatic cleanup does not run for remote instances yet. Review the preview instead."
+			warning := strings.TrimSpace(run.ErrorMessage + "\n\n" + AutoCleanupNoIdentityMessage)
 			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
 				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
 				return
@@ -1226,6 +1249,13 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	mode := models.FilesystemAccessMode(instance)
 	if mode != run.FilesystemMode {
 		logModeChanged(runID, run.FilesystemMode, mode)
+		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+		return
+	}
+	// The protection map below comes from the current instance either way, so
+	// this keeps the delete on the server whose paths the user reviewed.
+	if walkedEndpoint(instance) != run.FilesystemEndpoint {
+		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
 	}
@@ -1297,6 +1327,18 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var failedDeletes int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
+	var sawConnectionLost bool
+	classifyFailure := func(err error) {
+		switch {
+		// The loop goes on: the pool fails fast while it backs off, then redials.
+		case errors.Is(err, fsops.ErrConnectionLost):
+			sawConnectionLost = true
+		case isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system"):
+			sawReadOnly = true
+		case os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted"):
+			sawPermissionDenied = true
+		}
+	}
 
 	// Delete files
 	for _, f := range fileEntries {
@@ -1319,13 +1361,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
 			failedDeletes++
-
-			// Detect error type for user-facing message
-			if isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system") {
-				sawReadOnly = true
-			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
-				sawPermissionDenied = true
-			}
+			classifyFailure(err)
 			continue
 		}
 
@@ -1396,6 +1432,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, dir.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", dir.FilePath).Msg("orphanscan: failed to delete abandoned directory")
 			failedDeletes++
+			classifyFailure(err)
 			continue
 		}
 
@@ -1417,12 +1454,19 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// Build user-facing error message if deletion failures occurred
 	var failureMessage string
+	// sftp reports EROFS as a generic failure, so the read-only text is local only.
+	remote := mode == models.FilesystemModeRemote
 	if failedDeletes > 0 {
-		if sawReadOnly {
+		switch {
+		case sawConnectionLost:
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): the connection to the remote instance was lost. Run a new scan to list what is left.", failedDeletes)
+		case sawReadOnly && !remote:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): filesystem is read-only. If running via Docker, remove ':ro' from the volume mapping for your downloads path.", failedDeletes)
-		} else if sawPermissionDenied {
+		case sawPermissionDenied && remote:
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): permission denied. Check that the account qui uses on the remote instance has write access to the download directories.", failedDeletes)
+		case sawPermissionDenied:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): permission denied. Check that the qui process has write access to the download directories.", failedDeletes)
-		} else {
+		default:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s). Check the details for specific errors.", failedDeletes)
 		}
 	}
