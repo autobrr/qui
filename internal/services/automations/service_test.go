@@ -2312,12 +2312,6 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		},
 	}
 
-	torrentByHash := map[string]qbt.Torrent{
-		"a": torrents[0],
-		"b": torrents[1],
-		"c": torrents[2],
-	}
-
 	states := map[string]*torrentDesiredState{
 		"a": {
 			shouldMove:  true,
