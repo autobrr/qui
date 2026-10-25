@@ -41,7 +41,7 @@ var errSettleQueueFull = errors.New("recheck and resume queue full, manual inter
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
-	syncManager               TorrentPathAligner
+	aligner                   *crossseed.Aligner
 	adder                     *crossseed.Adder
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
@@ -52,14 +52,6 @@ type Injector struct {
 // JackettDownloader is the interface for downloading torrent files.
 type JackettDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-}
-
-// TorrentPathAligner renames an injected torrent's internal folder/file names to match the
-// on-disk files it matched, and reads the current names back to confirm the renames landed.
-type TorrentPathAligner interface {
-	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
-	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
-	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -78,7 +70,7 @@ type trackerCustomizationProvider interface {
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
-	syncManager TorrentPathAligner,
+	aligner *crossseed.Aligner,
 	adder *crossseed.Adder,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
@@ -87,7 +79,7 @@ func NewInjector(
 ) *Injector {
 	return &Injector{
 		jackettService:            jackettService,
-		syncManager:               syncManager,
+		aligner:                   aligner,
 		adder:                     adder,
 		torrentChecker:            torrentChecker,
 		instanceStore:             instanceStore,
@@ -249,8 +241,8 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	var afterAdd func(context.Context, []string) (string, bool)
 	if alignmentNeeded {
-		afterAdd = func(context.Context, []string) (string, bool) {
-			return "", i.alignContentPaths(req, alignPlan)
+		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
+			return "", i.align(ctx, req, alignPlan)
 		}
 	}
 
@@ -280,7 +272,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		// If the paths could not be aligned to the on-disk files, report failure so the run
 		// surfaces it instead of silently stranding a paused, mismatched torrent that will
 		// never recheck to 100%.
-		result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
+		result.ErrorMessage = "alignment failed; torrent added paused for inspection"
 	case added.Settled.QueueFull && added.Paused:
 		// Nothing rechecks or resumes the paused torrent. A running add downloads without Settle.
 		result.ErrorMessage = "torrent added paused: " + errSettleQueueFull.Error()

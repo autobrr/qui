@@ -98,6 +98,8 @@ linters:
         # No pkg: a call through a local interface expands to the package of the caller.
         - pattern: ^\w+\.\w+\.AddTorrent$
           msg: use crossseed.Adder
+        - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
+          msg: use crossseed.Aligner
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -167,6 +169,16 @@ linters:
         linters:
           - forbidigo
         text: use crossseed\.Adder
+
+      # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
+      - path-except: ^internal/services/(crossseed|dirscan)/
+        linters:
+          - forbidigo
+        text: use crossseed\.Aligner
+      - path: internal/services/crossseed/aligner\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: use crossseed\.Aligner
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.

@@ -450,6 +450,8 @@ type Service struct {
 	settler *Settler
 	// adder does the regular cross-seed add.
 	adder *Adder
+	// aligner renames each added torrent to the layout of its match.
+	aligner *Aligner
 
 	// Durable partial link-mode completion coordinator.
 	partialPoolWake                       chan partialPoolWake
@@ -584,6 +586,7 @@ func NewService(
 		activityPublisher:             activity.NopPublisher{},
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	svc.aligner = NewAligner(syncManager)
 
 	return svc
 }
@@ -5723,7 +5726,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Cross-seed add strategy:
 	// 1. Category uses same save_path as the base category (or matched torrent's path)
 	// 2. When .cross suffix is enabled, cross-seeds are isolated from *arr applications
-	// 3. alignCrossSeedContentPaths will rename torrent/folders/files to match existing
+	// 3. alignCrossSeed will rename torrent/folders/files to match existing
 	// 4. After rename, paths will match existing torrent and recheck will find files
 
 	// Set contentLayout based on folder structure (reusing sourceRoot/candidateRoot from above):
@@ -5900,7 +5903,7 @@ func (s *Service) processCrossSeedCandidate(
 	if !manualUnvalidated {
 		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
 			// Align the new torrent's naming and file layout with the matched torrent.
-			ok, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan)
+			ok, activeHash := s.alignCrossSeed(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan)
 			return activeHash, ok
 		}
 	}
