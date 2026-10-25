@@ -15,6 +15,7 @@ qui cross-seeds between Orpheus (OPS) and Redacted (RED) using the trackers' Gaz
   - OPS-sourced torrents need the **RED** key because qui queries the opposite site
   - RED-sourced torrents need the **OPS** key because qui queries the opposite site
 - Library Scan (Seeded Torrent Search) can run in Gazelle-only mode without Torznab. Use an interval of **10+ seconds**.
+- **Search Cross-Seeds** in the torrent list also works without Torznab indexers. It then asks only the Gazelle sites that have a key.
 :::
 
 ## What it does
