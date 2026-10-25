@@ -24,6 +24,10 @@ func TestTorrentViewJSONOmitsInternalFields(t *testing.T) {
 		HasMetadata: &hasMetadata,
 		Name:        "Alpha",
 		MagnetURI:   "magnet:?xt=urn:btih:aaa",
+
+		HasTrackerWarning:     true,
+		HasTrackerError:       true,
+		HasOtherAnnounceError: true,
 	}
 
 	data, err := json.Marshal(CrossInstanceTorrentView{
@@ -36,6 +40,9 @@ func TestTorrentViewJSONOmitsInternalFields(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &decoded))
 	require.NotContains(t, decoded, "magnet_uri")
 	require.NotContains(t, decoded, "has_metadata")
+	require.NotContains(t, decoded, "has_tracker_warning")
+	require.NotContains(t, decoded, "has_tracker_error")
+	require.NotContains(t, decoded, "has_other_announce_error")
 	require.Equal(t, "aaa", decoded["hash"])
 	require.Equal(t, "Alpha", decoded["name"])
 }

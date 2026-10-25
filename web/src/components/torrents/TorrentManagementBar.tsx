@@ -24,6 +24,7 @@ import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActio
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
@@ -132,17 +133,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [selectedTorrents])
   const availableTags = metadata?.tags?.length ? metadata.tags : fallbackTags
   const availableCategories = Object.keys(metadata?.categories ?? {}).length > 0 ? (metadata?.categories ?? {}) : fallbackCategories
-  const preferences = metadata?.preferences
 
   const isLoadingTagsData = metadataInstanceId > 0 && isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = metadataInstanceId > 0 && isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories =
-    supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? false))
+  const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities)
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()
@@ -743,6 +740,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
         onConfirm={handleDeleteWrapper}
+        isAllSelected={isAllSelected}
+        previewTorrents={selectedTorrents}
       />
 
       <TagEditorDialog

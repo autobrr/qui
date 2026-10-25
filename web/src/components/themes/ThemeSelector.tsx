@@ -13,6 +13,7 @@ import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
 import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -275,6 +276,8 @@ export function ThemeSelector() {
             />
           ))}
         </div>
+
+        <ThemeLayoutSettings />
 
         {/* Custom Themes (sideloaded CSS, premium feature) */}
         <div className="rounded-md border bg-muted/20 p-3">

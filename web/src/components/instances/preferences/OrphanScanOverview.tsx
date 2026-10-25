@@ -419,7 +419,7 @@ function InstanceOrphanScanItem({
             </div>
           </div>
 
-          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits />}
+          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits hasIdentity={instance.capabilities.identity} />}
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
@@ -522,7 +522,7 @@ export function OrphanScanOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.orphanScanOverview.noInstancesDescription")}
           </CardDescription>
@@ -535,7 +535,7 @@ export function OrphanScanOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

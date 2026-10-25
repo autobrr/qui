@@ -337,6 +337,8 @@ func isAccessDeniedText(text string) bool {
 	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
+// SearchByHash looks up one hash. The Gazelle torrent action takes one hash per
+// call and browse has no hash param, so each legacy flag costs one more request.
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
 	params := url.Values{}
 	params.Set("hash", strings.ToUpper(hash))

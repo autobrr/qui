@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package remote implements fsops.Backend over SFTP, on the pooled SSH
-// connection the instance's stored credentials open. Reflinks and file
-// identity have no sftp operation and answer fsops.ErrUnsupported; hardlinks
-// need the server to advertise hardlink@openssh.com. Remote paths are
+// connection the instance's stored credentials open. Reflinks have no sftp
+// operation and answer fsops.ErrUnsupported, and hardlinks need the server to
+// advertise hardlink@openssh.com. File identity needs the exec tier, where
+// GNU stat and find run as remote commands. Remote paths are
 // slash-delimited, so this package uses path and never path/filepath: the
 // separator belongs to the remote host, not to ours.
 package remote
@@ -20,6 +21,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/pkg/sftp"
@@ -27,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -42,7 +45,10 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 	return &Backend{pool: pool, inst: inst}
 }
 
-var _ fsops.Backend = (*Backend)(nil)
+var (
+	_ fsops.Backend     = (*Backend)(nil)
+	_ fsops.BatchStater = (*Backend)(nil)
+)
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
 // number, so hardlink identity degrades to zero FileID plus this error, which
@@ -78,7 +84,9 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, true)
+	return info, nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -90,7 +98,9 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, false)
+	return info, nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, error) {
@@ -109,6 +119,7 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 			Name:      fi.Name(),
 			IsDir:     fi.IsDir(),
 			IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
+			Mode:      fi.Mode().Type(),
 		})
 	}
 	return result, nil
@@ -129,59 +140,162 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		// The root is subject to IgnorePaths like every other entry, as it is
-		// locally: an ignored root yields an empty walk, not a lone root entry.
-		if slices.Contains(opts.IgnorePaths, root) {
+		if opts.Skip(path.Base(root), root, fi.IsDir(), true) {
 			return
 		}
-		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
+		entry := walkEntry(fi, root, ".", opts.WantFileID)
+		if opts.WantFileID && fi.Mode().IsRegular() {
+			b.setIdentity(ctx, &entry.LstatInfo, false)
+		}
+		if !send(ctx, ch, entry) || !fi.IsDir() {
 			return
 		}
-		b.walk(ctx, ch, root, ".", opts)
+		if b.execTier() && b.walkExec(ctx, ch, root, opts) {
+			return
+		}
+		b.walk(ctx, ch, root, opts)
 	}()
 	return ch, nil
 }
 
-// walk lists dir and recurses into its subdirectories. EmitStatErrors needs no
-// handling here: readdir carries the attrs, so there is no per-entry stat left
-// to fail.
+// walkWorkers is how many directories one walk lists at a time over its sftp
+// session, which pipelines the requests.
 //
-// ponytail: four round trips per directory (opendir, readdir, the readdir
-// that answers EOF, close), walked serially; a bounded walk over sibling
-// directories is the lever on a key that forbids exec, and the exec-tier find
-// sweep is the upgrade when a deep tree makes the latency hurt.
-func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel string, opts fsops.WalkOptions) bool {
+// ponytail: a package constant; a WalkOptions field is the upgrade if a host
+// ever needs tuning.
+const walkWorkers = 8
+
+type walkJob struct{ dir, rel string }
+
+// walk lists the tree under root with walkWorkers workers draining one
+// directory queue: a worker lists a directory, emits its entries in lexical
+// order, enqueues its subdirectories and takes the next. Each directory costs
+// opendir, readdir, the readdir that answers EOF and close, a round trip
+// apiece, so wall clock falls by the worker count. The order that survives is
+// the one fsops.Backend promises: lexical within a directory, and a
+// directory's own entry before anything beneath it.
+//
+// EmitStatErrors needs no handling here: readdir carries the attrs, so there
+// is no per-entry stat left to fail.
+func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, root string, opts fsops.WalkOptions) {
+	w := &walker{b: b, ch: ch, opts: opts}
+	w.ctx, w.cancel = context.WithCancel(ctx)
+	defer w.cancel()
+	w.cond.L = &w.mu
+	// A cancel, from the consumer or from a worker that lost the connection,
+	// has to wake the workers parked in next, which cond.Wait cannot see. The
+	// lock is taken first so a worker between its ctx check and its Wait
+	// cannot miss the broadcast.
+	stop := context.AfterFunc(w.ctx, func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.cond.Broadcast()
+	})
+	defer stop()
+
+	w.enqueue(walkJob{dir: root, rel: "."})
+	var workers sync.WaitGroup
+	for range walkWorkers {
+		workers.Go(w.work)
+	}
+	workers.Wait()
+
+	// The connection failed, not a directory: one Err entry carrying
+	// ErrConnectionLost ends the walk rather than repeating the error for
+	// every directory left, and tells the consumer the tree is cut short. It
+	// is sent after every worker has stopped so nothing follows it.
+	if w.cut != nil {
+		send(ctx, ch, *w.cut)
+	}
+}
+
+type walker struct {
+	b      *Backend
+	ch     chan<- fsops.WalkEntry
+	opts   fsops.WalkOptions
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// The queue is a slice, not a channel: a channel send would have to park
+	// a goroutine per directory beyond its buffer.
+	mu      sync.Mutex
+	cond    sync.Cond
+	jobs    []walkJob
+	pending int // directories queued or being listed
+
+	once sync.Once
+	cut  *fsops.WalkEntry
+}
+
+func (w *walker) enqueue(job walkJob) {
+	w.mu.Lock()
+	w.jobs = append(w.jobs, job)
+	w.pending++
+	w.mu.Unlock()
+	w.cond.Signal()
+}
+
+// next hands out the next directory, or false once nothing is queued and no
+// worker is listing, so nothing more can be queued, or the walk is cancelled.
+func (w *walker) next() (walkJob, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for len(w.jobs) == 0 && w.pending > 0 && w.ctx.Err() == nil {
+		w.cond.Wait()
+	}
+	if len(w.jobs) == 0 || w.ctx.Err() != nil {
+		return walkJob{}, false
+	}
+	job := w.jobs[0]
+	w.jobs = w.jobs[1:]
+	return job, true
+}
+
+func (w *walker) work() {
+	for {
+		job, ok := w.next()
+		if !ok {
+			return
+		}
+		w.list(job)
+		w.mu.Lock()
+		w.pending--
+		w.mu.Unlock()
+		// Every parked worker re-checks: the last listing to finish is what
+		// lets them all return.
+		w.cond.Broadcast()
+	}
+}
+
+func (w *walker) list(job walkJob) {
+	ctx, opts := w.ctx, w.opts
 	// The client is taken from the pool per directory, not once per walk: each
 	// take marks the connection used, so a walk longer than the idle limit is
 	// not closed underneath itself, and a reconnect mid-walk is picked up.
-	client, err := b.client(ctx)
-	if err != nil {
-		if ctx.Err() != nil {
-			return false
+	client, err := w.b.client(ctx)
+	var entries []os.FileInfo
+	if err == nil {
+		entries, err = readDir(ctx, client, job.dir)
+		if err != nil {
+			err = readDirError(job.dir, err)
 		}
-		// The connection failed, not the directory: one Err entry carrying
-		// ErrConnectionLost ends the walk rather than repeating the error for
-		// every directory left, and tells the consumer the tree is cut short.
-		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
-		return false
 	}
-	entries, err := readDir(ctx, client, dir)
 	if err != nil {
 		if ctx.Err() != nil {
-			return false
+			return
 		}
-		err = readDirError(dir, err)
+		entry := fsops.WalkEntry{Path: job.dir, IsDir: true, RelPath: job.rel, Err: err}
 		if errors.Is(err, fsops.ErrConnectionLost) {
-			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
-			return false
+			w.once.Do(func() {
+				w.cut = &entry
+				w.cancel()
+			})
+			return
 		}
 		// An unreadable directory is one entry with Err and the walk goes on,
 		// as it does locally: a scan must not die on one denied subtree.
-		return send(ctx, ch, fsops.WalkEntry{
-			Path: dir, IsDir: true,
-			RelPath: rel,
-			Err:     err,
-		})
+		send(ctx, w.ch, entry)
+		return
 	}
 
 	// Local walks are lexical; sftp hands back whatever order the server used.
@@ -189,45 +303,37 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 
 	for _, fi := range entries {
 		name := fi.Name()
-		childPath := path.Join(dir, name)
-
-		if (opts.SkipHidden && strings.HasPrefix(name, ".")) ||
-			(fi.IsDir() && ignoredDirName(name, opts)) ||
-			slices.Contains(opts.IgnorePaths, childPath) {
+		childPath := path.Join(job.dir, name)
+		if opts.Skip(name, childPath, fi.IsDir(), false) {
 			continue
 		}
-
-		childRel := path.Join(rel, name)
-		if !send(ctx, ch, walkEntry(fi, childPath, childRel, opts.WantFileID)) {
-			return false
+		childRel := path.Join(job.rel, name)
+		if !send(ctx, w.ch, walkEntry(fi, childPath, childRel, opts.WantFileID)) {
+			return
 		}
-
 		// readdir attrs are lstat-style, so a symlinked directory reports
 		// IsDir false and is never descended.
-		if fi.IsDir() && !b.walk(ctx, ch, childPath, childRel, opts) {
-			return false
+		if fi.IsDir() {
+			w.enqueue(walkJob{dir: childPath, rel: childRel})
 		}
 	}
-	return true
-}
-
-// ignoredDirName matches case-insensitively: these are OS/NAS metadata dirs
-// ($RECYCLE.BIN, @eaDir) whose on-disk case varies.
-func ignoredDirName(name string, opts fsops.WalkOptions) bool {
-	return slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
-		return strings.EqualFold(ignored, name)
-	}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
-		return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
-	})
 }
 
 // lostConnection tells a request that failed because the transport went away
 // from one the server refused: pkg/sftp answers every request in flight with
 // ErrSSHFxConnectionLost when its connection closes, and a closed socket
-// surfaces as net.ErrClosed. io.EOF is not here, because pkg/sftp also returns
-// it for a server's SSH_FX_EOF answer. readDirError is where it counts.
+// surfaces as net.ErrClosed. A request sent before pkg/sftp sees the close
+// fails with "failed to send packet" around the cause: a socket error, or the
+// io.EOF of the closed channel. A server's SSH_FX_EOF answer is the bare
+// io.EOF, so only a wrapped one counts here. readDirError takes both.
 func lostConnection(err error) bool {
-	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed)
+	if errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		return true
+	}
+	return errors.Is(err, io.EOF) && errors.Unwrap(err) != nil
 }
 
 // poolSentinels are the answers sshpool gives on purpose. They say why the
@@ -310,6 +416,9 @@ func statfsResult(stat *sftp.StatVFS) *fsops.StatfsResult {
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
+	if b.execTier() {
+		return b.sameFilesystemExec(ctx, p1, p2)
+	}
 	client, err := b.client(ctx)
 	if err != nil {
 		return false, err
@@ -397,6 +506,22 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 	return append(created, p), ctx.Err()
 }
 
+// Mkdir ignores perm, as MkdirAll does. The server answers SSH_FX_FAILURE for
+// an existing path, so an lstat names that cause as fs.ErrExist.
+func (b *Backend) Mkdir(ctx context.Context, p string, _ fs.FileMode) error {
+	client, err := b.client(ctx)
+	if err != nil {
+		return err
+	}
+	if err := awaitMutation(ctx, func() error { return client.Mkdir(p) }); err != nil {
+		if _, statErr := lstat(ctx, client, p); statErr == nil {
+			return pathError("mkdir", p, fs.ErrExist)
+		}
+		return requestError("mkdir", p, err)
+	}
+	return nil
+}
+
 func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions) error {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -429,7 +554,7 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 //
 // ponytail: serial, one extra round trip per entry on top of the listing;
 // nothing reachable in this release removes a large tree, and rm -rf -- over
-// exec (#2726) is the upgrade when one does.
+// exec is the upgrade when one does.
 func removeDir(ctx context.Context, client *sftp.Client, dir string) error {
 	entries, err := readDir(ctx, client, dir)
 	if err != nil {
@@ -517,11 +642,11 @@ func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, err
 	return fi, nil
 }
 
-// HardlinkTree mirrors hardlinktree.Create with one difference: a target that
-// already exists always fails. Locally a target that is already a link to the
-// source is skipped; sftp attrs carry no inode, so this backend cannot tell
-// that link from a stranger's file and refuses rather than guesses. A retry
-// after a crash therefore needs the partial tree removed by hand.
+// HardlinkTree mirrors hardlinktree.Create. A target that already exists is
+// skipped when targetIsSource can prove it is a link to the source, which
+// needs the exec tier; the sftp tier refuses it, since its attrs carry no
+// inode to tell that link from a stranger's file (fsops.Backend states the
+// contract).
 func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -541,7 +666,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	// half made because the job was cancelled is still ours to take back.
 	fail := func(err error) (*fsops.TreeCreateResult, error) {
 		if rollbackErr := b.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
-			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return nil, fmt.Errorf("%w (%w: %w)", err, hardlinktree.ErrRollbackFailed, rollbackErr)
 		}
 		return nil, err
 	}
@@ -561,18 +686,119 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// Link first: an existing target makes it fail, and the lstat that
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
-			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
-				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr != nil {
+				// Only an absent target says the Link error is the whole
+				// story; a lost connection or a cancel here is the cause.
+				if !errors.Is(statErr, fs.ErrNotExist) {
+					return fail(statErr)
+				}
+				return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 			}
-			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
+			// ponytail: one stat per collision. A retry that collides on every
+			// file of a season pack pays a round trip each; BatchStater is the
+			// upgrade if that is ever measured (#2971).
+			same, err := b.targetIsSource(ctx, fp)
+			if err != nil {
+				return fail(err)
+			}
+			if !same {
+				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
+			}
+			// Not recorded: the link belongs to whoever made it first, so a
+			// later failure in this plan never rolls it back.
+			created.SkippedExists++
+		} else {
+			created.Files = append(created.Files, fp.TargetPath)
+			created.Created++
 		}
-		created.Files = append(created.Files, fp.TargetPath)
-		created.Created++
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
 	}
 	return created, nil
+}
+
+// targetIsSource reports whether fp's target is already the link that Link
+// would make, from one stat over both paths on the exec tier. The tier is the
+// live connection's, not the stored row's: the probe writes the row, never
+// this backend's copy of it, so the row lags a key that just gained a shell
+// and would refuse the first reuse after it. The sftp tier answers no: its
+// attrs carry no inode, so the caller keeps the refusal. Any other error is
+// the caller's to report only when it says nothing about the files, a lost
+// connection or a cancelled job; any other failure refuses.
+//
+// The target is read without following, so a symlink planted there reports
+// its own inode and never passes. The source is matched both ways: link(2)
+// follows a symlinked source on macOS and not on Linux, so the link an
+// earlier run made carries either identity depending on the host. The
+// followed read costs a second session and runs only when the source is a
+// symlink (#3237).
+func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
+	conn, err := b.exec(ctx)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	ids, types, err := identities(ctx, conn, fp.TargetPath, false, fp.TargetPath, fp.SourcePath)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	if fsops.SameFile(ids[0], b.inst, ids[1], b.inst) {
+		return true, nil
+	}
+	if types[1] != "symbolic link" {
+		return false, nil
+	}
+	followed, _, err := identities(ctx, conn, fp.TargetPath, true, fp.SourcePath)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	return fsops.SameFile(ids[0], b.inst, followed[0], b.inst), nil
+}
+
+// transient returns err when it says nothing about the files, because the
+// job was cancelled or the connection was lost, and nil for any other
+// failure. A stat that fails for a source that has gone, or a tier without
+// exec, then reads as "not the source" and the caller refuses with
+// ErrTargetExists, as develop did on both tiers, rather than failing with an
+// error that link mode would turn into a regular add (#2942).
+func transient(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, fsops.ErrConnectionLost) {
+		return err
+	}
+	return nil
+}
+
+// identities stats paths in one command and returns each one's identity and
+// file type. Errors name errPath, the path the caller is deciding about.
+func identities(ctx context.Context, conn *sshpool.Conn, errPath string, follow bool, paths ...string) ([]hardlink.FileID, []string, error) {
+	options := []string{"--printf", `%d %i %h %F\0`}
+	if follow {
+		options = append([]string{"-L"}, options...)
+	}
+	out, err := output(ctx, conn, sshpool.Command{Name: "stat", Options: options, Paths: paths})
+	if err != nil {
+		return nil, nil, pathError("stat", errPath, err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(lines) != len(paths) {
+		return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
+	}
+	ids := make([]hardlink.FileID, len(lines))
+	types := make([]string, len(lines))
+	for i, line := range lines {
+		fields := strings.SplitN(line, " ", 4)
+		if len(fields) != 4 {
+			return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
+		}
+		if ids[i], _, err = parseIdentity(fields[0], fields[1], fields[2]); err != nil {
+			return nil, nil, pathError("stat", errPath, err)
+		}
+		types[i] = fields[3]
+	}
+	return ids, types, nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
@@ -685,14 +911,6 @@ func fileInfo(fi os.FileInfo, p string) fsops.FileInfo {
 		IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
 		Mode:      fi.Mode(),
 	}
-}
-
-func lstatInfo(fi os.FileInfo, p string) *fsops.LstatInfo {
-	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
-	if fi.Mode().IsRegular() || fi.IsDir() {
-		info.FileIDErr = errNoIdentity
-	}
-	return info
 }
 
 func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {

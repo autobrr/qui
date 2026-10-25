@@ -103,7 +103,15 @@
     "totalSize": "Gesamtgröße: {{size}}",
     "blockCrossSeeds": "Cross-Seed-Infohashes blockieren (erneutes Hinzufügen verhindern)",
     "cancel": "Abbrechen",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "titleSelectAll_one": "Den {{count}} Torrent löschen, der zum Filter passt?",
+    "titleSelectAll_other": "{{count}} Torrents löschen, die zum Filter passen?",
+    "selectAllNotice": "Alle auswählen ist aktiv. Dies löscht die ausgewählten Torrents, die zum aktuellen Filter passen.",
+    "notLoaded_one": "{{count}} davon ist nicht in der Tabelle geladen.",
+    "notLoaded_other": "{{count}} davon sind nicht in der Tabelle geladen.",
+    "andMore": "und {{more}} weitere",
+    "deleteCount_one": "{{count}} Torrent löschen",
+    "deleteCount_other": "{{count}} Torrents löschen"
   },
   "deleteFilesPreference": {
     "label": "Dateien auch von der Festplatte löschen",
@@ -429,6 +437,9 @@
       "description": "Lege Upload- und Download-Geschwindigkeitsbegrenzungen in KB/s fest. Deaktivieren, um globale Limits zu verwenden.",
       "uploadLimit": "Upload-Limit setzen (KB/s)",
       "downloadLimit": "Download-Limit setzen (KB/s)",
+      "selectValue": "Einen Wert auswählen",
+      "wasMixed": "(war gemischt)",
+      "unresolvedMixed": "Wähle vor dem Anwenden Werte für alle gemischten Felder",
       "cancel": "Abbrechen",
       "setting": "Wird gesetzt...",
       "confirm": "Limits anwenden"
@@ -879,6 +890,11 @@
       "checking": "Wird geprüft",
       "moving": "Wird verschoben"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Keine Torrents gefunden",
+    "noFilterMatches": "Keine Torrents entsprechen den aktuellen Filtern",
+    "noSearchMatches": "Keine Torrents entsprechen der aktuellen Suche"
   },
   "filterSidebar": {
     "views": {
@@ -1331,11 +1347,6 @@
     "matchCount_other": "{{count}} Treffer",
     "deleteSelected": "Löschen ({{count}})",
     "deleteThis": "Diesen löschen",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Nicht registriert",
-      "trackerError": "Tracker-Fehler"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Inhalt",
@@ -1359,6 +1370,7 @@
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
+    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden.",
     "toast": {
       "savePathCopied": "Speicherpfad kopiert",
       "copyFailed": "Kopieren fehlgeschlagen"
@@ -1510,25 +1522,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
     },
-    "shareLimit": {
-      "title": "Share-Limits für {{count}} Torrent(s) festlegen",
-      "description": "Seeding-Limits konfigurieren. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setRatioLimit": "Ratio-Limit festlegen",
-      "setSeedingTimeLimit": "Seedingzeit-Limit festlegen (Minuten)",
-      "setInactiveSeedingLimit": "Limit für inaktives Seeding festlegen (Minuten)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
-    },
-    "speedLimit": {
-      "title": "Geschwindigkeitsbegrenzungen für {{count}} Torrent(s) festlegen",
-      "description": "Lege Upload- und Download-Limits in KB/s fest. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setUploadLimit": "Upload-Limit festlegen (KB/s)",
-      "setDownloadLimit": "Download-Limit festlegen (KB/s)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
-    },
     "ratio": "Ratio:"
   },
   "tableView": {
@@ -1614,6 +1607,7 @@
   "stateLabels": {
     "downloading": "Wird heruntergeladen",
     "metaDL": "Metadaten werden abgerufen",
+    "forcedMetaDL": "(F) Metadaten werden abgerufen",
     "allocating": "Wird zugewiesen",
     "stalledDL": "Stehengeblieben",
     "queuedDL": "In Warteschlange",
@@ -1631,8 +1625,10 @@
     "error": "Fehler",
     "missingFiles": "Fehlende Dateien",
     "checkingResumeData": "Resume-Daten werden geprüft",
-    "moving": "Wird verschoben"
+    "moving": "Wird verschoben",
+    "unknown": "Unbekannt"
   },
+  "stateLabelFallback": "Nicht erkannt",
   "details": {
     "failedToUpdatePriorities": "Dateiprioritäten konnten nicht aktualisiert werden",
     "failedToRenameFile": "Datei konnte nicht umbenannt werden",

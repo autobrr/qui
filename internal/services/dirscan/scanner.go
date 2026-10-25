@@ -66,21 +66,17 @@ type ScanResult struct {
 type Scanner struct {
 	backend fsops.Backend
 
-	// FileID index for detecting already-seeding files.
-	// Maps FileID.Bytes() to torrent hash.
-	seenFileIDs map[string]string
+	// Identities of files already seeding, for skipping them.
+	seenFileIDs *seedingIndex
 }
 
 // NewScanner creates a new directory scanner.
 func NewScanner(backend fsops.Backend) *Scanner {
-	return &Scanner{
-		backend:     backend,
-		seenFileIDs: make(map[string]string),
-	}
+	return &Scanner{backend: backend, seenFileIDs: &seedingIndex{}}
 }
 
 // SetFileIDIndex sets the FileID index for detecting already-seeding files.
-func (s *Scanner) SetFileIDIndex(index map[string]string) {
+func (s *Scanner) SetFileIDIndex(index *seedingIndex) {
 	s.seenFileIDs = index
 }
 
@@ -117,7 +113,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 func (s *Scanner) processRootEntry(ctx context.Context, entry fsops.DirEntry, entryPath string, result *ScanResult) {
 	if entry.IsDir {
 		s.processDirEntry(ctx, entryPath, entry.Name, result)
-	} else if isMediaFile(entry.Name) {
+	} else if (entry.Mode.IsRegular() || entry.IsSymlink) && isMediaFile(entry.Name) {
 		s.processFileEntry(ctx, entryPath, result)
 	}
 }
@@ -193,13 +189,8 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 			return nil, fmt.Errorf("walk entry %s: %w", entry.Path, entry.Err)
 		}
 
-		// Skip symlinks
-		if entry.IsSymlink {
-			continue
-		}
-
-		// Skip directories (WalkDir yields them for traversal, we only want files)
-		if entry.IsDir {
+		// Links, junctions and other special entries are not media files.
+		if !entry.Mode.IsRegular() {
 			continue
 		}
 
@@ -238,6 +229,9 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 	if err != nil {
 		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
 	}
+	if !info.Mode.IsRegular() {
+		return nil, nil
+	}
 
 	base := filepath.Base(filePath)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
@@ -259,17 +253,13 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 
 // CheckAlreadySeeding checks if a searchee's files are already being seeded.
 func (s *Scanner) CheckAlreadySeeding(searchee *Searchee) (allSeeding bool, torrentHash string) {
-	if len(s.seenFileIDs) == 0 || len(searchee.Files) == 0 {
+	if s.seenFileIDs.len() == 0 || len(searchee.Files) == 0 {
 		return false, ""
 	}
 
 	matchedCount := 0
 	for _, f := range searchee.Files {
-		if f.FileID.IsZero() {
-			continue
-		}
-
-		if hash, ok := s.seenFileIDs[string(f.FileID.Bytes())]; ok {
+		if hash, ok := s.seenFileIDs.hash(f.FileID); ok {
 			matchedCount++
 			if torrentHash == "" {
 				torrentHash = hash

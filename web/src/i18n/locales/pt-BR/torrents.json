@@ -103,7 +103,15 @@
     "totalSize": "Tamanho total: {{size}}",
     "blockCrossSeeds": "Bloquear infohashes de cross-seed (evitar readicionar)",
     "cancel": "Cancelar",
-    "delete": "Excluir"
+    "delete": "Excluir",
+    "titleSelectAll_one": "Excluir o {{count}} torrent que corresponde ao filtro?",
+    "titleSelectAll_other": "Excluir os {{count}} torrents que correspondem ao filtro?",
+    "selectAllNotice": "Selecionar tudo está ativo. Isso exclui os torrents selecionados que correspondem ao filtro atual.",
+    "notLoaded_one": "{{count}} deles não está carregado na tabela.",
+    "notLoaded_other": "{{count}} deles não estão carregados na tabela.",
+    "andMore": "e mais {{more}}",
+    "deleteCount_one": "Excluir {{count}} torrent",
+    "deleteCount_other": "Excluir {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Excluir também os arquivos do disco",
@@ -429,6 +437,9 @@
       "description": "Defina limites de upload e download em KB/s. Desative para usar limites globais.",
       "uploadLimit": "Definir limite de upload (KB/s)",
       "downloadLimit": "Definir limite de download (KB/s)",
+      "selectValue": "Selecione um valor",
+      "wasMixed": "(estava misto)",
+      "unresolvedMixed": "Selecione valores para todos os campos mistos antes de aplicar",
       "cancel": "Cancelar",
       "setting": "Definindo...",
       "confirm": "Aplicar Limites"
@@ -879,6 +890,11 @@
       "checking": "Verificando",
       "moving": "Movendo"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Nenhum torrent encontrado",
+    "noFilterMatches": "Nenhum torrent corresponde aos filtros atuais",
+    "noSearchMatches": "Nenhum torrent corresponde à pesquisa atual"
   },
   "filterSidebar": {
     "views": {
@@ -1331,11 +1347,6 @@
     "matchCount_other": "{{count}} correspondências",
     "deleteSelected": "Excluir ({{count}})",
     "deleteThis": "Excluir Este",
-    "statusLabels": {
-      "trackerDown": "Tracker Fora",
-      "unregistered": "Não Registrado",
-      "trackerError": "Erro de Tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Conteúdo",
@@ -1359,6 +1370,7 @@
       }
     },
     "noMatches": "Nenhum torrent correspondente encontrado em outras instâncias",
+    "loadFailed": "Não foi possível verificar correspondências de cross-seed. Recarregue para tentar novamente.",
     "toast": {
       "savePathCopied": "Caminho de salvamento copiado",
       "copyFailed": "Falha ao copiar"
@@ -1510,25 +1522,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
     },
-    "shareLimit": {
-      "title": "Definir Limites de Compartilhamento para {{count}} torrent(s)",
-      "description": "Configure os limites de seed. Use -1 ou desative para remover limites.",
-      "setRatioLimit": "Definir limite de ratio",
-      "setSeedingTimeLimit": "Definir limite de tempo de seed (min)",
-      "setInactiveSeedingLimit": "Definir limite de seed inativo (min)",
-      "cancel": "Cancelar",
-      "setting": "Definindo...",
-      "applyLimits": "Aplicar Limites"
-    },
-    "speedLimit": {
-      "title": "Definir Limites de Velocidade para {{count}} torrent(s)",
-      "description": "Defina limites em KB/s. Use -1 ou desative para remover limites.",
-      "setUploadLimit": "Definir limite de upload (KB/s)",
-      "setDownloadLimit": "Definir limite de download (KB/s)",
-      "cancel": "Cancelar",
-      "setting": "Definindo...",
-      "applyLimits": "Aplicar Limites"
-    },
     "ratio": "Ratio:"
   },
   "tableView": {
@@ -1614,6 +1607,7 @@
   "stateLabels": {
     "downloading": "Baixando",
     "metaDL": "Buscando Metadados",
+    "forcedMetaDL": "(F) Buscando Metadados",
     "allocating": "Alocando",
     "stalledDL": "Estagnado",
     "queuedDL": "Na Fila",
@@ -1631,8 +1625,10 @@
     "error": "Erro",
     "missingFiles": "Arquivos Ausentes",
     "checkingResumeData": "Verificando Dados de Retomada",
-    "moving": "Movendo"
+    "moving": "Movendo",
+    "unknown": "Desconhecido"
   },
+  "stateLabelFallback": "Não reconhecido",
   "details": {
     "failedToUpdatePriorities": "Falha ao atualizar prioridades dos arquivos",
     "failedToRenameFile": "Falha ao renomear arquivo",

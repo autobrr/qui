@@ -4,20 +4,11 @@
  */
 
 import { RSSRunItem } from "@/components/cross-seed/RssRunItem"
+import { RunFooter } from "@/components/cross-seed/RunFooter"
 import { AutoResumeSwitch, SourceFilterFields, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
@@ -25,7 +16,6 @@ import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   useActiveInstances,
   useAggregatedInstanceMetadata,
@@ -35,12 +25,13 @@ import {
   useMissingIndexersToast,
   usePatchCrossSeedSettings
 } from "@/hooks/useCrossSeedSettings"
-import { DEFAULT_RSS_INTERVAL_MINUTES, MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManualRunCooldown"
+import { MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManualRunCooldown"
 import { api } from "@/lib/api"
 import { normalizeNumberList } from "@/lib/cross-seed-utils"
+import { rssRunState } from "@/lib/run-state"
 import type { CrossSeedAutomationSettings, CrossSeedRun } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { ChevronDown, Clock, History, Loader2, Play, XCircle, Zap } from "lucide-react"
+import { ChevronDown, Clock, History, Loader2, Play, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -56,19 +47,6 @@ interface RssFormState {
   rssSourceExcludeTags: string[]
   rssAutomationTags: string[]
   skipAutoResumeRss: boolean
-}
-
-const DEFAULT_RSS_FORM: RssFormState = {
-  enabled: false,
-  runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
-  targetInstanceIds: [],
-  targetIndexerIds: [],
-  rssSourceCategories: [],
-  rssSourceTags: [],
-  rssSourceExcludeCategories: [],
-  rssSourceExcludeTags: [],
-  rssAutomationTags: ["cross-seed"],
-  skipAutoResumeRss: false,
 }
 
 function seedRssForm(settings: CrossSeedAutomationSettings): RssFormState {
@@ -99,7 +77,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
   const [dryRun, setDryRun] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
 
   const { data: status, refetch: refetchStatus } = useCrossSeedStatus()
   const { data: runs, refetch: refetchRuns } = useQuery({
@@ -156,22 +133,14 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
   const cooldown = useManualRunCooldown(form.runIntervalMinutes, latestRun?.startedAt)
   const hasTargets = form.targetInstanceIds.length > 0
 
-  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || cooldown.active || !hasEnabledIndexers || !hasTargets
-  const runButtonDisabledReason = useMemo(() => {
-    if (!hasEnabledIndexers) {
-      return t("automation.requiresTorznabIndexer")
-    }
-    if (!hasTargets) {
-      return t("toast.selectAtLeastOneInstance")
-    }
-    if (automationRunning) {
-      return t("automation.runDisabledAlreadyRunning")
-    }
-    if (cooldown.active) {
-      return t("automation.runDisabledCooldown", { minutes: cooldown.enforcedRunIntervalMinutes, remaining: cooldown.display })
-    }
-    return undefined
-  }, [automationRunning, cooldown.active, cooldown.display, cooldown.enforcedRunIntervalMinutes, hasEnabledIndexers, hasTargets, t])
+  const runState = rssRunState({
+    hasEnabledIndexers,
+    hasTargets,
+    running: automationRunning,
+    cancelPending: cancelRunMutation.isPending,
+    startPending: triggerRunMutation.isPending,
+    cooldown: { active: cooldown.active, minutes: cooldown.enforcedRunIntervalMinutes, remaining: cooldown.display },
+  }, t)
 
   const handleTriggerRun = () => {
     if (!hasEnabledIndexers) {
@@ -243,287 +212,226 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
   }, [runs])
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("automation.title")}</CardTitle>
-          <CardDescription>{t("automation.description")}</CardDescription>
-          {settings.enabled && status?.nextRunAt && (
-            <p className="text-xs text-muted-foreground">{t("automation.nextRun", { date: formatDateValue(status.nextRunAt) })}</p>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-5">
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("automation.title")}</CardTitle>
+        <CardDescription>{t("automation.description")}</CardDescription>
+        {settings.enabled && status?.nextRunAt && (
+          <p className="text-xs text-muted-foreground">{t("automation.nextRun", { date: formatDateValue(status.nextRunAt) })}</p>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-5">
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="automation-enabled" className="flex items-center gap-2">
-                <Switch
-                  id="automation-enabled"
-                  checked={form.enabled}
-                  onCheckedChange={value => {
-                    if (value && !hasEnabledIndexers) {
-                      notifyMissingIndexers(t("toast.enableAutomationAfterIndexers"))
-                      return
-                    }
-                    setForm(prev => ({ ...prev, enabled: !!value }))
-                    if (!value && validationErrors.targetInstanceIds) {
-                      setValidationErrors(prev => ({ ...prev, targetInstanceIds: "" }))
-                    }
-                  }}
-                />
-                {t("automation.enableSwitch")}
-              </Label>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="automation-interval">{t("automation.intervalLabel")}</Label>
-                <FieldHelp>{t("automation.intervalTooltip", { min: MIN_RSS_INTERVAL_MINUTES })}</FieldHelp>
-              </div>
-              <Input
-                id="automation-interval"
-                type="number"
-                min={MIN_RSS_INTERVAL_MINUTES}
-                value={form.runIntervalMinutes}
-                onChange={event => {
-                  setForm(prev => ({ ...prev, runIntervalMinutes: Number(event.target.value) }))
-                  if (validationErrors.runIntervalMinutes) {
-                    setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
-                  }
-                }}
-                className={validationErrors.runIntervalMinutes ? "border-destructive" : ""}
-              />
-              {validationErrors.runIntervalMinutes && (
-                <p className="text-sm text-destructive">{validationErrors.runIntervalMinutes}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>{t("automation.targetInstances")}</Label>
-              <MultiSelect
-                options={instanceOptions}
-                selected={form.targetInstanceIds.map(String)}
-                onChange={values => {
-                  const nextIds = normalizeNumberList(values)
-                  setForm(prev => ({ ...prev, targetInstanceIds: nextIds }))
-                  if (nextIds.length > 0 && validationErrors.targetInstanceIds) {
-                    setValidationErrors(prev => ({ ...prev, targetInstanceIds: "" }))
-                  }
-                }}
-                placeholder={instanceOptions.length ? t("automation.selectInstances") : t("automation.noActiveInstances")}
-                disabled={!instanceOptions.length}
-              />
-              <p className="text-xs text-muted-foreground">
-                {instanceOptions.length === 0? t("automation.noInstancesAvailable"): form.targetInstanceIds.length === 0? t("automation.pickInstance"): t("automation.instancesSelected", { count: form.targetInstanceIds.length })}
-              </p>
-              {validationErrors.targetInstanceIds && (
-                <p className="text-sm text-destructive">{validationErrors.targetInstanceIds}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("automation.targetIndexers")}</Label>
-              <MultiSelect
-                options={indexerOptions}
-                selected={form.targetIndexerIds.map(String)}
-                onChange={values => setForm(prev => ({ ...prev, targetIndexerIds: normalizeNumberList(values) }))}
-                placeholder={indexerOptions.length ? t("automation.allEnabledIndexers") : t("automation.noIndexersConfigured")}
-                disabled={!indexerOptions.length}
-              />
-              <p className="text-xs text-muted-foreground">
-                {indexerOptions.length === 0? t("automation.noIndexersConfiguredDot"): form.targetIndexerIds.length === 0? t("automation.allIndexersEligible"): t("automation.selectedIndexersPolled", { count: form.targetIndexerIds.length })}
-              </p>
-            </div>
-          </div>
-
-          <SourceFilterFields
-            filters={{
-              categories: form.rssSourceCategories,
-              tags: form.rssSourceTags,
-              excludeCategories: form.rssSourceExcludeCategories,
-              excludeTags: form.rssSourceExcludeTags,
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="automation-enabled" className="font-medium">{t("automation.enableSwitch")}</Label>
+          <Switch
+            id="automation-enabled"
+            checked={form.enabled}
+            onCheckedChange={value => {
+              if (value && !hasEnabledIndexers) {
+                notifyMissingIndexers(t("toast.enableAutomationAfterIndexers"))
+                return
+              }
+              setForm(prev => ({ ...prev, enabled: !!value }))
+              if (!value && validationErrors.targetInstanceIds) {
+                setValidationErrors(prev => ({ ...prev, targetInstanceIds: "" }))
+              }
             }}
-            onChange={filters => setForm(prev => ({
-              ...prev,
-              rssSourceCategories: filters.categories,
-              rssSourceTags: filters.tags,
-              rssSourceExcludeCategories: filters.excludeCategories,
-              rssSourceExcludeTags: filters.excludeTags,
-            }))}
-            metadata={sourceMetadata}
-            disabled={form.targetInstanceIds.length === 0}
           />
+        </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <SourceTagsField
-              id="rss-automation-tags"
-              suggestions={[{ label: t("rules.tagging.tagRss"), value: "rss" }]}
-              selected={form.rssAutomationTags}
-              onChange={rssAutomationTags => setForm(prev => ({ ...prev, rssAutomationTags }))}
-              placeholder={t("rules.tagging.selectRssTags")}
-              help={t("rules.tagging.rssTagsDescription")}
-            />
-            <AutoResumeSwitch
-              id="auto-resume-rss"
-              skip={form.skipAutoResumeRss}
-              onSkipChange={skipAutoResumeRss => setForm(prev => ({ ...prev, skipAutoResumeRss }))}
-            />
-          </div>
-
-          <Separator />
-
-          <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen}>
-            <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
-              <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
-                <div className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{t("automation.recentRssRuns")}</span>
-                  {runs && runs.length > 0 ? (
-                    <Badge variant="secondary" className="text-xs">
-                      {runSummaryStats.totalFailed > 0? t("automation.runSummaryWithFailures", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded, failed: runSummaryStats.totalFailed }): t("automation.runSummary", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded })}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{t("automation.noRunsYet")}</span>
-                  )}
-                </div>
-                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${rssRunsOpen ? "rotate-180" : ""}`} />
-              </CollapsibleTrigger>
-
-              <CollapsibleContent>
-                <div className="px-4 pb-3 space-y-3">
-                  {runs && runs.length > 0 ? (
-                    <div className="space-y-4">
-                      {groupedRuns.scheduled.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <Clock className="h-4 w-4 text-blue-500" />
-                            {t("automation.scheduled")} ({groupedRuns.scheduled.length})
-                          </div>
-                          <div className="space-y-1">
-                            {groupedRuns.scheduled.map(run => (
-                              <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {groupedRuns.manual.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <Zap className="h-4 w-4 text-yellow-500" />
-                            {t("automation.manual")} ({groupedRuns.manual.length})
-                          </div>
-                          <div className="space-y-1">
-                            {groupedRuns.manual.map(run => (
-                              <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {groupedRuns.other.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <History className="h-4 w-4 text-muted-foreground" />
-                            {t("automation.other")} ({groupedRuns.other.length})
-                          </div>
-                          <div className="space-y-1">
-                            {groupedRuns.other.map(run => (
-                              <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-2 text-xs text-muted-foreground">
-                      {t("automation.noRunsRecorded")}
-                    </div>
-                  )}
-                </div>
-              </CollapsibleContent>
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="automation-interval">{t("automation.intervalLabel")}</Label>
+              <FieldHelp>{t("automation.intervalTooltip", { min: MIN_RSS_INTERVAL_MINUTES })}</FieldHelp>
             </div>
-          </Collapsible>
-        </CardContent>
-        <CardFooter className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
-            <Label htmlFor="automation-dry-run">{t("automation.dryRun")}</Label>
-          </div>
-          <div className="flex flex-col gap-2 w-full md:w-auto md:flex-row">
-            {automationRunning ? (
-              <Button
-                variant="outline"
-                className="min-h-11 md:min-h-9"
-                onClick={() => setShowCancelDialog(true)}
-                disabled={cancelRunMutation.isPending}
-              >
-                {cancelRunMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("automation.stopping")}
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    {t("automation.cancel")}
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="min-h-11 md:min-h-9 disabled:cursor-not-allowed disabled:pointer-events-auto"
-                    onClick={handleTriggerRun}
-                    disabled={runButtonDisabled}
-                  >
-                    {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                    {t("automation.runNow")}
-                  </Button>
-                </TooltipTrigger>
-                {runButtonDisabledReason && (
-                  <TooltipContent align="end" className="max-w-xs text-xs">
-                    {runButtonDisabledReason}
-                  </TooltipContent>
-                )}
-              </Tooltip>
+            <Input
+              id="automation-interval"
+              type="number"
+              min={MIN_RSS_INTERVAL_MINUTES}
+              value={form.runIntervalMinutes}
+              onChange={event => {
+                setForm(prev => ({ ...prev, runIntervalMinutes: Number(event.target.value) }))
+                if (validationErrors.runIntervalMinutes) {
+                  setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
+                }
+              }}
+              className={validationErrors.runIntervalMinutes ? "border-destructive" : ""}
+            />
+            {validationErrors.runIntervalMinutes && (
+              <p className="text-sm text-destructive">{validationErrors.runIntervalMinutes}</p>
             )}
-            <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={patchSettings.isPending}>
-              {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t("automation.saveSettings")}
-            </Button>
-            <Button variant="outline" className="min-h-11 md:min-h-9" onClick={() => setForm(DEFAULT_RSS_FORM)}>
-              {t("automation.reset")}
-            </Button>
           </div>
-        </CardFooter>
-      </Card>
+        </div>
 
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("cancelDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("cancelDialog.description")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancelDialog.keepRunning")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => cancelRunMutation.mutate()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("cancelDialog.cancelRun")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>{t("automation.targetInstances")}</Label>
+            <MultiSelect
+              options={instanceOptions}
+              selected={form.targetInstanceIds.map(String)}
+              onChange={values => {
+                const nextIds = normalizeNumberList(values)
+                setForm(prev => ({ ...prev, targetInstanceIds: nextIds }))
+                if (nextIds.length > 0 && validationErrors.targetInstanceIds) {
+                  setValidationErrors(prev => ({ ...prev, targetInstanceIds: "" }))
+                }
+              }}
+              placeholder={instanceOptions.length ? t("automation.selectInstances") : t("automation.noActiveInstances")}
+              disabled={!instanceOptions.length}
+            />
+            <p className="text-xs text-muted-foreground">
+              {instanceOptions.length === 0? t("automation.noInstancesAvailable"): form.targetInstanceIds.length === 0? t("automation.pickInstance"): t("automation.instancesSelected", { count: form.targetInstanceIds.length })}
+            </p>
+            {validationErrors.targetInstanceIds && (
+              <p className="text-sm text-destructive">{validationErrors.targetInstanceIds}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("automation.targetIndexers")}</Label>
+            <MultiSelect
+              options={indexerOptions}
+              selected={form.targetIndexerIds.map(String)}
+              onChange={values => setForm(prev => ({ ...prev, targetIndexerIds: normalizeNumberList(values) }))}
+              placeholder={indexerOptions.length ? t("automation.allEnabledIndexers") : t("automation.noIndexersConfigured")}
+              disabled={!indexerOptions.length}
+            />
+            <p className="text-xs text-muted-foreground">
+              {indexerOptions.length === 0? t("automation.noIndexersConfiguredDot"): form.targetIndexerIds.length === 0? t("automation.allIndexersEligible"): t("automation.selectedIndexersPolled", { count: form.targetIndexerIds.length })}
+            </p>
+          </div>
+        </div>
+
+        <SourceFilterFields
+          filters={{
+            categories: form.rssSourceCategories,
+            tags: form.rssSourceTags,
+            excludeCategories: form.rssSourceExcludeCategories,
+            excludeTags: form.rssSourceExcludeTags,
+          }}
+          onChange={filters => setForm(prev => ({
+            ...prev,
+            rssSourceCategories: filters.categories,
+            rssSourceTags: filters.tags,
+            rssSourceExcludeCategories: filters.excludeCategories,
+            rssSourceExcludeTags: filters.excludeTags,
+          }))}
+          metadata={sourceMetadata}
+          disabled={form.targetInstanceIds.length === 0}
+        />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <SourceTagsField
+            id="rss-automation-tags"
+            suggestions={[{ label: t("rules.tagging.tagRss"), value: "rss" }]}
+            selected={form.rssAutomationTags}
+            onChange={rssAutomationTags => setForm(prev => ({ ...prev, rssAutomationTags }))}
+            placeholder={t("rules.tagging.selectRssTags")}
+            help={t("rules.tagging.rssTagsDescription")}
+          />
+          <AutoResumeSwitch
+            id="auto-resume-rss"
+            skip={form.skipAutoResumeRss}
+            onSkipChange={skipAutoResumeRss => setForm(prev => ({ ...prev, skipAutoResumeRss }))}
+          />
+        </div>
+
+        <Separator />
+
+        <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen}>
+          <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{t("automation.recentRssRuns")}</span>
+                {runs && runs.length > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {runSummaryStats.totalFailed > 0? t("automation.runSummaryWithFailures", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded, failed: runSummaryStats.totalFailed }): t("automation.runSummary", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded })}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t("automation.noRunsYet")}</span>
+                )}
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${rssRunsOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="px-4 pb-3 space-y-3">
+                {runs && runs.length > 0 ? (
+                  <div className="space-y-4">
+                    {groupedRuns.scheduled.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Clock className="h-4 w-4 text-blue-500" />
+                          {t("automation.scheduled")} ({groupedRuns.scheduled.length})
+                        </div>
+                        <div className="space-y-1">
+                          {groupedRuns.scheduled.map(run => (
+                            <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {groupedRuns.manual.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Zap className="h-4 w-4 text-yellow-500" />
+                          {t("automation.manual")} ({groupedRuns.manual.length})
+                        </div>
+                        <div className="space-y-1">
+                          {groupedRuns.manual.map(run => (
+                            <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {groupedRuns.other.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <History className="h-4 w-4 text-muted-foreground" />
+                          {t("automation.other")} ({groupedRuns.other.length})
+                        </div>
+                        <div className="space-y-1">
+                          {groupedRuns.other.map(run => (
+                            <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-xs text-muted-foreground">
+                    {t("automation.noRunsRecorded")}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      </CardContent>
+      <RunFooter
+        state={runState}
+        runLabel={t("automation.runNow")}
+        runIcon={triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        onRun={handleTriggerRun}
+        onCancel={() => cancelRunMutation.mutate()}
+        cancelDialog={{ title: t("cancelDialog.title"), description: t("cancelDialog.description") }}
+        options={
+          <div className="flex items-center gap-2 text-xs">
+            <Label htmlFor="automation-dry-run">{t("automation.dryRun")}</Label>
+            <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
+          </div>
+        }
+      >
+        <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={patchSettings.isPending}>
+          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {t("automation.saveSettings")}
+        </Button>
+      </RunFooter>
+    </Card>
   )
 }

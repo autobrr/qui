@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Actualització disponible",
     "versionAvailable": "La versió {{version}} ja està disponible",
-    "viewRelease": "Mostra la versió",
     "dismiss": "Descarta"
   },
   "pwaUpdate": {
@@ -192,8 +191,7 @@
     "trigger": "Més informació"
   },
   "numberInput": {
-    "unlimited": "Il·limitat",
-    "useUnlimited": " (fes servir -1 per a il·limitat)"
+    "unlimited": "Il·limitat"
   },
   "dateTime": {
     "na": "N/D",
@@ -218,6 +216,25 @@
       "year_one": "{{count}} any",
       "year_other": "{{count}} anys"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Fes costat a qui",

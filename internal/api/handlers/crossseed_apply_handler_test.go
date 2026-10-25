@@ -241,6 +241,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 	setServiceField(t, svc, "instanceStore", instanceStore)
 	setServiceField(t, svc, "syncManager", syncManager)
+	setServiceField(t, svc, "adder", crossseed.NewAdder(syncManager, nil, nil, nil, nil))
 	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
 	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return &models.CrossSeedAutomationSettings{

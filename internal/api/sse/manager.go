@@ -44,11 +44,12 @@ const (
 	// short budget keeps the ~2s loop snappy and frees the goroutine when qbit is
 	// briefly slow.
 	syncTimeoutIncremental = 10 * time.Second
-	// syncTimeoutFull bounds a full /sync/maindata update (first sync for an instance,
-	// or any sync after a failure when qBittorrent has reset the rid and resends the
-	// whole torrent set). A 20k-torrent full fetch+parse can exceed 10s; this is
-	// aligned with the qbit HTTP client timeout (60s, see ClientPool.GetClient) so the
-	// per-sync budget is bounded by the transport, not a tighter inner deadline.
+	// syncTimeoutFull bounds the wait for a full /sync/maindata update (first sync
+	// for an instance, or a sync after a failed or cancelled sync: go-qbittorrent
+	// then resets the rid, so qBittorrent sends the whole torrent set). A
+	// 20k-torrent full fetch+parse can exceed 10s; this is aligned with the qbit
+	// HTTP client timeout (60s, see ClientPool.GetClient), which go-qbittorrent
+	// also uses as the deadline of a full update.
 	syncTimeoutFull   = 60 * time.Second
 	heartbeatInterval = 5 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
@@ -95,6 +96,8 @@ type StreamOptions struct {
 	Order       string
 	Search      string
 	Filters     qbittorrent.FilterOptions
+	// Summary asks for the totals of the view without its rows.
+	Summary bool
 }
 
 // isMultiInstance reports whether the subscription aggregates multiple instances.
@@ -140,7 +143,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s",
+		"%s|%d|%d|%s|%s|%s|%s|%t",
 		instanceKey,
 		opts.Page,
 		opts.Limit,
@@ -148,6 +151,7 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(opts.Order),
 		strconv.Quote(opts.Search),
 		strconv.Quote(filtersKey),
+		opts.Summary,
 	)
 }
 
@@ -159,6 +163,7 @@ type syncProvider interface {
 	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
+	GetActiveTaskCount(ctx context.Context, instanceID int) int
 }
 
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
@@ -241,6 +246,9 @@ type subscriptionGroup struct {
 	baselineFP       map[string]uint64
 	baselineOrder    []string
 	baselineSnapshot *qbittorrent.TorrentResponse
+	// rebuildFailed makes the next server-state tick rebuild the view, because
+	// the baseline rows are older than the sync that the failed rebuild was for.
+	rebuildFailed bool
 }
 
 type syncLoopState struct {
@@ -318,6 +326,10 @@ type StreamMeta struct {
 	LastSuccessfulSync *time.Time `json:"lastSuccessfulSync,omitempty"`
 	RetryInSeconds     int        `json:"retryInSeconds,omitempty"`
 	StreamKey          string     `json:"streamKey,omitempty"`
+	// serverState is set when the sync changed only the server state. The tick
+	// then sends it with the rows and counts of the last frame, and does not
+	// rebuild the view.
+	serverState *qbt.ServerState
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -631,6 +643,9 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		// sat in the table for up to a minute before the sidebar counted it.
 		IncludeCounts: true,
 	}
+	if qbittorrent.ServerStateOnly(data.Changes) {
+		meta.serverState = new(data.ServerState)
+	}
 
 	go m.publishInstance(instanceID, meta)
 }
@@ -722,6 +737,9 @@ func syncErrorMessage(err error, retrySeconds int) string {
 	}
 	if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
 		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
+	}
+	if qbittorrent.IsDeadlineExpired(err) {
+		return fmt.Sprintf("Sync with qBittorrent paused: qBittorrent did not answer in time. qBittorrent is busy or not running; retrying in %ds", retrySeconds)
 	}
 	return fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 }
@@ -1130,6 +1148,8 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		InstanceID: sub.options.InstanceID,
 		FullUpdate: true,
 		Timestamp:  time.Now(),
+		// The next tick can be minutes away when nothing changes.
+		IncludeCounts: true,
 	}
 
 	payload := m.buildGroupInitPayload(group, group.options, meta)
@@ -1311,6 +1331,10 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta)
 	metaCopy := cloneMeta(meta)
 
 	group.mu.Lock()
+	// The pending tick still has to rebuild the view.
+	if group.hasPending && group.pendingMeta.serverState == nil {
+		metaCopy.serverState = nil
+	}
 	group.pendingMeta = metaCopy
 	group.hasPending = true
 	if group.sending {
@@ -1354,10 +1378,21 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			continue
 		}
 
+		var payload *StreamPayload
+		// A cross-instance view carries no server state, so it rebuilds.
+		if meta.serverState != nil && !opts.isMultiInstance() {
+			// The same bound as a rebuild, so a stalled task count request
+			// does not hold back the speeds.
+			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.InstanceID), meta)
+			cancel()
+		}
 		// Every enqueued group event is a tick update (init is written synchronously
 		// in onSession, never routed here), so build an incremental update: a delta
 		// against the group baseline, or a full keyframe. See buildUpdatePayload.
-		payload := m.buildGroupUpdatePayload(group, opts, meta)
+		if payload == nil {
+			payload = m.buildGroupUpdatePayload(group, opts, meta)
+		}
 		if payload == nil {
 			continue
 		}
@@ -1413,6 +1448,9 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 	metaCopy := cloneMeta(meta)
 	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
 	if errPayload != nil {
+		group.baselineMu.Lock()
+		group.rebuildFailed = true
+		group.baselineMu.Unlock()
 		return errPayload
 	}
 
@@ -1432,6 +1470,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
 	if metaCopy != nil && metaCopy.IncludeCounts {
 		ctx = qbittorrent.WithCachedCountsWhenSkippingTrackerHydration(ctx)
+	}
+	if opts.Summary {
+		ctx = qbittorrent.WithSummary(ctx)
 	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
@@ -2019,7 +2060,9 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 				return
 			case <-timer.C:
 				// Pass the loop ctx so a cancelled/restarted loop (e.g. backoff change
-				// or shutdown) aborts an in-flight sync instead of running to completion.
+				// or shutdown) stops waiting at once. The shared go-qbittorrent sync
+				// does not stop: it runs until it ends or reaches its own deadline, and
+				// the next loop joins it while it runs.
 				m.forceSync(ctx, instanceID)
 
 				if ctx.Err() != nil {
@@ -2050,10 +2093,14 @@ func jitteredInterval(interval time.Duration) time.Duration {
 
 // syncTimeout returns the context budget for the next forceSync of instanceID.
 // A full /sync/maindata is likely when the instance has never completed a sync
-// (no entry / not primed) or is in a failure streak (attempt > 0): qBittorrent
-// resets the rid on these and resends the whole torrent set, which can exceed the
-// incremental budget on large instances. A primed instance with no active failure
-// streak is in a healthy delta streak and gets the short budget.
+// (no entry / not primed) or is in a failure streak (attempt > 0): go-qbittorrent
+// resets the rid after a failed sync, so the next sync is a full update. A full
+// update sends the whole torrent set, which can exceed the incremental budget on
+// large instances. A primed instance with no active failure streak is in a
+// healthy delta streak and gets the short budget. A sync that another caller
+// cancelled also resets the rid, but reports no failure here. The loop then waits
+// only the short budget, and the full update, which runs on its own deadline,
+// still lands through OnUpdate.
 func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -2165,6 +2212,7 @@ type streamRequestPayload struct {
 	Order       string                     `json:"order"`
 	Search      string                     `json:"search"`
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
+	Summary     bool                       `json:"summary"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2241,11 +2289,15 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		Order:   order,
 		Search:  p.Search,
 		Filters: filters,
+		Summary: p.Summary,
 	}
 
 	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and
 	// dedupe the member ids. InstanceID is left 0 for these.
 	if len(p.InstanceIDs) > 0 {
+		if p.Summary {
+			return StreamOptions{}, errors.New("summary needs a single instance")
+		}
 		if len(p.InstanceIDs) > maxStreamRequests {
 			return StreamOptions{}, errInvalidInstanceID
 		}

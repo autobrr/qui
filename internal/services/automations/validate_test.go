@@ -847,59 +847,63 @@ func TestValidateTagDeleteFromClientConfig(t *testing.T) {
 	})
 }
 
-func TestValidateConditionGroupingConfig(t *testing.T) {
-	t.Run("returns nil when grouped condition uses builtin group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "cross_seed_content_save_path",
-					Value:    "1",
-				},
-			},
-		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
+func TestGroupIDsError(t *testing.T) {
+	grouped := func(id string) *models.RuleCondition {
+		return &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: id, Value: "1"}
+	}
+	customGroup := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "my_group", Keys: []string{"savePath"}}}}
+	scoreRule := func(cond *models.RuleCondition) *models.SortingConfig {
+		return &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+			Type:        models.ScoreRuleTypeConditional,
+			Conditional: &models.ConditionalScoreRule{Score: 10, Condition: cond},
+		}}}
+	}
 
-	t.Run("returns nil when grouped condition uses custom group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			Grouping: &models.GroupingConfig{
-				Groups: []models.GroupDefinition{
-					{ID: "my_group", Keys: []string{"savePath"}},
-				},
-			},
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldIsGrouped,
-					Operator: models.OperatorEqual,
-					GroupID:  "my_group",
-					Value:    "true",
-				},
-			},
-		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		sorting    *models.SortingConfig
+		wantMsg    string // empty means valid
+	}{
+		{name: "built-in group id in a condition", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped(GroupCrossSeedContentSavePath)}}},
+		{name: "custom group id in a condition", conditions: &models.ActionConditions{Grouping: customGroup, Pause: &models.PauseAction{Enabled: true, Condition: grouped("my_group")}}},
+		{name: "unknown group id in a condition", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped("unknown_group")}},
+			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
+		{name: "built-in group id in another case", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped("Release_Item")}},
+			wantMsg: "Unknown grouping ID 'Release_Item' in grouped condition"},
+		{name: "unknown move group id", conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in move.groupId"},
+		{name: "unknown category group id", conditions: &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: "tv", GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in category.groupId"},
+		{name: "unknown delete group id", conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in delete.groupId"},
+		{name: "unknown default group id", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Grouping: &models.GroupingConfig{DefaultGroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in grouping.defaultGroupId"},
+		{name: "unknown group id in a disabled move", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Move: &models.MoveAction{Path: "/data", GroupID: "relase_item"}}},
+		{name: "move with custom group id in another case", conditions: &models.ActionConditions{Grouping: customGroup, Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "My_Group"}}},
+		{name: "move with built-in group id", conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: GroupReleaseItem}}},
+		{name: "unknown group id in a score rule", sorting: scoreRule(grouped("relase_item")),
+			wantMsg: "Unknown grouping ID 'relase_item' in grouped condition"},
+		{name: "custom group id in a score rule", conditions: &models.ActionConditions{Grouping: customGroup}, sorting: scoreRule(grouped("my_group"))},
+	}
 
-	t.Run("returns error when grouped condition uses unknown group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "does_not_exist",
-					Value:    "1",
-				},
-			},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ConditionGroupIDsError(tt.conditions)
+			if err == nil {
+				var grouping *models.GroupingConfig
+				if tt.conditions != nil {
+					grouping = tt.conditions.Grouping
+				}
+				err = ScoreRuleGroupIDsError(grouping, tt.sorting)
+			}
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tt.wantMsg)
 		})
-		require.Error(t, err)
-		require.Contains(t, msg, "does_not_exist")
-	})
+	}
 }
 
 func TestValidateRule(t *testing.T) {
@@ -913,6 +917,9 @@ func TestValidateRule(t *testing.T) {
 	local := &models.Instance{HasLocalFilesystemAccess: true}
 	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "100000000000"}
 	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	// A remote instance on the exec tier has Identity, but its identity is
+	// what the host asserts, so nothing that can widen a delete opens for it.
+	remoteExec := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
 	freeSpacePath := func(r *models.Automation) {
 		r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
 		r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
@@ -959,6 +966,11 @@ func TestValidateRule(t *testing.T) {
 		{name: "missing files with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: local},
 		{name: "hardlink scope without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}),
 			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+		{name: "hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: remoteExec,
+			wantMsg: "This file condition is not available on remote instances."},
+		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,
+			wantMsg: "This file condition is not available on remote instances."},
+		{name: "missing files on a remote instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: remote},
 		{name: "hardlink scope with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: local},
 		{name: "file field in a disabled action", edit: withConditions(&models.ActionConditions{
 			Pause:  &models.PauseAction{Enabled: true},
@@ -968,6 +980,8 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'"},
 		{name: "include hardlinks without local access", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}),
 			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
+		{name: "include hardlinks on a remote exec instance", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}), instance: remoteExec,
+			wantMsg: "includeHardlinks is not available on remote instances."},
 		{name: "external program without program", edit: withConditions(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true}}),
 			wantMsg: "External program action requires a valid program selection"},
 		{name: "invalid sorting config", edit: func(r *models.Automation) { r.SortingConfig = &models.SortingConfig{SchemaVersion: "2"} },
@@ -978,8 +992,6 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "delete.groupId is only supported when delete mode is 'Keep files'"},
 		{name: "tag delete from client with tracker tags", edit: withConditions(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, DeleteFromClient: true, UseTrackerAsTag: true}}}),
 			wantMsg: "tags[0].deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient"},
-		{name: "unknown grouping id", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "unknown_group", Value: "1"}}}),
-			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
 		{name: "release year out of range", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldRlsYear, Operator: models.OperatorEqual, Value: "1800"}}}),
 			wantMsg: "Release Year must be between " + strconv.Itoa(minRlsYear) + " and " + strconv.Itoa(time.Now().Year()+1)},
 		{name: "free space path source without filesystem access", edit: freeSpacePath, instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired},
@@ -1004,4 +1016,71 @@ func TestValidateRule(t *testing.T) {
 			require.Equal(t, tt.wantMsg, ruleErr.Message)
 		})
 	}
+}
+
+func TestValidateRule_MovePath(t *testing.T) {
+	const (
+		notAbsolute = "Move path must be absolute"
+		invalid     = "Invalid move path template"
+	)
+	tests := []struct {
+		path    string
+		enabled bool
+		wantMsg string // a substring; empty means valid
+	}{
+		{path: "/data/archive", enabled: true},
+		{path: `D:\Archive`, enabled: true},
+		{path: "D:/Archive", enabled: true},
+		{path: `\\nas\media\archive`, enabled: true},
+		{path: "  /data/{{ .Category }}  ", enabled: true},
+		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
+		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
+		{path: `{{ if eq .Category "tv" }}/data/tv{{ end }}`, enabled: true},
+		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
+		{path: "archive", enabled: false},
+		{path: "{{ .Category }}/done", enabled: false},
+		{path: "", enabled: false},
+		{path: "", enabled: true, wantMsg: "Move path is required"},
+		{path: "   ", enabled: true, wantMsg: "Move path is required"},
+		{path: "archive", enabled: true, wantMsg: notAbsolute},
+		{path: "rel/{{ .Category }}", enabled: true, wantMsg: `renders "rel/sample"`},
+		{path: "../archive", enabled: true, wantMsg: notAbsolute},
+		{path: "C:archive", enabled: true, wantMsg: notAbsolute},
+		{path: "{{ .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{.Category}}", enabled: true, wantMsg: `renders "sample"`},
+		{path: "{{- .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Name }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "/data/{{ .Unknown }}", enabled: true, wantMsg: invalid},
+		{path: "/data/{{ .Name", enabled: true, wantMsg: invalid},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rule := &models.Automation{InstanceID: 1, Name: "Move rule", TrackerPattern: "*", Enabled: true, Conditions: &models.ActionConditions{
+				Move:  &models.MoveAction{Enabled: tt.enabled, Path: tt.path},
+				Pause: &models.PauseAction{Enabled: true},
+			}}
+
+			err := ValidateRule(rule, nil)
+
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			ruleErr, ok := errors.AsType[*RuleError](err)
+			require.True(t, ok, "want a RuleError, got %v", err)
+			require.Contains(t, ruleErr.Message, tt.wantMsg)
+		})
+	}
+}
+
+func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
+	// A rule saved before the move path check existed must stay editable, so it can be toggled off.
+	rule := &models.Automation{InstanceID: 1, Name: "Legacy rule", TrackerPattern: "*", Enabled: false, Conditions: &models.ActionConditions{
+		Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
+	}}
+
+	require.NoError(t, ValidateRule(rule, nil))
 }

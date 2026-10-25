@@ -99,7 +99,8 @@ type InstanceCrossSeedResult struct {
 	// Status describes the result (examples: "added", "exists", "no_match", "size_mismatch", "content_mismatch", "error"); this list is not exhaustive and additional statuses may be used.
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
-	// MatchedTorrent is the existing torrent that matched (if any)
+	// MatchedTorrent is the existing torrent that matched (if any).
+	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool
@@ -185,8 +186,8 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
-	// SearchDecision binds a cached decision to the source torrent and limits
-	// apply replay to exactly the relaxations search admitted.
+	// SearchDecision binds a cached decision to the source torrent. Apply keeps
+	// that verdict for the source torrent and does not decide the pair again.
 	SearchDecision searchDecisionProvenance `json:"-"`
 }
 
@@ -487,7 +488,7 @@ type WebhookCheckResponse struct {
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
 	// TorrentName is the original announcement name. It is distinct from the
-	// downloaded metainfo info.name used for replay validation.
+	// downloaded metainfo info.name that apply checks against the stored verdict.
 	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
 	InstanceIDs []int    `json:"instanceIds,omitempty"`

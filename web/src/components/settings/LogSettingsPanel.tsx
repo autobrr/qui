@@ -798,14 +798,14 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             {t("logs.viewer.clear")}
           </Button>
           <div className="flex items-center gap-2">
+            <Label htmlFor="autoscroll" className="text-sm">
+              {t("logs.viewer.autoScroll")}
+            </Label>
             <Switch
               id="autoscroll"
               checked={autoScroll}
               onCheckedChange={setAutoScroll}
             />
-            <Label htmlFor="autoscroll" className="text-sm">
-              {t("logs.viewer.autoScroll")}
-            </Label>
           </div>
         </div>
       </div>

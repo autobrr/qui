@@ -21,7 +21,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => i18n }))
 
 const OLD_STARTED_AT = "2026-09-28T20:00:00Z"
 const NEW_STARTED_AT = "2026-09-28T21:00:00Z"
-const RELEASE = { tag_name: "v1.31.0", html_url: "https://github.com/autobrr/qui/releases/tag/v1.31.0", published_at: "2026-09-28T00:00:00Z" }
+const RELEASE = { tag_name: "v1.31.0", html_url: "https://example.invalid/releases/tag/v1.31.0", published_at: "2026-09-28T00:00:00Z" }
 
 const location = { assign: vi.fn(), reload: vi.fn() }
 const serviceWorker = { getRegistrations: vi.fn() }
@@ -32,6 +32,7 @@ let otherRegistration = { scope: "", unregister: vi.fn() }
 let qui: "old" | "down" | "new" = "old"
 let newVersion = "1.31.0"
 let selfUpdateAvailable = true
+let unavailableReason = "container"
 let updateResult = { version: "1.31.0", rollbackCommand: "mv \"/opt/qui/qui-v1.30.0.bak\" \"/opt/qui/qui\"", backupError: "" }
 let updateBodies: unknown[] = []
 let queryClient: QueryClient
@@ -56,8 +57,14 @@ async function navigateTo(path: string) {
   return router.history.location.pathname
 }
 
+async function openDialog() {
+  const button = await screen.findByText("application.update.button")
+  await vi.waitFor(() => expect((button.closest("button") as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(button)
+}
+
 async function confirmInstall() {
-  fireEvent.click(await screen.findByText("application.update.button"))
+  await openDialog()
   fireEvent.click(screen.getByText("application.update.confirm"))
 }
 
@@ -65,6 +72,7 @@ beforeEach(() => {
   qui = "old"
   newVersion = "1.31.0"
   selfUpdateAvailable = true
+  unavailableReason = "container"
   updateResult = { version: "1.31.0", rollbackCommand: "mv \"/opt/qui/qui-v1.30.0.bak\" \"/opt/qui/qui\"", backupError: "" }
   updateBodies = []
   sessionStorage.clear()
@@ -81,7 +89,7 @@ beforeEach(() => {
 
   server.use(
     http.get("*/api/version/latest", () => qui === "down" ? HttpResponse.error() : HttpResponse.json(qui === "new" ? null : RELEASE)),
-    http.get("*/api/version", () => HttpResponse.json({ version: "1.30.0", updateAvailable: true, selfUpdate: selfUpdateAvailable, restart: true })),
+    http.get("*/api/version", () => HttpResponse.json({ version: "1.30.0", updateAvailable: true, selfUpdate: selfUpdateAvailable, selfUpdateUnavailableReason: selfUpdateAvailable ? "" : unavailableReason, restart: true })),
     http.get("*/api/application/info", () => {
       if (qui === "down") {
         return HttpResponse.error()
@@ -110,18 +118,72 @@ async function advance(ms: number) {
 }
 
 describe("Install update", () => {
-  it("shows no button when Self-update is not available", async () => {
+  it.each([
+    ["container", "https://getqui.com/docs/getting-started/docker/"],
+    ["disabled", "https://getqui.com/docs/configuration/reference/#settings"],
+    ["development", "https://getqui.com/docs/getting-started/installation/#manual-download"],
+    ["directory", "https://getqui.com/docs/getting-started/installation/#updating"],
+  ])("explains %s without offering installation", async (reason, guideUrl) => {
     selfUpdateAvailable = false
+    unavailableReason = reason
     renderBanner()
+    await openDialog()
 
-    await screen.findByText("updateBanner.viewRelease")
-    await act(async () => {})
-    expect(screen.queryByText("application.update.button")).toBeNull()
+    expect(screen.getByText(`application.update.unavailable.${reason}.reason`)).toBeTruthy()
+    expect(screen.getByText(`application.update.unavailable.${reason}.step`)).toBeTruthy()
+    expect(screen.getByText("application.update.unavailable.guide").closest("a")?.getAttribute("href")).toBe(guideUrl)
+    expect(screen.getByText("v1.30.0")).toBeTruthy()
+    expect(screen.getByText("v1.31.0")).toBeTruthy()
+    expect(screen.queryByText("application.update.confirm")).toBeNull()
+    expect(screen.queryByText("application.update.runningWork")).toBeNull()
+    fireEvent.click(screen.getByText("common:actions.close"))
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(updateBodies).toEqual([])
+  })
+
+  it("disables the button while the initial support check is pending", async () => {
+    let finishCheck!: () => void
+    const checking = new Promise<void>((resolve) => { finishCheck = resolve })
+    server.use(http.get("*/api/version", async () => {
+      await checking
+      return HttpResponse.json({ version: "1.30.0", selfUpdate: false, selfUpdateUnavailableReason: "container", restart: false })
+    }))
+    renderBanner()
+    const button = await screen.findByText("application.update.button")
+    expect((button.closest("button") as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { finishCheck() })
+    await openDialog()
+    expect(screen.getByText("application.update.unavailable.container.reason")).toBeTruthy()
+  })
+
+  it("shows a failed check, then checking during Retry, without showing container guidance", async () => {
+    server.use(http.get("*/api/version", () => HttpResponse.json({ error: "Support check failed" }, { status: 500 })))
+    renderBanner()
+    await openDialog()
+    expect(screen.getByText("application.update.support.failedTitle")).toBeTruthy()
+    expect(screen.getByText("application.update.unavailable.nextStep").closest("div")?.className).toContain("border-destructive/40")
+    expect(screen.queryByText("application.update.unavailable.container.reason")).toBeNull()
+    expect(screen.queryByText("application.update.unavailable.guide")).toBeNull()
+
+    let finishCheck!: () => void
+    const checking = new Promise<void>((resolve) => { finishCheck = resolve })
+    server.use(http.get("*/api/version", async () => {
+      await checking
+      return HttpResponse.json({ version: "1.30.0", selfUpdate: false, selfUpdateUnavailableReason: "container", restart: false })
+    }))
+    fireEvent.click(screen.getByText("application.update.support.retry"))
+    expect(await screen.findByText("application.update.support.checkingTitle")).toBeTruthy()
+    expect(screen.queryByText("application.update.unavailable.container.reason")).toBeNull()
+    expect(screen.queryByText("application.update.unavailable.nextStep")).toBeNull()
+    expect(screen.queryByText("application.update.confirm")).toBeNull()
+    await act(async () => { finishCheck() })
+    expect(await screen.findByText("application.update.unavailable.container.reason")).toBeTruthy()
+    expect(updateBodies).toEqual([])
   })
 
   it("shows both versions and the release notes, and installs the tag it showed", async () => {
     renderBanner()
-    fireEvent.click(await screen.findByText("application.update.button"))
+    await openDialog()
     // The dialog links the release notes, so the banner drops View Release.
     expect(screen.queryByText("updateBanner.viewRelease")).toBeNull()
 
