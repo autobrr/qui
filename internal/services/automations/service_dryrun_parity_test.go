@@ -18,9 +18,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-const parityHash = "cccccccccccccccccccccccccccccccccccccccc"
+const (
+	parityHash         = "cccccccccccccccccccccccccccccccccccccccc"
+	parityCheckingHash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+)
 
-// newDryRunParityService boots a Service against a stub qBittorrent holding one seeded torrent.
+// newDryRunParityService boots a Service against a stub qBittorrent holding one seeded torrent
+// and one torrent in a check, which matches the condition but must not be deleted.
 func newDryRunParityService(t *testing.T) (*Service, int) {
 	t.Helper()
 
@@ -31,7 +35,9 @@ func newDryRunParityService(t *testing.T) (*Service, int) {
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.10.0"))
 		case "/api/v2/sync/maindata":
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":{"` + parityHash + `":{"name":"parity","ratio":2,"progress":1,"size":10,"state":"stalledUP","save_path":"/data","content_path":"/data/parity"}}}`))
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":{` +
+				`"` + parityHash + `":{"name":"parity","ratio":2,"progress":1,"size":10,"state":"stalledUP","save_path":"/data","content_path":"/data/parity"},` +
+				`"` + parityCheckingHash + `":{"name":"checking","ratio":2,"progress":0,"size":10,"state":"checkingUP","save_path":"/data","content_path":"/data/checking"}}}`))
 		case "/api/v2/torrents/files":
 			_, _ = w.Write([]byte(`[]`))
 		default:
@@ -108,6 +114,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, activities, 1)
 			require.Equal(t, models.ActivityActionDeletedCondition, activities[0].Action)
+			require.Contains(t, string(activities[0].Details), `"count":1`, "dry run must skip the checking torrent")
 		})
 	}
 }

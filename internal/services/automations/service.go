@@ -1114,8 +1114,12 @@ func getDeleteMode(rule *models.Automation) string {
 }
 
 // shouldDeleteTorrent checks if a torrent matches the delete condition.
+// A torrent never matches while qBittorrent checks it, because its progress is not correct until the check ends.
 func shouldDeleteTorrent(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
+		return false
+	}
+	if matchesStateValue(*torrent, "checking", evalCtx) {
 		return false
 	}
 	if rule.Conditions.Delete.Condition == nil {
@@ -1472,8 +1476,7 @@ func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt
 		return false
 	}
 
-	cond := rule.Conditions.Delete.Condition
-	return cond == nil || EvaluateConditionWithContext(cond, *torrent, evalCtx, 0)
+	return shouldDeleteTorrent(rule, torrent, evalCtx)
 }
 
 // buildCrossSeedPreviewResult builds the paginated preview result from expansion state.

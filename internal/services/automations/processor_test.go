@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -2801,4 +2802,70 @@ func TestFreeSpaceProjection_UnreadExpandedMemberDoesNotCount(t *testing.T) {
 	require.False(t, ok)
 	require.Zero(t, evalCtx.SpaceToClear)
 	require.Empty(t, evalCtx.CrossSeedHashesToClear)
+}
+
+// A recheck drops progress to 0% until the check verifies the pieces, so a
+// delete rule must leave a checking torrent alone.
+func TestDeleteSkipsCheckingTorrents(t *testing.T) {
+	added := time.Now().Add(-3 * time.Hour).Unix()
+	torrents := []qbt.Torrent{
+		{Hash: "checking-up", State: qbt.TorrentStateCheckingUp, AddedOn: added, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+		{Hash: "checking-dl", State: qbt.TorrentStateCheckingDl, AddedOn: added, SavePath: "/data", ContentPath: "/data/Film.2020.1080p-GRP"},
+		{Hash: "checking-resume", State: qbt.TorrentStateCheckingResumeData, AddedOn: added, SavePath: "/data", ContentPath: "/data/Album.2019-GRP"},
+		{Hash: "stalled", State: qbt.TorrentStateStalledDl, Progress: 0.03, AddedOn: added, SavePath: "/data", ContentPath: "/data/Stuck.2021.1080p-GRP"},
+	}
+	// A rule that deletes stalled downloads under 9.5%. "checking" makes every checking state match the condition.
+	rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+		Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds, Condition: &models.RuleCondition{
+			Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{
+				{Field: FieldAddedOn, Operator: models.OperatorGreaterThanOrEqual, Value: "7200"},
+				{Field: FieldProgress, Operator: models.OperatorLessThan, Value: "0.095"},
+				{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "stalled_downloading"},
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "uploading"},
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "checking"},
+				}},
+			},
+		}},
+	}}
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{}, sm, nil, nil, nil)
+	require.Len(t, states, 1)
+	require.True(t, states["stalled"].shouldDelete)
+
+	svc := &Service{syncManager: sm}
+	result, err := svc.previewDeleteStandard(t.Context(), 1, rule, torrents, &EvalContext{}, DeleteModeWithFilesPreserveCrossSeeds, true,
+		previewConfig{limit: 10}, nil, testCrossSeedGroups(torrents))
+	require.NoError(t, err)
+	require.Equal(t, 1, result.TotalMatches)
+	require.Equal(t, "stalled", result.Examples[0].Hash)
+}
+
+// Only the state of the matched torrent decides, so its checking cross-seed is deleted with it.
+func TestDeleteIncludeCrossSeeds_CheckingCrossSeedFollowsMatch(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "matched", Tags: "delete-me", State: qbt.TorrentStateStalledDl, Progress: 0.03, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+		{Hash: "cross-seed", Tags: "delete-me", State: qbt.TorrentStateCheckingUp, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+	}
+	rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+		Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds,
+			Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: "delete-me"}},
+	}}
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+	require.Len(t, states, 1)
+	require.True(t, states["matched"].shouldDelete)
+
+	files := map[string]qbt.TorrentFiles{
+		"matched":    {{Name: "Show.S01.1080p-GRP/e01.mkv", Size: 1_000}},
+		"cross-seed": {{Name: "Show.S01.1080p-GRP/e01.mkv", Size: 1_000}},
+	}
+	svc := &Service{syncManager: sm}
+	result, err := svc.previewDeleteIncludeCrossSeeds(rule, torrents, &EvalContext{}, nil, 10, 0, true, nil, testCrossSeedGroups(torrents),
+		func(_ []string) (map[string]qbt.TorrentFiles, error) { return files, nil })
+	require.NoError(t, err)
+	require.Equal(t, 2, result.TotalMatches)
+	require.Equal(t, 1, result.CrossSeedCount)
 }
