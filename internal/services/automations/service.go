@@ -489,6 +489,8 @@ type tagChange struct {
 	desired  map[string]struct{}
 	toAdd    []string
 	toRemove []string
+	// ruleByTag is the rule that chose each added or removed tag.
+	ruleByTag map[string]ruleRef
 }
 
 type categoryMove struct {
@@ -1912,34 +1914,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Build batches from desired states
-	shareBatches := make(map[shareKey][]string)
-	uploadBatches := make(map[int64][]string)
-	downloadBatches := make(map[int64][]string)
-	pauseHashes := make([]string, 0)
-	resumeHashes := make([]string, 0)
-	recheckHashes := make([]string, 0)
-	reannounceHashes := make([]string, 0)
-	autoManageEnableHashes := make([]string, 0)
-	autoManageDisableHashes := make([]string, 0)
-	uploadRuleByHash := make(map[string]ruleRef)
-	downloadRuleByHash := make(map[string]ruleRef)
-	shareRatioRuleByHash := make(map[string]ruleRef)
-	shareSeedingRuleByHash := make(map[string]ruleRef)
-	pauseRuleByHash := make(map[string]ruleRef)
-	resumeRuleByHash := make(map[string]ruleRef)
-	recheckRuleByHash := make(map[string]ruleRef)
-	reannounceRuleByHash := make(map[string]ruleRef)
-	autoManageRuleByHash := make(map[string]ruleRef)
+	// Category, move and export are not in the Run plan yet.
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
-
-	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
 
-	// External program execution tracking
-	var programExecutions []pendingProgramExec
 	// Export to instance execution tracking
 	var exportExecutions []pendingExportToInstance
 	deleteHashesByMode := make(map[string][]string)
@@ -1976,6 +1956,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	plan := buildRunPlan(states, deletions, torrentByHash)
+
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {
@@ -1986,136 +1968,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			continue
 		}
 		torrent := torrentByHash[hash]
-
-		// Speed limits - only add to batch if current doesn't match desired
-		if state.uploadLimitKiB != nil {
-			desired := *state.uploadLimitKiB * 1024
-			if torrent.UpLimit != desired {
-				uploadBatches[*state.uploadLimitKiB] = append(uploadBatches[*state.uploadLimitKiB], hash)
-				uploadRuleByHash[hash] = state.uploadRule
-			}
-		}
-		if state.downloadLimitKiB != nil {
-			desired := *state.downloadLimitKiB * 1024
-			if torrent.DlLimit != desired {
-				downloadBatches[*state.downloadLimitKiB] = append(downloadBatches[*state.downloadLimitKiB], hash)
-				downloadRuleByHash[hash] = state.downloadRule
-			}
-		}
-
-		// Share limits (ratio, seeding time, action, mode)
-		if state.ratioLimit != nil || state.seedingMinutes != nil ||
-			state.shareLimitAction != "" || state.shareLimitsMode != "" {
-			// Start with torrent's current values
-			ratio := torrent.RatioLimit
-			seedMinutes := torrent.SeedingTimeLimit
-			inactiveMinutes := torrent.InactiveSeedingTimeLimit // Preserve inactive limit
-
-			// Apply desired values if set
-			if state.ratioLimit != nil {
-				ratio = *state.ratioLimit
-			}
-			if state.seedingMinutes != nil {
-				seedMinutes = *state.seedingMinutes
-			}
-
-			// Normalize ratio to 2 decimal places to match qBittorrent/go-qbittorrent precision
-			// This prevents perpetual reapplication due to floating point differences
-			normalizeRatio := func(r float64) float64 {
-				if r >= 0 {
-					return float64(int(r*100+0.5)) / 100
-				}
-				return r // Keep sentinel values (-1, -2) unchanged
-			}
-			ratio = normalizeRatio(ratio)
-			currentRatio := normalizeRatio(torrent.RatioLimit)
-
-			// Check if update is needed (comparing normalized values)
-			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
-			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
-			actionNeedsUpdate := state.shareLimitAction != "" &&
-				normalizeShareLimitEnum(torrent.ShareLimitAction) != normalizeShareLimitEnum(state.shareLimitAction)
-			modeNeedsUpdate := state.shareLimitsMode != "" &&
-				normalizeShareLimitEnum(torrent.ShareLimitsMode) != normalizeShareLimitEnum(state.shareLimitsMode)
-			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate || actionNeedsUpdate || modeNeedsUpdate
-			if needsUpdate {
-				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes, action: state.shareLimitAction, mode: state.shareLimitsMode}
-				shareBatches[key] = append(shareBatches[key], hash)
-				if ratioNeedsUpdate {
-					shareRatioRuleByHash[hash] = state.ratioRule
-				}
-				if seedingNeedsUpdate {
-					shareSeedingRuleByHash[hash] = state.seedingRule
-				}
-				if actionNeedsUpdate {
-					shareRatioRuleByHash[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
-				}
-				if modeNeedsUpdate {
-					shareSeedingRuleByHash[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
-				}
-			}
-		}
-
-		// Pause
-		if state.shouldPause {
-			pauseHashes = append(pauseHashes, hash)
-			pauseRuleByHash[hash] = state.pauseRule
-		}
-
-		// Resume
-		if state.shouldResume {
-			resumeHashes = append(resumeHashes, hash)
-			resumeRuleByHash[hash] = state.resumeRule
-		}
-
-		// Recheck
-		if state.shouldRecheck {
-			recheckHashes = append(recheckHashes, hash)
-			recheckRuleByHash[hash] = state.recheckRule
-		}
-
-		// Reannounce
-		if state.shouldReannounce {
-			reannounceHashes = append(reannounceHashes, hash)
-			reannounceRuleByHash[hash] = state.reannounceRule
-		}
-
-		// Auto management
-		if state.shouldAutoManage {
-			if state.autoManageValue {
-				autoManageEnableHashes = append(autoManageEnableHashes, hash)
-			} else {
-				autoManageDisableHashes = append(autoManageDisableHashes, hash)
-			}
-			autoManageRuleByHash[hash] = state.autoManageRule
-		}
-
-		// Tags
-		if len(state.tagActions) > 0 {
-			var toAdd, toRemove []string
-			desired := make(map[string]struct{})
-			for t := range state.currentTags {
-				desired[t] = struct{}{}
-			}
-			for tag, action := range state.tagActions {
-				switch action {
-				case "add":
-					toAdd = append(toAdd, tag)
-					desired[tag] = struct{}{}
-				case "remove":
-					toRemove = append(toRemove, tag)
-					delete(desired, tag)
-				}
-			}
-			if len(toAdd) > 0 || len(toRemove) > 0 {
-				tagChanges[hash] = &tagChange{
-					current:  state.currentTags,
-					desired:  desired,
-					toAdd:    toAdd,
-					toRemove: toRemove,
-				}
-			}
-		}
 
 		// Category - filter no-ops by comparing desired vs current
 		if state.category != nil {
@@ -2128,17 +1980,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		if state.shouldMove {
 			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
 			moveRuleByHash[hash] = state.moveRule
-		}
-
-		// External program execution
-		if state.externalProgramID != nil {
-			programExecutions = append(programExecutions, pendingProgramExec{
-				hash:      hash,
-				torrent:   torrent,
-				programID: *state.externalProgramID,
-				ruleID:    state.programRuleID,
-				ruleName:  state.programRuleName,
-			})
 		}
 
 		// Export to instance
@@ -2217,19 +2058,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		activities := s.recordDryRunActivities(
 			ctx,
 			instanceID,
-			uploadBatches,
-			downloadBatches,
-			shareBatches,
-			pauseHashes,
-			resumeHashes,
-			recheckHashes,
-			reannounceHashes,
-			append(autoManageEnableHashes, autoManageDisableHashes...),
-			tagChanges,
+			plan,
 			categoryBatches,
 			moveBatches,
-			deletions.byHash,
-			programExecutions,
 			exportExecutions,
 			torrentByHash,
 			torrents,
@@ -2247,8 +2078,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	defer cancel()
 
 	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, uploadRuleByHash, torrentByHash)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, downloadRuleByHash, torrentByHash)
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, plan.uploadLimits.byTarget, "upload", s.syncManager.SetTorrentUploadLimit, summary, plan.uploadLimits.rules, torrentByHash)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, plan.downloadLimits.byTarget, "download", s.syncManager.SetTorrentDownloadLimit, summary, plan.downloadLimits.rules, torrentByHash)
 
 	// Record aggregated speed limit activity
 	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
@@ -2274,12 +2105,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionSpeedLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), uploadRuleByHash),
+			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), plan.uploadLimits.rules),
 		)
 		summary.recordRuleCounts(
 			models.ActivityActionSpeedLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), downloadRuleByHash),
+			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), plan.downloadLimits.rules),
 		)
 		speedSampleHashes := append(flattenHashGroups(uploadSuccess), flattenHashGroups(downloadSuccess)...)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(speedSampleHashes, torrentByHash), 3)
@@ -2298,7 +2129,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Apply share limits and track success
 	shareLimitSuccess := make(map[shareKey][]string) // "ratio:seed:inactive" -> hashes
-	for key, hashes := range shareBatches {
+	for key, hashes := range plan.shareLimits.byTarget {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive, key.action, key.mode)
@@ -2324,7 +2155,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			summary.recordRuleCounts(
 				models.ActivityActionLimitFailed,
 				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashMaps(batch, shareRatioRuleByHash, shareSeedingRuleByHash),
+				buildRuleCountsFromHashMaps(batch, plan.shareLimits.ratioRules, plan.shareLimits.seedingRules, plan.shareLimits.actionRules, plan.shareLimits.modeRules),
 			)
 			summary.addTorrentSamples(collectTorrentNamesForHashes(batch, torrentByHash), 3)
 			if s.activityStore != nil {
@@ -2356,7 +2187,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionShareLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash, shareSeedingRuleByHash),
+			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), plan.shareLimits.ratioRules, plan.shareLimits.seedingRules, plan.shareLimits.actionRules, plan.shareLimits.modeRules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByShareKey(shareLimitSuccess), torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2375,8 +2206,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute pause actions for expression-based rules
 	pausedCount := 0
 	pausedHashesSuccess := make([]string, 0)
-	if len(pauseHashes) > 0 {
-		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
+	if len(plan.pause.hashes) > 0 {
+		limited := limitHashBatch(plan.pause.hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "pause"); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: pause action failed")
@@ -2402,7 +2233,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionPaused,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(pausedHashesSuccess, pauseRuleByHash),
+			buildRuleCountsFromHashes(pausedHashesSuccess, plan.pause.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(pausedHashesSuccess, torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2421,8 +2252,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute resume actions for expression-based rules
 	resumedCount := 0
 	resumedHashesSuccess := make([]string, 0)
-	if len(resumeHashes) > 0 {
-		limited := limitHashBatch(resumeHashes, s.cfg.MaxBatchHashes)
+	if len(plan.resume.hashes) > 0 {
+		limited := limitHashBatch(plan.resume.hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "resume"); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resume action failed")
@@ -2448,7 +2279,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionResumed,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(resumedHashesSuccess, resumeRuleByHash),
+			buildRuleCountsFromHashes(resumedHashesSuccess, plan.resume.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(resumedHashesSuccess, torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2467,8 +2298,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute recheck actions for expression-based rules
 	recheckedCount := 0
 	recheckedHashesSuccess := make([]string, 0)
-	if len(recheckHashes) > 0 {
-		limited := limitHashBatch(recheckHashes, s.cfg.MaxBatchHashes)
+	if len(plan.recheck.hashes) > 0 {
+		limited := limitHashBatch(plan.recheck.hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "recheck"); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: recheck action failed")
@@ -2494,7 +2325,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionRechecked,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(recheckedHashesSuccess, recheckRuleByHash),
+			buildRuleCountsFromHashes(recheckedHashesSuccess, plan.recheck.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(recheckedHashesSuccess, torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2513,8 +2344,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute reannounce actions for expression-based rules
 	reannouncedCount := 0
 	reannouncedHashesSuccess := make([]string, 0)
-	if len(reannounceHashes) > 0 {
-		limited := limitHashBatch(reannounceHashes, s.cfg.MaxBatchHashes)
+	if len(plan.reannounce.hashes) > 0 {
+		limited := limitHashBatch(plan.reannounce.hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "reannounce"); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: reannounce action failed")
@@ -2540,7 +2371,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionReannounced,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(reannouncedHashesSuccess, reannounceRuleByHash),
+			buildRuleCountsFromHashes(reannouncedHashesSuccess, plan.reannounce.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(reannouncedHashesSuccess, torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2564,8 +2395,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		enable bool
 		verb   string
 	}{
-		{autoManageEnableHashes, true, "enabled"},
-		{autoManageDisableHashes, false, "disabled"},
+		{plan.autoManage.byTarget[true], true, "enabled"},
+		{plan.autoManage.byTarget[false], false, "disabled"},
 	} {
 		if len(group.hashes) == 0 {
 			continue
@@ -2596,7 +2427,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionAutoManaged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(autoManagedHashesSuccess, autoManageRuleByHash),
+			buildRuleCountsFromHashes(autoManagedHashesSuccess, plan.autoManage.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(autoManagedHashesSuccess, torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2629,7 +2460,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	if len(tagChanges) > 0 {
+	if tagChanges := plan.tags; len(tagChanges) > 0 {
 		tagRuleCounts := make(map[ruleRef]int)
 
 		// Try SetTags first (more efficient for qBit 5.1+)
@@ -2721,21 +2552,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		tagSampleHashes := make([]string, 0, len(tagChanges))
 		for hash, change := range tagChanges {
 			tagSampleHashes = append(tagSampleHashes, hash)
-			state := states[hash]
 			for _, tag := range change.toAdd {
 				addCounts[tag]++
-				if state != nil {
-					if ref, ok := state.tagRuleByTag[tag]; ok {
-						tagRuleCounts[ref]++
-					}
+				if ref, ok := change.ruleByTag[tag]; ok {
+					tagRuleCounts[ref]++
 				}
 			}
 			for _, tag := range change.toRemove {
 				removeCounts[tag]++
-				if state != nil {
-					if ref, ok := state.tagRuleByTag[tag]; ok {
-						tagRuleCounts[ref]++
-					}
+				if ref, ok := change.ruleByTag[tag]; ok {
+					tagRuleCounts[ref]++
 				}
 			}
 		}
@@ -3245,7 +3071,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Execute external programs (async, fire-and-forget)
-	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
+	s.executeExternalProgramsFromAutomation(ctx, instanceID, plan.programs)
 
 	// Execute export to instance — collect results before notification
 	exportResults := s.executeExportToInstance(ctx, instanceID, exportExecutions)
@@ -4786,19 +4612,9 @@ func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*mo
 func (s *Service) recordDryRunActivities(
 	ctx context.Context,
 	instanceID int,
-	uploadBatches map[int64][]string,
-	downloadBatches map[int64][]string,
-	shareBatches map[shareKey][]string,
-	pauseHashes []string,
-	resumeHashes []string,
-	recheckHashes []string,
-	reannounceHashes []string,
-	autoManageHashes []string,
-	tagChanges map[string]*tagChange,
+	plan runPlan,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
-	deletions map[string]selectedDeletion,
-	programExecutions []pendingProgramExec,
 	exportExecutions []pendingExportToInstance,
 	torrentByHash map[string]qbt.Torrent,
 	torrents []qbt.Torrent,
@@ -4844,7 +4660,10 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
+	deletions := plan.deletions.byHash
+
 	// Speed limits
+	uploadBatches, downloadBatches := plan.uploadLimits.byTarget, plan.downloadLimits.byTarget
 	if len(uploadBatches) > 0 || len(downloadBatches) > 0 {
 		limitCounts := make(map[string]int)
 		for limit, hashes := range uploadBatches {
@@ -4859,7 +4678,7 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// Share limits
-	if len(shareBatches) > 0 {
+	if shareBatches := plan.shareLimits.byTarget; len(shareBatches) > 0 {
 		limitCounts := make(map[string]int)
 		for key, hashes := range shareBatches {
 			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
@@ -4874,11 +4693,11 @@ func (s *Service) recordDryRunActivities(
 		action string
 		hashes []string
 	}{
-		{action: models.ActivityActionPaused, hashes: pauseHashes},
-		{action: models.ActivityActionResumed, hashes: resumeHashes},
-		{action: models.ActivityActionRechecked, hashes: recheckHashes},
-		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
-		{action: models.ActivityActionAutoManaged, hashes: autoManageHashes},
+		{action: models.ActivityActionPaused, hashes: plan.pause.hashes},
+		{action: models.ActivityActionResumed, hashes: plan.resume.hashes},
+		{action: models.ActivityActionRechecked, hashes: plan.recheck.hashes},
+		{action: models.ActivityActionReannounced, hashes: plan.reannounce.hashes},
+		{action: models.ActivityActionAutoManaged, hashes: slices.Concat(plan.autoManage.byTarget[true], plan.autoManage.byTarget[false])},
 	} {
 		if len(a.hashes) == 0 {
 			continue
@@ -4890,7 +4709,7 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// Tags
-	if len(tagChanges) > 0 {
+	if tagChanges := plan.tags; len(tagChanges) > 0 {
 		addCounts := make(map[string]int)
 		removeCounts := make(map[string]int)
 		for _, change := range tagChanges {
@@ -5251,9 +5070,9 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// External programs
-	if len(programExecutions) > 0 {
+	if len(plan.programs) > 0 {
 		hashesByProgram := make(map[int][]string)
-		for _, exec := range programExecutions {
+		for _, exec := range plan.programs {
 			hashesByProgram[exec.programID] = append(hashesByProgram[exec.programID], exec.hash)
 		}
 		for programID, hashes := range hashesByProgram {
