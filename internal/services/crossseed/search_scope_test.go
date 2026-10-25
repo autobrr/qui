@@ -108,8 +108,13 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  searchScope{gazelleHosts: []string{ops}, skipReason: "no eligible indexers"},
 		},
 		{
-			name:    "torznab off without a key for the target site is an error",
-			facts:   searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: []string{red}},
+			name:  "torznab off without a key for the target site skips and starts no cooldown",
+			facts: searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: []string{red}},
+			want:  searchScope{skipReason: "no RED/OPS API key for the target site"},
+		},
+		{
+			name:    "torznab off without any RED/OPS key is an error",
+			facts:   searchScopeFacts{torznabOff: true, sourceSite: red},
 			wantErr: "torznab disabled but gazelle not configured",
 		},
 		{
@@ -371,4 +376,82 @@ func TestSearchTorrentMatches_FailedIndexerDiscoveryAsksREDOPSAndReportsTorznabF
 	require.NoError(t, err)
 	require.True(t, resp.TorznabFailed, "the dialog must show that Torznab failed")
 	require.Positive(t, gazelleRequests.Load(), "the search must still ask RED/OPS")
+}
+
+// newTorznabSearchRunFixture extends newSearchRunLoopFixture with Torznab on:
+// one music indexer at trackerURL that the content filter keeps for torrent.
+func newTorznabSearchRunFixture(t *testing.T, dbName, trackerURL string, torrent qbt.Torrent, files qbt.TorrentFiles) (*Service, *searchRunState) {
+	t.Helper()
+	svc, state := newSearchRunLoopFixture(t, dbName, &hashFilteringSyncManager{
+		torrents:    []qbt.Torrent{torrent},
+		filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: files},
+	})
+	state.opts.DisableTorznab = false
+	state.resolvedTorznabIndexerIDs = []int{1}
+	svc.jackettService = newJackettServiceWithIndexers([]*models.TorznabIndexer{{
+		ID: 1, Name: "Music Indexer", Enabled: true, BaseURL: trackerURL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5,
+		Capabilities: []string{"search", "music-search", "audio-search"},
+		Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 3000, CategoryName: "Audio"}},
+	}})
+	svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(state.opts.InstanceID, torrent.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{1},
+		FilteredIndexers:      []int{1},
+		contentType:           "music",
+	}, ttlcache.DefaultTTL)
+	return svc, state
+}
+
+// A Library Scan where Torznab finds a match and RED/OPS runs out of time adds
+// the Torznab match and records the RED/OPS timeout.
+func TestSearchRunLoop_GazelleTimeoutBesideTorznabMatchIsRecorded(t *testing.T) {
+	name := "During - LMK (2024 WF)"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 11), Name: name, Progress: 1.0, Size: 123, Tracker: "https://tracker.example.invalid/announce"}
+	var trackerURL string
+	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dl" {
+			_, _ = w.Write([]byte("d4:infod4:name3:abcee"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprintf(w, `<rss version="2.0"><channel><title>Music</title><item><title>%s</title><guid>torznab-guid</guid><size>123</size><enclosure url="%s/dl" length="123" type="application/x-bittorrent" /></item></channel></rss>`, name, trackerURL)
+	}))
+	t.Cleanup(tracker.Close)
+	trackerURL = tracker.URL
+	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-timeout-torznab", tracker.URL, torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
+	state.gazelleClients, _, _ = slowGazelleClients(t)
+	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Success: true}, nil
+	}
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	require.Equal(t, 1, state.run.TorrentsWithCrossSeeds, "the Torznab match must be added")
+	messages := make([]string, 0, len(state.run.Results))
+	for _, result := range state.run.Results {
+		messages = append(messages, result.Message)
+	}
+	require.Contains(t, messages, "search timed out after 3s")
+}
+
+// A Library Scan whose Torznab search fails at search time keeps the RED/OPS
+// match and reports in the run that Torznab failed.
+func TestSearchRunLoop_TorznabSearchFailureIsReported(t *testing.T) {
+	name := "During - LMK (2024 WF)"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 12), Name: name, Progress: 1.0, Size: 123, Tracker: "https://tracker.example.invalid/announce"}
+	downedTracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}))
+	t.Cleanup(downedTracker.Close)
+	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-torznab-search-failure", downedTracker.URL, torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
+	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
+		return &gazellemusic.Match{TorrentID: 4242, Title: name, Size: 123, Reason: "hash"}, nil
+	}
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	require.NotNil(t, state.run.ErrorMessage)
+	require.Contains(t, *state.run.ErrorMessage, "torznab failed, only RED/OPS searched")
 }

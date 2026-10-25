@@ -2907,14 +2907,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if scope.err != nil {
 		return scope.err
 	}
-	if scope.torznabErr != nil {
-		log.Warn().
-			Err(scope.torznabErr).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Torznab failed; searching only RED/OPS")
-	}
 	if len(scope.torznabIndexerIDs) == 0 && len(scope.gazelleHosts) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -2940,6 +2932,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			return nil
 		}
 		return err
+	}
+	if searchResp.torznabErr != nil {
+		log.Warn().
+			Err(searchResp.torznabErr).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Torznab failed; searched only RED/OPS")
 	}
 	if len(searchResp.Results) == 0 {
 		log.Debug().
@@ -7496,6 +7496,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Results:         gazelle.results,
 			Partial:         false,
 			TorznabFailed:   scope.torznabErr != nil,
+			torznabErr:      scope.torznabErr,
 			JobID:           0,
 			GazelleTimedOut: gazelle.timedOut,
 		}, gazelle.lookupCompleted, gazelle.remoteRequestsMade, nil
@@ -7700,6 +7701,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			SourceTorrent:   sourceInfo,
 			Results:         gazelle.results,
 			Partial:         true,
+			TorznabFailed:   true,
+			torznabErr:      err,
 			JobID:           0,
 			QueryDegraded:   queryDegraded,
 			GazelleTimedOut: gazelle.timedOut,
@@ -9726,6 +9729,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	if searchResp != nil && searchResp.TorznabAnswered {
 		state.torznabSearched = true
 	}
+	if searchResp != nil && searchResp.torznabErr != nil {
+		state.torznabErr = searchResp.torznabErr
+	}
 	if s.automationStore != nil {
 		// Gazelle stamps per torrent only when its side needs no retry; see
 		// searchGazelleMatches. A failed lookup does not stamp, like a failed
@@ -9795,6 +9801,16 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return delayAfterCandidate, nil
 	}
 
+	if searchResp.GazelleTimedOut {
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash: torrent.Hash,
+			TorrentName: torrent.Name,
+			IndexerName: gazelleIndexerNameForHost(""),
+			Status:      models.CrossSeedSearchResultStatusSkipped,
+			Message:     fmt.Sprintf("search timed out after %s", gazelleSearchTimeout),
+			ProcessedAt: processedAt,
+		})
+	}
 	if searchResp.Partial {
 		log.Debug().
 			Str("torrentHash", torrent.Hash).

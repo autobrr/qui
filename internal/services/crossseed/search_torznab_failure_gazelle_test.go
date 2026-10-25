@@ -141,6 +141,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	require.NoError(t, err, "torznab failure must not discard gazelle matches")
 	require.NotNil(t, resp)
 	require.True(t, resp.Partial, "response should be marked partial when the torznab leg failed")
+	require.True(t, resp.TorznabFailed, "the dialog must show that Torznab failed")
 	require.Len(t, resp.Results, 1)
 	require.Equal(t, "gazelle:hash", resp.Results[0].MatchReason)
 	require.Contains(t, resp.Results[0].DownloadURL, "4242", "download URL should reference the gazelle torrent")

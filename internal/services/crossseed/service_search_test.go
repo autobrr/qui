@@ -1305,12 +1305,12 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 		},
 	}
 
-	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInvalidRequest)
-	require.Contains(t, err.Error(), "gazelle")
+	// A key for another RED/OPS site makes a missing target key a skip, not an error.
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	require.NoError(t, err)
+	require.Empty(t, resp.Results)
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	resp, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.Results)

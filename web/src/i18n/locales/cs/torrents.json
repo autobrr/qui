@@ -789,7 +789,7 @@
     "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
     "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
     "gazelleTimedOut": "RED/OPS neodpověděl včas",
-    "torznabFailed": "Indexery Torznab se nepodařilo načíst - zobrazeny jsou pouze výsledky z RED/OPS",
+    "torznabFailed": "Hledání přes Torznab selhalo - zobrazeny jsou pouze výsledky z RED/OPS",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",

@@ -24,6 +24,7 @@ const (
 	noIndexerCapsSkipReason             = "no indexers support required caps"
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
+	noGazelleKeySkipReason              = "no RED/OPS API key for the target site"
 )
 
 // searchScope is the Search scope of one torrent: the Torznab indexers and the
@@ -133,8 +134,10 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 	case !missingKey && len(f.gazelleKeys) > 0:
 		// A copy of the group seeds on each RED/OPS site.
 		scope.gazelleCooldownWithoutLookup = true
-	case f.torznabOff:
+	case f.torznabOff && len(f.gazelleKeys) == 0:
 		return searchScope{err: fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)}
+	case f.torznabOff:
+		scope.skipReason = noGazelleKeySkipReason
 	default:
 		// A missing API key starts no cooldown, so a key that the user adds
 		// later works at the next run.

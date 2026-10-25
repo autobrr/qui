@@ -9160,7 +9160,7 @@ components:
           description: Set when RED/OPS did not answer in time. The results hold only the Torznab matches.
         torznab_failed:
           type: boolean
-          description: Set when qui could not load the Torznab indexers and the results come only from RED/OPS.
+          description: Set when the Torznab search failed and the results come only from RED/OPS.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 
