@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/sshpool"
 )
@@ -35,6 +36,32 @@ type InstancesHandler struct {
 	// sshPool is told when what a connection depends on changes; sshDialer
 	// stays separate so ssh-test never consults the pool's memo.
 	sshPool *sshpool.Pool
+	// orphanScan keeps orphan scan runs bound to the SSH server they walked.
+	// Nil in tests that do not need it.
+	orphanScan orphanScanGuard
+}
+
+type orphanScanGuard interface {
+	FailRemotePreviews(ctx context.Context, instanceID int) error
+}
+
+// SetOrphanScan wires the orphan scan service in. A server built without one
+// leaves the guard off.
+func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
+	if s != nil {
+		h.orphanScan = s
+	}
+}
+
+// failRemotePreviews runs after the SSH change is stored, so a failure is
+// logged rather than answered as a failed save.
+func (h *InstancesHandler) failRemotePreviews(ctx context.Context, instanceID int) {
+	if h.orphanScan == nil {
+		return
+	}
+	if err := h.orphanScan.FailRemotePreviews(ctx, instanceID); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to fail remote orphan scan previews after an SSH change")
+	}
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {

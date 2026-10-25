@@ -605,6 +605,28 @@ func (s *OrphanScanStore) FailPreviewReadyRun(ctx context.Context, runID int64, 
 	return rows > 0, nil
 }
 
+// RemotePreviewRunIDs returns the instance's preview_ready runs walked over SSH.
+func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM orphan_scan_runs
+		WHERE instance_id = ? AND status = 'preview_ready' AND filesystem_mode = ?
+	`, instanceID, string(FilesystemModeRemote))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // StartRunDeletion moves a run from preview_ready to deleting, and reports
 // whether it did.
 func (s *OrphanScanStore) StartRunDeletion(ctx context.Context, runID int64) (bool, error) {

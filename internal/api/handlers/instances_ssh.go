@@ -112,6 +112,7 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	h.failRemotePreviews(r.Context(), instanceID)
 	h.sshPool.Invalidate(instanceID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
@@ -310,6 +311,9 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 			RespondError(w, http.StatusInternalServerError, "Failed to pin SSH host key")
 		}
 		return
+	}
+	if replace {
+		h.failRemotePreviews(r.Context(), instance.ID)
 	}
 	// The pin wrote sftp. A probe that got no answer leaves it there, and the
 	// next connect probes again.

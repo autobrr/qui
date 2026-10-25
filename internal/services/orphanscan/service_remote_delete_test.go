@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -16,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
@@ -382,5 +385,43 @@ func TestConfirmDeletion_RemoteRunFromBeforeTheColumnsKeepsItsPreview(t *testing
 
 	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, runID), fsops.ErrNotCapable)
 	require.Equal(t, "preview_ready", f.run(t, runID).Status)
+	f.requireNothingDeleted(t)
+}
+
+type recordingPublisher struct {
+	mu     sync.Mutex
+	events []activity.Event
+}
+
+func (p *recordingPublisher) Publish(ev activity.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, ev)
+}
+
+// A host key replaced at the same address leaves the endpoint as it was, so
+// the SSH change fails the remote preview itself. A local preview of the same
+// instance walked no SSH server and keeps its review.
+func TestFailRemotePreviews_FailsOnlyRemotePreviews(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-fail-remote-previews", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	localID := f.createRun(t)
+	require.NoError(t, f.store.UpdateRunFilesystemMode(t.Context(), localID, models.FilesystemModeLocal, ""))
+	require.NoError(t, f.store.UpdateRunStatus(t.Context(), localID, "preview_ready"))
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	publisher := &recordingPublisher{}
+	f.svc.SetActivityPublisher(publisher)
+
+	require.NoError(t, f.svc.FailRemotePreviews(t.Context(), 1))
+
+	failed := f.run(t, run.ID)
+	require.Equal(t, "failed", failed.Status)
+	require.Equal(t, FilesystemModeChangedMessage, failed.ErrorMessage)
+	require.Equal(t, "preview_ready", f.run(t, localID).Status)
+	require.Equal(t, []activity.Event{{Kind: activity.KindOrphanScanRun, InstanceID: 1, ResourceID: strconv.FormatInt(run.ID, 10)}}, publisher.events)
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
 	f.requireNothingDeleted(t)
 }

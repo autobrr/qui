@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,7 @@ type sshFixture struct {
 	server    *sshtest.Server
 	clientKey string
 	sshPool   *sshpool.Pool
+	handler   *InstancesHandler
 }
 
 func newSSHFixture(t *testing.T, name string) *sshFixture {
@@ -83,6 +85,7 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 		server:    server,
 		clientKey: sshtest.PrivateKey(""),
 		sshPool:   sshPool,
+		handler:   handler,
 	}
 }
 
@@ -665,4 +668,41 @@ func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T)
 	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":false,"hardlinkBaseDir":"/links"}`)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code)
+}
+
+// fakeOrphanScan records the instances whose remote previews were failed.
+type fakeOrphanScan struct {
+	failed []int
+}
+
+func (f *fakeOrphanScan) FailRemotePreviews(_ context.Context, instanceID int) error {
+	f.failed = append(f.failed, instanceID)
+	return nil
+}
+
+// A saved SSH change can point an old remote preview at another server with
+// the same user, host and port, so it fails the instance's remote previews. A
+// first pin follows a change that already did, and a refused save changes
+// nothing.
+func TestSSHChangesFailRemoteOrphanPreviews(t *testing.T) {
+	f := newSSHFixture(t, "ssh-fail-orphan-previews")
+	scans := &fakeOrphanScan{}
+	f.handler.orphanScan = scans
+
+	f.putCredentials()
+	require.Equal(t, []int{f.instance.ID}, scans.failed, "saving credentials")
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	require.Len(t, scans.failed, 1, "a first pin")
+
+	refused := f.do(http.MethodPut, "/ssh-credentials", `{"host":"","port":22,"username":"qui","privateKey":"x"}`)
+	require.Equal(t, http.StatusBadRequest, refused.Code)
+	require.Len(t, scans.failed, 1, "a refused save")
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
+	require.Equal(t, []int{f.instance.ID, f.instance.ID}, scans.failed, "replacing the pin")
+
+	mismatch := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(sshtest.NewSigner().PublicKey()))
+	require.Equal(t, http.StatusConflict, mismatch.Code)
+	require.Len(t, scans.failed, 2, "a refused replace")
 }

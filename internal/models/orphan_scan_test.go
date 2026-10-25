@@ -365,3 +365,45 @@ func runLastFinishedScan(t *testing.T, newDB func(testing.TB, string) *database.
 	late := insert("completed", "2026-01-01 12:00:00", "2026-01-02 06:00:00")
 	require.Equal(t, late, lastID())
 }
+
+func TestOrphanScanStore_RemotePreviewRunIDs(t *testing.T) {
+	t.Parallel()
+	runRemotePreviewRunIDs(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_RemotePreviewRunIDsPostgresIntegration(t *testing.T) {
+	runRemotePreviewRunIDs(t, testdb.NewMigratedPostgres)
+}
+
+// Only the instance's remote runs that are still a preview are listed.
+func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-remote-preview-ids")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	other, err := instances.Create(ctx, "other", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	// files_found stays 0, so none of these blocks the next one.
+	insert := func(instanceID int, mode models.FilesystemMode, status string) int64 {
+		t.Helper()
+		id, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
+		require.NoError(t, err)
+		require.NoError(t, store.UpdateRunFilesystemMode(ctx, id, mode, "qui@box.example:22"))
+		require.NoError(t, store.UpdateRunStatus(ctx, id, status))
+		return id
+	}
+	want := insert(instance.ID, models.FilesystemModeRemote, "preview_ready")
+	insert(instance.ID, models.FilesystemModeLocal, "preview_ready")
+	// Last, since a deletion blocks the instance's next run.
+	insert(instance.ID, models.FilesystemModeRemote, "deleting")
+	insert(other.ID, models.FilesystemModeRemote, "preview_ready")
+
+	ids, err := store.RemotePreviewRunIDs(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{want}, ids)
+}

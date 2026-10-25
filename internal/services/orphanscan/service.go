@@ -605,6 +605,28 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	return nil
 }
 
+// FailRemotePreviews fails the instance's remote previews after its SSH
+// settings are saved or its host key is replaced. The run records the user,
+// host and port, but not the pin, so a key replaced at the same address, or
+// pinned anew after moving away and back, would point the preview at another
+// server.
+func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error {
+	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("list remote previews of instance %d: %w", instanceID, err)
+	}
+	for _, runID := range runIDs {
+		failed, err := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
+		if err != nil {
+			return fmt.Errorf("fail run %d after an SSH change: %w", runID, err)
+		}
+		if failed {
+			s.emitRun(instanceID, runID)
+		}
+	}
+	return nil
+}
+
 // failChangedPreview fails a preview walked through access the instance no
 // longer has. ErrFilesystemModeChanged means this call failed the run, which a
 // scheduled caller notifies about.
