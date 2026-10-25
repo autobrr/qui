@@ -58,8 +58,8 @@ func (s scanScope) withPersistedRoots(roots []string) scanScope {
 }
 
 // declaredScanRoots resolves the extra roots a scope asks for, along with the
-// category destinations and download folders the abandoned-directory pass must
-// protect.
+// category destinations, download folders and monitored folders the
+// abandoned-directory pass must protect.
 //
 // A scope that cannot be resolved is an error, never a quieter scan: falling
 // back to torrent-derived roots would report a clean result over a narrower tree
@@ -80,9 +80,10 @@ func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, in
 		if scope.CategoryPaths {
 			roots = append(roots, folders.CategorySaveFolders...)
 		}
-		// qBittorrent downloads into these again, so they are protected, but
-		// they are not scan roots.
-		categoryPaths = slices.Concat(folders.CategorySaveFolders, folders.DownloadFolders)
+		// qBittorrent downloads into these again, and stops watching a
+		// monitored folder that is removed, so they are protected, but they
+		// are not scan roots.
+		categoryPaths = slices.Concat(folders.CategorySaveFolders, folders.DownloadFolders, folders.MonitoredFolders)
 		if folders.DownloadPath != "" {
 			categoryPaths = append(categoryPaths, folders.DownloadPath)
 		}
