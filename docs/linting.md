@@ -4,7 +4,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 
 ## Commands
 
-- `make precommit`: fmt + gofix on changed files, then `make lint`.
+- `make precommit`: fmt + gofix on changed files, then `make lint` and `make lint-ratchet`.
 - `make lint`: golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`. A frontend lint error in any file fails it, not only an error in a changed file.
 - `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request.
 - `make lint-json`: write lint output to `lint-report.json`.

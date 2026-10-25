@@ -218,7 +218,7 @@ generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
-precommit: check-mojibake generate fmt gofix-changed lint
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -307,7 +307,7 @@ help:
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"
