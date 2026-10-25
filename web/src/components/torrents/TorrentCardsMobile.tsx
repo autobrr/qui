@@ -44,7 +44,7 @@ import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomiz
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { getSelectionIdentity as selectionIdentity, getSelectionTargets, hasSelection, selectAllButtonEvent, selectionCount } from "@/lib/torrent-selection"
+import { getSelectionIdentity as selectionIdentity, getSelectionTargets, hasSelection, rememberTickedTorrents, selectAllButtonEvent, selectionCount } from "@/lib/torrent-selection"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -1007,8 +1007,9 @@ export function TorrentCardsMobile({
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
+  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
   const selectedTorrentsForRequest = useMemo(
-    () => torrents.filter(torrent => selectedHashes.has(getSelectionIdentity(torrent))),
+    () => rememberTickedTorrents(tickedTorrentsRef.current, selectedHashes, torrents, getSelectionIdentity),
     [torrents, selectedHashes, getSelectionIdentity]
   )
   const selectedActionTargets = useMemo(
@@ -1428,7 +1429,6 @@ export function TorrentCardsMobile({
       hashes: isAllSelected ? [] : selectedRequestHashes,
       torrents: getSelectedTorrents,
       isAllSelected,
-      totalSelected: effectiveSelectionCount,
       filters,
       search: effectiveSearch,
       excludeHashes: excludeHashesForRequest,

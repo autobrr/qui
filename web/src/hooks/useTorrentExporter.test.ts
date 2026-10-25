@@ -47,7 +47,6 @@ function exportSelection(torrents: Torrent[], overrides: Record<string, unknown>
     hashes: torrents.map(t => t.hash),
     torrents,
     isAllSelected: false,
-    totalSelected: torrents.length,
     ...overrides,
   }
 }
@@ -135,7 +134,6 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 2,
         instanceIds: [2, 3],
       }))
     })
@@ -161,13 +159,31 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 1,
       }))
     })
 
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(2, expect.any(Object))
     expect(mockedApi.getCrossInstanceTorrents).not.toHaveBeenCalled()
     expect(mockedApi.exportTorrent).toHaveBeenCalledWith(2, "aaa")
+  })
+
+  it("reads every matching page, also past a stale Exclusion", async () => {
+    mockedApi.getTorrents.mockResolvedValue({
+      torrents: [makeTorrent({ hash: "aaa" }), makeTorrent({ hash: "bbb" })],
+      total: 2,
+      hasMore: false,
+    })
+
+    const { result } = renderHook(() => useTorrentExporter({ instanceId: 2, incognitoMode: false }))
+
+    await act(async () => {
+      await result.current.exportTorrents(exportSelection([], {
+        isAllSelected: true,
+        excludeHashes: ["gone"],
+      }))
+    })
+
+    expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(2)
   })
 
   it("skips excluded instance:hash targets in unified scope", async () => {
@@ -186,7 +202,6 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 1,
         excludeTargets: [{ instanceId: 2, hash: "same" }],
       }))
     })

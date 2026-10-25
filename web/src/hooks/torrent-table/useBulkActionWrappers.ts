@@ -139,7 +139,6 @@ export function useBulkActionWrappers({
       hashes,
       torrents: torrentsForSelection,
       isAllSelected,
-      totalSelected: effectiveSelectionCount,
       filters: selectAllFilters,
       search: effectiveSearch,
       excludeHashes: selectAllExcludeHashes,
@@ -151,7 +150,6 @@ export function useBulkActionWrappers({
   }, [
     exportTorrents,
     isAllSelected,
-    effectiveSelectionCount,
     selectAllFilters,
     effectiveSearch,
     selectAllExcludeHashes,

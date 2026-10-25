@@ -10,6 +10,7 @@ import {
   getSelectionIdentity,
   getSelectionTargets,
   headerCheckboxEvent,
+  rememberTickedTorrents,
   selectAllButtonEvent,
   selectAllCheckboxFlags,
   selectionCount,
@@ -185,5 +186,19 @@ describe("getSelectionTargets", () => {
 
   it("targets the instance in the key when the view spans instances", () => {
     expect(getSelectionTargets(["9:abc", "0:def", "bad"], true, 5)).toEqual([{ instanceId: 9, hash: "abc" }])
+  })
+})
+
+describe("rememberTickedTorrents", () => {
+  const a = makeTorrent({ hash: "a" })
+  const b = makeTorrent({ hash: "b" })
+  const key = (torrent: Torrent) => torrent.hash
+
+  it("keeps a ticked row after a sort moves it past the loaded rows, and drops it on untick", () => {
+    const cache = new Map<string, Torrent>()
+    expect(rememberTickedTorrents(cache, new Set(["a"]), [a, b], key)).toEqual([a])
+    expect(rememberTickedTorrents(cache, new Set(["a"]), [b], key)).toEqual([a])
+    expect(rememberTickedTorrents(cache, new Set(["b"]), [b], key)).toEqual([b])
+    expect(rememberTickedTorrents(cache, new Set(), [a, b], key)).toEqual([])
   })
 })

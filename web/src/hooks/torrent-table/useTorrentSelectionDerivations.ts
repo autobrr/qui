@@ -6,7 +6,7 @@
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { combineFilterExpr } from "@/lib/torrent-filters"
-import { getSelectionTargets } from "@/lib/torrent-selection"
+import { getSelectionTargets, rememberTickedTorrents } from "@/lib/torrent-selection"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -66,8 +66,6 @@ export function useTorrentSelectionDerivations({
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
-  // The last row seen for each tick. A sort keeps the ticks, so a ticked
-  // torrent can move past the loaded rows, and an action must still reach it.
   const tickedTorrentsRef = useRef(new Map<string, Torrent>())
 
   // Get selected torrents - handle both regular selection and "select all" mode
@@ -79,22 +77,12 @@ export function useTorrentSelectionDerivations({
         .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
     }
-    const ticked = tickedTorrentsRef.current
-    for (const key of ticked.keys()) {
-      if (!selectedKeys.has(key)) {
-        ticked.delete(key)
-      }
-    }
     if (selectedKeys.size === 0) {
+      tickedTorrentsRef.current.clear()
       return EMPTY_TORRENTS
     }
-    for (const row of getVisibleRowsRef.current()) {
-      const key = getSelectionIdentity(row.original)
-      if (selectedKeys.has(key)) {
-        ticked.set(key, row.original)
-      }
-    }
-    return [...ticked.values()]
+    const rows = getVisibleRowsRef.current().map(row => row.original)
+    return rememberTickedTorrents(tickedTorrentsRef.current, selectedKeys, rows, getSelectionIdentity)
     // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKeys, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])

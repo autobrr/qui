@@ -125,6 +125,30 @@ export function getSelectionIdentity(torrent: Torrent, isCrossInstance: boolean,
   return `${resolvedInstanceId}:${torrent.hash}`
 }
 
+// Keeps the last row seen for each tick in cache and returns the ticked rows.
+// A sort, or a live value such as speed in the sort key, can move a ticked
+// torrent past the loaded rows. An action that needs the row, such as an
+// export, must still reach it.
+export function rememberTickedTorrents(
+  cache: Map<string, Torrent>,
+  selectedKeys: ReadonlySet<string>,
+  rows: Torrent[],
+  getKey: (torrent: Torrent) => string
+): Torrent[] {
+  for (const key of cache.keys()) {
+    if (!selectedKeys.has(key)) {
+      cache.delete(key)
+    }
+  }
+  for (const row of rows) {
+    const key = getKey(row)
+    if (selectedKeys.has(key)) {
+      cache.set(key, row)
+    }
+  }
+  return [...cache.values()]
+}
+
 // The request targets for selection keys, so a key reaches its torrent when the row is not loaded.
 export function getSelectionTargets(keys: Iterable<string>, isCrossInstance: boolean, instanceId: number): TorrentActionTarget[] {
   const targets: TorrentActionTarget[] = []

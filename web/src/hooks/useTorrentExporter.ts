@@ -21,7 +21,6 @@ interface ExportSelection {
   hashes: string[]
   torrents: Torrent[]
   isAllSelected: boolean
-  totalSelected: number
   filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
@@ -42,7 +41,6 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       hashes,
       torrents,
       isAllSelected,
-      totalSelected,
       filters,
       search,
       excludeHashes,
@@ -73,7 +71,6 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
           search,
           sortField,
           sortOrder,
-          totalSelected,
           excludeSet,
           excludeTargetSet,
         })
@@ -151,7 +148,6 @@ async function fetchAllMatchingTorrents({
   search,
   sortField,
   sortOrder,
-  totalSelected,
   excludeSet,
   excludeTargetSet,
 }: {
@@ -161,7 +157,6 @@ async function fetchAllMatchingTorrents({
   search?: string
   sortField?: string
   sortOrder?: "asc" | "desc"
-  totalSelected: number
   excludeSet: Set<string>
   excludeTargetSet: Set<string>
 }): Promise<Torrent[]> {
@@ -191,10 +186,6 @@ async function fetchAllMatchingTorrents({
       }
       seen.add(key)
       results.push(torrent)
-
-      if (totalSelected > 0 && results.length >= totalSelected) {
-        return results
-      }
     }
 
     const hasMoreFlag = response.hasMore
