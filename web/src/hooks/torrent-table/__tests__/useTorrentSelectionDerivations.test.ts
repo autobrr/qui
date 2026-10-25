@@ -26,8 +26,7 @@ function render(overrides: Partial<UseTorrentSelectionDerivationsParams> = {}) {
   const params: UseTorrentSelectionDerivationsParams = {
     isAllSelected: false,
     excludedFromSelectAll: new Set(),
-    selectedRowIds: [],
-    selectedRowIdSet: new Set(),
+    selectedKeys: new Set(),
     getSelectionIdentity: (t: Torrent) => t.hash,
     getVisibleRows: () => makeRows(TORRENTS),
     sortedTorrents: TORRENTS,
@@ -86,9 +85,17 @@ describe("useTorrentSelectionDerivations — selectAllFilters (#1925 pin)", () =
 
 describe("useTorrentSelectionDerivations — selectedHashes / selectedTorrents", () => {
   it("resolves the selected rows in regular mode", () => {
-    const { result } = render({ selectedRowIdSet: new Set(["0", "2"]) })
+    const { result } = render({ selectedKeys: new Set(["h0", "h2"]) })
     expect(result.current.selectedHashes).toEqual(["h0", "h2"])
     expect(result.current.selectedTorrents.map(t => t.hash)).toEqual(["h0", "h2"])
+  })
+
+  // A sort keeps the ticks, so a ticked torrent can move past the loaded rows.
+  it("keeps a ticked torrent that left the visible rows", () => {
+    const { result, rerender, params } = render({ selectedKeys: new Set(["h0", "h2"]) })
+    rerender({ ...params, getVisibleRows: () => makeRows([TORRENTS[1]]), sortedTorrents: [TORRENTS[1]] })
+    expect(result.current.selectedHashes).toEqual(["h0", "h2"])
+    expect(result.current.effectiveSelectionCount).toBe(2)
   })
 
   it("resolves all-minus-exclusions in select-all mode", () => {
@@ -122,7 +129,7 @@ describe("useTorrentSelectionDerivations — selectedHashes / selectedTorrents",
 
 describe("useTorrentSelectionDerivations — effectiveSelectionCount", () => {
   it("is the visible selection length in regular mode", () => {
-    const { result } = render({ selectedRowIds: ["0", "1"] })
+    const { result } = render({ selectedKeys: new Set(["h0", "h1"]) })
     expect(result.current.effectiveSelectionCount).toBe(2)
   })
 
@@ -134,7 +141,7 @@ describe("useTorrentSelectionDerivations — effectiveSelectionCount", () => {
 
 describe("useTorrentSelectionDerivations — selectedTotalSize", () => {
   it("sums the selected torrents in regular mode", () => {
-    const { result } = render({ selectedRowIdSet: new Set(["0", "1"]) })
+    const { result } = render({ selectedKeys: new Set(["h0", "h1"]) })
     expect(result.current.selectedTotalSize).toBe(300)
   })
 
@@ -199,5 +206,17 @@ describe("useTorrentSelectionDerivations — deleteDialogTotalSize", () => {
   it("falls back to context torrents when nothing is selected", () => {
     const { result } = render({ contextTorrents: [makeTorrent({ hash: "c0", size: 50 })] })
     expect(result.current.deleteDialogTotalSize).toBe(50)
+  })
+})
+
+describe("useTorrentSelectionDerivations — Exclusions of rows that are not loaded", () => {
+  it("sends an Exclusion in a view across instances when a sort moved its row out of the loaded rows", () => {
+    const { result } = render({
+      isAllSelected: true,
+      isCrossInstanceEndpoint: true,
+      excludedFromSelectAll: new Set(["2:not-loaded"]),
+      getSelectionIdentity: (t: Torrent) => `2:${t.hash}`,
+    })
+    expect(result.current.selectAllExcludedTargets).toEqual([{ instanceId: 2, hash: "not-loaded" }])
   })
 })
