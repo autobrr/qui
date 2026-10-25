@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -327,6 +328,41 @@ func TestRecordInUse_Errors(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Len(t, keys.inUse, 1)
+		})
+	}
+}
+
+// A file in use below a symlinked root whose identity cannot be read fails the
+// walk, so the run is partial and its twin at the target is not deleted by
+// itself. Over sftp no file has an identity, so the walk goes on.
+func TestRecordInUse_FileIDErr(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "real")
+	require.NoError(t, os.MkdirAll(target, 0o750))
+	link := filepath.Join(base, "link")
+	require.NoError(t, os.Symlink(target, link))
+	owned := filepath.Join(link, "owned.mkv")
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(owned)
+	entry := fsops.WalkEntry{Path: owned, FileIDErr: errors.New("access is denied")}
+	sftp := &models.Instance{SSHHost: "host", SSHKeyEncrypted: "key", SSHHostKeyEncrypted: "hostkey", SSHTier: models.SSHTierSFTP}
+
+	for _, tc := range []struct {
+		name     string
+		instance *models.Instance
+		wantErr  bool
+	}{
+		{name: "identity backend fails the walk", wantErr: true},
+		{name: "sftp walk goes on", instance: sftp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := &fakeWalkBackend{Backend: newTestBackend(), entries: []fsops.WalkEntry{entry}}
+			_, _, _, err := walkScanRootWithUnitFilter(t.Context(), link, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 0, nil, backend, tc.instance, false, newFileKeys())
+			if tc.wantErr {
+				require.ErrorIs(t, err, entry.FileIDErr)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

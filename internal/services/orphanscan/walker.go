@@ -456,6 +456,11 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 		if entry.IsDir || entry.IsSymlink || !protected.torrentFile(entry.Path) {
 			continue
 		}
+		// Without its identity the file's twin at the target would be listed
+		// with no walk error. Over sftp no file has one, so the walk goes on.
+		if entry.FileIDErr != nil && (instance == nil || models.FilesystemCapabilitiesOf(instance).Identity) {
+			return fmt.Errorf("file identity %s: %w", entry.Path, entry.FileIDErr)
+		}
 		if key, ok := fileKey(entry, instance); ok {
 			keys.inUse[key] = struct{}{}
 		}
