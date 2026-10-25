@@ -198,7 +198,9 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 	t.Helper()
 	// Not parallel: the test replaces package-level vars.
 	prevTimeout := gazelleSearchTimeout
-	gazelleSearchTimeout = 200 * time.Millisecond
+	// The OPS queue lets one request through every 2 s, and other tests share
+	// it. A limit above 2 s makes the request reach the fake.
+	gazelleSearchTimeout = 3 * time.Second
 	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
 	prevFindMatch := findGazelleMatch
 	findGazelleMatch = gazellemusic.FindMatch
@@ -230,7 +232,7 @@ func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		select {
 		case <-gazelleStarted:
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 		}
 		torznabSawGazelleWaiting.Store(gazelleActive.Load() > 0)
 		w.Header().Set("Content-Type", "application/rss+xml")

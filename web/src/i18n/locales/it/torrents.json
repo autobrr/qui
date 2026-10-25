@@ -731,6 +731,7 @@
     "arrLookupFailed": "Ricerca degli ID dei metadati non riuscita - ricerca solo per titolo, i risultati potrebbero essere incompleti",
     "arrNoIds": "Nessun ID dei metadati trovato per questa release - ricerca solo per titolo",
     "gazelleTimedOut": "RED/OPS non ha risposto in tempo",
+    "torznabFailed": "Impossibile caricare gli indexer Torznab - solo risultati RED/OPS",
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
     "noIndexersHelp": "Aggiungi o abilita indexer Torznab in Impostazioni per cercare cross-seed.",

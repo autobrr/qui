@@ -36,6 +36,9 @@ type searchScope struct {
 	// gazelleCooldownWithoutLookup reports that the search starts the RED/OPS
 	// cooldown although it asks no RED/OPS site.
 	gazelleCooldownWithoutLookup bool
+	// torznabErr reports that qui could not list the Torznab indexers, so the
+	// search asks only RED/OPS.
+	torznabErr error
 	// err reports that the search cannot run.
 	err error
 }
@@ -91,6 +94,15 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 		return searchScope{err: err}
 	}
 	scope := searchScope{torznabIndexerIDs: ids, skipReason: skipReason}
+	if discoveryErr := f.contentFilter.discoveryErr; discoveryErr != nil {
+		torznabErr := fmt.Errorf("load torznab indexers: %w", discoveryErr)
+		if len(f.gazelleKeys) == 0 {
+			return searchScope{err: torznabErr}
+		}
+		// The skip reason must not read like a content filter that removed
+		// every indexer.
+		scope = searchScope{skipReason: torznabErr.Error(), torznabErr: torznabErr}
+	}
 	if f.skipGazelle {
 		return scope
 	}
@@ -126,9 +138,6 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 	default:
 		// A missing API key starts no cooldown, so a key that the user adds
 		// later works at the next run.
-	}
-	if len(scope.gazelleHosts) == 0 && f.contentFilter.discoveryErr != nil {
-		return searchScope{err: fmt.Errorf("load torznab indexers: %w", f.contentFilter.discoveryErr)}
 	}
 	return scope
 }

@@ -109,6 +109,7 @@ export interface CrossSeedTorrentSearchResponse {
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
   gazelleTimedOut?: boolean
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
 

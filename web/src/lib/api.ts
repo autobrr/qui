@@ -1356,6 +1356,7 @@ class ApiClient {
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
       gazelle_timed_out?: boolean
+      torznab_failed?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
     }
@@ -1416,6 +1417,7 @@ class ApiClient {
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
       gazelleTimedOut: response.gazelle_timed_out ?? undefined,
+      torznabFailed: response.torznab_failed ?? undefined,
       decisionTrace: response.decisionTrace,
     }
   }

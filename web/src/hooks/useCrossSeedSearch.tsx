@@ -525,6 +525,7 @@ export function useCrossSeedSearch(instanceId: number) {
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
       gazelleTimedOut={crossSeedSearchResponse?.gazelleTimedOut ?? false}
+      torznabFailed={crossSeedSearchResponse?.torznabFailed ?? false}
       decisionTrace={crossSeedSearchResponse?.decisionTrace}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}

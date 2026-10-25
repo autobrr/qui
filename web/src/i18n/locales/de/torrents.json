@@ -731,6 +731,7 @@
     "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
     "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
     "gazelleTimedOut": "RED/OPS hat nicht rechtzeitig geantwortet",
+    "torznabFailed": "Torznab-Indexer konnten nicht geladen werden – nur RED/OPS-Ergebnisse",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
     "noIndexersHelp": "Füge in den Einstellungen Torznab-Indexer hinzu oder aktiviere sie, um nach Cross-Seeds zu suchen.",

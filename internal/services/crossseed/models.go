@@ -311,6 +311,9 @@ type TorrentSearchResponse struct {
 	// GazelleTimedOut is set when RED/OPS did not answer within
 	// gazelleSearchTimeout. The results hold only the Torznab matches.
 	GazelleTimedOut bool `json:"gazelle_timed_out,omitzero"`
+	// TorznabFailed is set when qui could not list the Torznab indexers and the
+	// results come only from RED/OPS.
+	TorznabFailed bool `json:"torznab_failed,omitzero"`
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
 	// CoveredIndexerIDs lists the Torznab indexers that answered every search

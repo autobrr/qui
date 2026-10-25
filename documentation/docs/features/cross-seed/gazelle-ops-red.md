@@ -26,6 +26,7 @@ If you enable Gazelle matching:
 - If a torrent comes from another source, qui checks it against the Gazelle sites you configured.
 - qui asks Torznab and the Gazelle sites at the same time. qui removes the Torznab indexer of each OPS/RED site that has an API key from per-torrent searches (manual, completion, library scan). qui asks that site through its API instead. If you set only the RED key, qui keeps the OPS Torznab indexer, and the other way around.
 - In each search, qui waits 45 seconds at most for the Gazelle sites. If they do not answer in that time, qui returns the Torznab results. The search dialog shows "RED/OPS did not answer in time". A Library Scan records "search timed out after 45s" and asks the Gazelle sites again at the next run.
+- If qui cannot load the Torznab indexers, it still asks the OPS/RED sites that have a key. The search dialog then shows a note that Torznab failed. The Library Scan run history shows the error, and a completion search writes a warning to the log.
 - If Torznab is unavailable, qui still returns a successful empty result for a torrent that Gazelle handled. If a local prefilter proves the target tracker content is already present, qui sends no remote Gazelle request.
 
 Gazelle support gives qui music-specific handling for OPS/RED. The tracker-native APIs search by Gazelle release metadata and source-specific infohashes. Direct Gazelle API use lets Gazelle-only scans run without a Torznab backend. qui paces API requests and tracks key coverage separately from Torznab indexer rules.

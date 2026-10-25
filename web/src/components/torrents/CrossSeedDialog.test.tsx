@@ -140,4 +140,10 @@ describe("CrossSeedDialog search scope", () => {
     expect(getByText("crossSeedDialog.noIndexersHelp")).toBeTruthy()
     expect(queryByText("crossSeedDialog.scope.search")).toBeNull()
   })
+
+  it("shows that Torznab failed next to the RED/OPS results", () => {
+    const { getByText } = render(<CrossSeedDialog {...baseProps} hasSearched torznabFailed />)
+
+    expect(getByText("crossSeedDialog.torznabFailed")).toBeTruthy()
+  })
 })

@@ -97,6 +97,7 @@ export interface CrossSeedDialogProps {
   partial?: boolean
   queryDegraded?: string
   gazelleTimedOut?: boolean
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
@@ -149,6 +150,7 @@ const CrossSeedDialogComponent = ({
   partial,
   queryDegraded,
   gazelleTimedOut,
+  torznabFailed,
   decisionTrace,
   canForceRefresh,
   refreshCooldownLabel,
@@ -320,6 +322,12 @@ const CrossSeedDialogComponent = ({
             <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               <span>{t("crossSeedDialog.gazelleTimedOut")}</span>
+            </div>
+          )}
+          {torznabFailed && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{t("crossSeedDialog.torznabFailed")}</span>
             </div>
           )}
         </DialogHeader>
