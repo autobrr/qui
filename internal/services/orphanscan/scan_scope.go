@@ -5,11 +5,10 @@ package orphanscan
 
 import (
 	"context"
-	"fmt"
+	"slices"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // scanScope carries the opt-in settings that widen a run. The zero value is the
@@ -70,41 +69,23 @@ func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, in
 		return nil, nil, nil
 	}
 
-	// Categories inherit from the default save path, so it is needed whenever
-	// they are. One preferences read covers both.
-	prefs, err := s.sync.GetAppPreferencesFresh(ctx, instanceID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
-	}
-	defaultSavePath, err := validDefaultSavePath(d, prefs.SavePath)
+	folders, err := s.sync.InstanceFolders(ctx, d, instanceID)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	if scope.DefaultSavePath {
-		roots = append(roots, defaultSavePath)
+		roots = append(roots, folders.DefaultSavePath)
 	}
-
 	if scope.needsCategories() {
-		// Only category resolution needs the nesting state, and answering it
-		// costs a WebAPI version request.
-		var rule qbittorrent.CategoryPathRule
-		rule, err = s.sync.CategoryPathRule(ctx, instanceID)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		var downloadPaths []string
-		categoryPaths, downloadPaths, err = s.categoryPaths(ctx, d, instanceID, defaultSavePath, prefs, rule)
-		if err != nil {
-			return nil, nil, err
-		}
 		if scope.CategoryPaths {
-			roots = append(roots, categoryPaths...)
+			roots = append(roots, folders.CategorySaveFolders...)
 		}
 		// qBittorrent downloads into these again, so they are protected, but
 		// they are not scan roots.
-		categoryPaths = append(categoryPaths, downloadPaths...)
+		categoryPaths = slices.Concat(folders.CategorySaveFolders, folders.DownloadFolders)
+		if folders.DownloadPath != "" {
+			categoryPaths = append(categoryPaths, folders.DownloadPath)
+		}
 	}
 
 	return roots, categoryPaths, nil

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -35,8 +34,8 @@ func TestExecuteScan_KeepsAliasOfInUseFileInAnotherRoot(t *testing.T) {
 			var mirror, alias, junk string
 			opts := orphanOnlyOptions{
 				scanCategoryPaths: true,
-				categories: func(defaultSavePath string) map[string]qbt.Category {
-					return map[string]qbt.Category{category: {Name: category, SavePath: filepath.Join(filepath.Dir(defaultSavePath), category)}}
+				categoryFolders: func(defaultSavePath string) []string {
+					return []string{filepath.Join(filepath.Dir(defaultSavePath), category)}
 				},
 				wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
 					return &aliasWalkBackend{Backend: b, ids: sameFile(filepath.Join(defaultSavePath, "mydata", "owned.mkv"), alias)}
@@ -65,8 +64,8 @@ func TestExecuteScan_ListsOrphanAliasesAcrossRootsOnce(t *testing.T) {
 	var first, second string
 	opts := orphanOnlyOptions{
 		scanCategoryPaths: true,
-		categories: func(defaultSavePath string) map[string]qbt.Category {
-			return map[string]qbt.Category{"zzz": {Name: "zzz", SavePath: filepath.Join(filepath.Dir(defaultSavePath), "zzz")}}
+		categoryFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(filepath.Dir(defaultSavePath), "zzz")}
 		},
 		wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
 			return &aliasWalkBackend{Backend: b, ids: sameFile(first, second)}

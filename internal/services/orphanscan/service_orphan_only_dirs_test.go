@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -33,7 +34,7 @@ type orphanOnlyFixture struct {
 type orphanOnlyOptions struct {
 	gracePeriodMinutes int
 	maxFilesPerRun     int
-	categories         func(defaultSavePath string) map[string]qbt.Category
+	categoryFolders    func(defaultSavePath string) []string
 	// torrentFileName is the seeded torrent's file, slash-delimited the way
 	// qBittorrent reports it.
 	torrentFileName string
@@ -87,16 +88,11 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: torrentFileName, Size: 1}}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
+	folders := qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath}
+	if opts.categoryFolders != nil {
+		folders.CategorySaveFolders = opts.categoryFolders(defaultSavePath)
 	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		if opts.categories != nil {
-			return opts.categories(defaultSavePath), nil
-		}
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(folders)
 
 	maxFiles := opts.maxFilesPerRun
 	if maxFiles == 0 {
@@ -216,8 +212,8 @@ func TestExecuteScan_DeletesTheDiscInsideANestedScanRoot(t *testing.T) {
 	var movies, disc, loose string
 	opts := orphanOnlyOptions{
 		scanCategoryPaths: true,
-		categories: func(defaultSavePath string) map[string]qbt.Category {
-			return map[string]qbt.Category{"movies": {Name: "movies", SavePath: filepath.Join(defaultSavePath, "movies")}}
+		categoryFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "movies")}
 		},
 	}
 	f := newOrphanOnlyFixture(t, "orphanscan-disc-in-nested-root", opts, func(defaultSavePath string) {
@@ -369,12 +365,8 @@ func TestExecuteScan_KeepsDirectoryWhoseOrphansTheCapDropped(t *testing.T) {
 func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) {
 	var orphanInCategory string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-categories", orphanOnlyOptions{
-		categories: func(defaultSavePath string) map[string]qbt.Category {
-			return map[string]qbt.Category{
-				"movies": {Name: "movies", SavePath: filepath.Join(defaultSavePath, "movies")},
-				// Inherits, so its destination is defaultSavePath/tv.
-				"tv": {Name: "tv", SavePath: ""},
-			}
+		categoryFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "movies"), filepath.Join(defaultSavePath, "tv")}
 		},
 	}, func(defaultSavePath string) {
 		category := filepath.Join(defaultSavePath, "movies")

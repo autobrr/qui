@@ -219,24 +219,6 @@ func (b *slashBackend) Remove(_ context.Context, p string, opts fsops.RemoveOpti
 func TestPathDialect_RootBuilders(t *testing.T) {
 	t.Parallel()
 
-	saved, err := validDefaultSavePath(fsops.SlashPaths, "/data/torrents/")
-	require.NoError(t, err)
-	require.Equal(t, "/data/torrents", saved)
-
-	categories := map[string]qbt.Category{
-		"tv":     {},
-		"tv/hd":  {},
-		"movies": {SavePath: "//media/movies/"},
-		"music":  {SavePath: "music"},
-	}
-	for name, want := range map[string]string{
-		"tv/hd":  "/data/tv/hd",
-		"movies": "/media/movies",
-		"music":  "/data/music",
-	} {
-		require.Equal(t, want, qbittorrent.CategorySavePath(fsops.SlashPaths, name, categories, "/data", qbittorrent.CategoryPathRule{Nest: true}), name)
-	}
-
 	files := qbt.TorrentFiles{{Name: "Show/e1.mkv"}, {Name: "Show/e2.mkv"}}
 	require.Equal(t, "/data/real", actualSavePathFromContentPath(fsops.SlashPaths, "/data/tv", "/data/real/Show", files))
 	single := qbt.TorrentFiles{{Name: "a\\b.mkv"}}
@@ -488,13 +470,7 @@ func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv"}, {Name: "a\\b.mkv"}}}, nil
 	}
-	stubSync(f.svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: "//srv/data"}, nil
-	}
-	// Without subcategories "x/y" is one name, and qBittorrent still saves it to x/y.
-	stubSync(f.svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"x/y": {Name: "x/y"}}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: "/srv/data", CategorySaveFolders: []string{"/srv/data/x/y"}})
 	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		IgnorePaths:         []string{"/srv/data/keep/"},
@@ -554,15 +530,14 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 	}
 	live := 2
 	files := map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv"}}, "nested": {{Name: "n.mkv"}}}
-	categories := map[string]qbt.Category{}
+	var categories []string
 	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return torrents[:live], nil }
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return files, nil
 	}
-	stubSync(f.svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: "/srv/data"}, nil
+	stubSync(f.svc).instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) {
+		return qbittorrent.InstanceFolders{DefaultSavePath: "/srv/data", CategorySaveFolders: categories}, nil
 	}
-	stubSync(f.svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) { return categories, nil }
 	settings := &models.OrphanScanSettings{
 		InstanceID:          1,
 		IgnorePaths:         []string{},
@@ -581,8 +556,7 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 	live = len(torrents)
 	files["late"] = qbt.TorrentFiles{{Name: "late.mkv"}}
 	files["disc"] = qbt.TorrentFiles{{Name: "Movie/BDMV/STREAM/00000.m2ts"}}
-	categories["cat"] = qbt.Category{Name: "cat"}
-	categories["c\\x"] = qbt.Category{Name: "c\\x"}
+	categories = []string{"/srv/data/c\\x", "/srv/data/cat"}
 	settings.IgnorePaths = []string{"/srv/data/skip"}
 	_, err = f.store.UpsertSettings(t.Context(), settings)
 	require.NoError(t, err)

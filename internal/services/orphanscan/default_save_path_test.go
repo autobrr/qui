@@ -16,28 +16,8 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
-
-// data builds an absolute path that is absolute on Windows too, where a bare
-// leading separator has no drive and fails filepath.IsAbs.
-func data(parts ...string) string {
-	return filepath.Join(append([]string{absTestRoot()}, parts...)...)
-}
-
-func absTestRoot() string {
-	if vol := filepath.VolumeName(mustCwd()); vol != "" {
-		return vol + string(filepath.Separator) + "data"
-	}
-	return string(filepath.Separator) + "data"
-}
-
-func mustCwd() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return cwd
-}
 
 func TestPruneNestedScanRoots(t *testing.T) {
 	t.Parallel()
@@ -135,57 +115,16 @@ func TestPruneNestedScanRoots_PreservesRootsThroughSymlinks(t *testing.T) {
 	}
 }
 
-func TestValidDefaultSavePath(t *testing.T) {
-	t.Parallel()
-
-	absRoot := data("torrents")
-
-	tests := []struct {
-		name     string
-		savePath string
-		want     string
-		wantErr  bool
-	}{
-		{name: "absolute path is used as a scan root", savePath: absRoot, want: absRoot},
-		{name: "trailing separator is cleaned", savePath: absRoot + string(filepath.Separator), want: absRoot},
-		{name: "trailing spaces are preserved", savePath: absRoot + "  ", want: absRoot + "  "},
-		{name: "leading spaces make a path relative", savePath: "  " + absRoot, wantErr: true},
-		{name: "empty save path is rejected", savePath: "", wantErr: true},
-		{name: "relative save path is rejected", savePath: filepath.Join("relative", "path"), wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := validDefaultSavePath(fsops.HostPaths, tt.savePath)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error, got root %q", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("validDefaultSavePath: %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("validDefaultSavePath = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
+func TestDeclaredScanRoots_FailsWhenTheInstanceFoldersAreUnreachable(t *testing.T) {
 	t.Parallel()
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{}, errors.New("boom")
+	stubSync(svc).instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) {
+		return qbittorrent.InstanceFolders{}, errors.New("boom")
 	}
 
 	if _, _, err := svc.declaredScanRoots(context.Background(), fsops.HostPaths, 1, scanScope{DefaultSavePath: true}); err == nil {
-		t.Fatal("expected an error when qBittorrent preferences cannot be read")
+		t.Fatal("expected an error when the qBittorrent folders cannot be read")
 	}
 }
 
@@ -206,10 +145,7 @@ func newDefaultSavePathService(defaultSavePath, torrentSavePath string) *Service
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
 	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath})
 	return svc
 }
 
@@ -251,6 +187,9 @@ func TestBuildFileMap_DefaultSavePathFailureFailsTheScan(t *testing.T) {
 	t.Parallel()
 
 	svc := newDefaultSavePathService("", t.TempDir())
+	stubSync(svc).instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) {
+		return qbittorrent.InstanceFolders{}, errors.New("qBittorrent reported an empty default save path")
+	}
 
 	// An unresolvable default save path must not degrade into a narrower scan
 	// that reports clean; discussion #2365.
@@ -299,10 +238,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 			return map[string]qbt.TorrentFiles{}, nil
 		}
 	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath})
 
 	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{DefaultSavePath: true})
 	if err != nil {
