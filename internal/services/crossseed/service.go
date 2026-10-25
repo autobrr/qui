@@ -1644,6 +1644,9 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
+	// torznabErr reports that qui could not list the Torznab indexers, so the
+	// run asked only RED/OPS.
+	torznabErr error
 	// torznabSearched records that a Torznab indexer answered a candidate's
 	// search. Resolved indexers do not prove it: the filter or cooldown can
 	// skip every candidate.
@@ -2912,6 +2915,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if scope.err != nil {
 		return scope.err
 	}
+	if scope.torznabErr != nil {
+		log.Warn().
+			Err(scope.torznabErr).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Torznab failed; searching only RED/OPS")
+	}
 	if len(scope.torznabIndexerIDs) == 0 && len(scope.gazelleHosts) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -3123,6 +3134,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	// Important: settings.RedactedAPIKey/OrpheusAPIKey are redacted placeholders when encrypted values exist.
 	// Only treat Gazelle as configured if we have at least one usable (decryptable) client.
 	hasGazelle := gazelleClients != nil && len(gazelleClients.byHost) > 0
+	var torznabErr error
 	if opts.DisableTorznab && !hasGazelle {
 		return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
 	}
@@ -3140,6 +3152,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			}
 			log.Warn().Err(indexersErr).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
 			opts.DisableTorznab = true
+			torznabErr = fmt.Errorf("load torznab indexers: %w", indexersErr)
 		} else if len(indexers) == 0 {
 			if !hasGazelle {
 				return nil, ErrNoIndexersConfigured
@@ -3189,6 +3202,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		run:           storedRun,
 		opts:          opts,
 		recentResults: make([]models.CrossSeedSearchResult, 0, 10),
+		torznabErr:    torznabErr,
 		gazelleClients: func() *gazelleClientSet {
 			if gazelleErr != nil {
 				return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
@@ -7460,6 +7474,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
 			Partial:       false,
+			TorznabFailed: scope.torznabErr != nil,
 			JobID:         0,
 		}, gazelleLookupCompleted, remoteRequestsMade, nil
 	}
@@ -8929,6 +8944,13 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	} else {
 		state.run.Status = models.CrossSeedSearchRunStatusSuccess
 	}
+	if state.torznabErr != nil {
+		msg := "torznab failed, only RED/OPS searched: " + state.torznabErr.Error()
+		if state.run.ErrorMessage != nil {
+			msg = *state.run.ErrorMessage + "; " + msg
+		}
+		state.run.ErrorMessage = &msg
+	}
 	if deniedMsg, allDenied := state.gazelleClients.deniedMessage(); deniedMsg != "" {
 		if state.run.ErrorMessage != nil {
 			deniedMsg = *state.run.ErrorMessage + "; " + deniedMsg
@@ -9632,6 +9654,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		})
 		s.finishSearchCandidate(state, 0, true)
 		return false, scope.err
+	}
+	if scope.torznabErr != nil {
+		state.torznabErr = scope.torznabErr
 	}
 
 	// Stale indexers the per-torrent filter ruled out count as covered: they

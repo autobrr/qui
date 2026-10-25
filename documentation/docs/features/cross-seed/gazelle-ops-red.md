@@ -25,6 +25,7 @@ If you enable Gazelle matching:
 - If a torrent comes from OPS or RED, qui queries **only the opposite site** (RED -> OPS, OPS -> RED).
 - If a torrent comes from another source, qui checks it against the Gazelle sites you configured.
 - Torznab can run in parallel. qui removes the Torznab indexer of each OPS/RED site that has an API key from per-torrent searches (manual, completion, library scan). qui asks that site through its API instead. If you set only the RED key, qui keeps the OPS Torznab indexer, and the other way around.
+- If qui cannot load the Torznab indexers, it still asks the OPS/RED sites that have a key. The search dialog then shows a note that Torznab failed. The Library Scan run history shows the error, and a completion search writes a warning to the log.
 - If Torznab is unavailable, qui still returns a successful empty result for a torrent that Gazelle handled. If a local prefilter proves the target tracker content is already present, qui sends no remote Gazelle request.
 
 Gazelle support gives qui music-specific handling for OPS/RED. The tracker-native APIs search by Gazelle release metadata and source-specific infohashes. Direct Gazelle API use lets Gazelle-only scans run without a Torznab backend. qui paces API requests and tracks key coverage separately from Torznab indexer rules.

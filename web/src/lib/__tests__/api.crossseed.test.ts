@@ -372,6 +372,23 @@ describe("api.crossseed contract", () => {
       const result = await api.searchCrossSeedTorrent(1, "abc")
 
       expect(result.queryDegraded).toBe("arr_no_ids")
+      expect(result.torznabFailed).toBeUndefined()
+    })
+
+    it("maps the torznab_failed note", async () => {
+      server.use(
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
+          HttpResponse.json({
+            source_torrent: null,
+            results: [],
+            torznab_failed: true,
+          })
+        )
+      )
+
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.torznabFailed).toBe(true)
     })
   })
 

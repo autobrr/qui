@@ -672,6 +672,7 @@
     "partialResults": "部分結果：部分索引器未回應",
     "arrLookupFailed": "中繼資料 ID 查詢失敗：僅按標題搜尋，結果可能不完整",
     "arrNoIds": "未找到該資源的中繼資料 ID：僅按標題搜尋",
+    "torznabFailed": "無法載入 Torznab 索引器：僅顯示 RED/OPS 結果",
     "searchScope": "搜尋範圍",
     "noIndexers": "沒有可用的 Torznab 索引器",
     "noIndexersHelp": "在設定中新增或啟用 Torznab 索引器以搜尋輔種。",

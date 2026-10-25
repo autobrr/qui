@@ -9155,6 +9155,9 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        torznab_failed:
+          type: boolean
+          description: Set when qui could not load the Torznab indexers and the results come only from RED/OPS.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 

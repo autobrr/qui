@@ -7,13 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestDecideSearchScope(t *testing.T) {
@@ -25,6 +31,9 @@ func TestDecideSearchScope(t *testing.T) {
 	contentDone := func(ids ...int) contentFilterFacts {
 		return contentFilterFacts{done: true, indexerIDs: ids}
 	}
+	discoveryErr := errors.New("prowlarr down")
+	discoveryFailed := contentFilterFacts{discoveryErr: discoveryErr}
+	torznabFailed := fmt.Errorf("load torznab indexers: %w", discoveryErr)
 
 	tests := []struct {
 		name  string
@@ -158,13 +167,31 @@ func TestDecideSearchScope(t *testing.T) {
 			want: searchScope{gazelleHosts: []string{red}, skipReason: "no eligible indexers after filtering"},
 		},
 		{
-			name:  "failed indexer discovery still asks RED/OPS",
-			facts: searchScopeFacts{contentFilter: contentFilterFacts{discoveryErr: errors.New("prowlarr down")}, gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: "no eligible indexers"},
+			name:  "failed indexer discovery asks RED/OPS and reports that Torznab failed",
+			facts: searchScopeFacts{contentFilter: discoveryFailed, gazelleKeys: bothKeys, musicCheckPassed: true},
+			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
 		},
 		{
-			name:    "failed indexer discovery without a RED/OPS site is an error",
-			facts:   searchScopeFacts{contentFilter: contentFilterFacts{discoveryErr: errors.New("prowlarr down")}, gazelleKeys: bothKeys},
+			name: "failed discovery of picked indexers is not a content filter that removed them",
+			facts: searchScopeFacts{
+				requestedIndexerIDs: []int{1}, picked: true,
+				contentFilter: contentFilterFacts{discoveryErr: discoveryErr, done: true}, gazelleKeys: bothKeys, musicCheckPassed: true,
+			},
+			want: searchScope{gazelleHosts: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
+		},
+		{
+			name:  "failed indexer discovery and a failed music check start the cooldown and report that Torznab failed",
+			facts: searchScopeFacts{contentFilter: discoveryFailed, gazelleKeys: bothKeys},
+			want:  searchScope{skipReason: torznabFailed.Error(), torznabErr: torznabFailed, gazelleCooldownWithoutLookup: true},
+		},
+		{
+			name:  "failed indexer discovery with RED/OPS in cooldown reports that Torznab failed",
+			facts: searchScopeFacts{contentFilter: discoveryFailed, skipGazelle: true, gazelleKeys: bothKeys, musicCheckPassed: true},
+			want:  searchScope{skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
+		},
+		{
+			name:    "failed indexer discovery without a RED/OPS key is an error",
+			facts:   searchScopeFacts{contentFilter: discoveryFailed, musicCheckPassed: true},
 			wantErr: "load torznab indexers: prowlarr down",
 		},
 		{
@@ -276,4 +303,51 @@ func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, found, "the RED/OPS cooldown must cover %s", hash)
 	}
+}
+
+// When qui cannot list the Torznab indexers, the search dialog still asks
+// RED/OPS and reports that Torznab failed.
+func TestSearchTorrentMatches_FailedIndexerDiscoveryAsksREDOPSAndReportsTorznabFailed(t *testing.T) {
+	// Not parallel: the test replaces the package-level newGazelleClient.
+	const (
+		instanceID = 1
+		sourceHash = "0123456789abcdef0123456789abcdef01234567"
+		sourceName = "Lumen Harbor - Quiet Tides (2024) [FLAC]"
+	)
+
+	var gazelleRequests atomic.Int32
+	gazelleAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		gazelleRequests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","response":{"results":[]}}`)
+	}))
+	t.Cleanup(gazelleAPI.Close)
+	prevNewClient := newGazelleClient
+	newGazelleClient = func(host, _, apiKey string) (*gazellemusic.Client, error) {
+		return gazellemusic.NewClient(host, gazelleAPI.URL, apiKey)
+	}
+	t.Cleanup(func() { newGazelleClient = prevNewClient })
+
+	source := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: 123, Progress: 1, Tracker: "https://tracker.example.invalid/announce"}
+	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key", OrpheusAPIKey: "ops-key"}
+	svc := &Service{
+		instanceStore:  &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: {ID: instanceID, Name: "music"}}},
+		jackettService: jackett.NewService(&failingEnabledIndexerStore{err: errors.New("indexer store unavailable")}),
+		syncManager: &hashFilteringSyncManager{gazelleSkipHashSyncManager{
+			torrents:    []qbt.Torrent{source},
+			filesByHash: map[string]qbt.TorrentFiles{sourceHash: {{Name: sourceName + "/01 - Lumen Harbor - Quiet Tides.flac", Size: 123}}},
+		}},
+		releaseCache:      NewReleaseCache(),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
+	}
+
+	resp, err := svc.SearchTorrentMatches(t.Context(), instanceID, sourceHash, TorrentSearchOptions{})
+
+	require.NoError(t, err)
+	require.True(t, resp.TorznabFailed, "the dialog must show that Torznab failed")
+	require.Positive(t, gazelleRequests.Load(), "the search must still ask RED/OPS")
 }

@@ -730,6 +730,7 @@
     "partialResults": "Partial results - some indexers did not respond",
     "arrLookupFailed": "Metadata ID lookup failed - searched by title only, results may be incomplete",
     "arrNoIds": "No metadata IDs found for this release - searched by title only",
+    "torznabFailed": "Torznab indexers could not be loaded - showing RED/OPS results only",
     "searchScope": "Search Scope",
     "noIndexers": "No Torznab indexers available",
     "noIndexersHelp": "Add or enable Torznab indexers in Settings to search for cross-seeds.",

@@ -308,6 +308,9 @@ type TorrentSearchResponse struct {
 	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
 	// and the Torznab search fell back to a title-only text query.
 	QueryDegraded string `json:"query_degraded,omitempty"`
+	// TorznabFailed is set when qui could not list the Torznab indexers and the
+	// results come only from RED/OPS.
+	TorznabFailed bool `json:"torznab_failed,omitzero"`
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
 	// CoveredIndexerIDs lists the Torznab indexers that answered every search

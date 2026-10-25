@@ -846,6 +846,8 @@ func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
 	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, loaded.Status)
+	require.NotNil(t, loaded.ErrorMessage, "the run result must show that Torznab failed")
+	require.Contains(t, *loaded.ErrorMessage, "jackett probe failed")
 }
 
 func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {

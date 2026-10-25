@@ -96,6 +96,7 @@ export interface CrossSeedDialogProps {
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   partial?: boolean
   queryDegraded?: string
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
@@ -147,6 +148,7 @@ const CrossSeedDialogComponent = ({
   cacheMetadata,
   partial,
   queryDegraded,
+  torznabFailed,
   decisionTrace,
   canForceRefresh,
   refreshCooldownLabel,
@@ -312,6 +314,12 @@ const CrossSeedDialogComponent = ({
             <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               <span>{t(queryDegradedMessageKeys[queryDegraded])}</span>
+            </div>
+          )}
+          {torznabFailed && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{t("crossSeedDialog.torznabFailed")}</span>
             </div>
           )}
         </DialogHeader>

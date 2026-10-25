@@ -730,6 +730,7 @@
     "partialResults": "Teilergebnisse – einige Indexer haben nicht geantwortet",
     "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
     "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
+    "torznabFailed": "Torznab-Indexer konnten nicht geladen werden – nur RED/OPS-Ergebnisse",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
     "noIndexersHelp": "Füge in den Einstellungen Torznab-Indexer hinzu oder aktiviere sie, um nach Cross-Seeds zu suchen.",

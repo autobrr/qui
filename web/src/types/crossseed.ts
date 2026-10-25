@@ -108,6 +108,7 @@ export interface CrossSeedTorrentSearchResponse {
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
 
