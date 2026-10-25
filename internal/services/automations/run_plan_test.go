@@ -20,12 +20,15 @@ import (
 // planTestRun evaluates the rules on in-memory torrents and builds the Run plan.
 func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
 	t.Helper()
-	return planTestRunWith(t, &Service{}, torrents, rules, deletions)
+	return planTestRunWith(t, &Service{}, torrents, rules, deletions, nil)
 }
 
-func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
+// planTestRunWith takes the cross-seeds from sharing: the torrents that share files with
+// each torrent.
+func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection, sharing map[string][]string) runPlan {
 	t.Helper()
-	states := processTorrents(torrents, rules, nil, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharing}
+	states := processTorrents(torrents, rules, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
 	if deletions == nil {
 		deletions = &deletionSelection{}
 	}
@@ -33,7 +36,19 @@ func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules [
 	for _, torrent := range torrents {
 		torrentByHash[torrent.Hash] = torrent
 	}
-	return svc.buildRunPlan(t.Context(), states, deletions, torrentByHash, nil)
+	ruleByID := make(map[int]*models.Automation, len(rules))
+	for _, rule := range rules {
+		ruleByID[rule.ID] = rule
+	}
+	return svc.buildRunPlan(t.Context(), runPlanInput{
+		states:        states,
+		deletions:     deletions,
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      ruleByID,
+		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
+		evalCtx:       evalCtx,
+	})
 }
 
 func planTestRule(id int, conditions *models.ActionConditions) *models.Automation {
@@ -245,7 +260,7 @@ func TestRunPlan_ExportMarks(t *testing.T) {
 	rule := planTestRule(8, &models.ActionConditions{ExportToInstance: action})
 	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{"on-target": true}, fail: map[string]bool{"check-failed": true}}}
 
-	plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil)
+	plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil, nil)
 	byHash := make(map[string]pendingExportToInstance, len(plan.exports))
 	for _, export := range plan.exports {
 		require.Same(t, action, export.action)
@@ -261,4 +276,158 @@ func TestRunPlan_ExportMarks(t *testing.T) {
 	require.Equal(t, "Failed to check target instance: target offline", byHash["check-failed"].failureReason)
 	require.Equal(t, exportSavePathUnresolved, byHash["no-category"].mark)
 	require.Equal(t, "Save path template resolution failed", byHash["no-category"].failureReason)
+}
+
+// sharedFiles marks each pair of hashes as cross-seeds that share files.
+func sharedFiles(pairs ...[2]string) map[string][]string {
+	sharing := make(map[string][]string)
+	for _, pair := range pairs {
+		sharing[pair[0]] = append(sharing[pair[0]], pair[1])
+		sharing[pair[1]] = append(sharing[pair[1]], pair[0])
+	}
+	return sharing
+}
+
+// A move takes the cross-seeds of each torrent along, with the rule of the torrent. A
+// torrent the run deletes stays out.
+func TestRunPlan_MoveTakesCrossSeeds(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Tags: "x", SavePath: "/old"},
+		{Hash: "cross-seed", SavePath: "/old"},
+		{Hash: "deleting", SavePath: "/old"},
+	}
+	rule := planTestRule(3, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/new", Condition: tagsContain("x")}})
+	deletions := &deletionSelection{byHash: map[string]selectedDeletion{"deleting": {hash: "deleting"}}}
+	sharing := sharedFiles([2]string{"trigger", "cross-seed"}, [2]string{"trigger", "deleting"})
+
+	plan := planTestRunWith(t, &Service{}, torrents, []*models.Automation{rule}, deletions, sharing)
+	require.Equal(t, map[string][]string{"/new": {"trigger", "cross-seed"}}, plan.move.byTarget)
+	ref := ruleRef{id: 3, name: "rule"}
+	require.Equal(t, map[string]ruleRef{"trigger": ref, "cross-seed": ref}, plan.move.rules)
+}
+
+// groupTestRule matches only the torrents on the tracker groupTestTracker, so a group member
+// on another tracker comes in only through the group.
+func groupTestRule(id int, conditions *models.ActionConditions) *models.Automation {
+	rule := planTestRule(id, conditions)
+	rule.TrackerPattern = "a.test"
+	return rule
+}
+
+const (
+	groupTestTracker  = "https://a.test/announce"
+	memberTestTracker = "https://b.test/announce"
+)
+
+// A move with a group takes the other members along, with the rule of the torrent. A member
+// already at the path stays out.
+func TestRunPlan_MoveTakesGroupMembers(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Tracker: groupTestTracker, SavePath: "/old", ContentPath: "/old/show"},
+		{Hash: "member", Tracker: memberTestTracker, SavePath: "/old", ContentPath: "/old/show"},
+		{Hash: "at-target", Tracker: memberTestTracker, SavePath: "/new", ContentPath: "/old/show"},
+		{Hash: "other", Tracker: memberTestTracker, SavePath: "/old", ContentPath: "/old/film"},
+	}
+	rule := groupTestRule(4, &models.ActionConditions{Move: &models.MoveAction{
+		Enabled: true, Path: "/new", GroupID: GroupCrossSeedContentPath,
+	}})
+
+	plan := planTestRunWith(t, &Service{}, torrents, []*models.Automation{rule}, nil, sharedFiles([2]string{"trigger", "member"}))
+	require.Equal(t, map[string][]string{"/new": {"member", "trigger"}}, plan.move.byTarget)
+	ref := ruleRef{id: 4, name: "rule"}
+	require.Equal(t, map[string]ruleRef{"trigger": ref, "member": ref}, plan.move.rules)
+}
+
+// planFilesReader answers with the file list of each hash.
+type planFilesReader map[string]qbt.TorrentFiles
+
+func (f planFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := f[hash]; ok {
+			out[hash] = files
+		}
+	}
+	return out, nil
+}
+
+func (planFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+// Two torrents directly in one save path have the same content path, so the group needs the
+// file lists to show that they share files.
+func TestRunPlan_MoveGroupInSharedSavePathChecksFiles(t *testing.T) {
+	triggerFiles := qbt.TorrentFiles{{Name: "show.mkv", Size: 100}}
+	for _, tc := range []struct {
+		name        string
+		memberFiles qbt.TorrentFiles
+		want        map[string][]string
+	}{
+		{name: "same files", memberFiles: triggerFiles, want: map[string][]string{"/new": {"member", "trigger"}}},
+		{name: "other files", memberFiles: qbt.TorrentFiles{{Name: "film.mkv", Size: 100}}, want: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "trigger", Tracker: groupTestTracker, SavePath: "/old", ContentPath: "/old"},
+				{Hash: "member", Tracker: memberTestTracker, SavePath: "/old", ContentPath: "/old"},
+			}
+			rule := groupTestRule(5, &models.ActionConditions{Move: &models.MoveAction{
+				Enabled: true, Path: "/new", GroupID: GroupCrossSeedContentPath,
+			}})
+			svc := &Service{filesReader: planFilesReader{"trigger": triggerFiles, "member": tc.memberFiles}}
+
+			plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil, sharedFiles([2]string{"trigger", "member"}))
+			require.Equal(t, tc.want, plan.move.byTarget)
+		})
+	}
+}
+
+// A category change with includeCrossSeeds takes the cross-seeds along, with the rule of the
+// torrent. A cross-seed already in the category stays out.
+func TestRunPlan_CategoryTakesCrossSeeds(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Tags: "x", Category: "tv"},
+		{Hash: "cross-seed", Category: "tv"},
+		{Hash: "in-category", Category: "archive"},
+		{Hash: "already", Tags: "x", Category: "archive"},
+	}
+	rule := planTestRule(6, &models.ActionConditions{Category: &models.CategoryAction{
+		Enabled: true, Category: "archive", IncludeCrossSeeds: true, Condition: tagsContain("x"),
+	}})
+	sharing := sharedFiles([2]string{"trigger", "cross-seed"}, [2]string{"trigger", "in-category"})
+
+	plan := planTestRunWith(t, &Service{}, torrents, []*models.Automation{rule}, nil, sharing)
+	require.Equal(t, map[string][]string{"archive": {"trigger", "cross-seed"}}, plan.category.byTarget)
+	ref := ruleRef{id: 6, name: "rule"}
+	require.Equal(t, map[string]ruleRef{"trigger": ref, "cross-seed": ref}, plan.category.rules)
+}
+
+// A category change with a group takes the other members along, with the rule of the
+// torrent. A rule without an ID changes only its own torrent.
+func TestRunPlan_CategoryTakesGroupMembers(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Tracker: groupTestTracker, Category: "tv", SavePath: "/data", ContentPath: "/data/show"},
+		{Hash: "member", Tracker: memberTestTracker, Category: "tv", SavePath: "/data", ContentPath: "/data/show"},
+	}
+	for _, tc := range []struct {
+		name   string
+		ruleID int
+		want   []string
+	}{
+		{name: "rule with an ID", ruleID: 7, want: []string{"trigger", "member"}},
+		{name: "rule without an ID", ruleID: 0, want: []string{"trigger"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := groupTestRule(tc.ruleID, &models.ActionConditions{Category: &models.CategoryAction{
+				Enabled: true, Category: "archive", GroupID: GroupCrossSeedContentPath,
+			}})
+
+			plan := planTestRunWith(t, &Service{}, torrents, []*models.Automation{rule}, nil, sharedFiles([2]string{"trigger", "member"}))
+			require.Equal(t, map[string][]string{"archive": tc.want}, plan.category.byTarget)
+			for _, hash := range tc.want {
+				require.Equal(t, ruleRef{id: tc.ruleID, name: "rule"}, plan.category.rules[hash])
+			}
+		})
+	}
 }
