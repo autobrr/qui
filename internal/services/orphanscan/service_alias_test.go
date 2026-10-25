@@ -7,6 +7,7 @@
 package orphanscan
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -135,6 +136,65 @@ func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 			require.NoFileExists(t, junk)
 			require.NoFileExists(t, stray)
 			require.FileExists(t, filepath.Join(target, "keep", "owned.mkv"))
+		})
+	}
+}
+
+// failFollowRootBackend fails each walk that follows its root, as a broken
+// mount below the link does.
+type failFollowRootBackend struct{ fsops.Backend }
+
+func (b failFollowRootBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	if !opts.FollowRoot {
+		return b.Backend.WalkDir(ctx, root, opts)
+	}
+	ch := make(chan fsops.WalkEntry, 1)
+	ch <- fsops.WalkEntry{Path: filepath.Join(root, "broken"), Err: errors.New("input/output error")}
+	close(ch)
+	return ch, nil
+}
+
+// The walk of an ignored symlinked save path can fail after the target is
+// walked, and the twins of its files stay listed at the target. The run is then
+// partial, so a scheduled run does not delete them by itself. A link whose
+// target is gone has no twins, so it does not make the run partial.
+func TestExecuteScan_IgnoredSymlinkedSavePathReadError(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		missing     bool
+		wantPartial bool
+	}{
+		{name: "read error makes the run partial", wantPartial: true},
+		{name: "missing target is not a walk error", missing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := orphanOnlyOptions{
+				scheduled:           true,
+				autoCleanupMaxFiles: 100,
+				torrentFileName:     "keep/owned.mkv",
+				ignorePaths:         func(d string) []string { return []string{filepath.Join(d, "mydata")} },
+				wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+					if tc.missing {
+						return b
+					}
+					return failFollowRootBackend{b}
+				},
+			}
+			f := newOrphanOnlyFixture(t, "orphanscan-ignored-link-read-error", opts, func(defaultSavePath string) {
+				link := filepath.Join(defaultSavePath, "mydata")
+				target := filepath.Join(defaultSavePath, "zz-real")
+				if tc.missing {
+					require.NoError(t, os.RemoveAll(link))
+				} else {
+					require.NoError(t, os.Rename(link, target))
+				}
+				require.NoError(t, os.Symlink(target, link))
+			})
+
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			// A partial run skips automatic cleanup before it starts a delete.
+			require.Equal(t, tc.wantPartial, run.Partial, "run message: %s", run.ErrorMessage)
 		})
 	}
 }

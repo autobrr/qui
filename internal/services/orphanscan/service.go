@@ -829,8 +829,15 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 				s.markCanceled(ctx, instanceID, runID)
 				return
 			}
-			// Ignored paths are often unmounted (#2483), so this is no walk error.
-			log.Debug().Err(err).Str("root", root).Msg("orphanscan: could not read an ignored symlinked save path")
+			// Ignored paths are often unmounted (#2483), so a missing target is
+			// no walk error. Any other error can leave the twins of its files
+			// listed at the target, so the run must not clean up by itself.
+			if isMissingRoot(err) {
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored symlinked save path is not on disk")
+				continue
+			}
+			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
+			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
 		}
 	}
 
