@@ -2624,3 +2624,19 @@ func TestReserveExports(t *testing.T) {
 	require.Equal(t, []string{"ready", "check-failed", "unresolved"}, hashes)
 	require.Equal(t, map[string]struct{}{"2:busy": {}, "2:ready": {}}, s.inFlightExports)
 }
+
+func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
+	// Another run exported the torrent after this run planned it.
+	s := &Service{
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
+		inFlightExports: map[string]struct{}{"2:done": {}},
+	}
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+
+	for activity := range results {
+		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
+	}
+	require.Empty(t, s.inFlightExports)
+}

@@ -5506,6 +5506,15 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 			defer cancel()
 
+			// Another run can export the torrent after this run planned it.
+			if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
+				log.Debug().
+					Str("hash", exec.hash).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Msg("automations: torrent reached target instance after the plan, skipping export")
+				return
+			}
+
 			// Fallback tracker domain from cached sync data; overridden by ExportTorrent if available
 			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
 
