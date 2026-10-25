@@ -74,3 +74,34 @@ func TestDeletionSelection_TrackerPatternPerRule(t *testing.T) {
 	require.Equal(t, 2, selection.byHash["b"].rule.id)
 	require.Equal(t, 1, selection.byHash["c"].rule.id)
 }
+
+// A later rule that claims a torrent still expands it, when an earlier rule's expansion
+// already took the torrent but with a narrower scope.
+func TestDeletionSelection_LaterClaimStillExpandsWiderScope(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Tags: "first", AddedOn: 1, SavePath: "/data", ContentPath: "/data/movie"},
+		{Hash: "b", Tags: "second", AddedOn: 2, SavePath: "/data", ContentPath: "/data/movie"},
+		{Hash: "c", AddedOn: 3, SavePath: "/library", ContentPath: "/library/movie"},
+	}
+	files := qbt.TorrentFiles{{Name: "movie/movie.mkv", Size: 10}}
+	evalCtx := &EvalContext{
+		SameInstanceContentByHash: sharingByContentPath(torrents),
+		CrossSeedFilesByHash:      map[string]qbt.TorrentFiles{"a": files, "b": files, "c": files},
+		hardlinkIndex: &HardlinkIndex{
+			DeleteSafeSignatureByHash:  map[string]string{"b": "x", "c": "x"},
+			DeleteSafeGroupBySignature: map[string][]string{"x": {"b", "c"}},
+		},
+	}
+	rule := func(id int, tag string, hardlinks bool) *models.Automation {
+		return &models.Automation{ID: id, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, IncludeHardlinks: hardlinks,
+				Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: tag}},
+		}}
+	}
+
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx, false)
+	require.Equal(t, 1, selection.byHash["b"].rule.id, "rule 1 claims first, so its expansion takes the cross-seed")
+	require.Contains(t, selection.byHash, "c", "rule 2 claims b with hardlinks, so the hardlink copy goes too")
+	require.Equal(t, 2, selection.byHash["c"].rule.id)
+	require.True(t, selection.byHash["c"].hardlinkCopy)
+}

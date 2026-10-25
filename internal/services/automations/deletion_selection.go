@@ -120,6 +120,12 @@ type deletionClaim struct {
 	rule *models.Automation
 }
 
+// ruleGroupKey names one keep-files group of one rule.
+type ruleGroupKey struct {
+	ruleID int
+	key    string
+}
+
 // selectDeletions builds the Deletion selection. The first delete rule that matches a
 // torrent wins it. A FREE_SPACE rule stops when its condition is satisfied. The claimed
 // triggers then expand to their Shared-file groups and cross-seeds in claim order.
@@ -175,11 +181,15 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 	}
 	// Torrents that an include-cross-seeds group took, so a later group does not check them again.
 	includedCrossSeeds := make(map[string]struct{})
+	// Groups whose members do not all match, so the next member does not check them again.
+	rejectedGroups := make(map[ruleGroupKey]struct{})
 	for _, claim := range claims {
-		if _, queued := sel.byHash[claim.hash]; queued {
+		// An earlier claim of the same rule already expanded this torrent. The expansion of
+		// another rule can be narrower, so the claim still expands.
+		if queued, ok := sel.byHash[claim.hash]; ok && queued.rule.id == claim.rule.ID {
 			continue
 		}
-		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds)
+		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds, rejectedGroups)
 	}
 	return sel
 }
@@ -248,6 +258,7 @@ func (s *Service) expandDeleteTrigger(
 	trigger qbt.Torrent,
 	rule *models.Automation,
 	includedCrossSeeds map[string]struct{},
+	rejectedGroups map[ruleGroupKey]struct{},
 ) {
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
@@ -307,6 +318,10 @@ func (s *Service) expandDeleteTrigger(
 		if idx == nil {
 			return
 		}
+		groupKey := ruleGroupKey{ruleID: rule.ID, key: idx.KeyForHash(trigger.Hash)}
+		if _, rejected := rejectedGroups[groupKey]; rejected {
+			return
+		}
 		members := idx.MembersForHash(trigger.Hash)
 		if len(members) == 0 ||
 			!s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, trigger.Hash, in.evalCtx.torrentsByHash) {
@@ -314,6 +329,7 @@ func (s *Service) expandDeleteTrigger(
 		}
 		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
 		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) {
+			rejectedGroups[groupKey] = struct{}{}
 			return
 		}
 		addAll(members, DeleteModeKeepFiles, "automations: removing torrent group (keeping files)", nil)
