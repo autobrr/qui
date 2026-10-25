@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"path"
 	"slices"
@@ -624,6 +625,16 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 	return backend.Paths(), nil
 }
 
+// walkedEndpoint names the SSH server and account a remote walk reads through
+// instance, and is empty for any other mode. The account is part of it because
+// a username change keeps the pin and can see other files.
+func walkedEndpoint(instance *models.Instance) string {
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
+		return ""
+	}
+	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort))
+}
+
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
 // as well as Write, because the walker spots a second path to a torrent's file
 // (a bind mount inside the scanned tree) only by its file identity.
@@ -691,7 +702,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// it, so a scan that cannot record it stops here instead of leaving a
 	// preview labeled "none".
 	mode := models.FilesystemAccessMode(instance)
-	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode); err != nil {
+	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, walkedEndpoint(instance)); err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled while saving filesystem mode")
 			return
@@ -844,6 +855,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 
 	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
+	// The default is incomplete, which refuses a remote delete, so a failed write only costs the confirm.
+	if err := s.store.UpdateRunIdentityComplete(ctx, runID, !keys.incomplete); err != nil {
+		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to record file identity")
+	}
 	maxFiles := settings.MaxFilesPerRun
 	if maxFiles <= 0 {
 		maxFiles = DefaultSettings().MaxFilesPerRun
@@ -905,12 +920,22 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		scanWarnings = append(scanWarnings, warnMsg)
 	}
 	partial := len(scanWarnings) > 0
-	var scanWarning string
 	if partial {
 		scanWarnings = append(scanWarnings, "Automatic cleanup is disabled for partial scans. Review the results before deleting files.")
-		scanWarning = strings.Join(scanWarnings, "\n\n")
+	}
+	// On the exec tier the only way to miss an identity is the walk falling back to sftp.
+	if keys.incomplete && len(allOrphans) > 0 && mode == models.FilesystemModeRemote && models.FilesystemCapabilitiesOf(instance).Identity {
+		scanWarnings = append(scanWarnings, IdentityIncompleteMessage)
+	}
+	scanWarning := strings.Join(scanWarnings, "\n\n")
+	if partial {
 		if err := s.store.UpdateRunPartial(ctx, runID, scanWarning); err != nil {
 			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save partial scan result: %v", err))
+			return
+		}
+	} else if scanWarning != "" {
+		if err := s.store.UpdateRunWarning(ctx, runID, scanWarning); err != nil {
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save scan warning: %v", err))
 			return
 		}
 	}

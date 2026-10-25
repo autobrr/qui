@@ -17,6 +17,8 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 const orphanFileName = "orphan.txt"
@@ -1155,4 +1157,69 @@ func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A regular file without a key can hide a second path to a torrent's file, at
+// the in-use site as much as at the orphan site, so either one marks the run's
+// identity incomplete (#3236).
+func TestScanWalker_FileWithoutAKeyMarksIdentityIncomplete(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(string(filepath.Separator), "data")
+	inUse := filepath.Join(root, "in-use.mkv")
+	orphan := filepath.Join(root, "orphan.mkv")
+	ignored := filepath.Join(root, "ignored", "file.mkv")
+	instance := &models.Instance{ID: 1, SSHHost: "box.example", SSHPort: 22}
+	old := time.Now().Add(-time.Hour)
+	file := func(path string, id byte) fsops.WalkEntry {
+		entry := fsops.WalkEntry{Path: path, Size: 1, ModTime: old, Nlinks: 1}
+		if id != 0 {
+			entry.FileID = hardlink.RemoteFileID([]byte{id})
+		}
+		return entry
+	}
+	dir := fsops.WalkEntry{Path: filepath.Join(root, "sub"), IsDir: true, Mode: fs.ModeDir, ModTime: old}
+
+	for _, tc := range []struct {
+		name           string
+		entries        []fsops.WalkEntry
+		wantIncomplete bool
+	}{
+		{"every file keyed", []fsops.WalkEntry{dir, file(inUse, 1), file(orphan, 2)}, false},
+		{"in-use file without a key", []fsops.WalkEntry{file(inUse, 0), file(orphan, 2)}, true},
+		{"orphan without a key", []fsops.WalkEntry{file(inUse, 1), file(orphan, 0)}, true},
+		{"ignored file without a key is never listed", []fsops.WalkEntry{file(inUse, 1), file(ignored, 0)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tfm := NewTorrentFileMap(fsops.HostPaths)
+			tfm.Add(inUse)
+			protected := newTestProtected(t, fsops.HostPaths, []string{filepath.Join(root, "ignored")}, tfm)
+			keys := newFileKeys()
+			backend := &fakeWalkBackend{Backend: local.NewBackend(), entries: tc.entries}
+			if _, _, _, err := walkScanRootWithUnitFilter(t.Context(), root, protected, 0, 0, nil, backend, instance, false, keys); err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+			if keys.incomplete != tc.wantIncomplete {
+				t.Fatalf("incomplete = %v, want %v", keys.incomplete, tc.wantIncomplete)
+			}
+		})
+	}
+
+	t.Run("symlinked save path with a torrent file it cannot key", func(t *testing.T) {
+		t.Parallel()
+
+		tfm := NewTorrentFileMap(fsops.HostPaths)
+		tfm.Add(inUse)
+		keys := newFileKeys()
+		backend := &fakeWalkBackend{Backend: local.NewBackend(), entries: []fsops.WalkEntry{file(inUse, 0)}}
+		// Without Identity the row reports no FileIDErr to fail on, as over sftp.
+		if err := recordInUse(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), backend, instance, keys); err != nil {
+			t.Fatalf("recordInUse: %v", err)
+		}
+		if !keys.incomplete {
+			t.Fatal("a torrent file recordInUse cannot key must mark identity incomplete")
+		}
+	})
 }

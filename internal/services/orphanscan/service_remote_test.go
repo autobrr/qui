@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // switchableInstance is instance 1 as both the pool and the service read it,
@@ -67,6 +68,33 @@ func (b countingBackend) Remove(ctx context.Context, path string, opts fsops.Rem
 	return b.Backend.Remove(ctx, path, opts)
 }
 
+// noIdentityBackend reports files without their identity, as the sftp tier does.
+type noIdentityBackend struct{ fsops.Backend }
+
+func (b noIdentityBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	in, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			if !e.IsDir {
+				e.FileID, e.Nlinks, e.FileIDErr = hardlink.FileID{}, 0, errors.New("no identity over sftp")
+			}
+			select {
+			case out <- e:
+			case <-ctx.Done():
+				for range in { //nolint:revive // drain to release the inner walk
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
 type modeFixture struct {
 	svc      *Service
 	store    *models.OrphanScanStore
@@ -103,7 +131,12 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 	removes := &atomic.Int32{}
 	local := countingBackend{Backend: newTestBackend(), removes: removes}
 	if remoteBackend == nil {
-		remoteBackend = func(*models.Instance) fsops.Backend { return local }
+		remoteBackend = func(inst *models.Instance) fsops.Backend {
+			if inst.SSHTier == models.SSHTierExec {
+				return local
+			}
+			return noIdentityBackend{local}
+		}
 	}
 
 	events := make(chan notifications.Event, 4)
@@ -202,40 +235,84 @@ func sftpPath(p string) string {
 	return p
 }
 
-func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
-	t.Parallel()
+// newSSHFixture is newModeFixture reached through a test SSH server that
+// serves the fixture's tree, with the row's tier set to tier.
+func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models.SSHTier) (*modeFixture, *sshtest.Server) {
+	t.Helper()
 
 	hostKey := sshtest.NewSigner()
-	server := sshtest.NewServer(t, hostKey, sshtest.ExecSFTPOnly)
+	server := sshtest.NewServer(t, hostKey, exec)
 	host, portText, err := net.SplitHostPort(server.Addr)
 	require.NoError(t, err)
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
 	var pool *sshpool.Pool
-	f := newModeFixture(t, "orphanscan-remote-e2e", models.FilesystemModeRemote, func(inst *models.Instance) fsops.Backend {
-		return remote.New(pool, inst)
+	removes := &atomic.Int32{}
+	f := newModeFixture(t, name, models.FilesystemModeRemote, func(inst *models.Instance) fsops.Backend {
+		return countingBackend{Backend: remote.New(pool, inst), removes: removes}
 	})
+	f.removes = removes
 	pool = sshpool.NewPool(sshpool.NewDialer(sftpCreds{rows: f.instance, key: sshtest.PrivateKey(""), pin: hostKey.PublicKey().Marshal()}))
 	t.Cleanup(pool.Close)
 	f.instance.mu.Lock()
 	f.instance.inst.SSHHost, f.instance.inst.SSHPort, f.instance.inst.SSHUsername = host, port, "qui"
+	f.instance.inst.SSHTier = tier
 	f.instance.mu.Unlock()
 	root := sftpPath(filepath.Dir(f.orphan))
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
+	return f, server
+}
+
+func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-e2e", sshtest.ExecSFTPOnly, models.SSHTierSFTP)
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
 	require.Positive(t, server.Accepts(), "the walk must go over SSH")
+	require.False(t, run.IdentityComplete, "sftp reports no file identity")
+	require.NotContains(t, run.ErrorMessage, IdentityIncompleteMessage, "the sftp tier never claims identity, so its preview needs no warning")
 
 	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
+}
+
+// The run records what its walk read and the server it read it from, from the
+// row the backend was built from (#3236).
+func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-exec-identity", sshtest.ExecGNU, models.SSHTierExec)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.True(t, run.IdentityComplete)
+	require.Empty(t, run.ErrorMessage)
+	require.Equal(t, "qui@"+server.Addr, run.FilesystemEndpoint)
+}
+
+// A row on the exec tier whose find is refused walks over sftp, so the row's
+// Identity says nothing about what the preview read (#3236).
+func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
+	t.Parallel()
+
+	f, _ := newSSHFixture(t, "orphanscan-remote-exec-fallback", sshtest.ExecSFTPOnly, models.SSHTierExec)
+	require.True(t, models.FilesystemCapabilitiesOf(&f.instance.inst).Identity, "the row claims identity")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.False(t, run.IdentityComplete)
+	require.Contains(t, run.ErrorMessage, IdentityIncompleteMessage)
+	require.False(t, run.Partial, "every path was read, so the run is not partial")
+	f.requireNothingDeleted(t)
 }
 
 // flippingBackend calls flip once root has handed out enough entries that the

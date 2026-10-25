@@ -30,6 +30,10 @@ var ErrFilesystemModeChanged = errors.New("filesystem access changed since the s
 // stored on the failed run and returned in the 409 body.
 const FilesystemModeChangedMessage = "Filesystem access for this instance changed since the scan. Run a new scan before deleting."
 
+// IdentityIncompleteMessage is the warning on a remote run whose walk listed a
+// file without its identity, which the exec tier only does when find failed.
+const IdentityIncompleteMessage = "Some files were listed without their file identity, so this preview cannot be deleted. The remote server's find command failed or the folder holds more entries than it can list at once. Without identity, a second path to a torrent's file looks like an orphan. Export the list, or fix the server and run a new scan."
+
 // ScanModeChangedMessage is stored on a scan that failed because the
 // instance's filesystem mode changed while it ran.
 const ScanModeChangedMessage = "Filesystem access for this instance changed during the scan. Run a new scan."

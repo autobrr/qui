@@ -82,11 +82,15 @@ func runFilesystemModeRoundTrip(t *testing.T, newDB func(testing.TB, string) *da
 	created, err := store.GetRun(ctx, completedID)
 	require.NoError(t, err)
 	require.Equal(t, models.FilesystemModeNone, created.FilesystemMode, "a new run is not local until the scan says so")
-	require.NoError(t, store.UpdateRunFilesystemMode(ctx, completedID, models.FilesystemModeRemote))
+	require.False(t, created.IdentityComplete, "a run has no identity until its walk says so")
+	const endpoint = "qui@box.example:22"
+	require.NoError(t, store.UpdateRunFilesystemMode(ctx, completedID, models.FilesystemModeRemote, endpoint))
+	require.NoError(t, store.UpdateRunIdentityComplete(ctx, completedID, true))
 	require.NoError(t, store.UpdateRunCompleted(ctx, completedID, 0, 0, 0, ""))
 	activeID, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
 	require.NoError(t, err)
-	require.NoError(t, store.UpdateRunFilesystemMode(ctx, activeID, models.FilesystemModeRemote))
+	require.NoError(t, store.UpdateRunFilesystemMode(ctx, activeID, models.FilesystemModeRemote, endpoint))
+	require.NoError(t, store.UpdateRunIdentityComplete(ctx, activeID, true))
 
 	reads := map[string]func() ([]*models.OrphanScanRun, error){
 		"GetRun": func() ([]*models.OrphanScanRun, error) {
@@ -115,6 +119,8 @@ func runFilesystemModeRoundTrip(t *testing.T, newDB func(testing.TB, string) *da
 		for _, run := range runs {
 			require.NotNil(t, run, name)
 			require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode, "%s run %d", name, run.ID)
+			require.Equal(t, endpoint, run.FilesystemEndpoint, "%s run %d", name, run.ID)
+			require.True(t, run.IdentityComplete, "%s run %d", name, run.ID)
 		}
 	}
 }
@@ -147,6 +153,8 @@ func runLegacyRunBackfill(t *testing.T, newDB func(testing.TB, string) *database
 	run, err := models.NewOrphanScanStore(db).GetRun(ctx, runID)
 	require.NoError(t, err)
 	require.Equal(t, models.FilesystemModeLocal, run.FilesystemMode)
+	require.False(t, run.IdentityComplete, "an old remote preview must read as refused")
+	require.Empty(t, run.FilesystemEndpoint)
 }
 
 func TestOrphanScanStore_FailPreviewReadyRunLeavesOtherStatusesAlone(t *testing.T) {
@@ -200,13 +208,17 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.NoError(t, err)
 		return instance.ID
 	}
-	preview := func(instanceID int, mode models.FilesystemMode) int64 {
+	previewWithIdentity := func(instanceID int, mode models.FilesystemMode, identityComplete bool) int64 {
 		runID, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
 		require.NoError(t, err)
-		require.NoError(t, store.UpdateRunFilesystemMode(ctx, runID, mode))
+		require.NoError(t, store.UpdateRunFilesystemMode(ctx, runID, mode, ""))
+		require.NoError(t, store.UpdateRunIdentityComplete(ctx, runID, identityComplete))
 		require.NoError(t, store.UpdateRunFoundStats(ctx, runID, 3, false, 30))
 		require.NoError(t, store.UpdateRunStatus(ctx, runID, "preview_ready"))
 		return runID
+	}
+	preview := func(instanceID int, mode models.FilesystemMode) int64 {
+		return previewWithIdentity(instanceID, mode, false)
 	}
 	status := func(runID int64) string {
 		run, err := store.GetRun(ctx, runID)
@@ -214,7 +226,7 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		return run.Status
 	}
 
-	t.Run("remote preview is canceled", func(t *testing.T) {
+	t.Run("remote preview without identity is canceled", func(t *testing.T) {
 		instanceID := newInstance()
 		old := preview(instanceID, models.FilesystemModeRemote)
 		active, err := store.GetMostRecentActiveRun(ctx, instanceID)
@@ -225,6 +237,27 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.NoError(t, err)
 		require.Equal(t, "canceled", status(old))
 		require.Equal(t, "pending", status(runID))
+	})
+
+	// A remote preview that read every identity can be confirmed, so it blocks like a local one.
+	t.Run("remote preview with complete identity blocks", func(t *testing.T) {
+		instanceID := newInstance()
+		old := previewWithIdentity(instanceID, models.FilesystemModeRemote, true)
+		_, err := store.CreateRunIfNoActive(ctx, instanceID, "scheduled")
+		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
+		require.Equal(t, "preview_ready", status(old))
+		active, err := store.GetMostRecentActiveRun(ctx, instanceID)
+		require.NoError(t, err)
+		require.NotNil(t, active)
+		require.Equal(t, old, active.ID)
+	})
+
+	t.Run("local preview with incomplete identity still blocks", func(t *testing.T) {
+		instanceID := newInstance()
+		old := previewWithIdentity(instanceID, models.FilesystemModeLocal, false)
+		_, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
+		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
+		require.Equal(t, "preview_ready", status(old))
 	})
 
 	t.Run("local preview still blocks", func(t *testing.T) {

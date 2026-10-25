@@ -184,7 +184,7 @@ func TestOrphanScan_ConfirmConflictsNameTheirReason(t *testing.T) {
 	previewRun := func(mode models.FilesystemMode) int64 {
 		runID, err := store.CreateRunIfNoActive(t.Context(), instance.ID, "manual")
 		require.NoError(t, err)
-		require.NoError(t, store.UpdateRunFilesystemMode(t.Context(), runID, mode))
+		require.NoError(t, store.UpdateRunFilesystemMode(t.Context(), runID, mode, ""))
 		require.NoError(t, store.UpdateRunStatus(t.Context(), runID, "preview_ready"))
 		return runID
 	}
@@ -222,7 +222,7 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	previewWithFiles := func(instanceID int, mode models.FilesystemMode) int64 {
 		runID, err := store.CreateRunIfNoActive(t.Context(), instanceID, "manual")
 		require.NoError(t, err)
-		require.NoError(t, store.UpdateRunFilesystemMode(t.Context(), runID, mode))
+		require.NoError(t, store.UpdateRunFilesystemMode(t.Context(), runID, mode, ""))
 		require.NoError(t, store.UpdateRunFoundStats(t.Context(), runID, 2, false, 20))
 		require.NoError(t, store.UpdateRunStatus(t.Context(), runID, "preview_ready"))
 		return runID
