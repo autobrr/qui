@@ -5382,27 +5382,6 @@ paths:
         '500':
           description: Failed to analyze torrent
 
-  /api/cross-seed/torrents/{instanceID}/{hash}/async-status:
-    get:
-      tags:
-        - Cross-Seed
-      summary: Get async filtering status
-      description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
-      parameters:
-        - $ref: '#/components/parameters/instanceID'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Current async filtering state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AsyncIndexerFilteringState'
-        '400':
-          description: Invalid parameters
-        '500':
-          description: Failed to get filtering status
-
   /api/cross-seed/torrents/{instanceID}/{hash}/search:
     post:
       tags:
@@ -9083,32 +9062,6 @@ components:
         disc_marker:
           type: string
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
-
-    AsyncIndexerFilteringState:
-      type: object
-      properties:
-        capabilities_completed:
-          type: boolean
-        content_completed:
-          type: boolean
-        capability_indexers:
-          type: array
-          items:
-            type: integer
-        filtered_indexers:
-          type: array
-          items:
-            type: integer
-        excluded_indexers:
-          type: object
-          additionalProperties:
-            type: string
-        content_matches:
-          type: array
-          items:
-            type: string
-        error:
-          type: string
 
     CrossSeedTorrentSearchRequest:
       type: object

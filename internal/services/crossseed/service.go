@@ -10389,53 +10389,6 @@ func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) st
 	return fallback
 }
 
-// GetAsyncFilteringStatus returns the current status of async filtering for a torrent.
-// This can be used by the UI to poll for updates after capability filtering is complete.
-func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, hash string) (*AsyncIndexerFilteringState, error) {
-	if instanceID <= 0 {
-		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
-	}
-	if strings.TrimSpace(hash) == "" {
-		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
-	}
-
-	// Try to get cached state first
-	if s.asyncFilteringCache != nil {
-		cacheKey := asyncFilteringCacheKey(instanceID, hash)
-		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
-			cachedSnapshot := cached.Clone()
-			if cachedSnapshot != nil {
-				log.Trace().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Bool("capabilitiesCompleted", cachedSnapshot.CapabilitiesCompleted).
-					Bool("contentCompleted", cachedSnapshot.ContentCompleted).
-					Msg("[CROSSSEED-ASYNC] Retrieved cached filtering status")
-				return cachedSnapshot, nil
-			}
-		}
-	}
-
-	// If no cached state, run analysis to generate initial state
-	// This handles cases where the cache has expired or this is a new request
-	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return a snapshot: the live state is shared with the background worker
-	// (and the cache), and the handler marshals the result to JSON.
-	snapshot := asyncResult.FilteringState.Clone()
-	log.Trace().
-		Str("torrentHash", hash).
-		Int("instanceID", instanceID).
-		Bool("capabilitiesCompleted", snapshot.CapabilitiesCompleted).
-		Bool("contentCompleted", snapshot.ContentCompleted).
-		Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
-
-	return snapshot, nil
-}
-
 // filterIndexersByExistingContent removes indexers for which we already have matching content
 // with the same tracker domains. This reduces redundant cross-seed searches by avoiding indexers
 // we already have from the same tracker sources.

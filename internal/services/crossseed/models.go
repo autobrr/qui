@@ -396,7 +396,6 @@ type AsyncIndexerFilteringState struct {
 	// contentType records which content type this filtering run was computed
 	// for; category mapping rules can change a torrent's type at runtime, so
 	// readers must not reuse a run computed for a different type (#2313).
-	// Unexported to stay out of the /async-status API payload.
 	contentType string
 
 	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent

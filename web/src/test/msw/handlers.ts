@@ -88,17 +88,6 @@ export const handlers = [
     HttpResponse.json({ source_torrent: null, results: [], cache: undefined })
   ),
 
-  http.get("*/api/cross-seed/torrents/:instanceId/:hash/async-status", () =>
-    HttpResponse.json({
-      capabilities_completed: true,
-      content_completed: true,
-      capability_indexers: [],
-      filtered_indexers: [],
-      excluded_indexers: {},
-      content_matches: [],
-    })
-  ),
-
   http.post("*/api/cross-seed/torrents/:instanceId/:hash/apply", () =>
     HttpResponse.json({ results: [] })
   ),

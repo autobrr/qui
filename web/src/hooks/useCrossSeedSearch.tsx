@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -63,9 +63,6 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
-
-  const crossSeedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const crossSeedPollingInFlightRef = useRef(false)
 
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -251,11 +248,15 @@ export function useCrossSeedSearch(instanceId: number) {
     runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
   }, [crossSeedTorrent, runCrossSeedSearch])
 
-  const hasEnabledCrossSeedIndexers = sortedEnabledIndexers.length > 0
+  const gazelleConfigured = Boolean(
+    crossSeedSettings?.gazelleEnabled &&
+    ((crossSeedSettings.redactedApiKey ?? "").trim() || (crossSeedSettings.orpheusApiKey ?? "").trim())
+  )
+  const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || gazelleConfigured
 
   const handleCrossSeedSearch = useCallback(
     (torrent: Torrent) => {
-      if (!hasEnabledCrossSeedIndexers) {
+      if (!canCrossSeedSearch) {
         toast.error(t("hooks.search.noIndexers"))
         return
       }
@@ -297,7 +298,7 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
     },
-    [hasEnabledCrossSeedIndexers, instanceId, t]
+    [canCrossSeedSearch, instanceId, t]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {
@@ -482,75 +483,6 @@ export function useCrossSeedSearch(instanceId: number) {
   const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0 ? t("hooks.search.refreshReadyIn", { seconds: Math.ceil(crossSeedRefreshRemaining / 1000) }) : undefined
   const canForceCrossSeedRefresh = !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
-  useEffect(() => {
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
-
-    if (
-      !sourceTorrent ||
-      sourceTorrent.contentFilteringCompleted ||
-      !crossSeedDialogOpen ||
-      crossSeedPollingRef.current
-    ) {
-      return
-    }
-
-    const pollForUpdates = async () => {
-      if (crossSeedPollingInFlightRef.current) {
-        return
-      }
-
-      crossSeedPollingInFlightRef.current = true
-      try {
-        if (!sourceTorrent.hash) {
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-          return
-        }
-
-        const status = await api.getAsyncFilteringStatus(instanceId, sourceTorrent.hash)
-
-        if (status.contentCompleted) {
-          const updatedAnalysis = await api.analyzeTorrentForCrossSeedSearch(instanceId, sourceTorrent.hash)
-
-          setCrossSeedSearchResponse(prev => (prev ? { ...prev, sourceTorrent: updatedAnalysis } : null))
-
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to poll async filtering status:", error)
-        if (crossSeedPollingRef.current) {
-          clearInterval(crossSeedPollingRef.current)
-          crossSeedPollingRef.current = null
-        }
-      } finally {
-        crossSeedPollingInFlightRef.current = false
-      }
-    }
-
-    crossSeedPollingRef.current = setInterval(pollForUpdates, 500)
-
-    return () => {
-      if (crossSeedPollingRef.current) {
-        clearInterval(crossSeedPollingRef.current)
-        crossSeedPollingRef.current = null
-      }
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [crossSeedDialogOpen, crossSeedSearchResponse, instanceId])
-
-  useEffect(() => {
-    if (!crossSeedDialogOpen && crossSeedPollingRef.current) {
-      clearInterval(crossSeedPollingRef.current)
-      crossSeedPollingRef.current = null
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [crossSeedDialogOpen])
-
   const crossSeedDialog = (
     <CrossSeedDialog
       open={crossSeedDialogOpen}
@@ -565,6 +497,7 @@ export function useCrossSeedSearch(instanceId: number) {
       error={crossSeedSearchError}
       applyResult={crossSeedApplyResult}
       indexerOptions={crossSeedIndexerOptions}
+      gazelleConfigured={gazelleConfigured}
       indexerMode={crossSeedIndexerMode}
       selectedIndexerIds={crossSeedIndexerSelection}
       indexerNameMap={crossSeedIndexerNameMap}
@@ -598,7 +531,7 @@ export function useCrossSeedSearch(instanceId: number) {
   )
 
   return {
-    canCrossSeedSearch: hasEnabledCrossSeedIndexers,
+    canCrossSeedSearch,
     isCrossSeedSearching: crossSeedSearchLoading || crossSeedSubmitting,
     openCrossSeedSearch: handleCrossSeedSearch,
     crossSeedDialog,

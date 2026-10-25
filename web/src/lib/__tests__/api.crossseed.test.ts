@@ -178,7 +178,6 @@ describe("api.crossseed contract", () => {
         // normalizeExcludedIndexerMap: string keys -> numeric, non-numeric dropped.
         excludedIndexers: { 3: "no caps" },
         contentMatches: ["file.mkv"],
-        contentFilteringCompleted: true,
       })
     })
   })
@@ -373,58 +372,6 @@ describe("api.crossseed contract", () => {
       const result = await api.searchCrossSeedTorrent(1, "abc")
 
       expect(result.queryDegraded).toBe("arr_no_ids")
-    })
-  })
-
-  describe("getAsyncFilteringStatus", () => {
-    it("GETs async-status with raw interpolation and remaps snake_case state", async () => {
-      const captured = captureNext(
-        "get",
-        "*/api/cross-seed/torrents/:instanceId/:hash/async-status",
-        () =>
-          HttpResponse.json({
-            capabilities_completed: true,
-            content_completed: false,
-            capability_indexers: [1, 2],
-            filtered_indexers: [1],
-            excluded_indexers: { "2": "blocked" },
-            content_matches: ["a.mkv"],
-          })
-      )
-
-      const result = await api.getAsyncFilteringStatus(8, "zz")
-
-      const req = captured.value!.request
-      expect(req.method).toBe("GET")
-      expect(new URL(req.url).pathname).toBe("/api/cross-seed/torrents/8/zz/async-status")
-      expect(captured.value!.body).toBe("")
-      expect(result).toEqual({
-        capabilitiesCompleted: true,
-        contentCompleted: false,
-        capabilityIndexers: [1, 2],
-        filteredIndexers: [1],
-        excludedIndexers: { 2: "blocked" },
-        contentMatches: ["a.mkv"],
-      })
-    })
-
-    it("defaults excludedIndexers to {} when the map is absent", async () => {
-      server.use(
-        http.get("*/api/cross-seed/torrents/:instanceId/:hash/async-status", () =>
-          HttpResponse.json({
-            capabilities_completed: false,
-            content_completed: false,
-            capability_indexers: [],
-            filtered_indexers: [],
-            // excluded_indexers omitted -> normalizeExcludedIndexerMap(undefined)
-            // returns undefined, then `|| {}` defaults to empty object.
-            content_matches: [],
-          })
-        )
-      )
-
-      const result = await api.getAsyncFilteringStatus(1, "h")
-      expect(result.excludedIndexers).toEqual({})
     })
   })
 
