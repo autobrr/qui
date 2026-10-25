@@ -442,8 +442,13 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 		if entry.Err != nil {
 			// As in the scan walk, a cut connection must not read as a denied
 			// subtree, or a cut-short tree would protect less than it should.
+			// A subtree that vanished during the walk has no files left to
+			// protect, and its error must not read as a missing target.
 			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
 				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
+				continue
+			}
+			if errors.Is(entry.Err, fs.ErrNotExist) && entry.Path != root {
 				continue
 			}
 			return entry.Err

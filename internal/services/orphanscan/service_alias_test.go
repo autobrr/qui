@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -197,6 +198,70 @@ func TestExecuteScan_IgnoredSymlinkedSavePathReadError(t *testing.T) {
 			require.Equal(t, tc.wantPartial, run.Partial, "run message: %s", run.ErrorMessage)
 		})
 	}
+}
+
+// vanishFollowRootBackend removes gone when a walk that follows its root
+// emits its first entry below the root, as a folder deleted mid-walk does.
+type vanishFollowRootBackend struct {
+	fsops.Backend
+	gone string
+}
+
+func (b vanishFollowRootBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil || !opts.FollowRoot {
+		return ch, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		removed := false
+		for entry := range ch {
+			if !removed && entry.Path != root {
+				removed = true
+				_ = os.RemoveAll(b.gone)
+			}
+			out <- entry
+		}
+	}()
+	return out, nil
+}
+
+// A folder below the target of an ignored symlinked save path can vanish
+// while it is walked. It has no files left to protect, so the walk goes on
+// and the torrent's file at the target is not listed.
+func TestExecuteScan_IgnoredSymlinkedSavePathVanishedFolder(t *testing.T) {
+	var target, gone string
+	opts := orphanOnlyOptions{
+		torrentFileName: "keep/owned.mkv",
+		ignorePaths:     func(d string) []string { return []string{filepath.Join(d, "mydata")} },
+		wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+			return vanishFollowRootBackend{Backend: b, gone: gone}
+		},
+	}
+	f := newOrphanOnlyFixture(t, "orphanscan-ignored-link-vanished", opts, func(defaultSavePath string) {
+		link := filepath.Join(defaultSavePath, "mydata")
+		target = filepath.Join(defaultSavePath, "zz-real")
+		gone = filepath.Join(target, "ab-gone")
+		require.NoError(t, os.Rename(link, target))
+		require.NoError(t, os.Symlink(target, link))
+		// More files than the walk buffers, so the walk is still in aa-fill
+		// when ab-gone is removed.
+		for i := range 128 {
+			writeFile(t, filepath.Join(target, "aa-fill", fmt.Sprintf("%03d.mkv", i)))
+		}
+		writeFile(t, filepath.Join(gone, "x.mkv"))
+	})
+	require.NoDirExists(t, gone)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.False(t, run.Partial, "run message: %s", run.ErrorMessage)
+	owned := filepath.Join(target, "keep", "owned.mkv")
+	require.False(t, slices.Contains(f.listedPaths(t), owned), "the torrent's file is listed")
+
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.FileExists(t, owned)
 }
 
 // A walk of a symlinked root lists nothing, whatever the files below it are:
