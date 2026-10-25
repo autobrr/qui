@@ -130,7 +130,8 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		failedRules: make(map[int]error),
 	}
 	evalCtx := in.evalCtx
-	// A torrent is about 2 KB, so build the map only for the modes that expand groups.
+	// A torrent is about 2 KB. Build the map only for the modes that expand groups, so the
+	// preview of another mode does not pay for it. The run builds the map later in any case.
 	if evalCtx.torrentsByHash == nil && slices.ContainsFunc(in.rules, deleteExpandsGroups) {
 		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(in.torrents))
 		for _, torrent := range in.torrents {
@@ -166,10 +167,10 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 	evalCtx.PersistFreeSpaceSourceState()
 
 	// The sort order is final now, so pointers into in.torrents stay valid.
-	triggers := make(map[string]*qbt.Torrent, len(sel.triggers))
+	triggerTorrents := make(map[string]*qbt.Torrent, len(sel.triggers))
 	for i := range in.torrents {
 		if sel.isClaimed(in.torrents[i].Hash) {
-			triggers[in.torrents[i].Hash] = &in.torrents[i]
+			triggerTorrents[in.torrents[i].Hash] = &in.torrents[i]
 		}
 	}
 	// Torrents that an include-cross-seeds group took, so a later group does not check them again.
@@ -178,7 +179,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		if _, queued := sel.byHash[claim.hash]; queued {
 			continue
 		}
-		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggers[claim.hash], claim.rule, includedCrossSeeds)
+		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds)
 	}
 	return sel
 }
