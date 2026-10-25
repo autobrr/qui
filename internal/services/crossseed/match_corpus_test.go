@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -24,8 +25,9 @@ import (
 // GLOSSARY.md). A path that gives a verdict other than the row expects fails the
 // test, unless the row lists that difference with a reason.
 //
-// Known gap: Dir Scan is not in the corpus. Its comparison lives in the dirscan
-// package, and #3036 decides when it moves to the shared release reading.
+// Dir Scan is not in the corpus, because the dirscan package imports this one.
+// Its title check runs the title rule of the Match verdict, and
+// TestRefineDirScanMatchDecision_TitlesMatch pins its pairs.
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.
@@ -46,7 +48,7 @@ type matchPath string
 const (
 	pathSearch       matchPath = "search classifier"
 	pathRetry        matchPath = "retry step"
-	pathApply        matchPath = "apply replay"
+	pathApply        matchPath = "apply"
 	pathSeasonPack   matchPath = "season pack check"
 	pathLocalMatches matchPath = "Local matches"
 	pathPrefilter    matchPath = "content prefilter"
@@ -66,20 +68,10 @@ type corpusDifference struct {
 
 // corpusTickets are the open issues that known differences name. Add a ticket
 // with its first known difference, and remove it with its last one.
-var corpusTickets = []int{
-	3036, // read a release name in one module
-	3037, // decide every match through one verdict
-}
+var corpusTickets = []int{}
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
 	return corpusDifference{verdict: verdict, reason: reason}
-}
-
-func knownDifference(verdict corpusVerdict, issue int, reason string) corpusDifference {
-	if issue == 0 {
-		panic("a known difference must name a ticket: " + reason)
-	}
-	return corpusDifference{verdict: verdict, reason: reason, issue: issue}
 }
 
 // corpusRow is one release-name pair. The source is the torrent that the user
@@ -96,11 +88,15 @@ type corpusRow struct {
 	candidateFiles qbt.TorrentFiles
 	// titles are the Sonarr alternate titles of the show. Only the paths that look
 	// the show up hold them.
-	titles      []string
-	episodeMap  *models.EpisodeMap
-	rescue      bool
-	want        corpusVerdict
-	differences map[matchPath]corpusDifference
+	titles     []string
+	episodeMap *models.EpisodeMap
+	rescue     bool
+	// searchSource seeds a second local torrent for apply: the one that search
+	// compared, a local copy of the candidate. Apply keeps the stored verdict
+	// for it, and the source gets a new Match verdict.
+	searchSource string
+	want         corpusVerdict
+	differences  map[matchPath]corpusDifference
 }
 
 const (
@@ -120,6 +116,20 @@ func corpusPackFiles(dir, episodeName string) qbt.TorrentFiles {
 		})
 	}
 	return files
+}
+
+// corpusPackWithBonus is a pack of ten episodes and a bonus video that is
+// larger than each episode.
+func corpusPackWithBonus(dir string) qbt.TorrentFiles {
+	files := corpusPackFiles(dir, "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+	return append(files, qbt.TorrentFile{Name: dir + "/Extras/Behind the Scenes (1080p).mkv", Size: 2 * corpusEpisodeSize})
+}
+
+// corpusPackWithSpecial is a pack of ten episodes and a season 0 special that
+// is larger than each episode.
+func corpusPackWithSpecial(dir string) qbt.TorrentFiles {
+	files := corpusPackFiles(dir, "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+	return append(files, qbt.TorrentFile{Name: dir + "/Kaiju Squad (2020) - S00E01 - Special (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv", Size: 3 * corpusEpisodeSize})
 }
 
 // corpusEpisodeWithNFO is an episode with an NFO file, so its total size is not
@@ -147,14 +157,14 @@ func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpus
 }
 
 const (
-	reasonNoAlternateTitles = "This path does not look the show up, so it holds no Sonarr alternate titles."
-	reasonNoEpisodeMap      = "This path holds no episode map, because qui looks up no Sonarr data for local names."
+	reasonNoAlternateTitles = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoEpisodeMap      = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonNoRelabel         = "The web source relabel is a search rule. This path does not run it."
-	reasonDedupKey          = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
-	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
+	reasonDedupNoRelabel    = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
+	reasonDedupNoExactSize  = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
+	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonDedupNoSizes      = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
-	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 )
 
 var corpusRows = []corpusRow{
@@ -164,12 +174,22 @@ var corpusRows = []corpusRow{
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
+		searchSource:  "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		want:          corpusMatch,
 	},
 	{
 		name:          "P2P episode in spaced and dotted style",
 		source:        "Kaiju Squad S02E05 1080p AMZN WEB-DL DDP5.1 H.264-GRP",
 		candidate:     "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// The episode file has no season, so it gives apply no file key, and apply compares the absolute episodes.
+		name:          "anime absolute episode with and without a leading zero",
+		source:        "[KaijuSubs] Kaiju Squad - 5 (1080p)",
+		candidate:     "[KaijuSubs] Kaiju Squad - 05 (1080p)",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
@@ -183,10 +203,10 @@ var corpusRows = []corpusRow{
 		episodeMap:    &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81},
 		want:          corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
+			pathLocalMatches: allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathDedup:        allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
 		},
 	},
 	{
@@ -198,6 +218,15 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		// rls reads this name as music. The range must still read as a pack.
+		name:          "episode range with a music-style name against its first episode",
+		source:        "Talk.Show-Part.E05.E06-WEB-2021-GRP",
+		candidate:     "Talk.Show-Part.E05-WEB-2021-GRP",
+		sourceSize:    2 * corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:           "season numeral pack against season pack",
 		source:         "Kaiju.Squad.III.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju.Squad.S03.1080p.WEB.H264-GRP",
@@ -206,10 +235,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		name:           "season numeral announce against season pack",
@@ -220,10 +245,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		name:           "season numeral announce against another season",
@@ -252,6 +273,9 @@ var corpusRows = []corpusRow{
 		candidateSize: 3 * corpusEpisodeSize,
 		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
 		want:          corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusMatch, reasonDedupNoSizes),
+		},
 	},
 	{
 		name:          "yearless movie sequel of the season pack size",
@@ -262,10 +286,50 @@ var corpusRows = []corpusRow{
 		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
 		want:          corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
+			pathDedup:   allowedDifference(corpusMatch, reasonDedupNoSizes),
 			pathSearch:  allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathRetry:   allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathWebhook: allowedDifference(corpusMatch, reasonNumeralSameSize),
 		},
+	},
+	{
+		name:          "season numeral with an absolute episode against the seasoned episode",
+		source:        "[KaijuSubs] Kaiju Squad 100 II - 03 (1080p).mkv",
+		candidate:     "Kaiju Squad 100 S02E03 1080p WEB-DL AAC2.0 H.264-KaijuSubs",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:           "season numeral I with a season 1 marker",
+		source:         "Kaiju.Squad.I.S01.1080p.WEB.H264-GRP",
+		candidate:      "Kaiju.Squad.S01.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.I.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.I.S01E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.S01E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		name:           "season numeral XI with a season 11 marker",
+		source:         "Kaiju.Squad.XI.S11.1080p.WEB.H264-GRP",
+		candidate:      "Kaiju.Squad.S11.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.XI.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.XI.S11E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.S11E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		// The listing names the show "Kaiju Squad 100 II", so the numeral is part of the title and not season 2.
+		name:           "seasonless season numeral pack against a season 1 listing of the same title",
+		source:         "[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]",
+		candidate:      "Kaiju Squad 100 II S01 1080p BluRay FLAC 2.0 x265-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		want:           corpusMatch,
 	},
 	{
 		name:           "AKA title",
@@ -275,9 +339,6 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		// An AKA after the episode number starts an episode title, not a show title.
@@ -288,6 +349,9 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
 		want:           corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
 	},
 	{
 		name:           "slash title",
@@ -297,10 +361,22 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
+	},
+	{
+		name:          "title that differs only by punctuation",
+		source:        "Bob's Burgers S02E05 1080p WEB H264-GRP",
+		candidate:     "Bobs.Burgers.S02E05.1080p.WEB.H264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "yearless movie against the same movie with a year",
+		source:        "Harbor.Lights.1080p.BluRay.x264-GRP",
+		candidate:     "Harbor.Lights.2019.1080p.BluRay.x264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
 	},
 	{
 		name:           "Sonarr alternate title",
@@ -312,10 +388,9 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
+			pathPrefilter:  allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathCrossMatch: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathDedup:      allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
 		},
 	},
 	{
@@ -325,6 +400,144 @@ var corpusRows = []corpusRow{
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
+	},
+	{
+		name:          "bracket fansub with a hyphen against its dash suffix",
+		source:        "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		candidate:     "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Moe-Fansub",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "dash suffix with a hyphen against its bracket fansub",
+		source:        "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Moe-Fansub",
+		candidate:     "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "dash suffix with a hyphen after a non-text tag against its bracket fansub",
+		source:        "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x264-Hi10P-Moe-Fansub",
+		candidate:     "[Moe-Fansub] Kaiju Squad S02E05 [BD AVC 1080p FLAC]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "last word of a hyphenated bracket fansub as a group",
+		source:        "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Fansub",
+		candidate:     "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "longer dash suffix than the bracket fansub",
+		source:        "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Big-Moe-Fansub",
+		candidate:     "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "dash suffix with a hyphen whose file has no group against its bracket fansub",
+		source:        "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub",
+		candidate:     "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		sourceFiles: qbt.TorrentFiles{{
+			Name: "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub/Kaiju Squad S02E05 1080p BluRay x265.mkv",
+			Size: corpusEpisodeSize,
+		}},
+		want: corpusMatch,
+	},
+	{
+		name:           "bracket fansub pack with a hyphen against its dash suffix pack",
+		source:         "[Moe-Fansub] Kaiju Squad S02 [BD HEVC 1080p FLAC]",
+		candidate:      "Kaiju Squad S02 1080p BluRay FLAC 2.0 x265-Moe-Fansub",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[Moe-Fansub] Kaiju Squad S02 [BD HEVC 1080p FLAC]", "[Moe-Fansub] Kaiju Squad S02E%02d [BD HEVC 1080p FLAC]"),
+		candidateFiles: corpusPackFiles("Kaiju Squad S02 1080p BluRay FLAC 2.0 x265-Moe-Fansub", "Kaiju Squad S02E%02d 1080p BluRay FLAC 2.0 x265-Moe-Fansub"),
+		want:           corpusMatch,
+	},
+	{
+		name:          "bracket fansub without a hyphen against its dash suffix",
+		source:        "[MoeFansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
+		candidate:     "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-MoeFansub",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "two dash suffixes with a hyphen",
+		source:        "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub",
+		candidate:     "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Moe-Fansub",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "space-joined group and collective against the bracket collective",
+		source:        "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "bracket collective against the space-joined group and collective",
+		source:        "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)",
+		candidate:     "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Mura]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:           "space-joined season pack against a bracket collective episode",
+		source:         "Kaiju Squad S02E05 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Mura]",
+		candidate:      "Kaiju Squad S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusPackSize,
+		candidateFiles: corpusPackFiles("Kaiju Squad S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)", "Kaiju Squad S02E%02d (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Mura]"),
+		want:           corpusMatch,
+		differences:    packFromEpisodes(nil),
+	},
+	{
+		name:          "space-joined group and collective against another bracket collective",
+		source:        "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Other]",
+		candidate:     "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "space-joined group and collective against the group alone",
+		source:        "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo)",
+		candidate:     "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo Mura)",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "reversed space-joined group and collective against the bracket collective",
+		source:        "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Kyo) [Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - Mura Kyo)",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:           "bracket batch with a Ma10 tag against a season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]",
+		candidate:      "Kaiju Squad 2003 AKA Kaiju Kyoutai S01 720p BluRay Dual-Audio FLAC 2.0 x265-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		want:           corpusMatch,
 	},
 	{
 		name:          "two-sided CRC that differs",
@@ -349,28 +562,33 @@ var corpusRows = []corpusRow{
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3037, reasonDirectionalCRC),
-		},
 	},
 	{
-		name:          "one-sided CRC on the source at a rounded size",
-		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234].mkv",
-		candidate:     "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv",
-		sourceSize:    corpusEpisodeSize,
-		candidateSize: corpusRoundedSize,
-		want:          corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathWebhook: allowedDifference(corpusMatch, "IRC (the chat that announces releases to autobrr) rounds sizes, so the webhook check cannot reach the exact-size checksum relaxation that apply uses. So it accepts a CRC tag on one name, and apply checks the pair again with the downloaded torrent."),
-			pathApply:   allowedDifference(corpusMatch, "Apply compares the pair in reverse, with the new torrent as the source, and the strict CRC rule accepts a CRC tag on the local name. The torrent file check after the download has the final say."),
-			pathDedup:   knownDifference(corpusMatch, 3037, reasonDirectionalCRC),
-		},
+		// Only the announce rounds the size. The torrent holds the file of the source.
+		name:           "one-sided CRC on the source at a rounded size",
+		source:         "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234].mkv",
+		candidate:      "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusRoundedSize,
+		candidateFiles: qbt.TorrentFiles{{Name: "[KaijuSubs] Kaiju Squad - 81 (1080p).mkv", Size: corpusEpisodeSize}},
+		want:           corpusMatch,
 	},
 	{
 		name:          "WEB against WEB-DL",
 		source:        "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB-DL.H264-GRP",
 		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// The NFO keeps the total sizes apart, so the exact-size fallback cannot
+		// rescue the pair, and the HDR rule alone decides.
+		name:          "DoVi HDR10 against a generic DV HDR",
+		source:        "Kaiju.Squad.S02E05.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GRP",
+		candidate:     "Kaiju Squad S02E05 2160p WEB-DL DDP5.1 DV HDR H.265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Kaiju.Squad.S02E05.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GRP"),
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
 	},
@@ -384,11 +602,33 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S02.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP", "Kaiju.Squad.S02E%02d.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathApply:        knownDifference(corpusNoMatch, 3037, "Apply replays the search decision, and its release prefilter has no branch for the web source relabel class."),
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoRelabel),
+		},
+	},
+	{
+		name:           "bracket batch BDRip against a BluRay season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]",
+		candidate:      "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
+		},
+	},
+	{
+		name:           "bracket batch with a Hi10 tag against a Hi10P season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]",
+		candidate:      "Kaiju Squad 2014 S01 1080p BluRay Dual-Audio FLAC 2.0 Hi10P x264-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
 		},
 	},
 	{
@@ -411,9 +651,11 @@ var corpusRows = []corpusRow{
 		candidate:     "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
-		want:          corpusNoMatch,
+		// The new Match verdict has no sizes, so exact size does not admit the source.
+		searchSource: "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
+		want:         corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusMatch, 3037, "Local matches rescues a title at an exact size even when the user turned title rescue off."),
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
 		},
 	},
 	{
@@ -436,6 +678,16 @@ var corpusRows = []corpusRow{
 		differences:    packFromEpisodes(nil),
 	},
 	{
+		name:           "announced WEBRip season pack against a local WEB-DL episode",
+		source:         "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP",
+		candidate:      "Kaiju.Squad.S02.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusPackSize,
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S02.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP", "Kaiju.Squad.S02E%02d.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP"),
+		want:           corpusMatch,
+		differences:    packFromEpisodes(nil),
+	},
+	{
 		name:           "announced season pack with a Sonarr alternate title",
 		source:         "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju.Kyoutai.S02.1080p.WEB.H264-GRP",
@@ -445,7 +697,7 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply: knownDifference(corpusNoMatch, 3037, "Search rejects a pack against one episode, so apply holds no decision and no Sonarr alternate titles for this pair."),
+			pathApply: allowedDifference(corpusNoMatch, "Missing input: Sonarr alternate titles. Search rejects a pack against one episode, so apply holds no stored verdict and no alternate titles, and the apply hint cannot pair the two titles."),
 		}),
 	},
 	{
@@ -469,6 +721,16 @@ var corpusRows = []corpusRow{
 		differences:    packFromEpisodes(nil),
 	},
 	{
+		name:           "announced seasonless season numeral pack",
+		source:         "Kaiju Squad 100 S02E05 1080p BluRay FLAC 2.0 x265-GRP",
+		candidate:      "[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusPackSize,
+		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		want:           corpusMatch,
+		differences:    packFromEpisodes(nil),
+	},
+	{
 		name:           "announced season pack with a season numeral",
 		source:         "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju.Squad.II.S02.1080p.WEB.H264-GRP",
@@ -477,6 +739,77 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.II.S02.1080p.WEB.H264-GRP", "Kaiju.Squad.II.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences:    packFromEpisodes(nil),
+	},
+	{
+		// The season folder name has no title, so the Read release takes it from the files.
+		name:           "season folder pack against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+	},
+	{
+		// The CRC tag of an episode file does not name the pack, so the pack listing
+		// still matches when its size is rounded.
+		name:           "season folder pack of CRC-tagged episodes against its season pack listing",
+		source:         "Season 2",
+		candidate:      "[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
+		candidateFiles: corpusPackFiles("[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
+		want:           corpusMatch,
+	},
+	{
+		// The bonus video is the largest file, and it names no season, so the Read
+		// release takes its identity from the largest episode.
+		name:           "season folder pack with a large bonus video against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize + 2*corpusEpisodeSize,
+		candidateSize:  corpusPackSize + 2*corpusEpisodeSize,
+		sourceFiles:    corpusPackWithBonus("Season 2"),
+		candidateFiles: corpusPackWithBonus("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+	},
+	{
+		// The special is the largest file, and it names season 0, so the Read
+		// release takes its identity from the largest episode of season 2.
+		name:           "season folder pack with a large special against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize + 3*corpusEpisodeSize,
+		candidateSize:  corpusPackSize + 3*corpusEpisodeSize,
+		sourceFiles:    corpusPackWithSpecial("Season 2"),
+		candidateFiles: corpusPackWithSpecial("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+	},
+	{
+		name:           "season folder pack of another show",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "Harbor Lights (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
+	},
+	{
+		// Files of another season lend the season folder name nothing.
+		name:           "season folder pack whose files hold another season",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusNoMatch,
 	},
 }
 
@@ -534,9 +867,10 @@ func TestMatchCorpus(t *testing.T) {
 }
 
 const (
-	corpusInstanceID    = 1
-	corpusSourceHash    = "c0a5000000000000000000000000000000000001"
-	corpusCandidateHash = "c0a5000000000000000000000000000000000002"
+	corpusInstanceID       = 1
+	corpusSourceHash       = "c0a5000000000000000000000000000000000001"
+	corpusCandidateHash    = "c0a5000000000000000000000000000000000002"
+	corpusSearchSourceHash = "c0a5000000000000000000000000000000000003"
 )
 
 var corpusInstance = &models.Instance{ID: corpusInstanceID, Name: "main"}
@@ -597,9 +931,9 @@ func corpusVerdictOf(matched bool) corpusVerdict {
 func (row corpusRow) searchInput(t *testing.T, svc *Service) searchCandidateInput {
 	t.Helper()
 	source := row.sourceTorrent()
-	files := corpusFiles(row.source, row.sourceSize, row.sourceFiles)
+	sourceRead, _ := svc.readSearchSource(t.Context(), &source, corpusFiles(row.source, row.sourceSize, row.sourceFiles))
 	return searchCandidateInput{
-		Source:                svc.searchSourceReleaseViewFromFiles(t.Context(), &source, svc.releaseCache.Parse(row.source), files),
+		Source:                sourceRead,
 		Candidate:             namedRelease{release: svc.releaseCache.Parse(row.candidate), rawName: row.candidate},
 		SourceTitles:          row.titles,
 		EpisodeMap:            row.episodeMap,
@@ -626,23 +960,34 @@ func retryCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusVerdictOf(usable(jackett.SearchResult{Title: row.candidate, Size: row.candidateSize}))
 }
 
-// applyCorpusVerdict replays the search decision when search admitted the pair.
+// applyCorpusVerdict keeps the search verdict when search admitted the pair.
 // For a season pack announce, apply also reports the season pack hint: the
 // library holds an episode of the same show, so qui tries to build the pack.
 func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(false)
+	input := row.searchInput(t, svc)
+	boundHash := corpusSourceHash
+	if row.searchSource != "" {
+		compared := corpusTorrent(corpusSearchSourceHash, "compared", row.searchSource, row.candidateSize)
+		comparedFiles := corpusFiles(row.searchSource, row.candidateSize, row.candidateFiles)
+		svc = manualMatchTestService(corpusInstance, []qbt.Torrent{row.sourceTorrent(), compared}, map[string]qbt.TorrentFiles{
+			corpusSourceHash:       corpusFiles(row.source, row.sourceSize, row.sourceFiles),
+			corpusSearchSourceHash: comparedFiles,
+		})
+		input.Source, _ = svc.readSearchSource(t.Context(), &compared, comparedFiles)
+		input.SourceSize = row.candidateSize
+		boundHash = corpusSearchSourceHash
+	}
 	req := &FindCandidatesRequest{TorrentName: row.candidate, TargetInstanceIDs: []int{corpusInstanceID}}
-	if decision := svc.matcher().classifySearchCandidate(row.searchInput(t, svc)); decision.Accepted {
-		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, corpusSourceHash)
+	decision := svc.matcher().classifySearchCandidate(input)
+	require.True(t, decision.Accepted || row.searchSource == "", "search must admit the search source: %s", decision.RejectReason)
+	if decision.Accepted {
+		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, boundHash)
 	}
-	// Build the target view from the downloaded files, as processCrossSeedCandidate does.
-	target := svc.releaseCache.Parse(row.candidate)
-	req.TargetRelease = namedRelease{release: target, rawName: row.candidate}
-	if !isTVRelease(target) || req.SearchDecision.admitted() {
-		req.TargetRelease = svc.applyTargetReleaseViewFromFiles(row.candidate, target,
-			corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
-	}
+	// Read the target from the downloaded files, as processCrossSeedCandidate does.
+	req.TargetRelease = svc.readApplyTarget(row.candidate,
+		corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
 	resp, err := svc.FindCandidates(t.Context(), req)
 	require.NoError(t, err)
 	if resp.seasonPackEpisodeCandidates {
@@ -656,14 +1001,16 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusNoMatch
 }
 
-// seasonPackCorpusVerdict runs the light season pack check (no torrent data) of
-// an announced pack against the local episode. The check reads only local
-// episodes, so it skips a row whose source is not an episode, and a row whose
-// candidate is an episode.
+// seasonPackCorpusVerdict runs the season pack check of an announced pack
+// against the local episode. A row with candidate files sends them as the
+// torrent data, and the check then compares the local episode file with its
+// pack file, as apply does. The other rows run the light check. The check reads only
+// local episodes, so it skips a row whose source is not an episode, and a row
+// whose candidate is an episode.
 func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(false)
-	pack := svc.releaseCache.Parse(row.candidate)
+	pack := svc.matcher().parseSeasonPackName(row.candidate)
 	if !isTVEpisode(svc.releaseCache.Parse(row.source)) || isTVEpisode(pack) {
 		return corpusSkip
 	}
@@ -671,10 +1018,25 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 		// CheckSeasonPackWebhook answers not_season_pack.
 		return corpusNoMatch
 	}
+	var packEpisodes map[episodeIdentity]packEpisodeOrigin
+	if row.candidateFiles != nil {
+		packEpisodes = svc.matcher().extractPackEpisodes(row.candidateFiles, pack)
+		require.NotEmpty(t, packEpisodes, "the candidate files hold no episode")
+	}
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
-	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, nil, settings, row.titles)) > 0)
+	if row.candidateFiles != nil {
+		matched := svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)
+		if len(matched) == 0 {
+			return corpusNoMatch
+		}
+		selected, _, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, corpusInstanceID,
+			matched, row.candidateFiles, pack, row.candidate, settings, row.titles, nil)
+		require.NoError(t, err)
+		return corpusVerdictOf(len(selected) > 0)
+	}
+	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
 }
 
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {

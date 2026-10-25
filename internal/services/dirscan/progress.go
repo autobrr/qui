@@ -9,12 +9,24 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 type trackedFilesIndex struct {
 	byPath   map[string]*models.DirScanFile
-	byFileID map[string]*models.DirScanFile
+	byFileID map[fsops.FileKey]*models.DirScanFile
+}
+
+func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) (fsops.FileKey, bool) {
+	return fsops.FileKeyOf(id, nil)
+}
+
+// keyOfStored decodes a dir_scan_files.file_id value. A row from before the
+// tagged form decodes to no identity and is never indexed.
+func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
+	return idx.keyOf(hardlink.FileIDFromBytes(stored))
 }
 
 func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
@@ -26,7 +38,7 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 
 	idx := &trackedFilesIndex{
 		byPath:   make(map[string]*models.DirScanFile),
-		byFileID: make(map[string]*models.DirScanFile),
+		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
 	}
 
 	offset := 0
@@ -46,8 +58,8 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 			if f.FilePath != "" {
 				idx.byPath[f.FilePath] = f
 			}
-			if len(f.FileID) > 0 {
-				idx.byFileID[string(f.FileID)] = f
+			if key, ok := idx.keyOfStored(f.FileID); ok {
+				idx.byFileID[key] = f
 			}
 		}
 
@@ -61,7 +73,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 	ctx context.Context,
 	directoryID int,
 	scanResult *ScanResult,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	l *zerolog.Logger,
 ) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil || scanResult == nil {
@@ -96,8 +108,8 @@ func (s *Service) refreshTrackedFilesFromScan(
 
 			// Keep the in-memory index in sync for eligibility filtering.
 			idx.byPath[fileModel.FilePath] = fileModel
-			if len(fileModel.FileID) > 0 {
-				idx.byFileID[string(fileModel.FileID)] = fileModel
+			if key, ok := idx.keyOfStored(fileModel.FileID); ok {
+				idx.byFileID[key] = fileModel
 			}
 		}
 	}
@@ -105,11 +117,11 @@ func (s *Service) refreshTrackedFilesFromScan(
 	return idx, nil
 }
 
-func isFileAlreadySeedingByFileID(scanned *ScannedFile, index map[string]string) bool {
-	if scanned == nil || scanned.FileID.IsZero() || len(index) == 0 {
+func isFileAlreadySeedingByFileID(scanned *ScannedFile, index *seedingIndex) bool {
+	if scanned == nil {
 		return false
 	}
-	_, ok := index[string(scanned.FileID.Bytes())]
+	_, ok := index.hash(scanned.FileID)
 	return ok
 }
 
@@ -194,8 +206,8 @@ func lookupTrackedFile(scanned *ScannedFile, idx *trackedFilesIndex) (*models.Di
 		return nil, ""
 	}
 
-	if !scanned.FileID.IsZero() {
-		if existing := idx.byFileID[string(scanned.FileID.Bytes())]; existing != nil {
+	if key, ok := idx.keyOf(scanned.FileID); ok {
+		if existing := idx.byFileID[key]; existing != nil {
 			return existing, "file_id"
 		}
 	}

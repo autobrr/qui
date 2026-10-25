@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -120,13 +121,7 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
@@ -196,6 +191,9 @@ func (c sftpCreds) Get(ctx context.Context, id int) (*models.Instance, error) {
 func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
+// SetSSHTier keeps the fixture on the sftp tier, which these tests cover.
+func (sftpCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+
 // sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
 func sftpPath(p string) string {
 	if runtime.GOOS == "windows" {
@@ -227,9 +225,7 @@ func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	stubSync(f.svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
@@ -875,5 +871,27 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	run := f.scan(t, "manual")
 	require.Equal(t, "failed", run.Status)
 	require.Contains(t, run.ErrorMessage, "remote instance on the same host")
+	f.requireNothingDeleted(t)
+}
+
+// With Write (#2942) and the exec tier's Identity, canDeleteOrphans passes on a
+// remote instance, so the recorded-mode gate is what keeps remote deletes off
+// until #3236 turns them on. A remote run on an exec-tier instance is still
+// refused at confirm and keeps its preview.
+func TestConfirmDeletion_RemoteExecTierRunIsStillRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-exec-refuse", models.FilesystemModeRemote, nil)
+	f.instance.mu.Lock()
+	f.instance.inst.SSHTier = models.SSHTierExec
+	f.instance.mu.Unlock()
+	require.True(t, canDeleteOrphans(models.FilesystemCapabilitiesOf(&f.instance.inst)), "the capability gate alone would admit this instance")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
 	f.requireNothingDeleted(t)
 }

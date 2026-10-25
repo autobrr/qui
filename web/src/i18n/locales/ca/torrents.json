@@ -103,7 +103,15 @@
     "totalSize": "Mida total: {{size}}",
     "blockCrossSeeds": "Bloqueja els infohash dels cross-seed (evita que es tornin a afegir)",
     "cancel": "Cancel·la",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Vols eliminar el {{count}} torrent que coincideix amb el filtre?",
+    "titleSelectAll_other": "Vols eliminar els {{count}} torrents que coincideixen amb el filtre?",
+    "selectAllNotice": "Selecciona-ho tot està activat. Això elimina els torrents seleccionats que coincideixen amb el filtre actual.",
+    "notLoaded_one": "{{count}} d'ells no està carregat a la taula.",
+    "notLoaded_other": "{{count}} d'ells no estan carregats a la taula.",
+    "andMore": "i {{more}} més",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Elimina també els fitxers del disc",
@@ -683,25 +691,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "shareLimit": {
-      "title": "Defineix els límits de compartició de {{count}} torrent(s)",
-      "description": "Configura els límits de sembra. Fes servir -1 o desactiva-ho per treure'ls.",
-      "setRatioLimit": "Defineix el límit de ràtio",
-      "setSeedingTimeLimit": "Defineix el límit de temps de sembra (minuts)",
-      "setInactiveSeedingLimit": "Defineix el límit de sembra inactiva (minuts)",
-      "cancel": "Cancel·la",
-      "setting": "S'està definint...",
-      "applyLimits": "Aplica els límits"
-    },
-    "speedLimit": {
-      "title": "Defineix els límits de velocitat de {{count}} torrent(s)",
-      "description": "Defineix els límits de velocitat de pujada i de baixada en KB/s. Fes servir -1 o desactiva-ho per treure'ls.",
-      "setUploadLimit": "Defineix el límit de pujada (KB/s)",
-      "setDownloadLimit": "Defineix el límit de baixada (KB/s)",
-      "cancel": "Cancel·la",
-      "setting": "S'està definint...",
-      "applyLimits": "Aplica els límits"
-    },
     "ratio": "Ràtio:"
   },
   "crossSeedTable": {
@@ -720,11 +709,6 @@
     "matchCount_other": "{{count}} coincidències",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina aquest",
-    "statusLabels": {
-      "trackerDown": "Tracker caigut",
-      "unregistered": "No registrat",
-      "trackerError": "Error del tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contingut",
@@ -748,6 +732,7 @@
       }
     },
     "noMatches": "No s'ha trobat cap torrent coincident a les altres instàncies",
+    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou.",
     "toast": {
       "savePathCopied": "S'ha copiat el camí de desada",
       "copyFailed": "No s'ha pogut copiar"
@@ -926,6 +911,11 @@
       "checking": "Verificant",
       "moving": "Movent"
     }
+  },
+  "emptyState": {
+    "noTorrents": "No s'ha trobat cap torrent",
+    "noFilterMatches": "Cap torrent coincideix amb els filtres actuals",
+    "noSearchMatches": "Cap torrent coincideix amb la cerca actual"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1369,6 +1359,9 @@
       "description": "Defineix els límits de velocitat de pujada i de baixada en KB/s. Desactiva-ho per fer servir els límits globals.",
       "uploadLimit": "Defineix el límit de pujada (KB/s)",
       "downloadLimit": "Defineix el límit de baixada (KB/s)",
+      "selectValue": "Selecciona un valor",
+      "wasMixed": "(era mixt)",
+      "unresolvedMixed": "Selecciona valors per a tots els camps mixtos abans d'aplicar-ho",
       "cancel": "Cancel·la",
       "setting": "S'està definint...",
       "confirm": "Aplica els límits"

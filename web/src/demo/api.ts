@@ -10,7 +10,7 @@
 // reason: a 401 outside /auth/me sends the app to /login.
 
 import type { TorrentFilters } from "@/types/torrents"
-import { CAPABILITIES, PREFERENCES, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
+import { CAPABILITIES, PREFERENCE_VIEW, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
 
 // The built-in themes the Go registry embeds, so the picker and the default
 // look match a real install. Name and id follow internal/themes/registry.go.
@@ -107,7 +107,7 @@ export function createRoutes(store: DemoStore): Route[] {
 
   on("GET", "/instances", () => json(store.instanceResponses()))
   on("GET", "/instances/:instanceId/capabilities", () => json(CAPABILITIES))
-  on("GET", "/instances/:instanceId/preferences", () => json(PREFERENCES))
+  on("GET", "/instances/:instanceId/preferences", () => json(PREFERENCE_VIEW))
   on("GET", "/instances/:instanceId/transfer-info", ({ params }) => {
     const s = store.instance(id(params))?.serverState
     return json(s ? {

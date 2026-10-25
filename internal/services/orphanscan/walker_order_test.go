@@ -197,14 +197,14 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 			p := filepath.Join(root, filepath.FromSlash(f.rel))
 			writeOldFile(t, p)
 			if f.inUse {
-				tfm.Add(normalizePath(fsops.HostPaths, p))
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, p))
 			}
 		}
 	}
 
 	scan := func(t *testing.T, root string, backend fsops.Backend) (orphans, dirs []string) {
 		t.Helper()
-		files, abandoned, err := walkScanRootCollectingDirs(t.Context(), root, tfm, nil, 0, backend)
+		files, abandoned, err := walkScanRootCollectingDirs(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

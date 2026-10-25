@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { getRowBackgroundClass, getStatusBadgeProps, getStatusBadgeVariant } from "@/lib/torrent-table/row-display"
+import { getRowBackgroundClass, getStatusBadgeProps, getStatusBadgeVariant, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
 import i18n from "@/i18n"
 import enTorrents from "@/i18n/locales/en/torrents.json"
 import { makeTorrent } from "@/test/mockTorrent"
@@ -47,6 +47,11 @@ describe("getStatusBadgeVariant", () => {
     expect(getStatusBadgeVariant("pausedUP")).toBe("secondary")
   })
 
+  it("maps queued states to the secondary variant", () => {
+    expect(getStatusBadgeVariant("queuedDL")).toBe("secondary")
+    expect(getStatusBadgeVariant("queuedUP")).toBe("secondary")
+  })
+
   it("maps error states to the destructive variant", () => {
     expect(getStatusBadgeVariant("error")).toBe("destructive")
     expect(getStatusBadgeVariant("missingFiles")).toBe("destructive")
@@ -82,6 +87,7 @@ describe("getStatusBadgeProps", () => {
     expect(props.label).toBe(enTorrents.tableColumns.trackerError)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-orange-500")
+    expect(props.iconClass).toBe("text-orange-500")
   })
 
   it("overrides for unregistered", () => {
@@ -97,5 +103,13 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, true, t)
     expect(props.variant).toBe("default")
     expect(props.className).toBe("")
+    expect(props.iconClass).toBe("text-primary")
+  })
+
+  it("gives each tracker health its own color", () => {
+    const classes = Object.keys(TRACKER_HEALTH_DISPLAY).map(health =>
+      getStatusBadgeProps({ state: "uploading", tracker_health: health as TrackerHealth }, true, t).className
+    )
+    expect(new Set(classes).size).toBe(classes.length)
   })
 })

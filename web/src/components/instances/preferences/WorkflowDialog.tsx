@@ -7,7 +7,7 @@ import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
 import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
-  CONDITION_FIELD_TYPES,
+  CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -58,12 +58,13 @@ import { useIndexerTrackerDomains } from "@/hooks/useIndexerTrackerDomains"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
@@ -243,10 +244,10 @@ function formatDryRunEventSummary(
   }
 }
 
-function getDisabledFields(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
+function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t) }))
+    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
@@ -317,10 +318,10 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
   "TRACKERS_COUNT",
 ])
 
-const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
 
-const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
@@ -705,6 +706,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
+  const [movePathServerError, setMovePathServerError] = useState<string | null>(null)
+  const [movePathDryRunAttempted, setMovePathDryRunAttempted] = useState(false)
+  const movePathInputRef = useRef<HTMLInputElement>(null)
   const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
   const [newGroupId, setNewGroupId] = useState("")
   const [newGroupKeys, setNewGroupKeys] = useState<string[]>([])
@@ -769,18 +773,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
-  const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  const hasTrustedIdentity = ruleInstance?.capabilities.trustedIdentity ?? false
+  const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
   const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
-  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
+  const canRead = ruleInstance?.capabilities.read ?? false
+  const pathSourceAvailable = canRead && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
       trackerHealth: supportsTrackerHealth,
-      localFilesystemAccess: hasLocalFilesystemAccess,
-      fileIdentity: hasFileIdentity,
+      read: canRead,
+      trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess, hasFileIdentity]
+    [supportsTrackerHealth, canRead, hasTrustedIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -864,20 +870,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
     const processed: TrackerOption[] = []
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
     const seenValues = new Set<string>()
 
     // Helper to add a tracker option
     const addTracker = (tracker: string) => {
-      const lowerTracker = tracker.toLowerCase()
-
-      const customization = domainToCustomization.get(lowerTracker)
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        const displayKey = customization.displayName.toLowerCase()
         const mergedValue = customization.domains.join(",")
-        if (seenDisplayNames.has(displayKey) || seenValues.has(mergedValue)) return
-        seenDisplayNames.add(displayKey)
+        if (seenGroups.has(groupKey) || seenValues.has(mergedValue)) return
+        seenGroups.add(groupKey)
         seenValues.add(mergedValue)
 
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
@@ -888,8 +892,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           isCustom: true,
         })
       } else {
-        if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return
-        seenDisplayNames.add(lowerTracker)
+        if (seenGroups.has(groupKey) || seenValues.has(tracker)) return
+        seenGroups.add(groupKey)
         seenValues.add(tracker)
 
         processed.push({
@@ -1296,6 +1300,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
       setActivityRunDialog(null)
+      setMovePathServerError(null)
+      setMovePathDryRunAttempted(false)
       return
     }
     if (!rule) {
@@ -1778,6 +1784,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     loadMorePreview.mutate()
   }
 
+  const movePathClientError = isVisiblyRelativeMovePath(formState.exprMovePath)? t("preferences.workflowDialog.move.errors.mustBeAbsolute"): null
+  const movePathCheckError = formState.moveEnabled ? movePathClientError ?? movePathServerError : null
+  // Saving checks only an enabled rule, like the server; a dry run always runs the rule, so its error shows either way.
+  const movePathError = formState.enabled || movePathDryRunAttempted ? movePathCheckError : null
+  const movePathBlocksSave = formState.enabled && Boolean(movePathCheckError)
+
+  // Show the server's move path error under the field, not in a toast.
+  const showMovePathServerError = (error: unknown): boolean => {
+    if (!(error instanceof Error) || !isMovePathServerError(error.message)) {
+      return false
+    }
+    setMovePathServerError(error.message)
+    movePathInputRef.current?.focus()
+    return true
+  }
+
   const dryRunNowMutation = useMutation({
     mutationFn: async (input: FormState) => {
       const payload = buildPayload(input)
@@ -1822,6 +1844,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunEvents([])
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
+      if (showMovePathServerError(error)) {
+        setMovePathDryRunAttempted(true)
+        return
+      }
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.dryRunFailed"))
     },
   })
@@ -1920,6 +1946,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
+      return
+    }
+    if (dryRunInput.moveEnabled && isVisiblyRelativeMovePath(dryRunInput.exprMovePath)) {
+      setMovePathDryRunAttempted(true)
+      movePathInputRef.current?.focus()
       return
     }
     if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
@@ -2090,6 +2121,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       onSuccess?.()
     },
     onError: (error) => {
+      if (showMovePathServerError(error)) {
+        return
+      }
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.saveFailed"))
     },
   })
@@ -2205,6 +2239,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
     if (submitState.moveEnabled && !trimmedSubmitMovePath) {
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
+      return
+    }
+    if (submitState.enabled && submitState.moveEnabled && isVisiblyRelativeMovePath(submitState.exprMovePath)) {
+      movePathInputRef.current?.focus()
       return
     }
 
@@ -2501,7 +2539,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 }
                               }}
                               categoryOptions={categoryOptions}
-                              disabledFields={getDisabledFields(fieldCapabilities, t)}
+                              disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                               disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                             />
                             <div className="flex items-center gap-2">
@@ -2583,7 +2621,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     }}
                     allowEmpty
                     categoryOptions={categoryOptions}
-                    disabledFields={getDisabledFields(fieldCapabilities, t)}
+                    disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
@@ -3808,17 +3846,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       type="checkbox"
                                       checked={formState.exprIncludeHardlinks}
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      disabled={!hasFileIdentity}
+                                      // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
+                                      disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
-                                    <span className={!hasFileIdentity ? "opacity-50" : ""}>
+                                    <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasFileIdentity ? (
+                                  {hasTrustedIdentity ? (
                                     <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
+                                  ) : isRemoteInstance ? (
+                                    <p>{t("preferences.workflowDialog.delete.remoteNotAvailable")}</p>
                                   ) : (
                                     <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
                                   )}
@@ -3850,11 +3891,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
                           </Label>
                           <Input
+                            ref={movePathInputRef}
                             type="text"
                             value={formState.exprMovePath}
-                            onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
+                            onChange={(e) => {
+                              setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))
+                              setMovePathServerError(null)
+                            }}
                             placeholder={t("preferences.workflowDialog.move.placeholder")}
+                            aria-invalid={movePathError ? true : undefined}
+                            className={cn(movePathError && "border-destructive/50")}
                           />
+                          {movePathError && (
+                            <p className="text-xs text-destructive">{movePathError}</p>
+                          )}
                         </div>
                         <div className="flex items-start gap-2">
                           <Switch
@@ -4204,12 +4254,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   size="sm"
                   className="flex-1 sm:flex-initial h-10 sm:h-8"
                   onClick={handleRunDryRunNow}
-                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending}
+                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending || Boolean(movePathError)}
                 >
                   {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {t("preferences.workflowDialog.runDryRunNow")}
                 </Button>
-                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
+                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending || movePathBlocksSave}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {rule ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.create")}
                 </Button>

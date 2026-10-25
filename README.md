@@ -52,7 +52,7 @@ Join our community on [Discord](https://discord.autobrr.com/qui)!
 ## Support
 
 - [GitHub Discussions](https://github.com/autobrr/qui/discussions/new/choose) - Feature requests and bug reports
-- [GitHub Issues](https://github.com/autobrr/qui/issues) - Work in progress
+- [GitHub Issues](https://github.com/autobrr/qui/issues) - Confirmed bugs and planned work
 
 ## Support Development
 
@@ -104,9 +104,7 @@ For other currencies or donation methods, [reach out on Discord](https://discord
 
 ## Contributing
 
-Contributions are welcome.
-
-See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the development and test workflow.
+[`CONTRIBUTING.md`](.github/CONTRIBUTING.md) tells who can contribute and how. It also gives the development and test workflow.
 
 ## Alternatives
 

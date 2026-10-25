@@ -104,7 +104,18 @@
     "totalSize": "Celková velikost: {{size}}",
     "blockCrossSeeds": "Blokovat křížová sdílení infohashů (zabránit opětovnému přidání)",
     "cancel": "Zrušit",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "titleSelectAll_one": "Smazat {{count}} torrent, který odpovídá filtru?",
+    "titleSelectAll_few": "Smazat {{count}} torrenty, které odpovídají filtru?",
+    "titleSelectAll_other": "Smazat {{count}} torrentů, které odpovídají filtru?",
+    "selectAllNotice": "Výběr všech je zapnutý. Tato akce smaže vybrané torrenty, které odpovídají aktuálnímu filtru.",
+    "notLoaded_one": "{{count}} z nich není načten v tabulce.",
+    "notLoaded_few": "{{count}} z nich nejsou načteny v tabulce.",
+    "notLoaded_other": "{{count}} z nich není načteno v tabulce.",
+    "andMore": "a {{more}} dalších",
+    "deleteCount_one": "Smazat {{count}} torrent",
+    "deleteCount_few": "Smazat {{count}} torrenty",
+    "deleteCount_other": "Smazat {{count}} torrentů"
   },
   "deleteFilesPreference": {
     "label": "Také smazat soubory z disku",
@@ -478,6 +489,9 @@
       "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
       "uploadLimit": "Nastavit uploadovací limit (KB/s)",
       "downloadLimit": "Nastavit downloadovací limit (KB/s)",
+      "selectValue": "Vybrat hodnotu",
+      "wasMixed": "(bylo smíšené)",
+      "unresolvedMixed": "Vyberte hodnoty pro všechny smíšené pole před použitím",
       "cancel": "Zrušit",
       "setting": "Nastavuji...",
       "confirm": "Použít limity"
@@ -936,6 +950,11 @@
       "moving": "Přesouvání"
     }
   },
+  "emptyState": {
+    "noTorrents": "Nenalezen žádný torrent",
+    "noFilterMatches": "Aktuálním filtrům neodpovídá žádný torrent",
+    "noSearchMatches": "Aktuálnímu hledání neodpovídá žádný torrent"
+  },
   "filterSidebar": {
     "views": {
       "title": "Pohledy",
@@ -1044,7 +1063,7 @@
       "unregistered": "Neregistrované",
       "trackerDown": "Tracker je nedostupný",
       "crossSeeds": "Křížové sdílení",
-      "trackerError": "Tracker chyba"
+      "trackerError": "Chyba trackeru"
     }
   },
   "statusBar": {
@@ -1394,11 +1413,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",
@@ -1422,6 +1436,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
     "toast": {
       "savePathCopied": "Složka pro uložení zkopírována",
       "copyFailed": "Kopírování selhalo"
@@ -1576,25 +1591,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "shareLimit": {
-      "title": "Nastavení limitů sdílení pro {{count}} torrent(y)",
-      "description": "Nastavte limity seedování pro vybrané torrenty. Všechny tři pole budou použity.",
-      "setRatioLimit": "Nastavit limit poměru",
-      "setSeedingTimeLimit": "Nastavit limit času seedování (minut)",
-      "setInactiveSeedingLimit": "Nastavit limit neaktivního seedování (minut)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
-    "speedLimit": {
-      "title": "Nastavení limitů rychlosti pro {{count}} torrent(y)",
-      "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
-      "setUploadLimit": "Nastavit uploadovací limit (KB/s)",
-      "setDownloadLimit": "Nastavit downloadovací limit (KB/s)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
     "ratio": "Poměr:"
   },
   "tableView": {
@@ -1672,7 +1668,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
-    "trackerError": "Tracker chyba",
+    "trackerError": "Chyba trackeru",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"

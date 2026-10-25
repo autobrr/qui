@@ -191,8 +191,7 @@
     "trigger": "More information"
   },
   "numberInput": {
-    "unlimited": "Unlimited",
-    "useUnlimited": " (use -1 for unlimited)"
+    "unlimited": "Unlimited"
   },
   "dateTime": {
     "na": "N/A",

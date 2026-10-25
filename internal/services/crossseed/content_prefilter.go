@@ -15,11 +15,14 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-const contentPrefilterSizeTolerancePercent = 0.0
+// contentPrefilterPolicy is the Match policy of the content prefilter. The file
+// layout check after the verdict compares the file sizes with the same
+// tolerance, so the verdict skips its own size check.
+var contentPrefilterPolicy = matchPolicy{SizeTolerancePercent: 0, SkipSizeCheck: true}
 
 type contentPrefilterCandidate struct {
-	view    internalqb.CrossInstanceTorrentView
-	release *rls.Release
+	view internalqb.CrossInstanceTorrentView
+	read namedRelease
 }
 
 type contentPrefilterMatchedTorrent struct {
@@ -48,9 +51,15 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		return nil, nil, nil, fmt.Errorf("failed to load source torrent files for content filtering: %w", err)
 	}
 
+	sourceRead := namedRelease{release: sourceRelease, rawName: sourceTorrent.Name}
+	if nameNeedsFiles(sourceRelease) {
+		sourceRead, _ = s.readSearchSource(ctx, sourceTorrent, sourceFiles)
+	}
+	reads := s.readLocalTorrents(ctx, instanceID, viewTorrents(instanceTorrents))
+
 	normalizer := normalizerForService(s)
 	sourceLayout := contentPrefilterLayoutSummary(sourceFiles, normalizer)
-	candidates := s.collectContentPrefilterCandidates(instanceID, sourceHash, sourceTorrent, sourceRelease, sourceFiles, instanceTorrents)
+	candidates := s.collectContentPrefilterCandidates(instanceID, sourceHash, sourceTorrent, sourceRead, sourceFiles, instanceTorrents, reads)
 	if len(candidates) == 0 {
 		return nil, nil, nil, nil
 	}
@@ -78,7 +87,9 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			continue
 		}
 
-		matchResult := s.matcher().getMatchTypeWithReason(sourceRelease, candidate.release, sourceFiles, candidateFiles, contentPrefilterSizeTolerancePercent)
+		// The source is the local side. The other local torrent takes the new
+		// side, in place of a search result from its tracker.
+		matchResult := s.matcher().getMatchTypeWithReason(sourceRead.release, candidate.read.release, sourceFiles, candidateFiles, contentPrefilterPolicy.SizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if !contentPrefilterAcceptsMatchType(matchResult.MatchType) {
 			trackerDomains := s.extractTrackerDomainsFromTorrent(candidate.view.Torrent)
@@ -135,9 +146,10 @@ func (s *Service) collectContentPrefilterCandidates(
 	instanceID int,
 	sourceHash string,
 	sourceTorrent *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	sourceFiles qbt.TorrentFiles,
 	instanceTorrents []internalqb.CrossInstanceTorrentView,
+	reads localReads,
 ) []contentPrefilterCandidate {
 	candidates := make([]contentPrefilterCandidate, 0)
 	for _, crossTorrent := range instanceTorrents {
@@ -148,22 +160,24 @@ func (s *Service) collectContentPrefilterCandidates(
 			continue
 		}
 
-		existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-		if !s.contentPrefilterReleasesMatch(sourceRelease, sourceTorrent.Name, sourceFiles, existingRelease, crossTorrent.Name) {
+		existing := reads.read(s.matcher(), crossTorrent.InstanceID, crossTorrent.Torrent)
+		if !s.contentPrefilterReleasesMatch(sourceRead, sourceFiles, existing, searchSourceSize(crossTorrent.Torrent)) {
 			continue
 		}
 
 		candidates = append(candidates, contentPrefilterCandidate{
-			view:    crossTorrent,
-			release: existingRelease,
+			view: crossTorrent,
+			read: existing,
 		})
 	}
 
 	return candidates
 }
 
-func (s *Service) contentPrefilterReleasesMatch(sourceRelease *rls.Release, sourceName string, sourceFiles qbt.TorrentFiles, candidateRelease *rls.Release, candidateName string) bool {
-	if matched, _ := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, sourceName, candidateName, false); matched {
+func (s *Service) contentPrefilterReleasesMatch(source namedRelease, sourceFiles qbt.TorrentFiles, candidate namedRelease, candidateSize int64) bool {
+	m := s.matcher()
+	evidence := matchEvidence{SourceFiles: sourceFiles, CandidateSize: candidateSize}
+	if m.matchVerdict(source, candidate, evidence, contentPrefilterPolicy).Matched {
 		return true
 	}
 
@@ -172,9 +186,8 @@ func (s *Service) contentPrefilterReleasesMatch(sourceRelease *rls.Release, sour
 		return false
 	}
 
-	sourceFileRelease := s.matcher().parseFileRelease(fileBaseName(sourceFileName))
-	matched, _ := s.matcher().releasesMatchWithReasonAndNames(sourceFileRelease, candidateRelease, fileBaseName(sourceFileName), candidateName, false)
-	return matched
+	sourceFile := namedRelease{release: m.parseFileRelease(fileBaseName(sourceFileName)), rawName: fileBaseName(sourceFileName)}
+	return m.matchVerdict(sourceFile, candidate, evidence, contentPrefilterPolicy).Matched
 }
 
 func contentPrefilterSameTorrent(sourceHash string, sourceTorrent, candidateTorrent *qbt.Torrent) bool {

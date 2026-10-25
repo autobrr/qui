@@ -647,7 +647,7 @@ func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
 	}
 	// Keep season pack torrents named as season packs; never rename a season pack to an episode.
 	// This is the forbidden pairing (season pack from episode) - also reject rename.
-	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease, true); reject {
+	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease); reject {
 		return false
 	}
 	return true

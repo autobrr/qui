@@ -5,79 +5,14 @@ package orphanscan
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
-
-// categoryPaths returns the on-disk destination of every qBittorrent category,
-// resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
-	categories, err := s.sync.GetCategories(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
-	}
-
-	seen := make(map[string]struct{}, len(categories))
-	for name := range categories {
-		addAbsoluteScanRoot(d, seen, resolveCategoryPath(d, name, categories, defaultSavePath, useSubcategories))
-	}
-
-	return sortedRoots(seen), nil
-}
-
-// qbtInvalidPathChars is the regex from Utils::Fs::toValidPath; slashes are
-// absent there because they separate path segments.
-var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
-
-// toValidPath converts a category name into the relative path qBittorrent
-// creates for it, so a category called "movies:hd" is protected at "movies hd".
-func toValidPath(name string) string {
-	return qbtInvalidPathChars.ReplaceAllString(name, " ")
-}
-
-// resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
-// destination cannot be determined; a depth cap here would silently drop
-// protection for a deeply nested category.
-func resolveCategoryPath(d fsops.PathDialect, name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
-	savePath := categories[name].SavePath
-	if savePath != "" {
-		savePath = d.Clean(savePath)
-		if d.IsAbs(savePath) {
-			return savePath
-		}
-		if defaultSavePath == "" {
-			return ""
-		}
-		return d.Join(defaultSavePath, savePath)
-	}
-
-	// Category names are slash-delimited whatever the host separator is.
-	if useSubcategories {
-		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(d, name[:i], categories, defaultSavePath, useSubcategories)
-			if parent == "" {
-				return ""
-			}
-			// qBittorrent converts only the last segment and resolves the rest
-			// through the parent category.
-			return d.Join(parent, d.FromSlash(toValidPath(name[i+1:])))
-		}
-	}
-
-	if defaultSavePath == "" {
-		return ""
-	}
-	return d.Join(defaultSavePath, d.FromSlash(toValidPath(name)))
-}
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
 // before its parent.
@@ -101,7 +36,8 @@ func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
 	deleted []OrphanFile,
-	scanRoots, ignorePaths, categoryPaths []string,
+	scanRoots, categoryPaths []string,
+	protected *protectedPaths,
 	gracePeriod time.Duration,
 	backend fsops.Backend,
 ) []OrphanFile {
@@ -128,11 +64,11 @@ func abandonedDirCandidates(
 		if underDeletedPath(d, dir.Path, deletedPaths) {
 			continue
 		}
-		normDir := normalizePath(d, dir.Path)
+		normDir := fsops.NormalizePath(d, dir.Path)
 		if slices.Contains(normRoots, normDir) {
 			continue
 		}
-		if isIgnoredPath(d, dir.Path, ignorePaths) {
+		if protected.ignored(dir.Path) {
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategories) {
@@ -207,7 +143,7 @@ func underDeletedPath(d fsops.PathDialect, dir string, deletedPaths map[string]s
 func normalizePaths(d fsops.PathDialect, paths []string) []string {
 	normalized := make([]string, len(paths))
 	for i, p := range paths {
-		normalized[i] = normalizePath(d, p)
+		normalized[i] = fsops.NormalizePath(d, p)
 	}
 	return normalized
 }

@@ -5,13 +5,18 @@ package crossseed
 
 import (
 	"bytes"
-	"strings"
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -79,99 +84,269 @@ func makeView(hash, name, contentPath, savePath string, progress float64, state 
 	}
 }
 
-func TestMatchAgainstIndex_ContentPath(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
+// crossMatchFixture is one torrent in a BuildCrossMatchSets test: its view on
+// an instance and its file list.
+type crossMatchFixture struct {
+	view  qbittorrent.CrossInstanceTorrentView
+	files qbt.TorrentFiles
+}
 
-	views := []qbittorrent.CrossInstanceTorrentView{
-		makeView("aaa", "Movie.2024", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-		makeView("bbb", "Other.2024", "/data/other.mkv", "/data", 0.5, qbt.TorrentStateDownloading),
+func crossMatchTorrent(instanceID int, hash, name, savePath, contentPath string, files qbt.TorrentFiles) crossMatchFixture {
+	view := makeView(hash, name, contentPath, savePath, 1.0, qbt.TorrentStateUploading)
+	view.InstanceID = instanceID
+	return crossMatchFixture{view: view, files: files}
+}
+
+// buildCrossMatch runs BuildCrossMatchSets for instance 1 over the fixtures,
+// which can sit on instances 1 and 2.
+func buildCrossMatch(t *testing.T, needs CrossMatchNeeds, torrents ...crossMatchFixture) *CrossMatchResult {
+	t.Helper()
+	sm := &tierSyncManager{
+		files:      make(map[string]qbt.TorrentFiles),
+		candidates: make(map[int][]qbittorrent.CrossInstanceTorrentView),
 	}
-	idx := svc.buildIndexFromViews(views, true)
+	for _, torrent := range torrents {
+		sm.files[normalizeHash(torrent.view.Hash)] = torrent.files
+		sm.candidates[torrent.view.InstanceID] = append(sm.candidates[torrent.view.InstanceID], torrent.view)
+	}
+	svc := newTestService()
+	svc.syncManager = sm
+	svc.instanceStore = newOrderedInstanceStore(
+		&models.Instance{ID: 1, Name: "one", IsActive: true},
+		&models.Instance{ID: 2, Name: "two", IsActive: true},
+	)
+	return svc.BuildCrossMatchSets(t.Context(), 1, needs)
+}
 
-	t.Run("content path match found", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different.Name"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match by content path")
-		}
-		if !seeding {
-			t.Error("expected seeding match (aaa is uploading)")
-		}
+const (
+	cmEpisode      = "Harbor.Watch.S02E03.1080p.WEB.h264-GRP"
+	cmEpisodeFile  = cmEpisode + ".mkv"
+	cmAudioDescrip = "Harbor.Watch.S02E03.Audio.Description.1080p.WEB.h264-GRP"
+)
+
+func cmFile(name string, size int64) qbt.TorrentFiles {
+	return qbt.TorrentFiles{{Name: name, Size: size}}
+}
+
+func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
+	sameNeeds := CrossMatchNeeds{SameExists: true, SameContent: true}
+
+	t.Run("audio-description remux with a different mkv is not a cross-seed", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", cmAudioDescrip, "/data/ad", "/data/ad/"+cmAudioDescrip+".mkv", cmFile(cmAudioDescrip+".mkv", 1100)),
+		)
+		require.NotContains(t, result.SameInstanceExists, "aaa")
+		require.NotContains(t, result.SameInstanceExists, "bbb")
 	})
 
-	t.Run("no content path match", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/unique.mkv", SavePath: "/data", Name: "Unique.Name"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if matched {
-			t.Error("expected no match")
-		}
+	t.Run("audio-description name with the same file sizes is a Release copy", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", cmAudioDescrip, "/data/ad", "/data/ad/"+cmAudioDescrip+".mkv", cmFile(cmAudioDescrip+".mkv", 1000)),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Empty(t, result.SameInstanceContentByHash, "a separate copy shares no file")
 	})
 
-	t.Run("ambiguous content path equals save path excluded", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data", SavePath: "/data", Name: "Unique.Name"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if matched {
-			t.Error("expected no match for ambiguous content path")
-		}
+	t.Run("folder with an nfo next to the single mkv shares the file", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", "Harbor Watch S02E03 Pack", "/data/tv", "/data/tv",
+				qbt.TorrentFiles{{Name: cmEpisodeFile, Size: 1000}, {Name: "info.nfo", Size: 2}}),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Contains(t, result.SameInstanceExists, "bbb")
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	t.Run("unrelated torrents in one flat folder are not cross-seeds", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: cmEpisodeFile, Size: 1000}, {Name: "a.nfo", Size: 2}}),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: "Quiet.Coast.mkv", Size: 500}, {Name: "b.nfo", Size: 2}}),
+		)
+		require.Empty(t, result.SameInstanceExists)
+	})
+
+	t.Run("a torrent without a subfolder inside another torrent's folder shares the file", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", "Harbor.Watch.S02.1080p.WEB.h264-GRP", "/data", "/data/Season2",
+				cmFile("Season2/"+cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/Season2", "/data/Season2",
+				cmFile(cmEpisodeFile, 1000)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	t.Run("an episode inside the folder of its season pack shares the file", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", "Harbor.Watch.S02.1080p.WEB.h264-GRP", "/data/tv", "/data/tv/Season2",
+				qbt.TorrentFiles{{Name: "Season2/" + cmEpisodeFile, Size: 1000}, {Name: "Season2/other.mkv", Size: 1000}}),
+			crossMatchTorrent(1, "bbb", cmEpisode, "/data/tv/Season2", "/data/tv/Season2/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	t.Run("a shared subtitle joins safety groups without making unrelated payloads cross-seeds", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: cmEpisodeFile, Size: 1000}, {Name: "English.srt", Size: 10}}),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: "other.mkv", Size: 2000}, {Name: "English.srt", Size: 10}}),
+		)
+		require.Empty(t, result.SameInstanceExists)
+		require.Empty(t, result.SameInstanceUnknown)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	t.Run("an unreadable torrent in a flat folder counts as sharing files", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat", nil),
+		)
+		require.Empty(t, result.SameInstanceExists)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	const proof = "Proof.2005.1080p.BluRay.x264-GRP"
+	t.Run("a torrent whose every file is on the ignore list compares all its files", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", "Proof 2005 rehost", "/data/movies", "/data/movies",
+				qbt.TorrentFiles{{Name: proof + ".mkv", Size: 1000}, {Name: proof + ".nfo", Size: 2}}),
+			crossMatchTorrent(1, "ccc", proof, "/data/other", "/data/other/"+proof+".mkv", cmFile(proof+".mkv", 1100)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+		require.NotContains(t, result.SameInstanceExists, "ccc", "a copy with other file sizes is not a cross-seed")
+	})
+
+	t.Run("a copy with an ignored word in its title leaves its sidecars out", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", proof, "/data/copy", "/data/copy/"+proof,
+				qbt.TorrentFiles{{Name: proof + "/" + proof + ".mkv", Size: 1000}, {Name: proof + "/" + proof + ".nfo", Size: 2}}),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Contains(t, result.SameInstanceExists, "bbb")
+		require.Empty(t, result.SameInstanceContentByHash, "separate copies share no file")
+	})
+
+	t.Run("a copy with an ignored word in its title leaves its sample out", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", proof, "/data/copy", "/data/copy/"+proof,
+				qbt.TorrentFiles{{Name: proof + "/" + proof + ".mkv", Size: 1000}, {Name: proof + "/Sample/grp-proof-sample.mkv", Size: 10}}),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Contains(t, result.SameInstanceExists, "bbb")
+	})
+
+	t.Run("an unreadable candidate counts as sharing files for grouping only", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", cmEpisode, "/data/other", "/data/other/"+cmEpisodeFile, nil),
+		)
+		require.Empty(t, result.SameInstanceExists, "an unread candidate is not a confirmed cross-seed")
+		require.Contains(t, result.SameInstanceUnknown, "aaa", "nor a confirmed miss")
+		require.Equal(t, []string{"bbb"}, result.SameInstanceContentByHash["aaa"])
+	})
+
+	t.Run("a torrent alone does not match itself", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+		)
+		require.Empty(t, result.SameInstanceExists)
 	})
 }
 
-func TestMatchAgainstIndex_ExactName(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
+func TestBuildCrossMatchSets_SeedingAndTags(t *testing.T) {
+	paused := crossMatchTorrent(1, "bbb", cmEpisode, "/data/b", "/data/b/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000))
+	paused.view.State = qbt.TorrentStatePausedUp
+	paused.view.Tags = "paused-tag"
+	seeding := crossMatchTorrent(1, "ccc", cmEpisode, "/data/c", "/data/c/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000))
+	seeding.view.Tags = "seed-tag"
+	source := crossMatchTorrent(1, "aaa", cmEpisode, "/data/a", "/data/a/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000))
+	source.view.State = qbt.TorrentStatePausedUp
 
-	views := []qbittorrent.CrossInstanceTorrentView{
-		makeView("aaa", "Movie.2024.1080p.BluRay", "/other/path", "/other", 1.0, qbt.TorrentStateStalledUp),
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true, SameSeeding: true, SameTags: true}, source, paused, seeding)
+
+	require.Contains(t, result.SameInstanceSeeding, "aaa")
+	require.Contains(t, result.SameInstanceSeeding, "bbb")
+	require.NotContains(t, result.SameInstanceSeeding, "ccc", "both of its matches are paused")
+	require.Equal(t, []string{"paused-tag", "seed-tag"}, result.SameInstanceTagsByHash["aaa"])
+}
+
+func TestBuildCrossMatchSets_SharedPayloadKeepsAllSeedingAndTagMatches(t *testing.T) {
+	a := crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	b := crossMatchTorrent(1, "bbb", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	c := crossMatchTorrent(1, "ccc", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	a.view.State, b.view.State = qbt.TorrentStateStoppedUp, qbt.TorrentStateStoppedUp
+	c.view.Tags = "third-copy"
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true, SameSeeding: true, SameTags: true, SameContent: true}, a, b, c)
+	require.Contains(t, result.SameInstanceSeeding, "aaa")
+	require.Contains(t, result.SameInstanceSeeding, "bbb")
+	require.Equal(t, []string{"third-copy"}, result.SameInstanceTagsByHash["aaa"])
+	require.Len(t, result.SameInstanceContentByHash, 3)
+	for hash, peers := range result.SameInstanceContentByHash {
+		require.NotEmpty(t, peers)
+		require.NotContains(t, peers, hash)
 	}
-	idx := svc.buildIndexFromViews(views, true)
+}
 
-	t.Run("exact name match", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/different/content", SavePath: "/different", Name: "Movie.2024.1080p.BluRay"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match by exact name")
-		}
-		if !seeding {
-			t.Error("expected seeding (stalledUP)")
-		}
+func TestBuildCrossMatchSets_SharedSidecarsStayOutOfMatchConditions(t *testing.T) {
+	for _, collectContent := range []bool{false, true} {
+		t.Run(map[bool]string{false: "conditions only", true: "with safety groups"}[collectContent], func(t *testing.T) {
+			result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true, SameSeeding: true, SameTags: true, SameContent: collectContent},
+				crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}, {Name: "notes.txt", Size: 10},
+				}),
+				crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}, {Name: "info.nfo", Size: 10},
+				}),
+				crossMatchTorrent(1, "ccc", "Silver.Lantern.2019.2160p.WEB.h265-THIRD", "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "third.mkv", Size: 3000}, {Name: "notes.txt", Size: 10}, {Name: "info.nfo", Size: 10},
+				}),
+			)
+			require.Empty(t, result.SameInstanceExists)
+			require.Empty(t, result.SameInstanceSeeding)
+			require.Empty(t, result.SameInstanceTagsByHash)
+			if collectContent {
+				require.Len(t, result.SameInstanceContentByHash, 3)
+				for hash, peers := range result.SameInstanceContentByHash {
+					require.NotEmpty(t, peers)
+					require.NotContains(t, peers, hash)
+				}
+			} else {
+				require.Nil(t, result.SameInstanceContentByHash)
+			}
+		})
+	}
+}
+
+func TestBuildCrossMatchSets_OtherInstance(t *testing.T) {
+	otherNeeds := CrossMatchNeeds{OtherExists: true}
+
+	t.Run("same release with paired sizes on another instance", func(t *testing.T) {
+		result := buildCrossMatch(t, otherNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(2, "bbb", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile,
+				qbt.TorrentFiles{{Name: cmEpisodeFile, Size: 1000}, {Name: "English.srt", Size: 9}}),
+		)
+		require.Contains(t, result.OtherInstanceExists, "aaa")
 	})
 
-	t.Run("case insensitive name match", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/different/content", SavePath: "/different", Name: "movie.2024.1080p.bluray"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected case-insensitive name match")
-		}
+	t.Run("same path on another instance with a different size is not a cross-seed", func(t *testing.T) {
+		result := buildCrossMatch(t, otherNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(2, "bbb", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1001)),
+		)
+		require.Empty(t, result.OtherInstanceExists)
 	})
 }
 
-func TestMatchAgainstIndex_ReleaseMetadata(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
-
-	views := []qbittorrent.CrossInstanceTorrentView{
-		makeView("aaa", "Movie.2024.1080p.BluRay.x264-GROUP", "/data/a", "/data", 1.0, qbt.TorrentStateUploading),
-	}
-	idx := svc.buildIndexFromViews(views, true)
-
-	t.Run("release metadata match - same release different content path", func(t *testing.T) {
-		t.Parallel()
-		// Same title, year, resolution, source, codec, group — different content path and hash
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/other/b", SavePath: "/other", Name: "Movie.2024.1080p.BluRay.x264-GROUP"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match by release metadata")
-		}
-	})
-}
-
-func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
+func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	previousLogger := log.Logger
 	previousLevel := zerolog.GlobalLevel()
 	var buf bytes.Buffer
@@ -182,372 +357,219 @@ func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 		zerolog.SetGlobalLevel(previousLevel)
 	})
 
-	svc := newTestService()
-	views := []qbittorrent.CrossInstanceTorrentView{
-		makeView("aaa", "Movie.2024.1080p.BluRay.x264-GROUP", "/data/a", "/data", 1.0, qbt.TorrentStateUploading),
-	}
-	idx := svc.buildIndexFromViews(views, true)
-	source := &qbt.Torrent{
-		Hash:        "xxx",
-		ContentPath: "/other/b",
-		SavePath:    "/other",
-		Name:        "Movie.2024.1080p.BluRay.x264-OTHER",
-	}
-
-	matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
-	if matched {
-		t.Fatal("expected group mismatch to reject release metadata candidate")
-	}
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true},
+		crossMatchTorrent(1, "aaa", "Movie.2024.1080p.BluRay.x264-GROUP", "/data/a", "/data/a/movie.mkv", cmFile("movie.mkv", 1000)),
+		crossMatchTorrent(1, "bbb", "Movie.2024.1080p.BluRay.x264-OTHER", "/data/b", "/data/b/movie.mkv", cmFile("movie.mkv", 1000)),
+	)
+	require.Empty(t, result.SameInstanceExists, "a group mismatch rejects the release metadata candidate")
 
 	logOutput := buf.String()
-	if !strings.Contains(logOutput, `"level":"trace"`) {
-		t.Fatalf("expected trace log, got %s", logOutput)
-	}
-	if !strings.Contains(logOutput, `"message":"crossseed: release metadata candidate evaluated"`) {
-		t.Fatalf("expected release metadata trace message, got %s", logOutput)
-	}
-	if !strings.Contains(logOutput, `"reason":"group mismatch"`) {
-		t.Fatalf("expected mismatch reason in trace log, got %s", logOutput)
-	}
+	require.Contains(t, logOutput, `"level":"trace"`)
+	require.Contains(t, logOutput, `"message":"crossseed: release metadata candidate evaluated"`)
+	require.Contains(t, logOutput, `"reason":"group mismatch"`)
 }
 
-func TestMatchAgainstIndex_ExcludeSelf(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
+// The episodes of a daily show share a Title key and episode 0. Only a pair
+// with the same date, or a pair where one side has no full date, meets the
+// matcher, so a large daily archive does not compare every date.
+func TestBuildCrossMatchSets_DailyShowMeetsOnlyItsDate(t *testing.T) {
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+	var buf bytes.Buffer
+	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = previousLogger
+		zerolog.SetGlobalLevel(previousLevel)
+	})
 
-	views := []qbittorrent.CrossInstanceTorrentView{
-		makeView("aaa", "Movie.2024", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
+	const (
+		jan15     = "Harbor.Watch.2024.01.15.1080p.WEB.h264-GRP"
+		jan15Copy = "Harbor Watch 2024 01 15 1080p WEB h264-GRP"
+		jan16     = "Harbor.Watch.2024.01.16.1080p.WEB.h264-GRP"
+		undated   = "Harbor.Watch.1080p.WEB.h264-GRP"
+	)
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true},
+		crossMatchTorrent(1, "aaa", jan15, "/data/a", "/data/a/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "bbb", jan15Copy, "/data/b", "/data/b/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "ccc", jan16, "/data/c", "/data/c/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "ddd", undated, "/data/d", "/data/d/ep.mkv", cmFile("ep.mkv", 1000)),
+	)
+	require.Contains(t, result.SameInstanceExists, "aaa")
+	require.Contains(t, result.SameInstanceExists, "bbb")
+	require.NotContains(t, result.SameInstanceExists, "ccc")
+
+	met := make(map[[2]string]bool)
+	for line := range bytes.Lines(buf.Bytes()) {
+		var entry struct {
+			SourceTitle    string `json:"sourceTitle"`
+			CandidateTitle string `json:"candidateTitle"`
+		}
+		if json.Unmarshal(line, &entry) == nil && entry.SourceTitle != "" {
+			met[[2]string{entry.SourceTitle, entry.CandidateTitle}] = true
+		}
 	}
-	idx := svc.buildIndexFromViews(views, false)
-
-	t.Run("self excluded by hash", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "aaa", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, true, false)
-		if matched {
-			t.Error("expected no match when excluding self")
-		}
-	})
-
-	t.Run("different hash not excluded", func(t *testing.T) {
-		t.Parallel()
-		source := &qbt.Torrent{Hash: "bbb", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _, _ := svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Error("expected match for different hash")
-		}
-	})
+	require.True(t, met[[2]string{jan15, jan15Copy}], "the same date meets the matcher")
+	require.False(t, met[[2]string{jan15, jan16}], "another date does not meet the matcher")
+	require.True(t, met[[2]string{jan15, undated}], "a dated source meets an undated candidate")
+	require.True(t, met[[2]string{undated, jan16}], "an undated source meets every dated candidate")
 }
 
-func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
-
-	t.Run("non-seeding candidate returns matched but not seeding", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.2024", "/data/movie.mkv", "/data", 0.5, qbt.TorrentStateDownloading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match")
-		}
-		if seeding {
-			t.Error("expected not seeding")
-		}
-	})
-
-	t.Run("paused candidate not seeding", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.2024", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match")
-		}
-		if seeding {
-			t.Error("expected not seeding for paused candidate")
-		}
-	})
-
-	t.Run("multiple candidates one seeding", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.2024", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
-			makeView("bbb", "Movie.2024", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match")
-		}
-		if !seeding {
-			t.Error("expected seeding (bbb is uploading)")
-		}
-	})
-
-	t.Run("cross-strategy seeding detected", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			// Matches by content path but not seeding
-			makeView("aaa", "Different.Name", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
-			// Matches by release metadata and is seeding
-			makeView("bbb", "Movie.2024.1080p.BluRay.x264", "/other/path", "/other", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024.1080p.BluRay.x264"}
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
-		if !matched {
-			t.Error("expected match")
-		}
-		if !seeding {
-			t.Error("expected seeding from release metadata strategy even though content path match was not seeding")
-		}
-	})
-}
-
-func TestBuildIndexFromViews(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
-
-	t.Run("empty views returns nil", func(t *testing.T) {
-		t.Parallel()
-		idx := svc.buildIndexFromViews(nil, false)
-		if idx != nil {
-			t.Error("expected nil index for empty views")
-		}
-	})
-
-	t.Run("indexes all three strategies", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.2024.1080p.BluRay.x264-GROUP", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, false)
-		if idx == nil {
-			t.Fatal("expected non-nil index")
-		}
-		if len(idx.byContentPath) == 0 {
-			t.Error("expected content path index entries")
-		}
-		if len(idx.byName) == 0 {
-			t.Error("expected name index entries")
-		}
-		if len(idx.byReleaseKey) == 0 {
-			t.Error("expected release key index entries")
-		}
-	})
-
-	t.Run("ambiguous content path not indexed", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.2024", "/data", "/data", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, false)
-		if idx == nil {
-			t.Fatal("expected non-nil index")
-		}
-		if len(idx.byContentPath) != 0 {
-			t.Error("expected empty content path index for ambiguous path")
-		}
-	})
-}
-
-func TestSameInstanceMatchingEndToEnd(t *testing.T) {
-	t.Parallel()
-	svc := newTestService()
-
-	t.Run("same-instance cross-seeds by content path", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.A", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-			makeView("bbb", "Movie.B", "/data/movie.mkv", "/data", 0.5, qbt.TorrentStateDownloading),
-			makeView("ccc", "Unrelated", "/data/other.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-
-		// aaa should match bbb (same content path, different hash)
-		source := views[0].Torrent
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Error("expected aaa to match (bbb has same content path)")
-		}
-		if seeding {
-			t.Error("expected not seeding (bbb is downloading)")
-		}
-
-		// bbb should match aaa
-		source = views[1].Torrent
-		matched, seeding, _ = svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Error("expected bbb to match (aaa has same content path)")
-		}
-		if !seeding {
-			t.Error("expected seeding (aaa is uploading)")
-		}
-
-		// ccc should not match (different content path, unique name)
-		source = views[2].Torrent
-		matched, _, _ = svc.matchAgainstIndex(source, idx, true, false)
-		if matched {
-			t.Error("expected ccc to NOT match")
-		}
-	})
-
-	t.Run("same-instance cross-seeds by name", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Same.Name.2024", "/data/a/content", "/data/a", 1.0, qbt.TorrentStateStalledUp),
-			makeView("bbb", "Same.Name.2024", "/data/b/content", "/data/b", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-
-		source := views[0].Torrent
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Error("expected match by name")
-		}
-		if !seeding {
-			t.Error("expected seeding (bbb is uploading)")
-		}
-	})
-
-	t.Run("three-way group all seeding", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.A", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateForcedUp),
-			makeView("bbb", "Movie.B", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateQueuedUp),
-			makeView("ccc", "Movie.C", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStateUploading),
-		}
-		idx := svc.buildIndexFromViews(views, true)
-
-		for i, hash := range []string{"aaa", "bbb", "ccc"} {
-			source := views[i].Torrent
-			matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
-			if !matched {
-				t.Errorf("expected %s to match", hash)
+// A hardlinked cross-seed with an extra file that search does not ignore fails
+// the size pairing, but its inode makes it a cross-seed, as in the
+// Cross-Seed tab. An independent copy with the same extra file stays out.
+func TestBuildCrossMatchSets_HardlinkWithExtraFile(t *testing.T) {
+	for _, linked := range []bool{true, false} {
+		t.Run(map[bool]string{true: "hardlink", false: "independent copy"}[linked], func(t *testing.T) {
+			sourceDir, candidateDir := writeHardlinkFixture(t, cmEpisodeFile, linked)
+			sm := &tierSyncManager{
+				files: map[string]qbt.TorrentFiles{
+					"aaa": cmFile(cmEpisodeFile, 4),
+					"bbb": {{Name: cmEpisodeFile, Size: 4}, {Name: "Menu.m2ts", Size: 9}},
+				},
+				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {
+					crossMatchTorrent(1, "aaa", cmEpisode, sourceDir, filepath.Join(sourceDir, cmEpisodeFile), nil).view,
+					crossMatchTorrent(1, "bbb", cmEpisode, candidateDir, candidateDir, nil).view,
+				}},
 			}
-			if !seeding {
-				t.Errorf("expected %s to have seeding cross-seed", hash)
+			svc := hardlinkTestService(nil)
+			svc.syncManager = sm
+			svc.instanceStore = newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true})
+
+			result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{SameExists: true})
+
+			if linked {
+				require.Contains(t, result.SameInstanceExists, "aaa")
+				require.Contains(t, result.SameInstanceExists, "bbb")
+			} else {
+				require.Empty(t, result.SameInstanceExists)
+			}
+		})
+	}
+}
+
+func TestBuildCrossMatchSets_LinkVerificationFailureIsUnknown(t *testing.T) {
+	for _, backendFailure := range []bool{false, true} {
+		t.Run(map[bool]string{true: "backend unavailable", false: "file path cannot be verified"}[backendFailure], func(t *testing.T) {
+			sourceDir, candidateDir := writeHardlinkFixture(t, cmEpisodeFile, true)
+			candidateFile := cmEpisodeFile
+			if !backendFailure {
+				candidateFile = "../outside.mkv"
+			}
+			sm := &tierSyncManager{
+				files: map[string]qbt.TorrentFiles{
+					"aaa": cmFile(cmEpisodeFile, 4),
+					"bbb": {{Name: candidateFile, Size: 4}, {Name: "Menu.m2ts", Size: 9}},
+				},
+				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {
+					crossMatchTorrent(1, "aaa", cmEpisode, sourceDir, filepath.Join(sourceDir, cmEpisodeFile), nil).view,
+					crossMatchTorrent(1, "bbb", cmEpisode, candidateDir, candidateDir, nil).view,
+				}},
+			}
+			svc := hardlinkTestService(nil)
+			if backendFailure {
+				svc.SetBackendPool(nil)
+			}
+			svc.syncManager = sm
+			svc.instanceStore = newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true})
+
+			result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{SameExists: true})
+
+			require.Empty(t, result.SameInstanceExists)
+			require.Contains(t, result.SameInstanceUnknown, "aaa")
+			require.Contains(t, result.SameInstanceUnknown, "bbb", "the cached reverse pair must stay unknown too")
+		})
+	}
+}
+
+func TestBuildCrossMatchSets_InstanceListFailureIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &tierSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			"aaa": cmFile(cmEpisodeFile, 4),
+			"bbb": {{Name: cmEpisodeFile, Size: 4}, {Name: "Menu.m2ts", Size: 9}},
+			"ccc": cmFile(cmEpisodeFile, 4),
+		},
+		candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/one", "/data/one/episode.mkv", nil).view,
+			crossMatchTorrent(1, "bbb", cmEpisode, "/data/two", "/data/two", nil).view,
+			crossMatchTorrent(1, "ccc", cmEpisode, "/data/one", "/data/one/episode.mkv", nil).view,
+		}},
+	}
+	svc := newTestService()
+	svc.syncManager = sm
+	svc.instanceStore = &orderedInstanceStore{listErr: errors.New("instance list unavailable")}
+
+	for _, needs := range []CrossMatchNeeds{
+		{SameExists: true, SameSeeding: true, SameTags: true, SameContent: true},
+		{OtherExists: true, OtherSeeding: true},
+	} {
+		result := svc.BuildCrossMatchSets(t.Context(), 1, needs)
+		for _, hash := range []string{"aaa", "bbb", "ccc"} {
+			if needs.SameExists {
+				require.Contains(t, result.SameInstanceUnknown, hash)
+			} else {
+				require.Contains(t, result.OtherInstanceUnknown, hash)
 			}
 		}
-	})
-
-	t.Run("all paused - matched but not seeding", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeView("aaa", "Movie.A", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
-			makeView("bbb", "Movie.B", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
+		if needs.SameContent {
+			require.Contains(t, result.SameInstanceContentByHash["aaa"], "ccc", "delete safety must retain known shared paths")
 		}
-		idx := svc.buildIndexFromViews(views, true)
-
-		source := views[0].Torrent
-		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Error("expected match")
-		}
-		if seeding {
-			t.Error("expected not seeding (both paused)")
-		}
-	})
+	}
 }
 
-func makeTaggedView(hash, name, contentPath, savePath, tags string) qbittorrent.CrossInstanceTorrentView {
-	view := makeView(hash, name, contentPath, savePath, 1.0, qbt.TorrentStateUploading)
-	view.Tags = tags
-	return view
+// failingPeerSyncManager fails the torrent snapshot of one instance.
+type failingPeerSyncManager struct {
+	*tierSyncManager
+	failInstanceID int
 }
 
-func TestMatchAgainstIndex_MemberTags(t *testing.T) {
+func (m *failingPeerSyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	if instanceID == m.failInstanceID {
+		return nil, errors.New("instance unreachable")
+	}
+	return m.tierSyncManager.GetCachedInstanceTorrents(ctx, instanceID)
+}
+
+func TestBuildCrossMatchSets_PeerSnapshotFailureIsUnknown(t *testing.T) {
 	t.Parallel()
+
+	const other = "Quiet.Coast.2020.720p.BluRay.x264-OTHER"
+	sm := &tierSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			"aaa": cmFile(cmEpisodeFile, 4),
+			"bbb": cmFile(other+".mkv", 8),
+			"ccc": cmFile(other+".mkv", 8),
+		},
+		candidates: map[int][]qbittorrent.CrossInstanceTorrentView{
+			1: {
+				crossMatchTorrent(1, "aaa", cmEpisode, "/data/a", "/data/a/"+cmEpisodeFile, nil).view,
+				crossMatchTorrent(1, "bbb", other, "/data/b", "/data/b/"+other+".mkv", nil).view,
+			},
+			3: {crossMatchTorrent(3, "ccc", other, "/data/c", "/data/c/"+other+".mkv", nil).view},
+		},
+	}
 	svc := newTestService()
+	svc.syncManager = &failingPeerSyncManager{tierSyncManager: sm, failInstanceID: 2}
+	svc.instanceStore = newOrderedInstanceStore(
+		&models.Instance{ID: 1, Name: "one", IsActive: true},
+		&models.Instance{ID: 2, Name: "two", IsActive: true},
+		&models.Instance{ID: 3, Name: "three", IsActive: true},
+	)
 
-	t.Run("tags collected per strategy", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			// Matches by content path only.
-			makeTaggedView("aaa", "Different.Name.2024", "/data/movie.mkv", "/data", "path-tag"),
-			// Matches by exact name only.
-			makeTaggedView("bbb", "Movie.2024.1080p.BluRay.x264-GROUP", "/other/a", "/other", "name-tag, extra"),
-			// Matches by release metadata only (same release, different name casing dodged via distinct path/name).
-			makeTaggedView("ccc", "Movie.2024.1080p.BLURAY.x264-GROUP", "/other/b", "/other", "release-tag"),
-		}
-		idx := svc.buildIndexFromViews(views, false)
+	result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{OtherExists: true, OtherSeeding: true})
+	require.Contains(t, result.OtherInstanceUnknown, "aaa", "the unreachable instance can hold its only copy")
+	require.NotContains(t, result.OtherInstanceExists, "aaa")
+	require.Contains(t, result.OtherInstanceExists, "bbb", "a copy on a reachable instance stays confirmed")
+}
 
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024.1080p.BluRay.x264-GROUP"}
-		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
-		if !matched {
-			t.Fatal("expected match")
-		}
-		// ccc matches by BOTH name (case-insensitive) and release; it must appear once.
-		want := []string{"name-tag, extra", "path-tag", "release-tag"}
-		if len(memberTags) != len(want) {
-			t.Fatalf("expected %d tag strings, got %v", len(want), memberTags)
-		}
-		for i, w := range want {
-			if memberTags[i] != w {
-				t.Errorf("expected sorted memberTags[%d]=%q, got %q", i, w, memberTags[i])
-			}
-		}
-	})
-
-	t.Run("self excluded and untagged member contributes nothing", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeTaggedView("aaa", "Movie.2024", "/data/movie.mkv", "/data", "self-tag"),
-			makeTaggedView("bbb", "Movie.2024", "/data/movie.mkv", "/data", ""),
-		}
-		idx := svc.buildIndexFromViews(views, false)
-
-		source := &qbt.Torrent{Hash: "aaa", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
-		if !matched {
-			t.Fatal("expected match against bbb")
-		}
-		if len(memberTags) != 0 {
-			t.Errorf("expected no member tags (self excluded, bbb untagged), got %v", memberTags)
-		}
-	})
-
-	t.Run("collectTags false returns nil", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			makeTaggedView("aaa", "Movie.2024", "/data/movie.mkv", "/data", "some-tag"),
-		}
-		idx := svc.buildIndexFromViews(views, false)
-
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, false)
-		if !matched {
-			t.Fatal("expected match")
-		}
-		if memberTags != nil {
-			t.Errorf("expected nil member tags when collectTags is false, got %v", memberTags)
-		}
-	})
-
-	t.Run("ambiguous content path member yields no tags", func(t *testing.T) {
-		t.Parallel()
-		views := []qbittorrent.CrossInstanceTorrentView{
-			// ContentPath == SavePath: dropped from the content-path index; name is
-			// unique and release title differs, so no strategy matches it.
-			makeTaggedView("aaa", "Flat.Layout.Torrent", "/data", "/data", "ambiguous-tag"),
-		}
-		idx := svc.buildIndexFromViews(views, false)
-
-		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data", SavePath: "/data", Name: "Unrelated.Release.2020"}
-		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
-		if matched {
-			t.Fatal("expected no match for ambiguous content path")
-		}
-		if len(memberTags) != 0 {
-			t.Errorf("expected no member tags, got %v", memberTags)
-		}
-	})
+func TestBuildCrossMatchSets_CurrentSnapshotFailure(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("torrent snapshot unavailable")
+	svc := newTestService()
+	svc.syncManager = &tierSyncManager{snapshotErr: wantErr}
+	result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{SameContent: true})
+	require.ErrorIs(t, result.Err, wantErr)
+	require.Nil(t, result.SameInstanceContentByHash)
 }

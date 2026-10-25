@@ -103,7 +103,15 @@
     "totalSize": "Dimensione totale: {{size}}",
     "blockCrossSeeds": "Blocca gli infohash dei cross-seed (impedisce la ri-aggiunta)",
     "cancel": "Annulla",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Eliminare il {{count}} torrent che corrisponde al filtro?",
+    "titleSelectAll_other": "Eliminare i {{count}} torrent che corrispondono al filtro?",
+    "selectAllNotice": "Seleziona tutto è attivo. Questa azione elimina i torrent selezionati che corrispondono al filtro attuale.",
+    "notLoaded_one": "{{count}} di questi non è caricato nella tabella.",
+    "notLoaded_other": "{{count}} di questi non sono caricati nella tabella.",
+    "andMore": "e altri {{more}}",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrent"
   },
   "deleteFilesPreference": {
     "label": "Elimina anche i file dal disco",
@@ -429,6 +437,9 @@
       "description": "Imposta i limiti di velocità di caricamento e download in KB/s. Disabilita per usare i limiti globali.",
       "uploadLimit": "Imposta limite di caricamento (KB/s)",
       "downloadLimit": "Imposta limite di download (KB/s)",
+      "selectValue": "Seleziona un valore",
+      "wasMixed": "(era misto)",
+      "unresolvedMixed": "Seleziona i valori per tutti i campi misti prima di applicare",
       "cancel": "Annulla",
       "setting": "Impostazione in corso...",
       "confirm": "Applica limiti"
@@ -879,6 +890,11 @@
       "checking": "Verifica in corso",
       "moving": "Spostamento"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Nessun torrent trovato",
+    "noFilterMatches": "Nessun torrent corrisponde ai filtri attuali",
+    "noSearchMatches": "Nessun torrent corrisponde alla ricerca attuale"
   },
   "filterSidebar": {
     "views": {
@@ -1331,11 +1347,6 @@
     "matchCount_other": "{{count}} corrispondenze",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina questo",
-    "statusLabels": {
-      "trackerDown": "Tracker non raggiungibile",
-      "unregistered": "Non registrato",
-      "trackerError": "Errore tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenuto",
@@ -1359,6 +1370,7 @@
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
+    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare.",
     "toast": {
       "savePathCopied": "Percorso di salvataggio copiato",
       "copyFailed": "Copia non riuscita"
@@ -1509,25 +1521,6 @@
       "placeholder": "Cerca torrent...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
-    },
-    "shareLimit": {
-      "title": "Imposta limiti di condivisione per {{count}} torrent",
-      "description": "Configura i limiti di distribuzione. Usa -1 o disabilita per rimuovere i limiti.",
-      "setRatioLimit": "Imposta limite di rapporto",
-      "setSeedingTimeLimit": "Imposta limite di tempo di distribuzione (minuti)",
-      "setInactiveSeedingLimit": "Imposta limite di distribuzione inattiva (minuti)",
-      "cancel": "Annulla",
-      "setting": "Impostazione...",
-      "applyLimits": "Applica limiti"
-    },
-    "speedLimit": {
-      "title": "Imposta limiti di velocità per {{count}} torrent",
-      "description": "Imposta i limiti di velocità di caricamento e download in KB/s. Usa -1 o disabilita per rimuovere i limiti.",
-      "setUploadLimit": "Imposta limite di caricamento (KB/s)",
-      "setDownloadLimit": "Imposta limite di download (KB/s)",
-      "cancel": "Annulla",
-      "setting": "Impostazione...",
-      "applyLimits": "Applica limiti"
     },
     "ratio": "Rapporto:"
   },
