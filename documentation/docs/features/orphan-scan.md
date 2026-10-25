@@ -15,7 +15,7 @@ Orphan scan finds and removes files in your download directories that no torrent
 ## How it works
 
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
-2. qui flags files that no torrent references as orphans.
+2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too.
 3. Before you confirm deletion, you preview the list.
 4. qui deletes the files, then removes the directories the preview listed.
 

@@ -163,13 +163,17 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 	return dirs
 }
 
-// fileKeys spans every root of a run: a second path to an nlink==1 file is a
-// bind mount or a path through a symlinked folder (#1212), while a hardlink is
-// its own entry.
+// fileKeys spans every root of a run. A second path to an nlink==1 file no
+// torrent owns is a bind mount or a path through a symlinked folder and is
+// listed once (#1212), while hardlinks no torrent owns are listed at every
+// path. A torrent's file protects every path with its identity, since a bind
+// mount or a symlinked folder can reach a hardlink too (#3449).
 type fileKeys struct {
 	inUse map[fsops.FileKey]struct{}
-	// Files no torrent owns, as a chain per key through one slab: one slice per key costs an allocation per orphan.
+	// Single-link files no torrent owns, as a chain per key through one slab: one slice per key costs an allocation per orphan.
 	others map[fsops.FileKey]int
+	// linked holds the hardlinked ones, checked only against inUse, so their sizes go unused.
+	linked map[fsops.FileKey]int
 	refs   []aliasRef
 }
 
@@ -180,23 +184,28 @@ type aliasRef struct {
 }
 
 func newFileKeys() *fileKeys {
-	return &fileKeys{inUse: make(map[fsops.FileKey]struct{}), others: make(map[fsops.FileKey]int)}
+	return &fileKeys{
+		inUse:  make(map[fsops.FileKey]struct{}),
+		others: make(map[fsops.FileKey]int),
+		linked: make(map[fsops.FileKey]int),
+	}
 }
 
-func (k *fileKeys) addOther(key fsops.FileKey, path string) int {
-	prev, ok := k.others[key]
+func (k *fileKeys) addOther(key fsops.FileKey, path string, nlinks uint64) int {
+	chains := k.others
+	if nlinks > 1 {
+		chains = k.linked
+	}
+	prev, ok := chains[key]
 	if !ok {
 		prev = -1
 	}
 	k.refs = append(k.refs, aliasRef{path: path, prev: prev, size: -1})
-	k.others[key] = len(k.refs) - 1
+	chains[key] = len(k.refs) - 1
 	return len(k.refs) - 1
 }
 
 func (w *scanWalker) fileKey(entry fsops.WalkEntry) (fsops.FileKey, bool) {
-	if entry.Nlinks > 1 {
-		return fsops.FileKey{}, false
-	}
 	return fsops.FileKeyOf(entry.FileID, w.instance)
 }
 
@@ -238,14 +247,24 @@ func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys)
 func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
 	for key, head := range k.others {
 		if _, ok := k.inUse[key]; ok {
-			for r := head; r >= 0; r = k.refs[r].prev {
-				inUse = append(inUse, k.refs[r].path)
-			}
+			inUse = k.paths(inUse, head)
 		} else if k.refs[head].prev >= 0 {
 			aliased = append(aliased, head)
 		}
 	}
+	for key, head := range k.linked {
+		if _, ok := k.inUse[key]; ok {
+			inUse = k.paths(inUse, head)
+		}
+	}
 	return inUse, aliased
+}
+
+func (k *fileKeys) paths(paths []string, head int) []string {
+	for r := head; r >= 0; r = k.refs[r].prev {
+		paths = append(paths, k.refs[r].path)
+	}
+	return paths
 }
 
 // aliasDups counts the files and bytes in one orphan that are a file already
@@ -486,7 +505,7 @@ func walkScanRootWithUnitFilter(
 		// Recorded before the grace and name checks: a disc unit's delete removes those files too.
 		ref := -1
 		if key, ok := w.fileKey(entry); ok {
-			ref = w.keys.addOther(key, path)
+			ref = w.keys.addOther(key, path, entry.Nlinks)
 		}
 
 		name := w.d.Base(path)

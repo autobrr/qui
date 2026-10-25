@@ -52,10 +52,24 @@ func TestScanWalker_AliasDedup(t *testing.T) {
 			entries: []fsops.WalkEntry{entry(early, fid, 1), entry(inUse, fid, 1)},
 		},
 		{
-			name:    "hardlink of an in-use file",
+			name:    "hardlink of an in-use file walked first",
 			inUse:   true,
 			entries: []fsops.WalkEntry{entry(early, fid, 2), entry(inUse, fid, 2)},
-			want:    []string{early},
+		},
+		{
+			name:    "hardlink of an in-use file walked last",
+			inUse:   true,
+			entries: []fsops.WalkEntry{entry(inUse, fid, 2), entry(late, fid, 2)},
+		},
+		{
+			name:    "two hardlinks of an in-use file",
+			inUse:   true,
+			entries: []fsops.WalkEntry{entry(early, fid, 3), entry(inUse, fid, 3), entry(late, fid, 3)},
+		},
+		{
+			name:    "two aliases of an in-use file",
+			inUse:   true,
+			entries: []fsops.WalkEntry{entry(early, fid, 1), entry(inUse, fid, 1), entry(late, fid, 1)},
 		},
 		{
 			name:    "orphan aliases keep the first path",
