@@ -727,14 +727,14 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking")
 	}
 
-	// Also reset decryption error tracking on successful connection
+	// Also reset decryption error tracking
 	if _, exists := cp.decryptionTracker[instanceID]; exists {
 		delete(cp.decryptionTracker, instanceID)
 		hadFailures = true
 		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking")
 	}
 
-	// Always clear errors from database on successful connection
+	// Always clear errors from database
 	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
