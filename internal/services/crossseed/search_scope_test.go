@@ -119,9 +119,9 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{red}},
 		},
 		{
-			name:  "RED source without an OPS key starts the cooldown without a lookup",
+			name:  "RED source without an OPS key starts no cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: []string{red}},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleCooldownWithoutLookup: true},
+			want:  searchScope{torznabIndexerIDs: []int{1}},
 		},
 		{
 			name:  "music from another site asks both RED and OPS",
@@ -142,6 +142,26 @@ func TestDecideSearchScope(t *testing.T) {
 			name:  "failed music check starts the cooldown without a lookup",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys},
 			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleCooldownWithoutLookup: true},
+		},
+		{
+			name:  "duplicate group with a RED copy skips the music check and asks only OPS",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), duplicateSourceSites: []string{red}, gazelleKeys: bothKeys},
+			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+		},
+		{
+			name:  "duplicate group with a RED copy and no OPS key starts no cooldown",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), duplicateSourceSites: []string{red}, gazelleKeys: []string{red}},
+			want:  searchScope{torznabIndexerIDs: []int{1}},
+		},
+		{
+			name:  "duplicate group that seeds on RED and OPS asks neither and starts the cooldown",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}, gazelleKeys: bothKeys},
+			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleCooldownWithoutLookup: true},
+		},
+		{
+			name:  "duplicate group that seeds on RED and OPS without a key starts no cooldown",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}},
+			want:  searchScope{torznabIndexerIDs: []int{1}},
 		},
 		{
 			name:  "RED/OPS in cooldown asks only Torznab",
@@ -190,4 +210,36 @@ func TestSearchRunLoop_FailedMusicCheckStartsGazelleCooldown(t *testing.T) {
 	_, found, err := svc.automationStore.GetSearchHistory(t.Context(), state.opts.InstanceID, torrent.Hash)
 	require.NoError(t, err)
 	require.True(t, found, "the failed music check must start the RED/OPS cooldown")
+}
+
+// A Library Scan that picks a copy from another tracker for an album that also
+// seeds from RED asks OPS, also when the picked copy fails the music check. The
+// RED/OPS cooldown then covers both copies.
+func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
+	name := "Artist - Album (2024) [WEB FLAC]"
+	picked := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1.0, Size: 9_000, AddedOn: 1, Tracker: "https://tracker.example.invalid/announce"}
+	redCopy := qbt.Torrent{Hash: fmt.Sprintf("%040x", 2), Name: name, Progress: 1.0, Size: 1_000, AddedOn: 2, Tracker: "https://flacsfor.me/announce"}
+	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-duplicate-group-cooldown", &hashFilteringSyncManager{
+		torrents: []qbt.Torrent{picked, redCopy},
+		filesByHash: map[string]qbt.TorrentFiles{
+			// A concert video outweighs the tracks, so this copy fails the music check.
+			picked.Hash:  {{Name: name + "/01 - Track.flac", Size: 1_000}, {Name: name + "/concert.mkv", Size: 8_000}},
+			redCopy.Hash: {{Name: name + "/01 - Track.flac", Size: 1_000}},
+		},
+	})
+	var lookupHosts []string
+	findGazelleMatch = func(_ context.Context, client *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
+		lookupHosts = append(lookupHosts, client.Host())
+		return nil, nil
+	}
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	require.Equal(t, 1, state.run.Processed, "the scan searches one copy of the group")
+	require.Equal(t, []string{"orpheus.network"}, lookupHosts)
+	for _, hash := range []string{picked.Hash, redCopy.Hash} {
+		_, found, err := svc.automationStore.GetSearchHistory(t.Context(), state.opts.InstanceID, hash)
+		require.NoError(t, err)
+		require.True(t, found, "the RED/OPS cooldown must cover %s", hash)
+	}
 }

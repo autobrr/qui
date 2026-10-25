@@ -33,6 +33,8 @@ Gazelle support gives qui music-specific handling for OPS/RED. The tracker-nativ
 
 Before qui spends an API call on a non-OPS/RED torrent, it reads the torrent's file extensions. If most of the torrent's bytes are not audio, e-book, or comic files, qui skips the Gazelle query for that torrent. If a torrent is already on OPS or RED, it skips this gate because the source tracker proves that the content fits.
 
+In a Library Scan, qui searches one copy of each group of duplicate copies. If any copy of the group is from OPS or RED, qui skips the gate for the group. qui asks only the Gazelle sites where no copy of the group seeds.
+
 ## When it applies
 
 qui detects OPS and RED sources by reading the announce URL:
@@ -125,7 +127,8 @@ Gazelle and Torznab also differ in how qui applies time-based search constraints
 
 - If you enable Torznab, Library Scan keeps the per-torrent interval floor of 60 seconds used for indexer searches.
 - If you disable Torznab and configure Gazelle, Library Scan can use a lower interval floor because requests go directly to the tracker APIs instead of through Torznab indexers.
-- qui stamps the Gazelle cooldown for a torrent when a Gazelle lookup completes, with or without a match. It also stamps it when Gazelle was enabled for the run but had nothing to look up for that torrent. Causes: the content gate, the local prefilter, or the target hash already present. A lookup that fails (tracker down, rate limited) does not stamp it, so the torrent stays eligible next run.
+- qui stamps the Gazelle cooldown for a torrent when a Gazelle lookup completes, with or without a match. It also stamps it when Gazelle was enabled for the run but had nothing to look up for that torrent. Causes: the torrent failed the content gate, the local prefilter found the content, the target hash is already present, or a copy of the group seeds on each Gazelle site. A lookup that fails (tracker down, rate limited) does not stamp it, so the torrent stays eligible next run.
+- qui does not stamp the Gazelle cooldown when the API key for the target site is missing. If you add the key later, the next run searches the torrent on that site.
 - qui stamps Torznab cooldowns per indexer, and only for indexers that completed the search. An indexer that was rate limited or failed stays eligible on the next run.
 - After each search attempt, qui copies the representative torrent's Gazelle and per-indexer cooldown stamps to its duplicate torrents.
 
