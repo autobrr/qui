@@ -225,13 +225,13 @@ export function DirScanTab({ instances }: DirScanTabProps) {
                 {t("dirScan.settings")}
               </Button>
               <Label htmlFor="dir-scan-enabled" className="flex items-center gap-2">
+                {settings?.enabled ? t("dirScan.enabled") : t("dirScan.disabled")}
                 <Switch
                   id="dir-scan-enabled"
                   checked={settings?.enabled ?? false}
                   onCheckedChange={handleToggleEnabled}
                   disabled={updateSettings.isPending}
                 />
-                {settings?.enabled ? t("dirScan.enabled") : t("dirScan.disabled")}
               </Label>
             </div>
           </div>

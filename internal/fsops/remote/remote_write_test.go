@@ -83,6 +83,26 @@ func TestMkdirAll_FileInTheWay(t *testing.T) {
 	require.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
+func TestMkdir_SecondCallSeesExist(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	target := remotePath(dir, "Movie")
+
+	require.NoError(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode))
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	// The server answers SSH_FX_FAILURE for an existing path. A caller that
+	// reserves a folder name needs fs.ErrExist.
+	require.ErrorIs(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode), fs.ErrExist)
+
+	require.NoError(t, os.WriteFile(remotePath(dir, "file"), nil, 0o600))
+	require.ErrorIs(t, b.Mkdir(t.Context(), remotePath(dir, "file"), fsutil.ContentDirMode), fs.ErrExist)
+}
+
 func TestRemove_File(t *testing.T) {
 	t.Parallel()
 
@@ -617,20 +637,20 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 // than an absent target, that reason is the error, not the Link failure.
 func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
 	t.Parallel()
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory modes")
+	// Host directory modes cannot inject this failure on Windows or as root.
+	b, server := newBackend(t)
+	server.SetSFTP(sshtest.SFTPRefuseLinkAndLstat)
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, client.Mkdir("/links"))
+	plan := &hardlinktree.TreePlan{
+		RootDir: "/links",
+		Files:   []hardlinktree.FilePlan{{SourcePath: "/source.mkv", TargetPath: "/links/one.mkv"}},
 	}
 
-	b, _ := newBackend(t)
-	dir := t.TempDir()
-	plan := linkPlan(t, dir)
-	plan.Files = plan.Files[:1]
-	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
-	require.NoError(t, os.Chmod(plan.RootDir, 0o000))
-	t.Cleanup(func() { _ = os.Chmod(plan.RootDir, 0o755) })
-
-	_, err := b.HardlinkTree(t.Context(), plan)
+	_, err = b.HardlinkTree(t.Context(), plan)
 	require.Error(t, err)
+	require.ErrorIs(t, err, fs.ErrPermission)
 	assert.NotContains(t, err.Error(), "hardlink ", "the lstat failure is the cause, not the link")
 	assert.Contains(t, err.Error(), "lstat")
 }

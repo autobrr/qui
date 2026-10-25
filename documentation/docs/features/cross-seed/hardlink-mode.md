@@ -47,20 +47,18 @@ Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then ex
 
 - **Base directories**: paths where qui creates link trees, on the host that holds the instance's files. For an instance with local filesystem access that is the qui host; for a remote instance it is the remote host, so enter the paths as that host sees them. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory organization** preset:
-  - `flat`: `base/TorrentName--shortHash/...`
-  - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
-  - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
+  - `flat`: `base/TorrentName/...`
+  - `by-tracker`: `base/<tracker>/TorrentName/...`
+  - `by-instance`: `base/<instance>/TorrentName/...`
 
 ### Isolation folders
 
-For the `by-tracker` and `by-instance` presets, qui inspects the torrent file structure to decide whether it needs an isolation folder:
+An isolation folder keeps the files of one torrent apart from the files of other torrents. For each preset, qui reads the file structure of the torrent to decide whether it needs one:
 
-- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level directory, so qui adds no isolation folder.
-- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder to prevent file conflicts.
+- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level folder, so qui adds no isolation folder.
+- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder with the torrent name, for example `My.Movie.2024.1080p.BluRay`.
 
-When qui needs an isolation folder, it uses the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`).
-
-For the `flat` preset, qui always uses an isolation folder to keep each torrent's files separate.
+The folder that qui adds to the preset directory must be new. If a folder with that name already exists, qui uses an isolation folder with the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`). The short hash is the first 8 characters of the info hash.
 
 ## How to enable
 
@@ -104,6 +102,8 @@ qui groups related members persistently by their original source torrent identit
 After each recheck, **Max auto-start download** under Cross-Seed → After injection determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
 
 Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
+
+Pool path validation rejects dangling symbolic links, even when their missing destinations are inside the pool root. This applies on every platform. Ordinary missing files and directories remain valid, as do existing symbolic links that resolve inside the root.
 
 If the active member's downloaded-byte counter makes no progress for 15 minutes, qui pauses it, retains all partial data, and gives it a 30-minute cooldown before retry. Another eligible member may run during that cooldown. Disabling pooled completion pauses only a downloader qui started; persisted pool state remains available if the setting is enabled again.
 

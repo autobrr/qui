@@ -6,12 +6,9 @@ package qbittorrent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
-	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -162,7 +159,8 @@ const (
 )
 
 // cleanupScope is what one check of one instance judges folders against. It
-// costs a full read of the cached torrents and a preferences request.
+// costs a full read of the cached torrents, a preferences request and a
+// categories request.
 type cleanupScope struct {
 	backend fsops.Backend
 	d       fsops.PathDialect
@@ -183,25 +181,23 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 	if err != nil {
 		return nil, nil, err
 	}
-	in, err := c.view.stopFolderInputs(ctx, instanceID)
+	folders, err := c.view.InstanceFolders(ctx, d, instanceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	nesting, err := c.cachedNesting(ctx, instanceID)
-	if err != nil {
-		return nil, nil, err
+	stops := slices.Concat([]string{folders.DefaultSavePath}, folders.CategorySaveFolders, folders.DownloadFolders)
+	if folders.DownloadPath != "" {
+		stops = append(stops, folders.DownloadPath)
 	}
-	// SyncManager.CategoryPathRule's rule. The preference comes from this
-	// check's read, so a toggle is seen on the next check.
-	rule := CategoryPathRule{
-		Nest:     nesting.Nests && (nesting.Always || in.UseSubcategories),
-		FileName: nesting.FileName,
-		Platform: nesting.Platform,
+	for base := range strings.SplitSeq(instance.HardlinkBaseDir, ",") {
+		if base = d.Clean(strings.TrimSpace(base)); d.IsAbs(base) {
+			stops = append(stops, base)
+		}
 	}
-	stops, kept, err := stopFolders(d, in, rule, instance.HardlinkBaseDir)
-	if err != nil {
-		return nil, nil, err
-	}
+	// qBittorrent stops watching a removed monitored folder until it
+	// restarts. Neither it nor its custom save path sets the climb limit: a
+	// recursive watch saves into <save path>/<sub>.
+	kept := folders.MonitoredFolders
 	torrents, err := c.view.liveTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, nil, err
@@ -218,77 +214,6 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 		scope.keptKeys[fsops.NormalizePath(d, p)] = struct{}{}
 	}
 	return scope, scope.indexLive(torrents, ready), nil
-}
-
-// cachedNesting reuses an instance's version half of the nesting state for
-// folderCleanupVersionTTL. An error is not kept, so the next tick asks again.
-func (c *FolderCleanup) cachedNesting(ctx context.Context, instanceID int) (nestingSupport, error) {
-	expired := func(_ int, m nestingMemo) bool { return time.Since(m.at) >= folderCleanupVersionTTL }
-	if m, ok := c.nesting[instanceID]; ok && !expired(instanceID, m) {
-		return m.nesting, nil
-	}
-	// An expired entry is never served, so drop them all, which also drops
-	// the entries of instances the worker no longer checks.
-	maps.DeleteFunc(c.nesting, expired)
-	nesting, err := c.view.categoryNesting(ctx, instanceID)
-	if err != nil {
-		return nestingSupport{}, err
-	}
-	if c.nesting == nil {
-		c.nesting = make(map[int]nestingMemo)
-	}
-	c.nesting[instanceID] = nestingMemo{nesting: nesting, at: time.Now()}
-	return nesting, nil
-}
-
-// stopFolders returns the stop folders, which set the climb limit, and kept
-// folders, which are never removed but set no limit. It fails rather than
-// return a short list: without the default save path no inheriting category
-// resolves, and a missing stop folder can be removed.
-func stopFolders(d fsops.PathDialect, in stopInputs, rule CategoryPathRule, hardlinkBaseDirs string) (stops, kept []string, err error) {
-	defaultSavePath := d.Clean(in.DefaultSavePath)
-	if !d.IsAbs(defaultSavePath) {
-		return nil, nil, fmt.Errorf("default save path %q is not absolute", in.DefaultSavePath)
-	}
-	stops = []string{defaultSavePath}
-	tempPath := ""
-	if in.TempPathEnabled {
-		tempPath = d.Clean(in.TempPath)
-		if !d.IsAbs(tempPath) {
-			return nil, nil, fmt.Errorf("download path %q is not absolute", in.TempPath)
-		}
-		stops = append(stops, tempPath)
-	}
-	for name := range in.Categories {
-		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, rule))
-		if tempPath != "" {
-			// qBittorrent's categoryDownloadPath: <download path>/<category>. A
-			// category's own download path is not in go-qbittorrent's Category.
-			stops = append(stops, CategorySavePath(d, name, nil, tempPath, rule))
-		}
-	}
-	// qBittorrent stops watching a removed monitored folder until it restarts.
-	// Neither it nor its custom save path sets the climb limit: a recursive
-	// watch saves into <save path>/<sub>. qBittorrent refuses a relative
-	// monitored folder and resolves a relative custom path under the default.
-	for dir, target := range in.ScanDirs {
-		if dir = d.Clean(dir); d.IsAbs(dir) {
-			kept = append(kept, dir)
-		}
-		if target.Mode() == qbt.MonitoredFolderModeCustomPath {
-			p := d.Clean(target.CustomPath())
-			if !d.IsAbs(p) {
-				p = d.Join(defaultSavePath, p)
-			}
-			kept = append(kept, p)
-		}
-	}
-	for base := range strings.SplitSeq(hardlinkBaseDirs, ",") {
-		if base = d.Clean(strings.TrimSpace(base)); d.IsAbs(base) {
-			stops = append(stops, base)
-		}
-	}
-	return stops, kept, nil
 }
 
 // indexLive marks every live torrent's paths and their ancestors, and returns

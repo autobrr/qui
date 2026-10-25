@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import {
   Dialog,
   DialogContent,
@@ -39,20 +40,28 @@ import {
   type TagUpdatePlan
 } from "@/lib/tag-editor"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { AlertTriangle, Loader2, Plus } from "lucide-react"
-import type { ChangeEvent, KeyboardEvent } from "react"
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 import {
-  checkFieldConsistency,
-  LIMIT_UNLIMITED,
-  LIMIT_USE_GLOBAL,
-  shareLimitEnumFieldFromTorrents,
+  buildShareLimitFormState,
+  buildSpeedLimitFormState,
+  isUnresolvedMixed,
+  shareLimitsUnresolved,
+  shareLimitValues,
+  speedLimitsUnresolved,
+  speedLimitValues,
+  type ShareLimitFormState,
+  type ShareLimitMode,
+  type SpeedLimitField,
+  type SpeedLimitFormState,
   type TorrentLimitSnapshot
 } from "./torrentLimitDialogHelpers"
 
@@ -1714,11 +1723,55 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
-const SPEED_DEFAULT_LIMIT = 0
+const SHARE_LIMIT_FIELDS = [
+  { key: "ratio", labelKey: "dialogs.shareLimit.ratioLimit", placeholderKey: "dialogs.shareLimit.ratioPlaceholder", descriptionKey: "dialogs.shareLimit.ratioCustomHelp", step: "0.01" },
+  { key: "seedTime", labelKey: "dialogs.shareLimit.seedingTimeLimit", placeholderKey: "dialogs.shareLimit.seedTimePlaceholder", descriptionKey: "dialogs.shareLimit.seedTimeCustomHelp", step: "1" },
+  { key: "inactiveTime", labelKey: "dialogs.shareLimit.inactiveSeedingLimit", placeholderKey: "dialogs.shareLimit.inactivePlaceholder", descriptionKey: "dialogs.shareLimit.inactiveCustomHelp", step: "1" },
+] as const
 
-// Helper function to safely get numeric values with fallback
-const safeNumber = (value: number | undefined, fallback: number) =>
-  typeof value === "number" ? value : fallback
+const SPEED_LIMIT_FIELDS = [
+  { key: "upload", labelKey: "dialogs.speedLimits.uploadLimit" },
+  { key: "download", labelKey: "dialogs.speedLimits.downloadLimit" },
+] as const
+
+interface LimitSheetProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: string
+  headerAction?: ReactNode
+  unresolvedMessage?: string
+  cancelLabel: string
+  confirmLabel: string
+  confirmDisabled: boolean
+  onConfirm: () => void
+  children: ReactNode
+}
+
+// Phone layout of the limit dialogs: a bottom sheet whose body scrolls under a fixed Cancel and Apply row.
+function LimitSheet({ open, onOpenChange, title, description, headerAction, unresolvedMessage, cancelLabel, confirmLabel, confirmDisabled, onConfirm, children }: LimitSheetProps) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="max-h-[92dvh]">
+        <DrawerHeader className="flex items-start justify-between gap-3 text-left">
+          <div className="space-y-1">
+            <DrawerTitle className="text-base">{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </div>
+          {headerAction}
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">{children}</div>
+        <div className="shrink-0 space-y-2 border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {unresolvedMessage && <p className="text-xs text-yellow-600">{unresolvedMessage}</p>}
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
+            <Button className="h-11" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
+          </div>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  )
+}
 
 interface ShareLimitDialogProps {
   open: boolean
@@ -1729,64 +1782,6 @@ interface ShareLimitDialogProps {
   isPending?: boolean
   supportsShareLimitsAction?: boolean
   supportsShareLimitsMode?: boolean
-}
-
-// Share limit mode: matches qBittorrent sentinel values
-type ShareLimitMode = "global" | "unlimited" | "custom"
-
-interface ShareLimitFieldState {
-  mode: ShareLimitMode
-  customValue: number
-  isMixed: boolean // True when selection has different values
-}
-
-// Convert a raw limit value to mode + custom value
-function valueToFieldState(value: number | undefined, defaultCustom: number): Omit<ShareLimitFieldState, "isMixed"> {
-  if (value === undefined || value === LIMIT_USE_GLOBAL) {
-    return { mode: "global", customValue: defaultCustom }
-  }
-  if (value === LIMIT_UNLIMITED) {
-    return { mode: "unlimited", customValue: defaultCustom }
-  }
-  return { mode: "custom", customValue: value }
-}
-
-function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
-  ratio: ShareLimitFieldState
-  seedTime: ShareLimitFieldState
-  inactiveTime: ShareLimitFieldState
-} {
-  const ratioCheck = checkFieldConsistency(torrents, t => t.ratio_limit)
-  const seedTimeCheck = checkFieldConsistency(torrents, t => t.seeding_time_limit)
-  const inactiveTimeCheck = checkFieldConsistency(torrents, t => t.inactive_seeding_time_limit)
-
-  return {
-    ratio: {
-      ...valueToFieldState(ratioCheck.commonValue, 1.0),
-      isMixed: ratioCheck.isMixed,
-    },
-    seedTime: {
-      ...valueToFieldState(seedTimeCheck.commonValue, 1440),
-      isMixed: seedTimeCheck.isMixed,
-    },
-    inactiveTime: {
-      ...valueToFieldState(inactiveTimeCheck.commonValue, 10080),
-      isMixed: inactiveTimeCheck.isMixed,
-    },
-  }
-}
-
-// Convert mode + custom value to API value
-function fieldStateToValue(mode: ShareLimitMode, customValue: number, isRatio: boolean): number {
-  switch (mode) {
-    case "global":
-      return LIMIT_USE_GLOBAL
-    case "unlimited":
-      return LIMIT_UNLIMITED
-    case "custom":
-      // Normalize ratio to 2 decimal places
-      return isRatio ? Math.round(customValue * 100) / 100 : customValue
-  }
 }
 
 export const ShareLimitDialog = memo(function ShareLimitDialog({
@@ -1800,166 +1795,152 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   supportsShareLimitsMode = false,
 }: ShareLimitDialogProps) {
   const { t } = useTranslation("torrents")
-  const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
-  const [ratioCustom, setRatioCustom] = useState(1.0)
-  const [ratioMixed, setRatioMixed] = useState(false)
-  const [ratioTouched, setRatioTouched] = useState(false) // User explicitly changed this field
+  const [form, setForm] = useState(() => buildShareLimitFormState(torrents))
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setForm(buildShareLimitFormState(torrents))
+  }
 
-  const [seedTimeMode, setSeedTimeMode] = useState<ShareLimitMode>("global")
-  const [seedTimeCustom, setSeedTimeCustom] = useState(1440)
-  const [seedTimeMixed, setSeedTimeMixed] = useState(false)
-  const [seedTimeTouched, setSeedTimeTouched] = useState(false)
+  const updateField = useCallback(<K extends keyof ShareLimitFormState>(key: K, patch: Partial<ShareLimitFormState[K]>) => {
+    setForm(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }, [])
 
-  const [inactiveTimeMode, setInactiveTimeMode] = useState<ShareLimitMode>("global")
-  const [inactiveTimeCustom, setInactiveTimeCustom] = useState(10080)
-  const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
-  const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
-
-  const [shareLimitAction, setShareLimitAction] = useState("default")
-  const [shareLimitActionMixed, setShareLimitActionMixed] = useState(false)
-  const [shareLimitActionTouched, setShareLimitActionTouched] = useState(false)
-
-  const [shareLimitsMode, setShareLimitsMode] = useState("default")
-  const [shareLimitsModeMixed, setShareLimitsModeMixed] = useState(false)
-  const [shareLimitsModeTouched, setShareLimitsModeTouched] = useState(false)
-
-  const wasOpen = useRef(false)
-  const shareLimitsEdited = useRef(false)
-
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      const states = buildShareLimitFieldStates(torrents)
-
-      setRatioMode(states.ratio.isMixed ? "global" : states.ratio.mode)
-      setRatioCustom(states.ratio.customValue)
-      setRatioMixed(states.ratio.isMixed)
-      setRatioTouched(false)
-
-      setSeedTimeMode(states.seedTime.isMixed ? "global" : states.seedTime.mode)
-      setSeedTimeCustom(states.seedTime.customValue)
-      setSeedTimeMixed(states.seedTime.isMixed)
-      setSeedTimeTouched(false)
-
-      setInactiveTimeMode(states.inactiveTime.isMixed ? "global" : states.inactiveTime.mode)
-      setInactiveTimeCustom(states.inactiveTime.customValue)
-      setInactiveTimeMixed(states.inactiveTime.isMixed)
-      setInactiveTimeTouched(false)
-
-      setShareLimitActionTouched(false)
-      setShareLimitsModeTouched(false)
-    }
-    if (open && supportsShareLimitsAction && !shareLimitsEdited.current) {
-      const a = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
-      setShareLimitAction(a.value)
-      setShareLimitActionMixed(a.isMixed)
-      if (supportsShareLimitsMode) {
-        const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
-        setShareLimitsMode(m.value)
-        setShareLimitsModeMixed(m.isMixed)
-      } else {
-        setShareLimitsMode("default")
-        setShareLimitsModeMixed(false)
-      }
-    }
-    if (open && !supportsShareLimitsAction) {
-      setShareLimitAction("default")
-      setShareLimitActionMixed(false)
-      setShareLimitsMode("default")
-      setShareLimitsModeMixed(false)
-    }
-    if (!open) {
-      shareLimitsEdited.current = false
-    }
-    wasOpen.current = open
-  }, [open, torrents, supportsShareLimitsAction, supportsShareLimitsMode])
-
-  const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
-    (seedTimeMixed && !seedTimeTouched) ||
-    (inactiveTimeMixed && !inactiveTimeTouched) ||
-    (supportsShareLimitsAction && (shareLimitActionMixed && !shareLimitActionTouched)) ||
-    (supportsShareLimitsMode && (shareLimitsModeMixed && !shareLimitsModeTouched))
+  const hasUnresolvedMixed = shareLimitsUnresolved(form, supportsShareLimitsAction, supportsShareLimitsMode)
 
   const handleConfirm = useCallback((): void => {
+    const values = shareLimitValues(form, supportsShareLimitsAction, supportsShareLimitsMode)
     onConfirm(
-      fieldStateToValue(ratioMode, ratioCustom, true),
-      fieldStateToValue(seedTimeMode, seedTimeCustom, false),
-      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false),
-      shareLimitAction !== "default" ? shareLimitAction : undefined,
-      supportsShareLimitsMode && shareLimitsMode !== "default" ? shareLimitsMode : undefined
+      values.ratioLimit,
+      values.seedingTimeLimit,
+      values.inactiveSeedingTimeLimit,
+      values.shareLimitAction,
+      values.shareLimitsMode
     )
-    setRatioMode("global")
-    setRatioCustom(1.0)
-    setRatioMixed(false)
-    setRatioTouched(false)
-    setSeedTimeMode("global")
-    setSeedTimeCustom(1440)
-    setSeedTimeMixed(false)
-    setSeedTimeTouched(false)
-    setInactiveTimeMode("global")
-    setInactiveTimeCustom(10080)
-    setInactiveTimeMixed(false)
-    setInactiveTimeTouched(false)
-    setShareLimitAction("default")
-    setShareLimitActionMixed(false)
-    setShareLimitActionTouched(false)
-    setShareLimitsMode("default")
-    setShareLimitsModeMixed(false)
-    setShareLimitsModeTouched(false)
     onOpenChange(false)
-  }, [
-    onConfirm,
-    onOpenChange,
-    ratioMode,
-    ratioCustom,
-    seedTimeMode,
-    seedTimeCustom,
-    inactiveTimeMode,
-    inactiveTimeCustom,
-    shareLimitAction,
-    shareLimitsMode,
-    supportsShareLimitsMode,
-  ])
-
-  const handleCancel = useCallback((): void => {
-    setRatioMode("global")
-    setRatioCustom(1.0)
-    setRatioMixed(false)
-    setRatioTouched(false)
-    setSeedTimeMode("global")
-    setSeedTimeCustom(1440)
-    setSeedTimeMixed(false)
-    setSeedTimeTouched(false)
-    setInactiveTimeMode("global")
-    setInactiveTimeCustom(10080)
-    setInactiveTimeMixed(false)
-    setInactiveTimeTouched(false)
-    setShareLimitAction("default")
-    setShareLimitActionMixed(false)
-    setShareLimitActionTouched(false)
-    setShareLimitsMode("default")
-    setShareLimitsModeMixed(false)
-    setShareLimitsModeTouched(false)
-    onOpenChange(false)
-  }, [onOpenChange])
+  }, [form, onConfirm, onOpenChange, supportsShareLimitsAction, supportsShareLimitsMode])
 
   const setAllGlobal = useCallback(() => {
-    setRatioMode("global")
-    setRatioTouched(true)
-    setSeedTimeMode("global")
-    setSeedTimeTouched(true)
-    setInactiveTimeMode("global")
-    setInactiveTimeTouched(true)
-    if (supportsShareLimitsAction) {
-      setShareLimitAction("default")
-      setShareLimitActionTouched(true)
-      shareLimitsEdited.current = true
-    }
-    if (supportsShareLimitsMode) {
-      setShareLimitsMode("default")
-      setShareLimitsModeTouched(true)
-      shareLimitsEdited.current = true
-    }
+    setForm(prev => ({
+      ratio: { ...prev.ratio, mode: "global", touched: true },
+      seedTime: { ...prev.seedTime, mode: "global", touched: true },
+      inactiveTime: { ...prev.inactiveTime, mode: "global", touched: true },
+      action: supportsShareLimitsAction ? { ...prev.action, value: "default", touched: true } : prev.action,
+      matchingMode: supportsShareLimitsMode ? { ...prev.matchingMode, value: "default", touched: true } : prev.matchingMode,
+    }))
   }, [supportsShareLimitsAction, supportsShareLimitsMode])
+
+  const isMobile = useIsMobile()
+  const modeItems = (
+    <>
+      <SelectItem value="global">{t("dialogs.shareLimit.useGlobal")}</SelectItem>
+      <SelectItem value="unlimited">{t("dialogs.shareLimit.unlimited")}</SelectItem>
+      <SelectItem value="custom">{t("dialogs.shareLimit.custom")}</SelectItem>
+    </>
+  )
+  const actionItems = (
+    <>
+      <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+      <SelectItem value="Stop">{t("shareLimits.stopTorrent")}</SelectItem>
+      <SelectItem value="Remove">{t("shareLimits.removeTorrent")}</SelectItem>
+      <SelectItem value="RemoveWithContent">{t("shareLimits.removeWithContent")}</SelectItem>
+      <SelectItem value="EnableSuperSeeding">{t("shareLimits.enableSuperSeeding")}</SelectItem>
+    </>
+  )
+  const matchingModeItems = (
+    <>
+      <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+      <SelectItem value="MatchAny">{t("shareLimits.matchAnyLimit")}</SelectItem>
+      <SelectItem value="MatchAll">{t("shareLimits.matchAllLimits")}</SelectItem>
+    </>
+  )
+
+  if (isMobile) {
+    const choiceRow = (key: "action" | "matchingMode", labelKey: string, items: ReactNode) => (
+      <div className="space-y-2 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label className="text-sm font-medium">{t(labelKey)}</Label>
+          {form[key].isMixed && form[key].touched && (
+            <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
+          )}
+        </div>
+        <Select
+          value={isUnresolvedMixed(form[key]) ? "" : form[key].value}
+          onValueChange={(value: string) => updateField(key, { value, touched: true })}
+        >
+          <SelectTrigger className={cn("h-10 w-full", isUnresolvedMixed(form[key]) && "border-yellow-600")}>
+            <SelectValue placeholder={t("shareLimits.selectValue")} />
+          </SelectTrigger>
+          <SelectContent>{items}</SelectContent>
+        </Select>
+      </div>
+    )
+
+    return (
+      <LimitSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={t("dialogs.shareLimit.title", { count: hashCount })}
+        description={t("dialogs.shareLimit.description")}
+        headerAction={
+          <Button variant="outline" size="sm" className="shrink-0" onClick={setAllGlobal}>
+            {t("dialogs.shareLimit.setAllGlobal")}
+          </Button>
+        }
+        unresolvedMessage={hasUnresolvedMixed ? t("dialogs.shareLimit.unresolvedMixed") : undefined}
+        cancelLabel={t("dialogs.shareLimit.cancel")}
+        confirmLabel={isPending ? t("dialogs.shareLimit.setting") : t("dialogs.shareLimit.confirm")}
+        confirmDisabled={isPending || hasUnresolvedMixed}
+        onConfirm={handleConfirm}
+      >
+        {SHARE_LIMIT_FIELDS.map(({ key, labelKey, placeholderKey, descriptionKey, step }) => {
+          const field = form[key]
+          const unresolved = isUnresolvedMixed(field)
+          return (
+            <div key={key} className="space-y-2 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium">{t(labelKey)}</Label>
+                  {field.isMixed && field.touched && (
+                    <p className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</p>
+                  )}
+                </div>
+                <Select
+                  value={unresolved ? "" : field.mode}
+                  onValueChange={(value: ShareLimitMode) => updateField(key, { mode: value, touched: true })}
+                >
+                  <SelectTrigger className={cn("h-10 w-[150px] shrink-0", unresolved && "border-yellow-600")}>
+                    <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
+                  </SelectTrigger>
+                  <SelectContent>{modeItems}</SelectContent>
+                </Select>
+              </div>
+              {field.mode === "custom" && !unresolved && (
+                <>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step={step}
+                    className="h-10"
+                    value={field.customValue}
+                    onChange={(e) => {
+                      const val = key === "ratio" ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                      if (Number.isFinite(val)) updateField(key, { customValue: val })
+                    }}
+                    placeholder={t(placeholderKey)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t(descriptionKey)}</p>
+                </>
+              )}
+            </div>
+          )
+        })}
+        {supportsShareLimitsAction && choiceRow("action", "shareLimits.whenLimitsReached", actionItems)}
+        {supportsShareLimitsMode && choiceRow("matchingMode", "shareLimits.limitsMatchingMode", matchingModeItems)}
+      </LimitSheet>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1982,173 +1963,136 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.ratioLimit")}</Label>
-              {ratioMixed && !ratioTouched && (
-                <span className="text-xs text-yellow-600">{t("dialogs.shareLimit.selectValue")}</span>
-              )}
-              {ratioMixed && ratioTouched && (
+              {form.ratio.isMixed && form.ratio.touched && (
                 <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
               )}
             </div>
             <div className="flex gap-2">
               <Select
-                value={ratioMode}
-                onValueChange={(value: ShareLimitMode) => {
-                  setRatioMode(value)
-                  setRatioTouched(true)
-                }}
+                value={isUnresolvedMixed(form.ratio) ? "" : form.ratio.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("ratio", { mode: value, touched: true })}
               >
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue />
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">{t("dialogs.shareLimit.useGlobal")}</SelectItem>
-                  <SelectItem value="unlimited">{t("dialogs.shareLimit.unlimited")}</SelectItem>
-                  <SelectItem value="custom">{t("dialogs.shareLimit.custom")}</SelectItem>
-                </SelectContent>
+                <SelectContent>{modeItems}</SelectContent>
               </Select>
-              {ratioMode === "custom" && (
+              {form.ratio.mode === "custom" && (
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
                   className="flex-1"
-                  value={ratioCustom}
+                  value={form.ratio.customValue}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value)
-                    if (Number.isFinite(val)) setRatioCustom(val)
+                    if (Number.isFinite(val)) updateField("ratio", { customValue: val })
                   }}
                   placeholder={t("dialogs.shareLimit.ratioPlaceholder")}
                 />
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {ratioMode === "global" ? t("dialogs.shareLimit.ratioGlobalHelp") : ratioMode === "unlimited" ? t("dialogs.shareLimit.ratioUnlimitedHelp") : t("dialogs.shareLimit.ratioCustomHelp")}
-            </p>
+            {!isUnresolvedMixed(form.ratio) && (
+              <p className="text-xs text-muted-foreground">
+                {form.ratio.mode === "global" ? t("dialogs.shareLimit.ratioGlobalHelp") : form.ratio.mode === "unlimited" ? t("dialogs.shareLimit.ratioUnlimitedHelp") : t("dialogs.shareLimit.ratioCustomHelp")}
+              </p>
+            )}
           </div>
 
           {/* Seeding time limit */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.seedingTimeLimit")}</Label>
-              {seedTimeMixed && !seedTimeTouched && (
-                <span className="text-xs text-yellow-600">{t("dialogs.shareLimit.selectValue")}</span>
-              )}
-              {seedTimeMixed && seedTimeTouched && (
+              {form.seedTime.isMixed && form.seedTime.touched && (
                 <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
               )}
             </div>
             <div className="flex gap-2">
               <Select
-                value={seedTimeMode}
-                onValueChange={(value: ShareLimitMode) => {
-                  setSeedTimeMode(value)
-                  setSeedTimeTouched(true)
-                }}
+                value={isUnresolvedMixed(form.seedTime) ? "" : form.seedTime.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("seedTime", { mode: value, touched: true })}
               >
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue />
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">{t("dialogs.shareLimit.useGlobal")}</SelectItem>
-                  <SelectItem value="unlimited">{t("dialogs.shareLimit.unlimited")}</SelectItem>
-                  <SelectItem value="custom">{t("dialogs.shareLimit.custom")}</SelectItem>
-                </SelectContent>
+                <SelectContent>{modeItems}</SelectContent>
               </Select>
-              {seedTimeMode === "custom" && (
+              {form.seedTime.mode === "custom" && (
                 <Input
                   type="number"
                   min="0"
                   className="flex-1"
-                  value={seedTimeCustom}
+                  value={form.seedTime.customValue}
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10)
-                    if (Number.isFinite(val)) setSeedTimeCustom(val)
+                    if (Number.isFinite(val)) updateField("seedTime", { customValue: val })
                   }}
                   placeholder={t("dialogs.shareLimit.seedTimePlaceholder")}
                 />
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {seedTimeMode === "global" ? t("dialogs.shareLimit.seedTimeGlobalHelp") : seedTimeMode === "unlimited" ? t("dialogs.shareLimit.seedTimeUnlimitedHelp") : t("dialogs.shareLimit.seedTimeCustomHelp")}
-            </p>
+            {!isUnresolvedMixed(form.seedTime) && (
+              <p className="text-xs text-muted-foreground">
+                {form.seedTime.mode === "global" ? t("dialogs.shareLimit.seedTimeGlobalHelp") : form.seedTime.mode === "unlimited" ? t("dialogs.shareLimit.seedTimeUnlimitedHelp") : t("dialogs.shareLimit.seedTimeCustomHelp")}
+              </p>
+            )}
           </div>
 
           {/* Inactive seeding time limit */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.inactiveSeedingLimit")}</Label>
-              {inactiveTimeMixed && !inactiveTimeTouched && (
-                <span className="text-xs text-yellow-600">{t("dialogs.shareLimit.selectValue")}</span>
-              )}
-              {inactiveTimeMixed && inactiveTimeTouched && (
+              {form.inactiveTime.isMixed && form.inactiveTime.touched && (
                 <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
               )}
             </div>
             <div className="flex gap-2">
               <Select
-                value={inactiveTimeMode}
-                onValueChange={(value: ShareLimitMode) => {
-                  setInactiveTimeMode(value)
-                  setInactiveTimeTouched(true)
-                }}
+                value={isUnresolvedMixed(form.inactiveTime) ? "" : form.inactiveTime.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("inactiveTime", { mode: value, touched: true })}
               >
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue />
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">{t("dialogs.shareLimit.useGlobal")}</SelectItem>
-                  <SelectItem value="unlimited">{t("dialogs.shareLimit.unlimited")}</SelectItem>
-                  <SelectItem value="custom">{t("dialogs.shareLimit.custom")}</SelectItem>
-                </SelectContent>
+                <SelectContent>{modeItems}</SelectContent>
               </Select>
-              {inactiveTimeMode === "custom" && (
+              {form.inactiveTime.mode === "custom" && (
                 <Input
                   type="number"
                   min="0"
                   className="flex-1"
-                  value={inactiveTimeCustom}
+                  value={form.inactiveTime.customValue}
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10)
-                    if (Number.isFinite(val)) setInactiveTimeCustom(val)
+                    if (Number.isFinite(val)) updateField("inactiveTime", { customValue: val })
                   }}
                   placeholder={t("dialogs.shareLimit.inactivePlaceholder")}
                 />
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {inactiveTimeMode === "global" ? t("dialogs.shareLimit.inactiveGlobalHelp") : inactiveTimeMode === "unlimited" ? t("dialogs.shareLimit.inactiveUnlimitedHelp") : t("dialogs.shareLimit.inactiveCustomHelp")}
-            </p>
+            {!isUnresolvedMixed(form.inactiveTime) && (
+              <p className="text-xs text-muted-foreground">
+                {form.inactiveTime.mode === "global" ? t("dialogs.shareLimit.inactiveGlobalHelp") : form.inactiveTime.mode === "unlimited" ? t("dialogs.shareLimit.inactiveUnlimitedHelp") : t("dialogs.shareLimit.inactiveCustomHelp")}
+              </p>
+            )}
           </div>
 
           {supportsShareLimitsAction && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">{t("shareLimits.whenLimitsReached")}</Label>
-                {shareLimitActionMixed && !shareLimitActionTouched && (
-                  <span className="text-xs text-yellow-600">{t("shareLimits.selectValue")}</span>
-                )}
-                {shareLimitActionMixed && shareLimitActionTouched && (
+                {form.action.isMixed && form.action.touched && (
                   <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
                 )}
               </div>
               <Select
-                value={shareLimitAction}
-                onValueChange={(v: string) => {
-                  shareLimitsEdited.current = true
-                  setShareLimitAction(v)
-                  setShareLimitActionTouched(true)
-                }}
+                value={isUnresolvedMixed(form.action) ? "" : form.action.value}
+                onValueChange={(value: string) => updateField("action", { value, touched: true })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder={t("shareLimits.selectValue")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
-                  <SelectItem value="Stop">{t("shareLimits.stopTorrent")}</SelectItem>
-                  <SelectItem value="Remove">{t("shareLimits.removeTorrent")}</SelectItem>
-                  <SelectItem value="RemoveWithContent">{t("shareLimits.removeWithContent")}</SelectItem>
-                  <SelectItem value="EnableSuperSeeding">{t("shareLimits.enableSuperSeeding")}</SelectItem>
-                </SelectContent>
+                <SelectContent>{actionItems}</SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {t("shareLimits.actionWhenReached")}
@@ -2160,29 +2104,18 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">{t("shareLimits.limitsMatchingMode")}</Label>
-                {shareLimitsModeMixed && !shareLimitsModeTouched && (
-                  <span className="text-xs text-yellow-600">{t("shareLimits.selectValue")}</span>
-                )}
-                {shareLimitsModeMixed && shareLimitsModeTouched && (
+                {form.matchingMode.isMixed && form.matchingMode.touched && (
                   <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
                 )}
               </div>
               <Select
-                value={shareLimitsMode}
-                onValueChange={(v: string) => {
-                  shareLimitsEdited.current = true
-                  setShareLimitsMode(v)
-                  setShareLimitsModeTouched(true)
-                }}
+                value={isUnresolvedMixed(form.matchingMode) ? "" : form.matchingMode.value}
+                onValueChange={(value: string) => updateField("matchingMode", { value, touched: true })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder={t("shareLimits.selectValue")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
-                  <SelectItem value="MatchAny">{t("shareLimits.matchAnyLimit")}</SelectItem>
-                  <SelectItem value="MatchAll">{t("shareLimits.matchAllLimits")}</SelectItem>
-                </SelectContent>
+                <SelectContent>{matchingModeItems}</SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {t("shareLimits.matchingModeHelp")}
@@ -2197,7 +2130,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             </p>
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleCancel}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t("dialogs.shareLimit.cancel")}
             </Button>
             <Button
@@ -2222,43 +2155,6 @@ interface SpeedLimitsDialogProps {
   isPending?: boolean
 }
 
-interface SpeedLimitFormState {
-  uploadEnabled: boolean
-  uploadLimit: number
-  downloadEnabled: boolean
-  downloadLimit: number
-}
-
-export const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
-  const base: SpeedLimitFormState = {
-    uploadEnabled: false,
-    uploadLimit: SPEED_DEFAULT_LIMIT,
-    downloadEnabled: false,
-    downloadLimit: SPEED_DEFAULT_LIMIT,
-  }
-
-  if (!torrents || torrents.length === 0) {
-    return base
-  }
-
-  const uploadValues = torrents.map((torrent) => safeNumber(torrent.up_limit, 0))
-  const downloadValues = torrents.map((torrent) => safeNumber(torrent.dl_limit, 0))
-
-  const uploadsMatch = uploadValues.every((value) => value === uploadValues[0])
-  const downloadsMatch = downloadValues.every((value) => value === downloadValues[0])
-
-  const firstUpload = uploadValues[0]
-  const firstDownload = downloadValues[0]
-
-  return {
-    ...base,
-    uploadEnabled: uploadsMatch && firstUpload > 0,
-    uploadLimit: uploadsMatch && firstUpload > 0 ? Math.round(firstUpload / 1024) : base.uploadLimit,
-    downloadEnabled: downloadsMatch && firstDownload > 0,
-    downloadLimit: downloadsMatch && firstDownload > 0 ? Math.round(firstDownload / 1024) : base.downloadLimit,
-  }
-}
-
 export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
   open,
   onOpenChange,
@@ -2268,44 +2164,75 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
   isPending = false,
 }: SpeedLimitsDialogProps) {
   const { t } = useTranslation("torrents")
-  const [uploadEnabled, setUploadEnabled] = useState(false)
-  const [uploadLimit, setUploadLimit] = useState(SPEED_DEFAULT_LIMIT)
-  const [downloadEnabled, setDownloadEnabled] = useState(false)
-  const [downloadLimit, setDownloadLimit] = useState(SPEED_DEFAULT_LIMIT)
-  const wasOpen = useRef(false)
+  const [form, setForm] = useState(() => buildSpeedLimitFormState(torrents))
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setForm(buildSpeedLimitFormState(torrents))
+  }
 
-  const speedInitialState = useMemo(() => buildSpeedLimitInitialState(torrents), [torrents])
+  const updateField = useCallback((key: keyof SpeedLimitFormState, patch: Partial<SpeedLimitField>) => {
+    setForm(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }, [])
 
-  // Reset form when dialog opens with torrent values
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      setUploadEnabled(speedInitialState.uploadEnabled)
-      setUploadLimit(speedInitialState.uploadLimit)
-      setDownloadEnabled(speedInitialState.downloadEnabled)
-      setDownloadLimit(speedInitialState.downloadLimit)
-    }
-    wasOpen.current = open
-  }, [open, speedInitialState])
+  const hasUnresolvedMixed = speedLimitsUnresolved(form)
 
   const handleConfirm = useCallback((): void => {
-    onConfirm(
-      uploadEnabled ? uploadLimit : 0,  // 0 means use global limit
-      downloadEnabled ? downloadLimit : 0  // 0 means use global limit
-    )
-    // Reset form
-    setUploadEnabled(false)
-    setUploadLimit(SPEED_DEFAULT_LIMIT)
-    setDownloadEnabled(false)
-    setDownloadLimit(SPEED_DEFAULT_LIMIT)
-  }, [onConfirm, uploadEnabled, uploadLimit, downloadEnabled, downloadLimit])
+    const values = speedLimitValues(form)
+    onConfirm(values.uploadLimit, values.downloadLimit)
+  }, [form, onConfirm])
 
-  const handleCancel = useCallback((): void => {
-    setUploadEnabled(false)
-    setUploadLimit(SPEED_DEFAULT_LIMIT)
-    setDownloadEnabled(false)
-    setDownloadLimit(SPEED_DEFAULT_LIMIT)
-    onOpenChange(false)
-  }, [onOpenChange])
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return (
+      <LimitSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={t("dialogs.speedLimits.title", { count: hashCount })}
+        description={t("dialogs.speedLimits.description")}
+        unresolvedMessage={hasUnresolvedMixed ? t("dialogs.speedLimits.unresolvedMixed") : undefined}
+        cancelLabel={t("dialogs.speedLimits.cancel")}
+        confirmLabel={isPending ? t("dialogs.speedLimits.setting") : t("dialogs.speedLimits.confirm")}
+        confirmDisabled={isPending || hasUnresolvedMixed}
+        onConfirm={handleConfirm}
+      >
+        {SPEED_LIMIT_FIELDS.map(({ key, labelKey }) => {
+          const field = form[key]
+          return (
+            <div key={key} className="space-y-2 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label htmlFor={`${key}EnabledSheet`} className="text-sm font-medium">{t(labelKey)}</Label>
+                  {isUnresolvedMixed(field) && (
+                    <p className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</p>
+                  )}
+                  {field.isMixed && field.touched && (
+                    <p className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</p>
+                  )}
+                </div>
+                <Switch
+                  id={`${key}EnabledSheet`}
+                  checked={field.enabled}
+                  onCheckedChange={(enabled) => updateField(key, { enabled, touched: true })}
+                />
+              </div>
+              {field.enabled && (
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  className="h-10"
+                  value={field.limit}
+                  onChange={(e) => updateField(key, { limit: parseInt(e.target.value) || 0, touched: true })}
+                  placeholder="0"
+                />
+              )}
+            </div>
+          )
+        })}
+      </LimitSheet>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2318,53 +2245,76 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
         </DialogHeader>
         <div className="py-2 space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="uploadEnabled"
-                checked={uploadEnabled}
-                onCheckedChange={setUploadEnabled}
-              />
-              <Label htmlFor="uploadEnabled">{t("dialogs.speedLimits.uploadLimit")}</Label>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="uploadEnabled"
+                  checked={form.upload.enabled}
+                  onCheckedChange={(enabled) => updateField("upload", { enabled, touched: true })}
+                />
+                <Label htmlFor="uploadEnabled">{t("dialogs.speedLimits.uploadLimit")}</Label>
+              </div>
+              {isUnresolvedMixed(form.upload) && (
+                <span className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</span>
+              )}
+              {form.upload.isMixed && form.upload.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
+              )}
             </div>
             <Input
               type="number"
               min="0"
-              value={uploadLimit}
-              disabled={!uploadEnabled}
-              onChange={(e) => setUploadLimit(parseInt(e.target.value) || 0)}
+              value={form.upload.limit}
+              disabled={!form.upload.enabled}
+              onChange={(e) => updateField("upload", { limit: parseInt(e.target.value) || 0, touched: true })}
               placeholder="0"
             />
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="downloadEnabled"
-                checked={downloadEnabled}
-                onCheckedChange={setDownloadEnabled}
-              />
-              <Label htmlFor="downloadEnabled">{t("dialogs.speedLimits.downloadLimit")}</Label>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="downloadEnabled"
+                  checked={form.download.enabled}
+                  onCheckedChange={(enabled) => updateField("download", { enabled, touched: true })}
+                />
+                <Label htmlFor="downloadEnabled">{t("dialogs.speedLimits.downloadLimit")}</Label>
+              </div>
+              {isUnresolvedMixed(form.download) && (
+                <span className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</span>
+              )}
+              {form.download.isMixed && form.download.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
+              )}
             </div>
             <Input
               type="number"
               min="0"
-              value={downloadLimit}
-              disabled={!downloadEnabled}
-              onChange={(e) => setDownloadLimit(parseInt(e.target.value) || 0)}
+              value={form.download.limit}
+              disabled={!form.download.enabled}
+              onChange={(e) => updateField("download", { limit: parseInt(e.target.value) || 0, touched: true })}
               placeholder="0"
             />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
-            {t("dialogs.speedLimits.cancel")}
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending}
-          >
-            {isPending ? t("dialogs.speedLimits.setting") : t("dialogs.speedLimits.confirm")}
-          </Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {hasUnresolvedMixed && (
+            <p className="text-xs text-yellow-600 text-left sm:flex-1">
+              {t("dialogs.speedLimits.unresolvedMixed")}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("dialogs.speedLimits.cancel")}
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isPending || hasUnresolvedMixed}
+            >
+              {isPending ? t("dialogs.speedLimits.setting") : t("dialogs.speedLimits.confirm")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

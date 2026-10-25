@@ -25,7 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getThemeById, isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -38,6 +38,7 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
@@ -112,7 +113,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
-  const { isSelectionMode } = useTorrentSelection()
+  const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")

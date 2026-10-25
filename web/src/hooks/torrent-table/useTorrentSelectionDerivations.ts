@@ -4,8 +4,9 @@
  */
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
-import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { combineFilterExpr } from "@/lib/torrent-filters"
+import { getSelectionTargets, rememberTickedTorrents } from "@/lib/torrent-selection"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -21,9 +22,8 @@ const EMPTY_TARGETS: TorrentActionTarget[] = []
 
 export interface UseTorrentSelectionDerivationsParams {
   isAllSelected: boolean
-  excludedFromSelectAll: Set<string>
-  selectedRowIds: string[]
-  selectedRowIdSet: Set<string>
+  excludedFromSelectAll: ReadonlySet<string>
+  selectedKeys: ReadonlySet<string>
   getSelectionIdentity: (torrent: Torrent) => string
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
@@ -49,8 +49,7 @@ export interface UseTorrentSelectionDerivationsParams {
 export function useTorrentSelectionDerivations({
   isAllSelected,
   excludedFromSelectAll,
-  selectedRowIds,
-  selectedRowIdSet,
+  selectedKeys,
   getSelectionIdentity,
   getVisibleRows,
   sortedTorrents,
@@ -67,6 +66,8 @@ export function useTorrentSelectionDerivations({
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
+  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
+
   // Get selected torrents - handle both regular selection and "select all" mode
   const selectedTorrents = useMemo((): Torrent[] => {
     if (isAllSelected) {
@@ -76,15 +77,15 @@ export function useTorrentSelectionDerivations({
         .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
     }
-    if (selectedRowIdSet.size === 0) {
+    if (selectedKeys.size === 0) {
+      tickedTorrentsRef.current.clear()
       return EMPTY_TORRENTS
     }
-    return getVisibleRowsRef.current()
-      .filter(row => selectedRowIdSet.has(row.id))
-      .map(row => row.original)
+    const rows = getVisibleRowsRef.current().map(row => row.original)
+    return rememberTickedTorrents(tickedTorrentsRef.current, selectedKeys, rows, getSelectionIdentity)
     // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
+  }, [selectedKeys, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
 
   const selectedHashes = useMemo(
     (): string[] => selectedTorrents.length === 0 ? EMPTY_HASHES : selectedTorrents.map(torrent => torrent.hash),
@@ -103,10 +104,9 @@ export function useTorrentSelectionDerivations({
       }
       return Math.max(0, totalCount - excludedFromSelectAll.size)
     } else {
-      // Regular selection mode - use the computed selectedHashes length
-      return selectedRowIds.length
+      return selectedKeys.size
     }
-  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
+  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedKeys.size])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {
@@ -172,9 +172,8 @@ export function useTorrentSelectionDerivations({
     if (!isAllSelected || excludedFromSelectAll.size === 0) {
       return EMPTY_TARGETS
     }
-    const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-    return buildTorrentActionTargets(excludedTorrents, instanceId)
-  }, [isAllSelected, excludedFromSelectAll, sortedTorrents, instanceId, getSelectionIdentity])
+    return getSelectionTargets(excludedFromSelectAll, isCrossInstanceEndpoint ?? false, instanceId)
+  }, [isAllSelected, excludedFromSelectAll, isCrossInstanceEndpoint, instanceId])
 
   const selectAllExcludeHashes = useMemo(() => {
     if (!isAllSelected || excludedFromSelectAll.size === 0 || isCrossInstanceEndpoint) {

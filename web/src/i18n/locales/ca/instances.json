@@ -1774,11 +1774,9 @@
       "lastBackup": "Última còpia de seguretat",
       "loading": "S'està carregant...",
       "progress": "{{current}} de {{total}} torrents ({{percentage}} %)",
-      "status": "Estat: {{status}}",
       "noBackupsYet": "Encara no hi ha cap còpia de seguretat",
       "nextScheduledBackup": "Propera còpia de seguretat programada",
       "loadingSchedule": "S'està carregant la programació...",
-      "instance": "Instància",
       "automaticBackupsOff": "Les còpies de seguretat automàtiques estan desactivades per a aquesta instància.",
       "enableCadenceToSchedule": "Activa com a mínim una cadència automàtica per programar còpies de seguretat.",
       "currentlyRunning": "Ara mateix s'està fent una còpia de seguretat.",
@@ -1802,6 +1800,7 @@
       "schedule": {
         "title": "Cadències automàtiques",
         "description": "Les execucions per hora, diàries, setmanals i mensuals comencen quan ha acabat la còpia de seguretat anterior i ha passat el seu interval. Deixa-les totes desactivades si només vols fer còpies manualment.",
+        "keep": "Conserva",
         "hourly": "Cada hora",
         "hourlyDescription": "Quantes instantànies horàries s'han de conservar abans de descartar les més antigues.",
         "hourlyTooltip": "S'executa aproximadament un cop per hora quan les còpies de seguretat estan activades i ha passat com a mínim una hora des de l'última execució.",
@@ -1820,8 +1819,7 @@
         "saveChanges": "Desa els canvis",
         "saveAll": "Desa els canvis a totes les instàncies",
         "requiresCadence": "Selecciona com a mínim una cadència (horària, diària, setmanal o mensual) abans de desar.",
-        "waitForCapabilities": "Espera que acabin les comprovacions de capacitats de les instàncies abans de desar-ho a totes.",
-        "changesApplyImmediately": "Els canvis s'apliquen a les còpies de seguretat futures tan bon punt els deses."
+        "waitForCapabilities": "Espera que acabin les comprovacions de capacitats de les instàncies abans de desar-ho a totes."
       }
     },
     "restore": {

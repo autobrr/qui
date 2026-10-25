@@ -24,13 +24,19 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-const parityHash = "cccccccccccccccccccccccccccccccccccccccc"
+const (
+	parityHash         = "cccccccccccccccccccccccccccccccccccccccc"
+	parityCheckingHash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+)
 
-// newDryRunParityService boots a Service against a stub qBittorrent holding one seeded torrent.
+// newDryRunParityService boots a Service against a stub qBittorrent holding one seeded torrent
+// and one torrent in a check, which matches the condition but must not be deleted.
 func newDryRunParityService(t *testing.T) (*Service, int) {
 	t.Helper()
 
-	stub := newStubQbt(t, `{"`+parityHash+`":{"name":"parity","ratio":2,"progress":1,"size":10,"state":"stalledUP","save_path":"/data","content_path":"/data/parity"}}`)
+	stub := newStubQbt(t, `{`+
+		`"`+parityHash+`":{"name":"parity","ratio":2,"progress":1,"size":10,"state":"stalledUP","save_path":"/data","content_path":"/data/parity"},`+
+		`"`+parityCheckingHash+`":{"name":"checking","ratio":2,"progress":0,"size":10,"state":"checkingUP","save_path":"/data","content_path":"/data/checking"}}`)
 	svc, _, instanceIDs := newStubService(t, nil, stub)
 	return svc, instanceIDs[0]
 }
@@ -186,6 +192,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, activities, 1)
 			require.Equal(t, models.ActivityActionDeletedCondition, activities[0].Action)
+			require.Contains(t, string(activities[0].Details), `"count":1`, "dry run must skip the checking torrent")
 		})
 	}
 }

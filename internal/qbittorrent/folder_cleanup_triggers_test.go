@@ -177,11 +177,10 @@ func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
 		return map[string]int{
 			"liveTorrents": count(func() error { _, err := r.sm.liveTorrents(ctx, r.instanceID); return err }),
 			"ownRows":      count(func() error { _, err := r.sm.ownRows(ctx, r.instanceID, hashes); return err }),
-			"stopFolderInputs": count(func() error {
-				_, err := r.sm.stopFolderInputs(ctx, r.instanceID)
+			"InstanceFolders": count(func() error {
+				_, err := r.sm.InstanceFolders(ctx, fsops.HostPaths, r.instanceID)
 				return err
 			}),
-			"categoryNesting": count(func() error { _, err := r.sm.categoryNesting(ctx, r.instanceID); return err }),
 		}
 	}
 	require.Equal(t, requests(hashA), requests(hashA, hashB, hashC))

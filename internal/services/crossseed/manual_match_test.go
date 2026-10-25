@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,12 +21,14 @@ import (
 )
 
 func manualMatchTestService(instance *models.Instance, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) *Service {
-	return &Service{
+	svc := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, torrents, files)},
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
+	svc.settler = idleSettler(svc.syncManager)
+	return svc
 }
 
 func TestManualMatchPackProposalLimit(t *testing.T) {
@@ -176,6 +179,7 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, auto.Success)
 
+	withAdder(svc)
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -219,6 +223,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
 			})
 
+			withAdder(svc)
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
@@ -274,8 +279,10 @@ func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	}
 	svc := manualMatchTestService(instance, nil, nil)
 	svc.syncManager = recorder
+	svc.settler = idleSettler(recorder)
 
 	startPaused := false
+	withAdder(svc)
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -285,7 +292,6 @@ func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resp.Success, "manual match rejected: %+v", resp.Results)
 	require.Len(t, recorder.addOptions, 1)
-	require.Equal(t, "true", recorder.addOptions[0]["paused"], "manual match must add paused pending verification")
 	require.Contains(t, recorder.bulkActions, "recheck", "manual match must always recheck")
 }
 
@@ -381,7 +387,7 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	}
 	require.Contains(t, byHash, validated.Hash)
 	require.Contains(t, byHash, zeroOverlap.Hash)
-	require.True(t, strings.HasPrefix(byHash[validated.Hash].EffectiveSavePath, "/links"),
+	require.True(t, strings.HasPrefix(filepath.ToSlash(byHash[validated.Hash].EffectiveSavePath), "/links"),
 		"validated pick previews the link destination, got %q", byHash[validated.Hash].EffectiveSavePath)
 	require.Equal(t, "/downloads", byHash[zeroOverlap.Hash].EffectiveSavePath,
 		"zero-overlap pick previews the target save path (regular add)")

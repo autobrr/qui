@@ -546,7 +546,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				stats.DeleteConditionNotMet++
 			}
 		} else {
-			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
+			shouldApply := shouldDeleteTorrent(rule, &torrent, evalCtx)
 			if shouldApply {
 				if stats != nil {
 					stats.DeleteApplied++
@@ -758,7 +758,7 @@ func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
 }

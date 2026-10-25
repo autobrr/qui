@@ -14,7 +14,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
@@ -75,24 +74,24 @@ type discUnitDecision struct {
 	disableGrouping bool   // True means return the file path itself, not a unit
 }
 
-// walkScanRoot walks a directory tree and returns orphan files not in the TorrentFileMap.
+// walkScanRoot walks a directory tree and returns orphan files that are not
+// Protected paths.
 // Only files are returned as orphans; directories go through walkScanRootCollectingDirs.
-func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend, instance *models.Instance) ([]OrphanFile, bool, error) {
-	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, instance, false)
+func walkScanRoot(ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, maxFiles int, backend fsops.Backend, instance *models.Instance) ([]OrphanFile, bool, error) {
+	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, maxFiles, nil, backend, instance, false, nil)
 	return orphans, truncated, err
 }
 
 type scanWalker struct {
 	ctx         context.Context
 	root        string
-	tfm         *TorrentFileMap
-	ignorePaths []string
+	protected   *protectedPaths
 	gracePeriod time.Duration
 	maxFiles    int
 	unitFilter  func(unitPath string, isDiscUnit bool) bool
 	backend     fsops.Backend
-	instance    *models.Instance // the row backend was built from; scopes seenFileIDs
+	instance    *models.Instance // the row backend was built from; scopes file keys
 	d           fsops.PathDialect
 
 	// seenDirs records directory mtimes and direct file counts when requested.
@@ -105,21 +104,21 @@ type scanWalker struct {
 	discUnitsInUse      map[string]struct{}
 	discUnitsWithOrphan map[string]struct{}
 	discUnitCache       map[string]discUnitDecision
-	seenFileIDs         map[fsops.FileKey]struct{}
+	scanRootCache       map[string]bool
+	keys                *fileKeys
 	truncated           bool
 }
 
 func newScanWalker(
-	ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, instance *models.Instance, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) *scanWalker {
 	return &scanWalker{
 		ctx:                 ctx,
 		root:                root,
-		tfm:                 tfm,
-		ignorePaths:         ignorePaths,
+		protected:           protected,
 		gracePeriod:         gracePeriod,
 		maxFiles:            maxFiles,
 		unitFilter:          unitFilter,
@@ -129,8 +128,9 @@ func newScanWalker(
 		orphanUnits:         make(map[string]*OrphanFile),
 		discUnitsInUse:      make(map[string]struct{}),
 		discUnitCache:       make(map[string]discUnitDecision),
+		scanRootCache:       make(map[string]bool),
 		discUnitsWithOrphan: make(map[string]struct{}),
-		seenFileIDs:         make(map[fsops.FileKey]struct{}),
+		keys:                keys,
 		collectDirs:         collectDirs,
 		seenDirs:            make(map[string]*AbandonedDir),
 	}
@@ -155,7 +155,7 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save path.
-		if w.tfm.HasAnyInDir(fsops.NormalizePath(w.d, dir.Path)) {
+		if w.protected.torrentFileIn(dir.Path) {
 			continue
 		}
 		dirs = append(dirs, *dir)
@@ -163,24 +163,157 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 	return dirs
 }
 
-// shouldSkipDuplicate dedups nlink==1 files only: seeing the same FileID twice
-// at nlink==1 means the same file is reachable through a second path (bind
-// mount, mergerfs branch), so the alias must not be treated as an independent
-// orphan (#1212). Hardlinked files (nlink>1) are distinct directory entries and
-// each path is reported.
-func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) bool {
-	if nlinks > 1 {
-		return false
-	}
-	key, ok := fsops.FileKeyOf(fid, w.instance)
+// fileKeys spans every root of a run: a second path to an nlink==1 file is a
+// bind mount or a path through a symlinked folder (#1212), while a hardlink is
+// its own entry.
+type fileKeys struct {
+	inUse map[fsops.FileKey]struct{}
+	// Files no torrent owns, as a chain per key through one slab: one slice per key costs an allocation per orphan.
+	others map[fsops.FileKey]int
+	refs   []aliasRef
+}
+
+type aliasRef struct {
+	path string
+	prev int   // the key's previous ref, or -1
+	size int64 // bytes counted into an orphan's Size, or -1 when the file only sits inside one
+}
+
+func newFileKeys() *fileKeys {
+	return &fileKeys{inUse: make(map[fsops.FileKey]struct{}), others: make(map[fsops.FileKey]int)}
+}
+
+func (k *fileKeys) addOther(key fsops.FileKey, path string) int {
+	prev, ok := k.others[key]
 	if !ok {
-		return false
+		prev = -1
 	}
-	if _, exists := w.seenFileIDs[key]; exists {
-		return true
+	k.refs = append(k.refs, aliasRef{path: path, prev: prev, size: -1})
+	k.others[key] = len(k.refs) - 1
+	return len(k.refs) - 1
+}
+
+func (w *scanWalker) fileKey(entry fsops.WalkEntry) (fsops.FileKey, bool) {
+	if entry.Nlinks > 1 {
+		return fsops.FileKey{}, false
 	}
-	w.seenFileIDs[key] = struct{}{}
-	return false
+	return fsops.FileKeyOf(entry.FileID, w.instance)
+}
+
+// dropAliasOrphans runs once every root is walked, so walk and root order
+// cannot decide whether a delete reaches a torrent's file through an alias.
+func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys) []OrphanFile {
+	inUse, aliased := keys.inUseAndAliased()
+	if len(aliased) == 0 && len(inUse) == 0 {
+		return orphans
+	}
+
+	owners := newOrphanOwners(d, orphans)
+	drop := make([]bool, len(orphans))
+	for _, path := range inUse {
+		if i, ok := owners.of(path); ok {
+			drop[i] = true
+		}
+	}
+	dups := make([]aliasDups, len(orphans))
+	for _, head := range aliased {
+		keys.countDups(head, owners, drop, dups)
+	}
+
+	out := make([]OrphanFile, 0, len(orphans))
+	for i := range orphans {
+		// Of paths to one file, the lexically first is listed, wherever the walk met it.
+		if drop[i] || (orphans[i].files > 0 && dups[i].files >= orphans[i].files) {
+			continue
+		}
+		orphan := orphans[i]
+		orphan.Size -= dups[i].bytes
+		out = append(out, orphan)
+	}
+	return out
+}
+
+// inUseAndAliased returns the paths of keys a torrent owns, and the newest ref
+// of each other key with more than one path.
+func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
+	for key, head := range k.others {
+		if _, ok := k.inUse[key]; ok {
+			for r := head; r >= 0; r = k.refs[r].prev {
+				inUse = append(inUse, k.refs[r].path)
+			}
+		} else if k.refs[head].prev >= 0 {
+			aliased = append(aliased, head)
+		}
+	}
+	return inUse, aliased
+}
+
+// aliasDups counts the files and bytes in one orphan that are a file already
+// listed at another path.
+type aliasDups struct {
+	files int
+	bytes int64
+}
+
+type listedRef struct {
+	orphan int
+	path   string
+	size   int64
+}
+
+// countDups marks every listed path of one key but the lexically first as a
+// duplicate in the orphan whose delete removes it. Dropped orphans do not count.
+func (k *fileKeys) countDups(head int, owners orphanOwners, drop []bool, dups []aliasDups) {
+	var listed []listedRef
+	first := -1
+	for r := head; r >= 0; r = k.refs[r].prev {
+		ref := k.refs[r]
+		if ref.size < 0 {
+			continue
+		}
+		i, ok := owners.of(ref.path)
+		if !ok || drop[i] {
+			continue
+		}
+		listed = append(listed, listedRef{orphan: i, path: ref.path, size: ref.size})
+		if first < 0 || ref.path < listed[first].path {
+			first = len(listed) - 1
+		}
+	}
+	for j, ref := range listed {
+		if j != first {
+			dups[ref.orphan].files++
+			dups[ref.orphan].bytes += ref.size
+		}
+	}
+}
+
+// orphanOwners finds the orphan whose delete removes a path: the file itself
+// or a disc unit above it.
+type orphanOwners struct {
+	d     fsops.PathDialect
+	units map[string]int
+}
+
+func newOrphanOwners(d fsops.PathDialect, orphans []OrphanFile) orphanOwners {
+	units := make(map[string]int, len(orphans))
+	for i := range orphans {
+		units[orphans[i].Path] = i
+	}
+	return orphanOwners{d: d, units: units}
+}
+
+func (o orphanOwners) of(path string) (int, bool) {
+	for {
+		if i, ok := o.units[path]; ok {
+			return i, true
+		}
+		parent := o.d.Dir(path)
+		if parent == path {
+			return 0, false
+		}
+		path = parent
+	}
 }
 
 // outermostDiscUnit returns the outermost disc root that contains normUnit.
@@ -200,6 +333,12 @@ func outermostDiscUnit(d fsops.PathDialect, normUnit string, discRoots map[strin
 
 func (w *scanWalker) resolveDiscUnits() {
 	// A disc unit with an in-use file stays whole and hides nothing beside it.
+	// A torrent file that is not on disk yet also puts the unit in use.
+	for du := range w.discUnitsWithOrphan {
+		if w.protected.torrentFileIn(du) {
+			w.discUnitsInUse[du] = struct{}{}
+		}
+	}
 	for du := range w.discUnitsInUse {
 		delete(w.orphanUnits, du)
 	}
@@ -229,6 +368,7 @@ func (w *scanWalker) mergeIntoDiscUnit(unit, discUnitPath string, entry *OrphanF
 	discEntry, ok := w.orphanUnits[discUnitPath]
 	if ok {
 		discEntry.Size += entry.Size
+		discEntry.files += entry.files
 		if entry.ModifiedAt.After(discEntry.ModifiedAt) {
 			discEntry.ModifiedAt = entry.ModifiedAt
 		}
@@ -248,26 +388,31 @@ func (w *scanWalker) orphans() []OrphanFile {
 
 // walkScanRootCollectingDirs also returns candidates for empty-directory cleanup.
 // It never caps the walk; the run's cap applies afterwards.
-func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance,
+func walkScanRootCollectingDirs(ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, 0, nil, backend, instance, true)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, true, nil)
 	return orphans, dirs, err
 }
 
 func walkScanRootWithUnitFilter(
-	ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, instance *models.Instance, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
-	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs)
+	// Without the run's keys this one root is the run, so the walk drops aliases itself.
+	ownKeys := keys == nil
+	if ownKeys {
+		keys = newFileKeys()
+	}
+	w := newScanWalker(ctx, root, protected, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs, keys)
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
 		IgnoreDirNames:        ignoredOrphanDirNames,
 		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
-		IgnorePaths:           ignorePaths,
+		IgnorePaths:           protected.ignorePaths,
 		WantFileID:            true,
 		EmitStatErrors:        true,
 	})
@@ -296,8 +441,8 @@ func walkScanRootWithUnitFilter(
 			return nil, nil, false, entry.Err
 		}
 
-		// Skip symlinks
-		if entry.IsSymlink {
+		// Junctions are ModeIrregular on Windows, not symlinks or directories.
+		if entry.IsSymlink || (!entry.IsDir && !entry.Mode.IsRegular()) {
 			continue
 		}
 
@@ -321,21 +466,27 @@ func walkScanRootWithUnitFilter(
 				dir.directFiles++
 			}
 		}
-		if isIgnoredPath(w.d, path, w.ignorePaths) {
+		if w.protected.ignored(path) {
 			continue
 		}
 
-		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
-		normPath := fsops.NormalizePath(w.d, path)
-		if w.tfm.Has(normPath) {
+		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.protected, w.discUnitCache, w.scanRootCache, w.backend)
+		if w.protected.torrentFile(path) {
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
 			}
-			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
+			if key, ok := w.fileKey(entry); ok {
+				w.keys.inUse[key] = struct{}{}
+			}
 			continue
 		}
 		if entry.StatErr != nil {
 			continue
+		}
+		// Recorded before the grace and name checks: a disc unit's delete removes those files too.
+		ref := -1
+		if key, ok := w.fileKey(entry); ok {
+			ref = w.keys.addOther(key, path)
 		}
 
 		name := w.d.Base(path)
@@ -344,9 +495,6 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if !entry.ModTime.IsZero() && time.Since(entry.ModTime) < w.gracePeriod {
-			continue
-		}
-		if w.shouldSkipDuplicate(entry.FileID, entry.Nlinks) {
 			continue
 		}
 		if isDiscUnit {
@@ -366,12 +514,19 @@ func walkScanRootWithUnitFilter(
 			w.orphanUnits[unitPath] = existing
 		}
 		existing.Size += entry.Size
+		existing.files++
+		if ref >= 0 {
+			w.keys.refs[ref].size = entry.Size
+		}
 		if existing.ModifiedAt.IsZero() || entry.ModTime.After(existing.ModifiedAt) {
 			existing.ModifiedAt = entry.ModTime
 		}
 	}
 
 	orphans := w.orphans()
+	if ownKeys {
+		orphans = dropAliasOrphans(w.d, orphans, keys)
+	}
 	return orphans, w.candidateDirs(orphans), w.truncated, ctx.Err()
 }
 
@@ -406,10 +561,9 @@ func buildDiscCandidatePaths(d fsops.PathDialect, root string, segments []string
 }
 
 // chooseDiscUnit decides whether to use the parent folder, marker folder, or disable grouping.
-func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper string, tfm *TorrentFileMap, ignorePaths []string, backend fsops.Backend) discUnitDecision {
-	d := backend.Paths()
-	parentProtected := len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(d, candidateAbs, ignorePaths)
-	markerProtected := len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(d, markerAbs, ignorePaths)
+func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper string, protected *protectedPaths, backend fsops.Backend) discUnitDecision {
+	parentProtected := protected.ignoredOrHoldsIgnored(candidateAbs)
+	markerProtected := protected.ignoredOrHoldsIgnored(markerAbs)
 
 	if parentProtected && markerProtected {
 		return discUnitDecision{disableGrouping: true}
@@ -422,7 +576,7 @@ func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper st
 	}
 
 	// Neither protected: check torrent file safety
-	if discParentIsSafeDiscRoot(ctx, candidateAbs, markerUpper, tfm, backend) {
+	if discParentIsSafeDiscRoot(ctx, candidateAbs, markerUpper, protected, backend) {
 		return discUnitDecision{chosenUnit: candidateAbs}
 	}
 	return discUnitDecision{chosenUnit: markerAbs}
@@ -445,9 +599,8 @@ func discRelativeDir(d fsops.PathDialect, root, path string) (string, bool) {
 func discUnitFromParentMarker(
 	ctx context.Context,
 	originalPath, candidateAbs, markerAbs, markerUpper string,
-	tfm *TorrentFileMap,
+	protected *protectedPaths,
 	unitCache map[string]discUnitDecision,
-	ignorePaths []string,
 	backend fsops.Backend,
 ) (unitPath string, ok bool) {
 	// Do not fold: the cached decision holds the first caller's absolute path, so
@@ -462,7 +615,7 @@ func discUnitFromParentMarker(
 		}
 	}
 
-	decision := chooseDiscUnit(ctx, candidateAbs, markerAbs, markerUpper, tfm, ignorePaths, backend)
+	decision := chooseDiscUnit(ctx, candidateAbs, markerAbs, markerUpper, protected, backend)
 	if unitCache != nil {
 		unitCache[key] = decision
 	}
@@ -474,7 +627,7 @@ func discUnitFromParentMarker(
 
 // discOrphanUnitWithContext groups disc files without including ignored content.
 // Sibling orphans are suppressed after the walk if it selects a parent disc unit.
-func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]discUnitDecision, ignorePaths []string, backend fsops.Backend) (unitPath string, ok bool) {
+func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, protected *protectedPaths, unitCache map[string]discUnitDecision, rootCache map[string]bool, backend fsops.Backend) (unitPath string, ok bool) {
 	d := backend.Paths()
 	root := d.Clean(scanRoot)
 	path := d.Clean(filePath)
@@ -490,26 +643,50 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, t
 	}
 
 	candidateAbs, markerAbs := buildDiscCandidatePaths(d, root, strings.Split(relDir, d.Separator()), markerIndex, markerSegment)
-	if candidateAbs == root {
+	// A disc unit never is or holds a nested scan root: the delete would refuse
+	// it, or remove the root with it. The marker is the unit instead, under the
+	// ignore check a walk of that root applies, or else its files one by one.
+	if cachedHoldsScanRoot(protected, rootCache, candidateAbs) {
+		if cachedHoldsScanRoot(protected, rootCache, markerAbs) || protected.ignoredOrHoldsIgnored(markerAbs) {
+			return path, false
+		}
 		return markerAbs, true
 	}
 
 	if markerIndex > 0 {
-		return discUnitFromParentMarker(ctx, path, candidateAbs, markerAbs, markerUpper, tfm, unitCache, ignorePaths, backend)
+		return discUnitFromParentMarker(ctx, path, candidateAbs, markerAbs, markerUpper, protected, unitCache, backend)
 	}
 
-	if len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(d, markerAbs, ignorePaths) {
+	if protected.ignoredOrHoldsIgnored(markerAbs) {
 		return path, false
 	}
 
 	return markerAbs, true
 }
 
+// cachedHoldsScanRoot remembers protected.holdsScanRoot per folder: it
+// normalizes the path, and it runs for every file below a disc marker.
+func cachedHoldsScanRoot(protected *protectedPaths, cache map[string]bool, dir string) bool {
+	if is, ok := cache[dir]; ok {
+		return is
+	}
+	is := protected.holdsScanRoot(dir)
+	if cache != nil {
+		cache[dir] = is
+	}
+	return is
+}
+
 // isPathUnderNormalized checks if child is strictly under parent.
 // Both paths must be clean in d. Callers choose whether to fold case.
 func isPathUnderNormalized(d fsops.PathDialect, child, parent string) bool {
-	return len(child) > len(parent) && strings.HasPrefix(child, parent) &&
-		strings.HasPrefix(child[len(parent):], d.Separator())
+	if len(child) <= len(parent) || !strings.HasPrefix(child, parent) {
+		return false
+	}
+	// "/" and "D:\" already end in the separator. A UNC share root may not
+	// ("\\server\share"), so the next character of the child still has to be one.
+	sep := d.Separator()
+	return strings.HasSuffix(parent, sep) || strings.HasPrefix(child[len(parent):], sep)
 }
 
 var discRootAllowedFiles = map[string]struct{}{
@@ -563,8 +740,8 @@ func discParentIsPureDiscRoot(ctx context.Context, parentAbs, marker string, bac
 	return true
 }
 
-func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm *TorrentFileMap, backend fsops.Backend) bool {
-	if tfm == nil {
+func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, protected *protectedPaths, backend fsops.Backend) bool {
+	if protected.files == nil {
 		return discParentIsPureDiscRoot(ctx, parentAbs, marker, backend)
 	}
 
@@ -582,7 +759,7 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 			if _, ok := allowedDirs[nameUpper]; ok {
 				continue
 			}
-			if tfm.HasAnyInDir(fsops.NormalizePath(d, full)) {
+			if protected.torrentFileIn(full) {
 				return false
 			}
 			continue
@@ -590,26 +767,12 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 		if _, ok := allowedFiles[nameUpper]; ok {
 			continue
 		}
-		if tfm.Has(fsops.NormalizePath(d, full)) {
+		if protected.torrentFile(full) {
 			return false
 		}
 	}
 
 	return true
-}
-
-// isIgnoredPath checks if path matches any ignore prefix with boundary safety.
-// Ensures /data/foo doesn't match /data/foobar (requires separator after prefix).
-// Uses fsops.NormalizePath for consistent comparison across platforms.
-func isIgnoredPath(d fsops.PathDialect, path string, ignorePaths []string) bool {
-	normPath := fsops.NormalizePath(d, path)
-	for _, prefix := range ignorePaths {
-		normPrefix := fsops.NormalizePath(d, prefix)
-		if normPath == normPrefix || isPathUnderNormalized(d, normPath, normPrefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func isIgnoredOrphanFileName(name string) bool {
@@ -645,27 +808,6 @@ func hasSuffixFold(s, suffix string) bool {
 	return strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
-// isPathProtectedByIgnorePaths checks if a path should not be deleted because:
-//  1. The path itself is ignored, OR
-//  2. The path contains any ignored descendant (any ignore path has this path as a parent)
-//
-// This prevents deleting directories that contain ignored content.
-func isPathProtectedByIgnorePaths(d fsops.PathDialect, path string, ignorePaths []string) bool {
-	// Check if the path itself is ignored
-	if isIgnoredPath(d, path, ignorePaths) {
-		return true
-	}
-
-	// Check if any ignore path is a descendant of this path
-	normPath := fsops.NormalizePath(d, path)
-	for _, ignorePath := range ignorePaths {
-		if isPathUnderNormalized(d, fsops.NormalizePath(d, ignorePath), normPath) {
-			return true
-		}
-	}
-	return false
-}
-
 // IgnoredPathMatcher reports, in d, whether a path is protected by the
 // instance's ignore paths: the path is ignored or holds an ignored path. Folder
 // cleanup uses it whether orphan scan is on or off, so one list protects a
@@ -679,26 +821,9 @@ func (s *Service) IgnoredPathMatcher(ctx context.Context, instanceID int, d fsop
 	if settings != nil {
 		paths = settings.IgnorePaths
 	}
-	ignorePaths, err := NormalizeIgnorePaths(d, paths)
+	protected, err := newProtectedPaths(d, paths, nil)
 	if err != nil {
 		return nil, err
 	}
-	return func(path string) bool { return isPathProtectedByIgnorePaths(d, path, ignorePaths) }, nil
-}
-
-// NormalizeIgnorePaths validates and normalizes ignore paths in d, the dialect of
-// the instance's backend.
-// All paths must be absolute. The result is stored in settings and shown in the
-// UI, so it keeps the casing the user typed; matching case-folds on both sides
-// (see isIgnoredPath).
-func NormalizeIgnorePaths(d fsops.PathDialect, paths []string) ([]string, error) {
-	result := make([]string, 0, len(paths))
-	for _, p := range paths {
-		cleaned := d.Clean(p)
-		if !d.IsAbs(cleaned) {
-			return nil, fmt.Errorf("ignore path must be absolute: %s", p)
-		}
-		result = append(result, fsops.CleanPath(d, cleaned))
-	}
-	return result, nil
+	return protected.ignoredOrHoldsIgnored, nil
 }

@@ -1745,11 +1745,9 @@
       "lastBackup": "마지막 백업",
       "loading": "불러오는 중...",
       "progress": "토렌트 {{total}}개 중 {{current}}개 ({{percentage}}%)",
-      "status": "상태: {{status}}",
       "noBackupsYet": "아직 백업 없음",
       "nextScheduledBackup": "다음 예약 백업",
       "loadingSchedule": "일정 불러오는 중...",
-      "instance": "인스턴스",
       "automaticBackupsOff": "이 인스턴스의 자동 백업이 꺼져 있습니다.",
       "enableCadenceToSchedule": "백업을 예약하려면 자동 주기를 하나 이상 활성화하세요.",
       "currentlyRunning": "백업이 현재 실행 중입니다.",
@@ -1773,6 +1771,7 @@
       "schedule": {
         "title": "자동 주기",
         "description": "매시간, 매일, 매주, 매월 실행은 이전 백업이 완료되고 해당 간격이 경과한 후 시작됩니다. 백업을 수동으로만 트리거하려면 모두 꺼 두세요.",
+        "keep": "보관",
         "hourly": "매시간",
         "hourlyDescription": "이전 항목이 정리되기 전에 유지할 시간별 스냅샷 수입니다.",
         "hourlyTooltip": "백업이 활성화되어 있고 마지막 실행 후 최소 한 시간이 지나면 대략 한 시간에 한 번 실행됩니다.",
@@ -1791,8 +1790,7 @@
         "saveChanges": "변경 사항 저장",
         "saveAll": "모든 인스턴스에 변경 사항 저장",
         "requiresCadence": "저장하기 전에 주기를 하나 이상(매시간, 매일, 매주 또는 매월) 선택하세요.",
-        "waitForCapabilities": "모든 인스턴스에 저장하기 전에 인스턴스 기능 확인이 완료되기를 기다리세요.",
-        "changesApplyImmediately": "변경 사항은 저장하는 즉시 향후 백업에 적용됩니다."
+        "waitForCapabilities": "모든 인스턴스에 저장하기 전에 인스턴스 기능 확인이 완료되기를 기다리세요."
       }
     },
     "restore": {

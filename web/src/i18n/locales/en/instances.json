@@ -1774,11 +1774,9 @@
       "lastBackup": "Last backup",
       "loading": "Loading...",
       "progress": "{{current}} of {{total}} torrents ({{percentage}}%)",
-      "status": "Status: {{status}}",
       "noBackupsYet": "No backups yet",
       "nextScheduledBackup": "Next scheduled backup",
       "loadingSchedule": "Loading schedule...",
-      "instance": "Instance",
       "automaticBackupsOff": "Automatic backups are turned off for this instance.",
       "enableCadenceToSchedule": "Enable at least one automatic cadence to schedule backups.",
       "currentlyRunning": "Backup is currently running.",
@@ -1802,6 +1800,7 @@
       "schedule": {
         "title": "Automatic cadences",
         "description": "Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.",
+        "keep": "Keep",
         "hourly": "Hourly",
         "hourlyDescription": "How many hourly snapshots to keep before older ones are pruned.",
         "hourlyTooltip": "Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run.",
@@ -1820,8 +1819,7 @@
         "saveChanges": "Save changes",
         "saveAll": "Save changes to all instances",
         "requiresCadence": "Select at least one cadence (hourly, daily, weekly, or monthly) before saving.",
-        "waitForCapabilities": "Wait for instance capability checks to finish before saving to all instances.",
-        "changesApplyImmediately": "Changes apply to future backups as soon as you save."
+        "waitForCapabilities": "Wait for instance capability checks to finish before saving to all instances."
       }
     },
     "restore": {
