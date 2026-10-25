@@ -92,6 +92,7 @@ Directories are removed after the files, so a tree this run empties goes in one 
 ## Partial scans
 
 A directory can disappear while a scan runs, for example when an automation removes a torrent and its files.
+If a directory below a scan path disappears, qui skips that directory and scans the rest of the path.
 If at least one scan path completes but another is unavailable, qui reports **Partial scan** and keeps the results from completed paths.
 This also applies when qui skips paths because qBittorrent temporarily cannot provide torrent file lists.
 This result applies even when qui finds no orphan files.
