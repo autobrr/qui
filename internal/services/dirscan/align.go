@@ -120,18 +120,18 @@ func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) 
 	return err == nil && info.IsDir
 }
 
-// align renames the just-added torrent to match the on-disk files. Returns whether
-// alignment succeeded. The torrent was added paused, so if alignment fails it stays paused for
-// inspection. After a success, Settle rechecks it and resumes it only at 100%, so bad data is
-// never seeded.
-func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignmentPlan) bool {
-	hash, _, ok := i.aligner.WaitForFiles(ctx, req.InstanceID, []string{req.ParsedTorrent.InfoHash})
+// align renames the just-added torrent to match the on-disk files. It returns the hash that
+// qBittorrent lists the torrent under and whether alignment succeeded. The torrent was added
+// paused, so if alignment fails it stays paused for inspection. After a success, Settle
+// rechecks it and resumes it only at 100%, so bad data is never seeded.
+func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignmentPlan) (string, bool) {
+	hash, _, ok := i.aligner.WaitForFiles(ctx, req.InstanceID, []string{req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2})
 	if !ok {
 		log.Warn().
 			Int("instanceID", req.InstanceID).
 			Str("hash", req.ParsedTorrent.InfoHash).
 			Msg("dirscan: torrent never became visible for alignment; leaving torrent paused for inspection")
-		return false
+		return "", false
 	}
 
 	// stripRoot plans have no folder rename: the root was already dropped at add time
@@ -147,7 +147,7 @@ func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignment
 			Str("torrentRoot", plan.sourceRoot).
 			Str("diskRoot", plan.targetRoot).
 			Msg("dirscan: alignment incomplete; leaving torrent paused for inspection")
-		return false
+		return hash, false
 	}
 
 	log.Info().
@@ -158,5 +158,5 @@ func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignment
 		Int("fileRenames", len(plan.fileRenames)).
 		Bool("folderRenamed", plan.renameFolder).
 		Msg("dirscan: aligned torrent content paths to on-disk layout")
-	return true
+	return hash, true
 }

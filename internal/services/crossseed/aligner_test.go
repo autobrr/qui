@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -262,6 +265,24 @@ func TestAligner_Align_ListWithNeitherPathIsNotConfirmed(t *testing.T) {
 			require.False(t, testAligner(fake).Align(t.Context(), 1, alignerHash, tt.plan))
 		})
 	}
+}
+
+func TestAligner_Align_FailureWarningNamesTheRenameError(t *testing.T) {
+	previousLogger := log.Logger
+	var buf bytes.Buffer
+	log.Logger = zerolog.New(&buf).Level(zerolog.WarnLevel)
+	t.Cleanup(func() { log.Logger = previousLogger })
+
+	fake := &alignerFake{
+		hash:      alignerHash,
+		files:     qbt.TorrentFiles{{Name: "a.mkv"}},
+		renameErr: errors.New("invalid newPath or oldPath, or newPath already in use"),
+	}
+
+	require.False(t, testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+		Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+	}))
+	require.Contains(t, buf.String(), `"error":"invalid newPath or oldPath, or newPath already in use"`)
 }
 
 func TestAligner_Align_IgnoresRunContextCancel(t *testing.T) {

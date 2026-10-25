@@ -373,6 +373,69 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 	}
 }
 
+func TestInjector_Inject_AlignsTorrentListedUnderV2ID(t *testing.T) {
+	// qBittorrent lists a v2-only torrent under the first 40 characters of its v2 hash, not
+	// under the v1 hash that the parser computes from the info bytes.
+	v1 := strings.Repeat("a", 40)
+	v2 := strings.Repeat("b", 64)
+	qbitID := v2[:40]
+
+	synctest.Test(t, func(t *testing.T) {
+		searcheeDir := filepath.Join(t.TempDir(), "Release 01")
+		if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
+			t.Fatalf("mkdir searchee: %v", err)
+		}
+
+		instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
+		manager := &alignFakeManager{
+			hash:  qbitID,
+			files: qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+		}
+		settle := &settleFake{}
+		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+		req := &InjectRequest{
+			InstanceID:   1,
+			TorrentBytes: []byte("x"),
+			ParsedTorrent: &ParsedTorrent{
+				Name:        "Linux.Distribution.Release.01",
+				InfoHash:    v1,
+				InfoHashV2:  v2,
+				Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+				PieceLength: 16384,
+			},
+			Searchee: &Searchee{
+				Name:  "Release 01",
+				Path:  searcheeDir,
+				Files: []*ScannedFile{{Path: filepath.Join(searcheeDir, "a.iso"), RelPath: "a.iso", Size: 4}},
+			},
+			MatchResult: &MatchResult{
+				MatchedFiles: []MatchedFilePair{
+					{SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 4}, TorrentFile: TorrentFile{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+				},
+				IsMatch:        true,
+				IsPerfectMatch: true,
+			},
+			SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		}
+
+		res, err := inject(t.Context(), t, injector, req)
+		if err != nil {
+			t.Fatalf("inject: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got %+v", res)
+		}
+		if got := manager.currentNames(); !slices.Equal(got, []string{"Release 01/a.iso"}) {
+			t.Fatalf("torrent files = %v, want the on-disk folder", got)
+		}
+		// Settle watches the first recheck hash, so it must be the ID that qBittorrent knows.
+		if got := settle.hashedCalls(); len(got) == 0 || got[0] != "recheck:"+qbitID {
+			t.Fatalf("settle calls = %v, want the first recheck on %s", got, qbitID)
+		}
+	})
+}
+
 func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 	// A rootless torrent dropped into a directory searchee whose file has a different on-disk name.
 	searcheeDir := filepath.Join(t.TempDir(), "Season 01")

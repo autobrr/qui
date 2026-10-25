@@ -130,8 +130,8 @@ func (a *Aligner) Align(ctx context.Context, instanceID int, hash string, plan A
 // qBittorrent rename calls return before the rename applies and can drop it,
 // so each try is watched and a dropped rename is sent again.
 func (a *Aligner) rename(ctx context.Context, instanceID int, hash, oldPath, newPath string, folder bool) bool {
+	var err error
 	for attempt := 1; attempt <= alignRenameAttempts; attempt++ {
-		var err error
 		if folder {
 			err = a.sync.RenameTorrentFolder(ctx, instanceID, hash, oldPath, newPath)
 		} else {
@@ -168,6 +168,7 @@ func (a *Aligner) rename(ctx context.Context, instanceID int, hash, oldPath, new
 	}
 
 	log.Warn().
+		Err(err).
 		Int("instanceID", instanceID).
 		Str("torrentHash", hash).
 		Str("from", oldPath).

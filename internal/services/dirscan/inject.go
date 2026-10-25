@@ -242,7 +242,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	var afterAdd func(context.Context, []string) (string, bool)
 	if alignmentNeeded {
 		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
-			return "", i.align(ctx, req, alignPlan)
+			return i.align(ctx, req, alignPlan)
 		}
 	}
 
