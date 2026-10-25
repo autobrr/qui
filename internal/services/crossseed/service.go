@@ -1625,6 +1625,9 @@ type searchRunState struct {
 	// duplicateHashes keeps track of deduplicated torrent hash sets keyed by the
 	// representative hash so cooldowns can be propagated to other copies.
 	duplicateHashes map[string][]string
+	// duplicateSourceSites maps a representative hash to the RED/OPS hosts of
+	// the other copies in its duplicate group.
+	duplicateSourceSites map[string][]string
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
@@ -9502,6 +9505,28 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 	}
 }
 
+// duplicateGazelleSites maps each representative hash in duplicates to the
+// RED/OPS hosts of its duplicate copies in torrents.
+func (s *Service) duplicateGazelleSites(torrents []qbt.Torrent, duplicates map[string][]string) map[string][]string {
+	representativeOf := make(map[string]string)
+	for representative, hashes := range duplicates {
+		for _, hash := range hashes {
+			representativeOf[hash] = representative
+		}
+	}
+	sites := make(map[string][]string)
+	for i := range torrents {
+		representative, ok := representativeOf[torrents[i].Hash]
+		if !ok {
+			continue
+		}
+		if site, ok := s.detectGazelleSourceSite(&torrents[i]); ok && !slices.Contains(sites[representative], site) {
+			sites[representative] = append(sites[representative], site)
+		}
+	}
+	return sites
+}
+
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
 	// A big instance spends a while here, so the run does not look hung.
 	queueStart := time.Now()
@@ -9605,6 +9630,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	state.skipCache = make(map[string]bool, len(state.queue))
 	state.staleWork = make(map[string]candidateStaleWork, len(state.queue))
 	state.duplicateHashes = duplicates
+	state.duplicateSourceSites = s.duplicateGazelleSites(filtered, duplicates)
 
 	totalEligible := 0
 	for i := range state.queue {
@@ -9837,12 +9863,13 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		cooldownIndexerIDs = subtractInts(state.resolvedTorznabIndexerIDs, staleWork.indexerIDs)
 	}
 	scope := s.collectSearchScope(ctx, state.opts.InstanceID, torrent, searchScopeFacts{
-		requestedIndexerIDs: state.resolvedTorznabIndexerIDs,
-		picked:              len(uniquePositiveInts(state.opts.IndexerIDs)) > 0,
-		torznabOff:          state.opts.DisableTorznab,
-		cooldownIndexerIDs:  cooldownIndexerIDs,
-		skipGazelle:         hasStaleWork && !staleWork.gazelle,
-		gazelleKeys:         state.gazelleClients.hosts(),
+		requestedIndexerIDs:  state.resolvedTorznabIndexerIDs,
+		picked:               len(uniquePositiveInts(state.opts.IndexerIDs)) > 0,
+		torznabOff:           state.opts.DisableTorznab,
+		cooldownIndexerIDs:   cooldownIndexerIDs,
+		skipGazelle:          hasStaleWork && !staleWork.gazelle,
+		gazelleKeys:          state.gazelleClients.hosts(),
+		duplicateSourceSites: state.duplicateSourceSites[torrent.Hash],
 	}, false)
 	if scope.err != nil {
 		s.appendSearchResult(state, models.CrossSeedSearchResult{

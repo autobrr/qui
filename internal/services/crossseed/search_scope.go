@@ -53,8 +53,11 @@ type searchScopeFacts struct {
 
 	contentFilter contentFilterFacts
 	// sourceSite is the RED/OPS host that the torrent comes from, or "".
-	sourceSite       string
-	musicCheckPassed bool
+	sourceSite string
+	// duplicateSourceSites are the RED/OPS hosts of the other copies in the
+	// duplicate group of the torrent. The Library Scan sets them.
+	duplicateSourceSites []string
+	musicCheckPassed     bool
 }
 
 // contentFilterFacts is the result of the content analysis of one torrent.
@@ -82,23 +85,37 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 		return scope
 	}
 
+	// The scope asks only the RED/OPS sites where no copy of the group seeds.
 	var hosts []string
-	for _, host := range gazelleTargetHosts(f.sourceSite) {
+	missingKey := false
+	for _, host := range []string{"redacted.sh", "orpheus.network"} {
+		if host == f.sourceSite || slices.Contains(f.duplicateSourceSites, host) {
+			continue
+		}
 		if slices.Contains(f.gazelleKeys, host) {
 			hosts = append(hosts, host)
+		} else {
+			missingKey = true
 		}
 	}
+	// A copy from RED/OPS skips the music check, because the tracker proves
+	// that RED/OPS can host the content.
+	fromGazelle := f.sourceSite != "" || len(f.duplicateSourceSites) > 0
 	switch {
-	case len(hosts) == 0 && f.torznabOff:
-		return searchScope{err: fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)}
-	case len(hosts) == 0:
-		scope.gazelleCooldownWithoutLookup = len(f.gazelleKeys) > 0
-	case f.sourceSite == "" && !f.musicCheckPassed:
-		// A torrent from RED/OPS skips the music check, because the tracker
-		// proves that RED/OPS can host the content.
+	case len(hosts) > 0 && !fromGazelle && !f.musicCheckPassed:
+		// The files of a torrent do not change, so a failed music check starts
+		// the cooldown.
 		scope.gazelleCooldownWithoutLookup = true
-	default:
+	case len(hosts) > 0:
 		scope.gazelleHosts = hosts
+	case !missingKey && len(f.gazelleKeys) > 0:
+		// A copy of the group seeds on each RED/OPS site.
+		scope.gazelleCooldownWithoutLookup = true
+	case f.torznabOff:
+		return searchScope{err: fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)}
+	default:
+		// A missing API key starts no cooldown, so a key that the user adds
+		// later works at the next run.
 	}
 	return scope
 }
@@ -142,13 +159,6 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	return allowed, "", nil
 }
 
-func gazelleTargetHosts(sourceSite string) []string {
-	if target := gazelleTargetForSource(sourceSite); target != "" {
-		return []string{target}
-	}
-	return []string{"redacted.sh", "orpheus.network"}
-}
-
 // collectSearchScope collects the facts about one torrent and decides its
 // Search scope. f holds the request fields of the Trigger. When
 // resolveIndexers is set, the collector expands f.requestedIndexerIDs; the
@@ -167,7 +177,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 	}
 
 	f.sourceSite, _ = s.detectGazelleSourceSite(torrent)
-	if f.sourceSite == "" && !f.skipGazelle && len(f.gazelleKeys) > 0 {
+	if f.sourceSite == "" && len(f.duplicateSourceSites) == 0 && !f.skipGazelle && len(f.gazelleKeys) > 0 {
 		files, err := s.getTorrentFilesCached(ctx, instanceID, torrent.Hash)
 		if err != nil {
 			return searchScope{err: fmt.Errorf("failed to get torrent files: %w", err)}
