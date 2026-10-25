@@ -9053,9 +9053,6 @@ components:
           type: array
           items:
             type: string
-        content_filtering_completed:
-          type: boolean
-          nullable: true
         disc_layout:
           type: boolean
           description: True if this torrent contains disc-based media (Blu-ray/DVD)

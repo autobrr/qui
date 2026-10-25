@@ -80,7 +80,6 @@ export const handlers = [
       instance_id: Number(params.instanceId),
       hash: params.hash,
       name: "test-torrent",
-      content_filtering_completed: true,
     })
   ),
 

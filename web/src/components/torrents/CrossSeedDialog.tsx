@@ -306,30 +306,10 @@ const CrossSeedDialogComponent = ({
               )}
             </div>
           )}
-          {partial && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t("crossSeedDialog.partialResults")}</span>
-            </div>
-          )}
-          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t(queryDegradedMessageKeys[queryDegraded])}</span>
-            </div>
-          )}
-          {gazelleTimedOut && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t("crossSeedDialog.gazelleTimedOut")}</span>
-            </div>
-          )}
-          {torznabFailed && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t("crossSeedDialog.torznabFailed")}</span>
-            </div>
-          )}
+          {partial && <HeaderWarning>{t("crossSeedDialog.partialResults")}</HeaderWarning>}
+          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <HeaderWarning>{t(queryDegradedMessageKeys[queryDegraded])}</HeaderWarning>}
+          {gazelleTimedOut && <HeaderWarning>{t("crossSeedDialog.gazelleTimedOut")}</HeaderWarning>}
+          {torznabFailed && <HeaderWarning>{t("crossSeedDialog.torznabFailed")}</HeaderWarning>}
         </DialogHeader>
         <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}
@@ -1006,6 +986,15 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
   )
 })
 CrossSeedScopeSelector.displayName = "CrossSeedScopeSelector"
+
+function HeaderWarning({ children }: { children: string }) {
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span>{children}</span>
+    </div>
+  )
+}
 
 function ScopeSearchButton({ onClick, isSearching, disabled }: { onClick: () => void; isSearching: boolean; disabled: boolean }) {
   const { t } = useTranslation("torrents")

@@ -159,7 +159,6 @@ func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, resp.Results)
 	require.Zero(t, searchRequests.Load(), "the dialog must not ask an indexer that the content filter removes")
-	require.True(t, resp.SourceTorrent.ContentFilteringCompleted)
 	require.Contains(t, resp.SourceTorrent.ExcludedIndexers, cachedFilteringIndexerID)
 }
 
@@ -288,7 +287,6 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, cachedState, result.FilteringState, "matching content type must reuse the cached run")
 	require.Equal(t, []int{7}, result.TorrentInfo.FilteredIndexers)
-	require.True(t, result.TorrentInfo.ContentFilteringCompleted)
 
 	svc, cachedState = newService("audiobook")
 	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)

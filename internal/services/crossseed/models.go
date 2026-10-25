@@ -136,8 +136,6 @@ type TorrentInfo struct {
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
 	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
-	// Async filtering status
-	ContentFilteringCompleted bool `json:"content_filtering_completed,omitempty"` // Whether async content filtering has finished
 	// Disc layout detection
 	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
 	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
@@ -405,9 +403,8 @@ type AsyncIndexerFilteringState struct {
 	// for; category mapping rules can change a torrent's type at runtime, so
 	// readers must not reuse a run computed for a different type (#2313).
 	contentType string
-	// discoveryErr reports that the analysis could not list the Torznab
-	// indexers.
-	discoveryErr error
+	// torznabErr reports that the analysis could not list the Torznab indexers.
+	torznabErr error
 
 	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
@@ -422,7 +419,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 		ContentCompleted:      s.ContentCompleted,
 		Error:                 s.Error,
 		contentType:           s.contentType,
-		discoveryErr:          s.discoveryErr,
+		torznabErr:            s.torznabErr,
 	}
 	if len(s.CapabilityIndexers) > 0 {
 		clone.CapabilityIndexers = append([]int(nil), s.CapabilityIndexers...)

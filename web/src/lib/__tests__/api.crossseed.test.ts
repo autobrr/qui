@@ -146,7 +146,6 @@ describe("api.crossseed contract", () => {
         filtered_indexers: [1, 2],
         excluded_indexers: { "3": "no caps", "bad": "ignored" },
         content_matches: ["file.mkv"],
-        content_filtering_completed: true,
       }
       server.use(
         http.get("*/api/cross-seed/torrents/:instanceId/:hash/analyze", () =>

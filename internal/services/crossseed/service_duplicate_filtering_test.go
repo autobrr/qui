@@ -609,7 +609,6 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 			require.Equal(t, lateState.FilteredIndexers, response.SourceTorrent.FilteredIndexers)
 			require.Equal(t, lateState.ExcludedIndexers, response.SourceTorrent.ExcludedIndexers)
 			require.Equal(t, lateState.ContentMatches, response.SourceTorrent.ContentMatches)
-			require.True(t, response.SourceTorrent.ContentFilteringCompleted)
 		})
 	}
 }

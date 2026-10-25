@@ -27,6 +27,14 @@ const (
 	noGazelleKeySkipReason              = "no RED/OPS API key for the target site"
 )
 
+// The RED/OPS sites, in the order that a search asks them.
+const (
+	redHost = "redacted.sh"
+	opsHost = "orpheus.network"
+)
+
+var gazelleSites = []string{redHost, opsHost}
+
 // searchScope is the Search scope of one torrent: the Torznab indexers and the
 // RED/OPS sites that one search asks.
 type searchScope struct {
@@ -74,9 +82,9 @@ type searchScopeFacts struct {
 // contentFilterFacts is the result of the content analysis of one torrent.
 type contentFilterFacts struct {
 	err error
-	// discoveryErr reports that qui could not list the Torznab indexers, for
+	// torznabErr reports that qui could not list the Torznab indexers, for
 	// example because Prowlarr or Jackett is down.
-	discoveryErr error
+	torznabErr error
 	// done reports that the content filter finished. When the wait for it timed
 	// out, indexerIDs holds the result of the capability filter.
 	done       bool
@@ -95,13 +103,13 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 		return searchScope{err: err}
 	}
 	scope := searchScope{torznabIndexerIDs: ids, skipReason: skipReason}
-	if discoveryErr := f.contentFilter.discoveryErr; discoveryErr != nil {
-		torznabErr := fmt.Errorf("load torznab indexers: %w", discoveryErr)
+	if listErr := f.contentFilter.torznabErr; listErr != nil {
+		torznabErr := fmt.Errorf("load torznab indexers: %w", listErr)
 		if len(f.gazelleKeys) == 0 {
 			return searchScope{err: torznabErr}
 		}
-		// The skip reason must not read like a content filter that removed
-		// every indexer.
+		// The error is the skip reason, so that an outage does not look like a
+		// content filter that removed every indexer.
 		scope = searchScope{skipReason: torznabErr.Error(), torznabErr: torznabErr}
 	}
 	if f.skipGazelle {
@@ -111,7 +119,7 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 	// The scope asks only the RED/OPS sites where no copy of the group seeds.
 	var hosts []string
 	missingKey := false
-	for _, host := range []string{"redacted.sh", "orpheus.network"} {
+	for _, host := range gazelleSites {
 		if host == f.sourceSite || slices.Contains(f.duplicateSourceSites, host) {
 			continue
 		}
@@ -151,8 +159,8 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	}
 	requested := withoutGazelleTorznabIndexers(f.requestedIndexerIDs, f.gazelleTorznabIndexers, f.gazelleKeys)
 	if len(requested) == 0 {
-		// Picked indexers that the setup removed must not expand to every
-		// enabled indexer.
+		// An empty list of picked indexers is not an empty selection, which
+		// means every enabled indexer.
 		if f.picked {
 			return nil, noIndexersAfterFilteringSkipReason, nil
 		}
@@ -185,15 +193,14 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	return allowed, "", nil
 }
 
-// collectSearchScope collects the facts about one torrent and decides its
-// Search scope. f holds the request fields of the Trigger. When
-// resolveIndexers is set, the collector expands f.requestedIndexerIDs; the
-// Library Scan resolves them one time for each run instead.
+// collectSearchScope fills the torrent facts into f and decides the Search scope.
+// The Library Scan resolves its indexers one time for each run, so it passes
+// resolveIndexers false.
 func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torrent *qbt.Torrent, f searchScopeFacts, resolveIndexers bool) searchScope {
 	if resolveIndexers && !f.torznabOff {
 		ids, err := s.resolveTorznabIndexerIDs(ctx, f.requestedIndexerIDs)
 		f.requestedIndexerIDs = ids
-		f.contentFilter.discoveryErr = err
+		f.contentFilter.torznabErr = err
 		if err == nil && len(f.gazelleKeys) > 0 {
 			f.gazelleTorznabIndexers = s.gazelleTorznabIndexers(ctx)
 		}
@@ -213,7 +220,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 	}
 
 	scope := decideSearchScope(f)
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Str("torrentHash", torrent.Hash).
 		Ints("requestedIndexers", f.requestedIndexerIDs).
@@ -234,7 +241,7 @@ func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash s
 	s.waitForContentFilteringCompletion(ctx, analysis.FilteringState)
 	snapshot := analysis.FilteringState.Clone()
 	facts := contentFilterFacts{
-		discoveryErr:      snapshot.discoveryErr,
+		torznabErr:        snapshot.torznabErr,
 		done:              snapshot.ContentCompleted,
 		indexerIDs:        snapshot.CapabilityIndexers,
 		seededOn:          len(snapshot.ExcludedIndexers),
@@ -287,8 +294,8 @@ var gazelleTorznabSites = []struct {
 	urlRE  *regexp.Regexp
 	nameRE *regexp.Regexp
 }{
-	{"redacted.sh", regexp.MustCompile(`(^|[^a-z0-9])redacted([^a-z0-9]|$)`), regexp.MustCompile(`\bredacted\b`)},
-	{"orpheus.network", regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus)([^a-z0-9]|$)`), regexp.MustCompile(`\b(ops|orpheus)\b`)},
+	{redHost, regexp.MustCompile(`(^|[^a-z0-9])redacted([^a-z0-9]|$)`), regexp.MustCompile(`\bredacted\b`)},
+	{opsHost, regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus)([^a-z0-9]|$)`), regexp.MustCompile(`\b(ops|orpheus)\b`)},
 }
 
 // gazelleTorznabIndexers maps each Torznab indexer of RED or OPS to its host.

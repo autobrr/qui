@@ -1443,10 +1443,10 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 		},
 	}
 
-	results, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.Empty(t, results)
-	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
-	require.False(t, remoteRequestsMade)
+	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	require.Empty(t, outcome.results)
+	require.True(t, outcome.lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
+	require.False(t, outcome.remoteRequestsMade)
 	require.Equal(t, 0, callCount, "an APL-flagged OPS copy already seeded must skip the remote lookup")
 }
 
@@ -1477,10 +1477,10 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 		},
 	}
 
-	results, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.Empty(t, results)
-	require.True(t, remoteRequestsMade)
-	require.False(t, lookupCompleted)
+	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	require.Empty(t, outcome.results)
+	require.True(t, outcome.remoteRequestsMade)
+	require.False(t, outcome.lookupCompleted)
 }
 
 // A non-OPS/RED source with both keys looks up both sites. One site
@@ -1513,9 +1513,9 @@ func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
 
 	svc := &Service{}
 
-	_, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"redacted.sh", "orpheus.network"}, clients)
-	require.True(t, remoteRequestsMade)
-	require.False(t, lookupCompleted, "the failed site must keep the torrent eligible")
+	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"redacted.sh", "orpheus.network"}, clients)
+	require.True(t, outcome.remoteRequestsMade)
+	require.False(t, outcome.lookupCompleted, "the failed site must keep the torrent eligible")
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
@@ -1588,9 +1588,9 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		},
 	}
 
-	results, lookupCompleted, _, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
-	require.Empty(t, results, "should skip Gazelle search when target tracker content exists locally")
+	outcome := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	require.True(t, outcome.lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
+	require.Empty(t, outcome.results, "should skip Gazelle search when target tracker content exists locally")
 	require.Equal(t, 0, callCount, "should skip remote Gazelle lookup for matching local content")
 }
 
@@ -1740,9 +1740,9 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 		},
 	}
 
-	results, lookupCompleted, _, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.True(t, lookupCompleted)
-	require.Empty(t, results, "no matches expected with stubbed remote lookup")
+	outcome := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	require.True(t, outcome.lookupCompleted)
+	require.Empty(t, outcome.results, "no matches expected with stubbed remote lookup")
 	require.Equal(t, 1, callCount, "should attempt Gazelle lookup when local content is on non-target tracker")
 }
 

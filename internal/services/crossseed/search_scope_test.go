@@ -32,7 +32,7 @@ func TestDecideSearchScope(t *testing.T) {
 		return contentFilterFacts{done: true, indexerIDs: ids}
 	}
 	discoveryErr := errors.New("prowlarr down")
-	discoveryFailed := contentFilterFacts{discoveryErr: discoveryErr}
+	discoveryFailed := contentFilterFacts{torznabErr: discoveryErr}
 	torznabFailed := fmt.Errorf("load torznab indexers: %w", discoveryErr)
 
 	tests := []struct {
@@ -180,7 +180,7 @@ func TestDecideSearchScope(t *testing.T) {
 			name: "failed discovery of picked indexers is not a content filter that removed them",
 			facts: searchScopeFacts{
 				requestedIndexerIDs: []int{1}, picked: true,
-				contentFilter: contentFilterFacts{discoveryErr: discoveryErr, done: true}, gazelleKeys: bothKeys, musicCheckPassed: true,
+				contentFilter: contentFilterFacts{torznabErr: discoveryErr, done: true}, gazelleKeys: bothKeys, musicCheckPassed: true,
 			},
 			want: searchScope{gazelleHosts: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
 		},
