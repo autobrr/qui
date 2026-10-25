@@ -5,6 +5,7 @@
 package orphanscan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -48,6 +49,7 @@ type clientReadiness interface {
 type instanceReader interface {
 	List(ctx context.Context) ([]*models.Instance, error)
 	Get(ctx context.Context, id int) (*models.Instance, error)
+	GetHostKeyPin(instance *models.Instance) ([]byte, error)
 }
 
 type lastRunReader interface {
@@ -1897,10 +1899,10 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 
 // getOverlapCandidateInstances returns the other instances whose torrents can
 // protect scanned's files. Overlap compares path strings, which only mean the
-// same file on one filesystem. Instances stored against the same SSH host and
-// port pair in both modes, whatever their key, pin or local flag, since a
-// seedbox can be reached over SSH by one instance and through a mount by
-// another. A local scan also pairs with every local instance. The endpoint and
+// same file on one filesystem. Instances on the same SSH server (sameSSHServer)
+// pair in both modes, whatever their key or local flag, since a seedbox can be
+// reached over SSH by one instance and through a mount by another. A local scan
+// also pairs with every local instance. The endpoint and
 // mode come from scanned, the row the walk's backend was built from, so a later
 // edit cannot pick peers for an endpoint the walk never touched.
 func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance) ([]*models.Instance, error) {
@@ -1914,7 +1916,7 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 		if inst == nil || inst.ID == scanned.ID || !inst.IsActive {
 			continue
 		}
-		if _, ok := overlapPeer(scanned, inst); ok {
+		if _, ok := s.overlapPeer(scanned, inst); ok {
 			candidates = append(candidates, inst)
 		}
 	}
@@ -1923,14 +1925,37 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 
 // overlapPeer reports whether inst can protect scanned's files and names why, so a
 // local scan blocked by a remote-only peer does not call it local-access.
-func overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
+func (s *Service) overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
 	switch {
 	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
 		return "local-access instance", true
-	case scanned.SSHHost != "" && inst.SSHHost == scanned.SSHHost && inst.SSHPort == scanned.SSHPort:
+	case s.sameSSHServer(scanned, inst):
 		return "remote instance on the same host", true
 	}
 	return "", false
+}
+
+// sameSSHServer reports whether a and b reach one SSH server: the same stored
+// host and port, or the same pinned host key under any name or port (an IP and
+// a hostname for one seedbox). A pin only ever adds a match, so an instance
+// without one, or whose pin cannot be read, still pairs by host and port.
+func (s *Service) sameSSHServer(a, b *models.Instance) bool {
+	if a.SSHHost == "" || b.SSHHost == "" {
+		return false
+	}
+	if a.SSHHost == b.SSHHost && a.SSHPort == b.SSHPort {
+		return true
+	}
+	aPin := s.hostKeyPin(a)
+	return len(aPin) > 0 && bytes.Equal(aPin, s.hostKeyPin(b))
+}
+
+func (s *Service) hostKeyPin(inst *models.Instance) []byte {
+	pin, err := s.instances.GetHostKeyPin(inst)
+	if err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned) {
+		log.Warn().Err(err).Int("instance", inst.ID).Msg("orphanscan: cannot read the host key pin, pairing peers by host and port only")
+	}
+	return pin
 }
 
 func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialect, instanceID int, timeout time.Duration) ([]string, error) {
@@ -2042,7 +2067,7 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 		return nil, err
 	}
 	for _, inst := range candidates {
-		peer, _ := overlapPeer(scanned, inst)
+		peer, _ := s.overlapPeer(scanned, inst)
 		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, d, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(
