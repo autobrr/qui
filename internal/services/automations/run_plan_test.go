@@ -4,6 +4,8 @@
 package automations
 
 import (
+	"context"
+	"errors"
 	"maps"
 	"slices"
 	"testing"
@@ -18,6 +20,11 @@ import (
 // planTestRun evaluates the rules on in-memory torrents and builds the Run plan.
 func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
 	t.Helper()
+	return planTestRunWith(t, &Service{}, torrents, rules, deletions)
+}
+
+func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
+	t.Helper()
 	states := processTorrents(torrents, rules, nil, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
 	if deletions == nil {
 		deletions = &deletionSelection{}
@@ -26,7 +33,7 @@ func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automatio
 	for _, torrent := range torrents {
 		torrentByHash[torrent.Hash] = torrent
 	}
-	return buildRunPlan(states, deletions, torrentByHash)
+	return svc.buildRunPlan(t.Context(), states, deletions, torrentByHash, nil)
 }
 
 func planTestRule(id int, conditions *models.ActionConditions) *models.Automation {
@@ -212,4 +219,46 @@ func TestRunPlan_DeletionSelectionGetsNoOtherAction(t *testing.T) {
 	require.Len(t, plan.programs, 1)
 	require.Equal(t, "kept", plan.programs[0].hash)
 	require.Same(t, deletions, plan.deletions)
+}
+
+// fakeTargetLookup answers with the torrents in onTarget, and fails for the hashes in fail.
+type fakeTargetLookup struct {
+	onTarget map[string]bool
+	fail     map[string]bool
+}
+
+func (f fakeTargetLookup) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+	if f.fail[hashes[0]] {
+		return nil, false, errors.New("target offline")
+	}
+	return nil, f.onTarget[hashes[0]], nil
+}
+
+func TestRunPlan_ExportMarks(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "ready", Tags: "x", Category: "tv"},
+		{Hash: "on-target", Tags: "x", Category: "tv"},
+		{Hash: "check-failed", Tags: "x", Category: "tv"},
+		{Hash: "no-category", Tags: "x"},
+	}
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2, SavePath: "{{.Category}}", Condition: tagsContain("x")}
+	rule := planTestRule(8, &models.ActionConditions{ExportToInstance: action})
+	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{"on-target": true}, fail: map[string]bool{"check-failed": true}}}
+
+	plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil)
+	byHash := make(map[string]pendingExportToInstance, len(plan.exports))
+	for _, export := range plan.exports {
+		require.Same(t, action, export.action)
+		require.Equal(t, 8, export.ruleID)
+		byHash[export.hash] = export
+	}
+	require.Len(t, byHash, 4)
+	require.Equal(t, exportReady, byHash["ready"].mark)
+	require.Equal(t, "tv", byHash["ready"].resolvedSavePath)
+	require.Empty(t, byHash["ready"].failureReason)
+	require.Equal(t, exportAlreadyOnTarget, byHash["on-target"].mark)
+	require.Equal(t, exportCheckFailed, byHash["check-failed"].mark)
+	require.Equal(t, "Failed to check target instance: target offline", byHash["check-failed"].failureReason)
+	require.Equal(t, exportSavePathUnresolved, byHash["no-category"].mark)
+	require.Equal(t, "Save path template resolution failed", byHash["no-category"].failureReason)
 }

@@ -4,12 +4,16 @@
 package automations
 
 import (
+	"context"
+	"time"
+
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 )
 
 // runPlan is what one run of the Automation rules does: for each Action, the torrents it
 // reaches and the rule that chose each torrent. The live run carries it out, and the dry
-// run records it. Category, move and export to instance are not in the plan yet.
+// run records it. Category and move are not in the plan yet.
 type runPlan struct {
 	uploadLimits   plannedAction[int64] // limit in KiB
 	downloadLimits plannedAction[int64] // limit in KiB
@@ -21,8 +25,24 @@ type runPlan struct {
 	autoManage     plannedAction[bool] // true turns automatic torrent management on
 	tags           map[string]*tagChange
 	programs       []pendingProgramExec
+	exports        []pendingExportToInstance
 	deletions      *deletionSelection
 }
+
+// targetLookup asks the target instance of an export if it already has the torrent. ADR 0005.
+type targetLookup interface {
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+}
+
+// exportMark is what the plan step found out about one export.
+type exportMark int
+
+const (
+	exportReady exportMark = iota
+	exportAlreadyOnTarget
+	exportCheckFailed
+	exportSavePathUnresolved
+)
 
 // plannedAction holds the torrents of one Action by target value, and the rule that chose
 // each torrent.
@@ -67,7 +87,7 @@ type plannedShareLimits struct {
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
 // selection. It only reads. A claimed Delete trigger and a torrent in the Deletion selection
 // get no other Action (ADR 0027).
-func buildRunPlan(states map[string]*torrentDesiredState, deletions *deletionSelection, torrentByHash map[string]qbt.Torrent) runPlan {
+func (s *Service) buildRunPlan(ctx context.Context, states map[string]*torrentDesiredState, deletions *deletionSelection, torrentByHash map[string]qbt.Torrent, evalCtx *EvalContext) runPlan {
 	plan := runPlan{
 		shareLimits: plannedShareLimits{
 			byTarget:     make(map[shareKey][]string),
@@ -129,8 +149,63 @@ func buildRunPlan(states map[string]*torrentDesiredState, deletions *deletionSel
 				ruleName:  state.programRuleName,
 			})
 		}
+
+		if state.exportToInstance != nil {
+			plan.exports = append(plan.exports, s.planExport(ctx, hash, torrent, state, evalCtx))
+		}
 	}
 	return plan
+}
+
+// planExport asks the target instance if it already has the torrent and resolves the save path.
+func (s *Service) planExport(ctx context.Context, hash string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) pendingExportToInstance {
+	action := state.exportToInstance
+	export := pendingExportToInstance{
+		hash:     hash,
+		torrent:  torrent,
+		action:   action,
+		ruleID:   state.exportToInstanceRuleID,
+		ruleName: state.exportToInstanceRuleName,
+	}
+
+	// A bounded timeout keeps a slow or unreachable target from stalling the whole run.
+	checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
+	_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
+	checkCancel()
+	if err != nil {
+		log.Warn().Err(err).
+			Str("hash", hash).
+			Int("targetInstanceID", action.TargetInstanceID).
+			Msg("automations: failed to check target instance for existing torrent")
+		export.mark = exportCheckFailed
+		export.failureReason = "Failed to check target instance: " + err.Error()
+		return export
+	}
+	if exists {
+		log.Debug().
+			Str("hash", hash).
+			Int("targetInstanceID", action.TargetInstanceID).
+			Msg("automations: torrent already exists on target instance, skipping export")
+		export.mark = exportAlreadyOnTarget
+		return export
+	}
+
+	if action.SavePath == "" {
+		return export
+	}
+	resolved, ok := renderPathTemplate(action.SavePath, torrent, state, evalCtx)
+	if !ok {
+		log.Warn().
+			Str("hash", hash).
+			Str("rawPath", action.SavePath).
+			Str("rule", state.exportToInstanceRuleName).
+			Msg("automations: save path template resolution failed")
+		export.mark = exportSavePathUnresolved
+		export.failureReason = "Save path template resolution failed"
+		return export
+	}
+	export.resolvedSavePath = resolved
+	return export
 }
 
 // planShareLimits adds the torrent when a share limit (ratio, seeding time, action, mode)

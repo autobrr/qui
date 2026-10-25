@@ -2065,7 +2065,6 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		runPlan{deletions: &deletionSelection{byHash: pending}},
 		nil,
 		nil,
-		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
 		[]qbt.Torrent{torrent},
 		map[string]*torrentDesiredState{},
@@ -2103,7 +2102,6 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
-		nil,
 		nil,
 		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
@@ -2190,7 +2188,6 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		runPlan{deletions: &deletionSelection{}},
 		categoryBatches,
 		nil,
-		nil,
 		torrentByHash,
 		torrents,
 		states,
@@ -2227,7 +2224,6 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{deletions: &deletionSelection{}},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -2287,7 +2283,6 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 			1,
 			runPlan{deletions: &deletionSelection{}},
 			map[string][]string{"movies": {"abc123"}},
-			nil,
 			nil,
 			map[string]qbt.Torrent{"abc123": torrent},
 			[]qbt.Torrent{torrent},
@@ -2380,7 +2375,6 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		runPlan{deletions: &deletionSelection{}},
 		nil,
 		map[string][]string{"/data/moved": {"a"}},
-		nil,
 		torrentByHash,
 		torrents,
 		states,
@@ -2430,7 +2424,6 @@ func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *test
 				runPlan{deletions: &deletionSelection{}},
 				nil,
 				map[string][]string{"/data/moved": {"a"}},
-				nil,
 				map[string]qbt.Torrent{"a": torrents[0], "b": torrents[1]},
 				torrents,
 				states,
@@ -2467,7 +2460,6 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 		context.Background(),
 		1,
 		runPlan{deletions: &deletionSelection{}},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -2606,4 +2598,45 @@ func TestTrackerDataMissing(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The live run drops an export that is already on the target, keeps a failed one for its
+// failure activity, and exports a ready torrent once, also while an earlier export of it runs.
+func TestReserveExports(t *testing.T) {
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+	export := func(hash string, mark exportMark) pendingExportToInstance {
+		return pendingExportToInstance{hash: hash, action: action, mark: mark}
+	}
+	s := &Service{inFlightExports: map[string]struct{}{"2:busy": {}}}
+
+	reserved := s.reserveExports([]pendingExportToInstance{
+		export("ready", exportReady),
+		export("busy", exportReady),
+		export("on-target", exportAlreadyOnTarget),
+		export("check-failed", exportCheckFailed),
+		export("unresolved", exportSavePathUnresolved),
+	})
+
+	hashes := make([]string, 0, len(reserved))
+	for _, r := range reserved {
+		hashes = append(hashes, r.hash)
+	}
+	require.Equal(t, []string{"ready", "check-failed", "unresolved"}, hashes)
+	require.Equal(t, map[string]struct{}{"2:busy": {}, "2:ready": {}}, s.inFlightExports)
+}
+
+func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
+	// Another run exported the torrent after this run planned it.
+	s := &Service{
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
+		inFlightExports: map[string]struct{}{"2:done": {}},
+	}
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+
+	for activity := range results {
+		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
+	}
+	require.Empty(t, s.inFlightExports)
 }

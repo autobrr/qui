@@ -541,6 +541,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
 	filesReader               filesReader
+	targetLookup              targetLookup
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
@@ -586,6 +587,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
 		filesReader:               syncManager,
+		targetLookup:              syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -1914,14 +1916,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Category, move and export are not in the Run plan yet.
+	// Category and move are not in the Run plan yet.
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
 
-	// Export to instance execution tracking
-	var exportExecutions []pendingExportToInstance
 	deleteHashesByMode := make(map[string][]string)
 	for _, hash := range deletions.order {
 		pending := deletions.byHash[hash]
@@ -1956,7 +1956,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	plan := buildRunPlan(states, deletions, torrentByHash)
+	plan := s.buildRunPlan(ctx, states, deletions, torrentByHash, evalCtx)
 
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
@@ -1981,77 +1981,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
 			moveRuleByHash[hash] = state.moveRule
 		}
-
-		// Export to instance
-		if state.exportToInstance != nil {
-			exportEntry := pendingExportToInstance{
-				hash:     hash,
-				torrent:  torrent,
-				action:   state.exportToInstance,
-				ruleID:   state.exportToInstanceRuleID,
-				ruleName: state.exportToInstanceRuleName,
-			}
-
-			// Skip if the torrent already exists on the target instance.
-			// Use a bounded timeout so a slow/unreachable target doesn't stall the entire pass.
-			checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
-			_, exists, err := s.syncManager.HasTorrentByAnyHash(checkCtx, state.exportToInstance.TargetInstanceID, []string{hash})
-			checkCancel()
-			switch {
-			case err != nil:
-				log.Warn().Err(err).
-					Str("hash", hash).
-					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: failed to check target instance for existing torrent")
-				exportEntry.failureReason = "Failed to check target instance: " + err.Error()
-				exportExecutions = append(exportExecutions, exportEntry)
-			case exists:
-				log.Debug().
-					Str("hash", hash).
-					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: torrent already exists on target instance, skipping export")
-				// In dry-run, record so the report shows "already on target" instead of "no match"
-				if dryRun {
-					exportEntry.failureReason = "Already exists on target instance"
-					exportExecutions = append(exportExecutions, exportEntry)
-				}
-			default:
-				resolvedPath := state.exportToInstance.SavePath
-				if resolvedPath != "" {
-					if resolved, ok := renderPathTemplate(resolvedPath, torrent, state, evalCtx); ok {
-						resolvedPath = resolved
-					} else {
-						log.Warn().
-							Str("hash", hash).
-							Str("rawPath", resolvedPath).
-							Str("rule", state.exportToInstanceRuleName).
-							Msg("automations: save path template resolution failed")
-						exportEntry.failureReason = "Save path template resolution failed"
-						exportExecutions = append(exportExecutions, exportEntry)
-						continue
-					}
-				}
-				exportEntry.resolvedSavePath = resolvedPath
-
-				// Reserve in-flight slot atomically (live runs only, not dry-run)
-				if !dryRun {
-					flightKey := fmt.Sprintf("%d:%s", state.exportToInstance.TargetInstanceID, hash)
-					s.mu.Lock()
-					if _, alreadyInFlight := s.inFlightExports[flightKey]; alreadyInFlight {
-						s.mu.Unlock()
-						log.Debug().
-							Str("hash", hash).
-							Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-							Msg("automations: export already in-flight, skipping")
-						continue
-					}
-					s.inFlightExports[flightKey] = struct{}{}
-					s.mu.Unlock()
-				}
-
-				exportExecutions = append(exportExecutions, exportEntry)
-			}
-		}
 	}
 
 	if dryRun {
@@ -2061,7 +1990,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			plan,
 			categoryBatches,
 			moveBatches,
-			exportExecutions,
 			torrentByHash,
 			torrents,
 			states,
@@ -3074,7 +3002,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	s.executeExternalProgramsFromAutomation(ctx, instanceID, plan.programs)
 
 	// Execute export to instance — collect results before notification
-	exportResults := s.executeExportToInstance(ctx, instanceID, exportExecutions)
+	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
 	// Execute deletions
 	//
@@ -4615,7 +4543,6 @@ func (s *Service) recordDryRunActivities(
 	plan runPlan,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
-	exportExecutions []pendingExportToInstance,
 	torrentByHash map[string]qbt.Torrent,
 	torrents []qbt.Torrent,
 	states map[string]*torrentDesiredState,
@@ -5084,16 +5011,15 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// Export to instance
-	if len(exportExecutions) > 0 {
-		const alreadyExistsReason = "Already exists on target instance"
+	if len(plan.exports) > 0 {
 		successByTarget := make(map[int][]string)
 		failedByTarget := make(map[int][]string)
 		existsByTarget := make(map[int][]string)
-		for _, exec := range exportExecutions {
-			switch {
-			case exec.failureReason == alreadyExistsReason:
+		for _, exec := range plan.exports {
+			switch exec.mark {
+			case exportAlreadyOnTarget:
 				existsByTarget[exec.action.TargetInstanceID] = append(existsByTarget[exec.action.TargetInstanceID], exec.hash)
-			case exec.failureReason != "":
+			case exportCheckFailed, exportSavePathUnresolved:
 				failedByTarget[exec.action.TargetInstanceID] = append(failedByTarget[exec.action.TargetInstanceID], exec.hash)
 			default:
 				successByTarget[exec.action.TargetInstanceID] = append(successByTarget[exec.action.TargetInstanceID], exec.hash)
@@ -5467,7 +5393,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 	}
 }
 
-// pendingExportToInstance tracks a pending export-to-instance execution.
+// pendingExportToInstance is one export in the Run plan.
 // If failureReason is set, the export failed preflight and should only record a failure activity.
 type pendingExportToInstance struct {
 	hash             string
@@ -5476,7 +5402,34 @@ type pendingExportToInstance struct {
 	resolvedSavePath string
 	ruleID           int
 	ruleName         string
+	mark             exportMark
 	failureReason    string
+}
+
+// reserveExports drops each export that is already on the target and reserves the in-flight
+// slot of each ready export. It skips a ready export whose slot an earlier run still holds.
+func (s *Service) reserveExports(exports []pendingExportToInstance) []pendingExportToInstance {
+	reserved := make([]pendingExportToInstance, 0, len(exports))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, export := range exports {
+		if export.mark == exportAlreadyOnTarget {
+			continue
+		}
+		if export.mark == exportReady {
+			flightKey := fmt.Sprintf("%d:%s", export.action.TargetInstanceID, export.hash)
+			if _, alreadyInFlight := s.inFlightExports[flightKey]; alreadyInFlight {
+				log.Debug().
+					Str("hash", export.hash).
+					Int("targetInstanceID", export.action.TargetInstanceID).
+					Msg("automations: export already in-flight, skipping")
+				continue
+			}
+			s.inFlightExports[flightKey] = struct{}{}
+		}
+		reserved = append(reserved, export)
+	}
+	return reserved
 }
 
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
@@ -5552,6 +5505,15 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 			defer cancel()
+
+			// Another run can export the torrent after this run planned it.
+			if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
+				log.Debug().
+					Str("hash", exec.hash).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Msg("automations: torrent reached target instance after the plan, skipping export")
+				return
+			}
 
 			// Fallback tracker domain from cached sync data; overridden by ExportTorrent if available
 			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
