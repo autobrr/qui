@@ -4,6 +4,9 @@
 package automations
 
 import (
+	"context"
+	"errors"
+	"maps"
 	"slices"
 	"testing"
 
@@ -152,4 +155,81 @@ func TestDeletePreview_KeepFilesGroupMemberGetsBadge(t *testing.T) {
 	require.False(t, result.Examples[0].IsCrossSeed)
 	require.True(t, result.Examples[1].IsCrossSeed, "the group expansion took the member")
 	require.Zero(t, result.CrossSeedCount, "a keep-files group member is not a cross-seed")
+}
+
+// filesByHashReader gives each torrent its own file list, or fails the read with err.
+type filesByHashReader struct {
+	files map[string]qbt.TorrentFiles
+	err   error
+}
+
+func (r filesByHashReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := r.files[hash]; ok {
+			out[hash] = files
+		}
+	}
+	return out, nil
+}
+
+func (filesByHashReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+// Two torrents with the same folder as content path and save path form an ambiguous
+// group. The group delete goes ahead only when their files overlap.
+func TestDeletionSelection_SharedSavePathChecksFileOverlap(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Tags: "old", AddedOn: 1, SavePath: "/data", ContentPath: "/data"},
+		{Hash: "b", Tags: "old", AddedOn: 2, SavePath: "/data", ContentPath: "/data"},
+	}
+	rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+		Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeKeepFiles, GroupID: GroupCrossSeedContentPath,
+			Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: "old"}},
+	}}
+
+	tests := []struct {
+		name  string
+		files filesByHashReader
+		want  []string
+	}{
+		{
+			name: "files overlap",
+			files: filesByHashReader{files: map[string]qbt.TorrentFiles{
+				"a": {{Name: "movie.mkv", Size: 10}},
+				"b": {{Name: "movie.mkv", Size: 10}},
+			}},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "files do not overlap",
+			files: filesByHashReader{files: map[string]qbt.TorrentFiles{
+				"a": {{Name: "first.mkv", Size: 10}},
+				"b": {{Name: "second.mkv", Size: 10}},
+			}},
+			want: []string{},
+		},
+		{
+			name:  "file read fails",
+			files: filesByHashReader{err: errors.New("qBittorrent did not answer")},
+			want:  []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &Service{filesReader: tt.files}
+			evalCtx := &EvalContext{}
+			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
+				rules:      []*models.Automation{rule},
+				torrents:   slices.Clone(torrents),
+				evalCtx:    evalCtx,
+				crossSeeds: buildCrossSeedGroups(torrents, evalCtx),
+			})
+			require.ElementsMatch(t, tt.want, slices.Collect(maps.Keys(selection.byHash)))
+		})
+	}
 }
