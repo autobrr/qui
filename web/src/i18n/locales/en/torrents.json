@@ -437,6 +437,9 @@
       "description": "Set upload and download speed limits in KB/s. Disable to use global limits.",
       "uploadLimit": "Set upload limit (KB/s)",
       "downloadLimit": "Set download limit (KB/s)",
+      "selectValue": "Select a value",
+      "wasMixed": "(was mixed)",
+      "unresolvedMixed": "Select values for all mixed fields before applying",
       "cancel": "Cancel",
       "setting": "Setting...",
       "confirm": "Apply Limits"
@@ -1518,25 +1521,6 @@
       "placeholder": "Search torrents...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
-    },
-    "shareLimit": {
-      "title": "Set Share Limits for {{count}} torrent(s)",
-      "description": "Configure seeding limits. Use -1 or disable to remove limits.",
-      "setRatioLimit": "Set ratio limit",
-      "setSeedingTimeLimit": "Set seeding time limit (minutes)",
-      "setInactiveSeedingLimit": "Set inactive seeding limit (minutes)",
-      "cancel": "Cancel",
-      "setting": "Setting...",
-      "applyLimits": "Apply Limits"
-    },
-    "speedLimit": {
-      "title": "Set Speed Limits for {{count}} torrent(s)",
-      "description": "Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.",
-      "setUploadLimit": "Set upload limit (KB/s)",
-      "setDownloadLimit": "Set download limit (KB/s)",
-      "cancel": "Cancel",
-      "setting": "Setting...",
-      "applyLimits": "Apply Limits"
     },
     "ratio": "Ratio:"
   },
