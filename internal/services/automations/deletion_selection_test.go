@@ -53,3 +53,24 @@ func TestDeletionSelection_SharedCrossSeedGoesToTheFirstRule(t *testing.T) {
 		require.False(t, selection.byHash["b"].trigger)
 	}
 }
+
+// Each delete rule claims only the torrents on the trackers of its pattern.
+func TestDeletionSelection_TrackerPatternPerRule(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Tags: "old", AddedOn: 1, Tracker: "https://alpha.example/announce"},
+		{Hash: "b", Tags: "old", AddedOn: 2, Tracker: "https://beta.example/announce"},
+		{Hash: "c", Tags: "old", AddedOn: 3, Tracker: "https://alpha.example/announce"},
+	}
+	rule := func(id int, pattern string) *models.Automation {
+		return &models.Automation{ID: id, Enabled: true, TrackerPattern: pattern, Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeKeepFiles,
+				Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: "old"}},
+		}}
+	}
+
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "alpha.example"), rule(2, "!alpha.example")}, torrents, &EvalContext{}, false)
+	require.Len(t, selection.byHash, 3)
+	require.Equal(t, 1, selection.byHash["a"].rule.id)
+	require.Equal(t, 2, selection.byHash["b"].rule.id)
+	require.Equal(t, 1, selection.byHash["c"].rule.id)
+}

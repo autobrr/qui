@@ -75,21 +75,49 @@ func (d *deletionSelection) isClaimed(hash string) bool {
 	return claimed
 }
 
-// trackerDomainCache computes the tracker domains of each torrent once for all delete rules.
-type trackerDomainCache map[string][]string
+// trackerMatchCache matches each tracker pattern once per distinct set of tracker domains.
+// Most torrents share their trackers, so the cache holds few sets.
+type trackerMatchCache struct {
+	keyByHash map[string]string          // torrent hash -> domain set key
+	domains   map[string][]string        // domain set key -> domains
+	matches   map[string]map[string]bool // pattern -> domain set key -> match
+}
 
-func (c trackerDomainCache) get(torrent qbt.Torrent, s *Service) []string {
-	domains, ok := c[torrent.Hash]
-	if !ok {
-		domains = collectTrackerDomains(torrent, s.syncManager)
-		c[torrent.Hash] = domains
+func newTrackerMatchCache() *trackerMatchCache {
+	return &trackerMatchCache{
+		keyByHash: make(map[string]string),
+		domains:   make(map[string][]string),
+		matches:   make(map[string]map[string]bool),
 	}
-	return domains
+}
+
+func (c *trackerMatchCache) match(pattern string, torrent qbt.Torrent, s *Service) bool {
+	if pattern == "*" {
+		return true
+	}
+	key, ok := c.keyByHash[torrent.Hash]
+	if !ok {
+		domains := collectTrackerDomains(torrent, s.syncManager) // sorted
+		key = strings.Join(domains, ",")
+		c.keyByHash[torrent.Hash] = key
+		c.domains[key] = domains
+	}
+	byKey := c.matches[pattern]
+	if byKey == nil {
+		byKey = make(map[string]bool)
+		c.matches[pattern] = byKey
+	}
+	matched, ok := byKey[key]
+	if !ok {
+		matched = matchesTracker(pattern, c.domains[key])
+		byKey[key] = matched
+	}
+	return matched
 }
 
 type deletionClaim struct {
-	torrent qbt.Torrent
-	rule    *models.Automation
+	hash string
+	rule *models.Automation
 }
 
 // selectDeletions builds the Deletion selection. The first delete rule that matches a
@@ -102,7 +130,8 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		failedRules: make(map[int]error),
 	}
 	evalCtx := in.evalCtx
-	if evalCtx.torrentsByHash == nil {
+	// A torrent is about 2 KB, so build the map only for the modes that expand groups.
+	if evalCtx.torrentsByHash == nil && slices.ContainsFunc(in.rules, deleteExpandsGroups) {
 		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(in.torrents))
 		for _, torrent := range in.torrents {
 			evalCtx.torrentsByHash[torrent.Hash] = torrent
@@ -111,7 +140,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 
 	var claims []deletionClaim
 	var sortedFor *models.Automation
-	domains := make(trackerDomainCache)
+	trackers := newTrackerMatchCache()
 	for _, rule := range in.rules {
 		if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 			continue
@@ -121,7 +150,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 			SortTorrentsWithFallback(in.torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 			sortedFor = rule
 		}
-		ruleClaims, err := s.claimDeleteTriggers(rule, in, sel, domains)
+		ruleClaims, err := s.claimDeleteTriggers(rule, in, sel, trackers)
 		if err != nil {
 			sel.failedRules[rule.ID] = err
 			evalCtx.SpaceToClear = 0
@@ -130,27 +159,47 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 			continue
 		}
 		for _, claim := range ruleClaims {
-			sel.triggers[claim.torrent.Hash] = struct{}{}
+			sel.triggers[claim.hash] = struct{}{}
 		}
 		claims = append(claims, ruleClaims...)
 	}
 	evalCtx.PersistFreeSpaceSourceState()
 
+	// The sort order is final now, so pointers into in.torrents stay valid.
+	triggers := make(map[string]*qbt.Torrent, len(sel.triggers))
+	for i := range in.torrents {
+		if sel.isClaimed(in.torrents[i].Hash) {
+			triggers[in.torrents[i].Hash] = &in.torrents[i]
+		}
+	}
 	// Torrents that an include-cross-seeds group took, so a later group does not check them again.
 	includedCrossSeeds := make(map[string]struct{})
 	for _, claim := range claims {
-		if _, queued := sel.byHash[claim.torrent.Hash]; queued {
+		if _, queued := sel.byHash[claim.hash]; queued {
 			continue
 		}
-		s.expandDeleteTrigger(ctx, instanceID, in, sel, claim, includedCrossSeeds)
+		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggers[claim.hash], claim.rule, includedCrossSeeds)
 	}
 	return sel
+}
+
+func deleteExpandsGroups(rule *models.Automation) bool {
+	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
+		return false
+	}
+	switch getDeleteMode(rule) {
+	case DeleteModeWithFilesIncludeCrossSeeds:
+		return true
+	case DeleteModeKeepFiles:
+		return strings.TrimSpace(rule.Conditions.Delete.GroupID) != ""
+	}
+	return false
 }
 
 // claimDeleteTriggers returns the torrents whose delete condition matches the rule, in sort
 // order. A torrent that an earlier rule claimed stays with that rule. The error cancels all
 // deletes of the rule.
-func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection, domains trackerDomainCache) ([]deletionClaim, error) {
+func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection, trackers *trackerMatchCache) ([]deletionClaim, error) {
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	projects := !in.eligibleView && ConditionUsesField(deleteAction.Condition, FieldFreeSpace)
@@ -166,7 +215,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 		if sel.isClaimed(torrent.Hash) || (in.skip != nil && in.skip(torrent.Hash)) {
 			continue
 		}
-		if !matchesTracker(rule.TrackerPattern, domains.get(torrent, s)) {
+		if !trackers.match(rule.TrackerPattern, torrent, s) {
 			continue
 		}
 		// Safety: delete must always have an explicit condition.
@@ -181,7 +230,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 			}
 			continue
 		}
-		claims = append(claims, deletionClaim{torrent: torrent, rule: rule})
+		claims = append(claims, deletionClaim{hash: torrent.Hash, rule: rule})
 	}
 	if stats != nil {
 		stats.DeleteApplied += len(claims)
@@ -195,10 +244,10 @@ func (s *Service) expandDeleteTrigger(
 	instanceID int,
 	in deletionSelectionInput,
 	sel *deletionSelection,
-	claim deletionClaim,
+	trigger qbt.Torrent,
+	rule *models.Automation,
 	includedCrossSeeds map[string]struct{},
 ) {
-	trigger, rule := claim.torrent, claim.rule
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	addAll := func(hashes []string, batchMode, logMsg string, hardlinkCopies map[string]struct{}) {
