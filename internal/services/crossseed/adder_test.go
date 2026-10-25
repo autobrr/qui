@@ -23,9 +23,10 @@ const (
 )
 
 // withAdder gives svc the real Adder over its own qBittorrent fake,
-// blocklist store, and Settler.
+// blocklist store, and Settler, and an Aligner with short waits.
 func withAdder(svc *Service) {
 	svc.adder = NewAdder(svc.syncManager, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	svc.aligner = testAligner(svc.syncManager)
 }
 
 // adderFake is the qBittorrent seam of the Adder.
