@@ -830,7 +830,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	// Drop the old client, backoff, and errors so the new settings are tried at once
 	h.clientPool.RemoveClient(instanceID)
-	h.clientPool.ResetFailureTracking(instanceID)
+	h.clientPool.ResetFailureTracking(instanceID) //nolint:contextcheck // the error clear has its own timeout and must outlive a cancelled request
 	// The local access flag decides whether the instance is in remote mode,
 	// and the ssh pool only rereads the row when it dials. Any other edit
 	// leaves the session alone, since Invalidate cuts reads in flight.
