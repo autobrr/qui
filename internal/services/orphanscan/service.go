@@ -776,8 +776,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	rootsBeforeIgnore := len(scanRoots)
 	scanRoots = filterCoveredScanRoots(d, scanRoots, settings.IgnorePaths)
 	// Ignoring a symlinked save path is how a user keeps it, so its files must
-	// still protect their twins at the target.
-	ignoredLinks := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
+	// still protect their twins at the target. Ignore paths that hold a
+	// torrent's files join these once the ignore paths are normalized.
+	inUseRoots := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
 
 	log.Info().
 		Int("files", tfm.Len()).
@@ -826,6 +827,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 	protected.setScanRoots(scanRoots)
+	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs()), backend)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
@@ -880,7 +882,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	for _, root := range ignoredLinks {
+	for _, root := range inUseRoots {
 		if err := recordInUse(ctx, root, protected, backend, instance, keys); err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -888,9 +890,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			// Ignored paths are often unmounted (#2483), so a missing target is
 			// no walk error. Any other error can leave the twins of its files
-			// listed at the target, so the run must not clean up by itself.
+			// listed elsewhere, so the run must not clean up by itself.
 			if isMissingRoot(err) {
-				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored symlinked save path is not on disk")
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored path is not on disk")
 				continue
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")

@@ -425,3 +425,96 @@ func TestFailRemotePreviews_FailsOnlyRemotePreviews(t *testing.T) {
 	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
 	f.requireNothingDeleted(t)
 }
+
+// ignoredTorrentDirFixture adds keep/kept.mkv to the fixture's torrent and
+// ignores keep/, so the scan walk never enters the folder that holds it.
+func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string) string, extra ...qbt.Torrent) (keep string) {
+	t.Helper()
+
+	root := filepath.Dir(f.orphan)
+	keep = filepath.Join(root, "keep")
+	writeFile(t, filepath.Join(keep, "kept.mkv"))
+	torrents := append([]qbt.Torrent{{Hash: "owned", SavePath: savePath(root), State: qbt.TorrentStatePausedUp}}, extra...)
+	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return torrents, nil }
+	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{
+			"owned": {{Name: "owned.mkv", Size: 1}, {Name: "keep/kept.mkv", Size: 1}},
+			"other": {{Name: "other.bin", Size: 1}},
+		}, nil
+	}
+	settings, err := f.store.GetSettings(t.Context(), 1)
+	require.NoError(t, err)
+	settings.IgnorePaths = []string{savePath(keep)}
+	_, err = f.store.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+	return keep
+}
+
+// A hardlink stands in for a bind mount alias here: both are a second path
+// to one file identity, and a test server cannot mount. The alias of a
+// torrent's file below an ignore path is kept, in the same root and in
+// another one, and the confirmed delete leaves it.
+func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
+	t.Parallel()
+
+	for _, otherRoot := range []bool{false, true} {
+		t.Run(map[bool]string{false: "same root", true: "another root"}[otherRoot], func(t *testing.T) {
+			t.Parallel()
+
+			f, _ := newSSHFixture(t, "orphanscan-remote-ignored-alias", sshtest.ExecGNU, models.SSHTierExec)
+			aliasDir := filepath.Join(filepath.Dir(f.orphan), "mirror")
+			var extra []qbt.Torrent
+			if otherRoot {
+				aliasDir = t.TempDir()
+				writeFile(t, filepath.Join(aliasDir, "other.bin"))
+				extra = append(extra, qbt.Torrent{Hash: "other", SavePath: sftpPath(aliasDir), State: qbt.TorrentStatePausedUp})
+			}
+			keep := ignoredTorrentDirFixture(t, f, sftpPath, extra...)
+			alias := filepath.Join(aliasDir, "kept.mkv")
+			require.NoError(t, os.MkdirAll(aliasDir, 0o750))
+			require.NoError(t, os.Link(filepath.Join(keep, "kept.mkv"), alias))
+
+			run := f.scan(t, "manual")
+			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+			require.True(t, run.IdentityComplete)
+			files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+			require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
+
+			require.NoError(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID))
+			f.requireCompleted(t)
+			require.NoFileExists(t, f.orphan)
+			require.FileExists(t, alias)
+		})
+	}
+}
+
+// The remote walk of an ignore path that holds a torrent's files can be cut.
+// Its files were never keyed, so the run cannot be deleted. One that is not
+// on disk has no files to key and changes nothing.
+func TestExecuteScan_RemoteIgnoredTorrentDirWalk(t *testing.T) {
+	t.Parallel()
+
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cut walk", true: "not on disk"}[missing], func(t *testing.T) {
+			t.Parallel()
+
+			var f *modeFixture
+			var keep string
+			f = newModeFixture(t, "orphanscan-remote-ignored-dir-walk", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+				return cutWalkBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, root: keep}
+			})
+			f.setTier(models.SSHTierExec)
+			keep = ignoredTorrentDirFixture(t, f, func(p string) string { return p })
+			if missing {
+				require.NoError(t, os.RemoveAll(keep))
+			}
+
+			run := f.scan(t, "manual")
+			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+			require.Equal(t, missing, run.IdentityComplete)
+			require.Equal(t, !missing, run.Partial)
+		})
+	}
+}

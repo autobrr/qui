@@ -83,6 +83,21 @@ func (p *protectedPaths) ignored(path string) bool {
 	return false
 }
 
+// ignoredTorrentDirs returns the ignore paths that hold a torrent's files. No
+// walk enters an ignore path, so without a walk of its own a bind mount alias
+// of such a file elsewhere would be listed. One that holds none is not walked,
+// since ignored paths are often unmounted (#2483), and a filesystem root
+// already ignores every path, so nothing can be listed.
+func (p *protectedPaths) ignoredTorrentDirs() []string {
+	var dirs []string
+	for _, ignore := range p.ignorePaths {
+		if !isAbsoluteFilesystemRoot(p.d, ignore) && p.torrentFileIn(ignore) {
+			dirs = append(dirs, ignore)
+		}
+	}
+	return dirs
+}
+
 // ignoredOrHoldsIgnored also protects a folder that holds an ignore path, so a
 // delete of that folder cannot take the ignored content with it.
 func (p *protectedPaths) ignoredOrHoldsIgnored(path string) bool {

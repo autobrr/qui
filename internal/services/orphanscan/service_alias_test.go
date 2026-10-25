@@ -399,3 +399,80 @@ func TestExecuteScan_KeepsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 		})
 	}
 }
+
+// No walk enters an ignore path, so a torrent's file below one is keyed by a
+// walk of its own, and a second path to it in this or another root is kept.
+func TestExecuteScan_KeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		alias func(defaultSavePath string) string
+	}{
+		{name: "same root", alias: func(d string) string { return filepath.Join(d, "mydata", "mirror", "owned.mkv") }},
+		{name: "another root", alias: func(d string) string { return filepath.Join(filepath.Dir(d), "zzz", "mirror", "owned.mkv") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var alias, junk string
+			opts := orphanOnlyOptions{
+				scanCategoryPaths: true,
+				categoryFolders: func(defaultSavePath string) []string {
+					return []string{filepath.Join(filepath.Dir(defaultSavePath), "zzz")}
+				},
+				torrentFileName: "keep/owned.mkv",
+				ignorePaths:     func(d string) []string { return []string{filepath.Join(d, "mydata", "keep")} },
+				wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
+					return &aliasWalkBackend{Backend: b, ids: sameFile(filepath.Join(defaultSavePath, "mydata", "keep", "owned.mkv"), alias)}
+				},
+			}
+			f := newOrphanOnlyFixture(t, "orphanscan-ignored-alias", opts, func(defaultSavePath string) {
+				alias = tc.alias(defaultSavePath)
+				junk = filepath.Join(filepath.Dir(defaultSavePath), "zzz", "junk.mkv")
+				writeFile(t, alias)
+				writeFile(t, junk)
+			})
+
+			require.Equal(t, []string{junk}, f.listedPaths(t), "neither the alias nor its directory may be listed")
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			require.True(t, run.IdentityComplete)
+		})
+	}
+}
+
+// An ignore path that holds a torrent's files is often unmounted (#2483), so
+// a missing one is no walk error. Any other error leaves the twins of its
+// files unprotected, so the run is partial and no cleanup runs by itself.
+func TestExecuteScan_IgnoredTorrentDirWalkErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		missing     bool
+		wantPartial bool
+	}{
+		{name: "read error makes the run partial", wantPartial: true},
+		{name: "missing ignore path is not a walk error", missing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := orphanOnlyOptions{
+				scheduled:           true,
+				autoCleanupMaxFiles: 100,
+				torrentFileName:     "keep/owned.mkv",
+				ignorePaths:         func(d string) []string { return []string{filepath.Join(d, "mydata", "keep")} },
+				wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+					if tc.missing {
+						return b
+					}
+					return failFollowRootBackend{b}
+				},
+			}
+			f := newOrphanOnlyFixture(t, "orphanscan-ignored-torrent-dir-error", opts, func(defaultSavePath string) {
+				if tc.missing {
+					require.NoError(t, os.RemoveAll(filepath.Join(defaultSavePath, "mydata", "keep")))
+				}
+			})
+
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantPartial, run.Partial, "run message: %s", run.ErrorMessage)
+			require.Equal(t, !tc.wantPartial, run.IdentityComplete)
+		})
+	}
+}
