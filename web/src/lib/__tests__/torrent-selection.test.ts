@@ -8,6 +8,7 @@ import type { Torrent, TorrentFilters } from "@/types"
 import {
   EMPTY_SELECTION,
   getSelectionIdentity,
+  getSelectionTargets,
   headerCheckboxEvent,
   selectAllButtonEvent,
   selectAllCheckboxFlags,
@@ -97,16 +98,18 @@ describe("selectionReducer", () => {
 describe("selectionScope", () => {
   it("ignores the sort, so a sort change does not clear", () => {
     const filters: TorrentFilters = { status: ["seeding"], excludeStatus: [], categories: [], excludeCategories: [], tags: [], excludeTags: [], trackers: [], excludeTrackers: [] }
-    expect(selectionScope(1, undefined, filters, "ubuntu")).toBe(selectionScope(1, undefined, { ...filters }, "ubuntu"))
+    expect(selectionScope(1, undefined, filters, "ubuntu", [], false)).toBe(selectionScope(1, undefined, { ...filters }, "ubuntu", [], false))
   })
 
   it.each([
-    ["instance", selectionScope(2, [1, 2], undefined, "")],
-    ["instance subset of the Unified view", selectionScope(1, [1], undefined, "")],
-    ["filters", selectionScope(1, [1, 2], { status: ["seeding"] } as TorrentFilters, "")],
-    ["search", selectionScope(1, [1, 2], undefined, "ubuntu")],
+    ["instance", selectionScope(2, [1, 2], undefined, "", [], false)],
+    ["instance subset of the Unified view", selectionScope(1, [1], undefined, "", [], false)],
+    ["filters", selectionScope(1, [1, 2], { status: ["seeding"] } as TorrentFilters, "", [], false)],
+    ["search", selectionScope(1, [1, 2], undefined, "ubuntu", [], false)],
+    ["column filters", selectionScope(1, [1, 2], undefined, "", [{ columnId: "name", operation: "contains", value: "ubuntu" }], false)],
+    ["layout", selectionScope(1, [1, 2], undefined, "", [], true)],
   ])("changes with the %s", (_name, other) => {
-    expect(other).not.toBe(selectionScope(1, [1, 2], undefined, ""))
+    expect(other).not.toBe(selectionScope(1, [1, 2], undefined, "", [], false))
   })
 })
 
@@ -144,13 +147,17 @@ describe("selectionCount", () => {
 })
 
 describe("selectAllCheckboxFlags", () => {
-  it.each<[string, TorrentSelectionState, number, { checked: boolean; indeterminate: boolean }]>([
-    ["nothing", EMPTY_SELECTION, 3, { checked: false, indeterminate: false }],
-    ["some ticked", run({ type: "tick", keys: ["a"], checked: true }), 3, { checked: false, indeterminate: true }],
-    ["every row ticked", run({ type: "tick", keys: ["a", "b", "c"], checked: true }), 3, { checked: true, indeterminate: false }],
-    ["empty list", EMPTY_SELECTION, 0, { checked: false, indeterminate: false }],
-    ["Select all mode", run({ type: "selectAll" }), 3, { checked: true, indeterminate: false }],
-    ["Select all mode with an Exclusion", run({ type: "selectAll" }, { type: "tick", keys: ["a"], checked: false }), 3, { checked: false, indeterminate: true }],
+  const rows = ["a", "b", "c"]
+  it.each<[string, TorrentSelectionState, string[], { checked: boolean; indeterminate: boolean }]>([
+    ["nothing", EMPTY_SELECTION, rows, { checked: false, indeterminate: false }],
+    ["some ticked", run({ type: "tick", keys: ["a"], checked: true }), rows, { checked: false, indeterminate: true }],
+    ["every row ticked", run({ type: "tick", keys: rows, checked: true }), rows, { checked: true, indeterminate: false }],
+    ["as many ticks as rows, on rows that are not loaded", run({ type: "tick", keys: ["x", "y", "z"], checked: true }), rows, { checked: false, indeterminate: true }],
+    ["more ticks than rows", run({ type: "tick", keys: ["a", "b", "c", "x"], checked: true }), rows, { checked: true, indeterminate: false }],
+    ["ticks and an empty list", run({ type: "tick", keys: ["x"], checked: true }), [], { checked: false, indeterminate: true }],
+    ["empty list", EMPTY_SELECTION, [], { checked: false, indeterminate: false }],
+    ["Select all mode", run({ type: "selectAll" }), rows, { checked: true, indeterminate: false }],
+    ["Select all mode with an Exclusion", run({ type: "selectAll" }, { type: "tick", keys: ["a"], checked: false }), rows, { checked: false, indeterminate: true }],
   ])("%s", (_name, state, rows, expected) => {
     expect(selectAllCheckboxFlags(state, rows)).toEqual(expected)
   })
@@ -168,5 +175,15 @@ describe("getSelectionIdentity", () => {
 
   it("falls back to the view's instance when the torrent has none", () => {
     expect(getSelectionIdentity(makeTorrent({ hash: "abc" }), true, 5)).toBe("5:abc")
+  })
+})
+
+describe("getSelectionTargets", () => {
+  it("targets the view's instance for a bare hash", () => {
+    expect(getSelectionTargets(["abc"], false, 5)).toEqual([{ instanceId: 5, hash: "abc" }])
+  })
+
+  it("targets the instance in the key when the view spans instances", () => {
+    expect(getSelectionTargets(["9:abc", "0:def", "bad"], true, 5)).toEqual([{ instanceId: 9, hash: "abc" }])
   })
 })

@@ -4,8 +4,9 @@
  */
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
-import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { combineFilterExpr } from "@/lib/torrent-filters"
+import { getSelectionTargets } from "@/lib/torrent-selection"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -183,9 +184,8 @@ export function useTorrentSelectionDerivations({
     if (!isAllSelected || excludedFromSelectAll.size === 0) {
       return EMPTY_TARGETS
     }
-    const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-    return buildTorrentActionTargets(excludedTorrents, instanceId)
-  }, [isAllSelected, excludedFromSelectAll, sortedTorrents, instanceId, getSelectionIdentity])
+    return getSelectionTargets(excludedFromSelectAll, isCrossInstanceEndpoint ?? false, instanceId)
+  }, [isAllSelected, excludedFromSelectAll, isCrossInstanceEndpoint, instanceId])
 
   const selectAllExcludeHashes = useMemo(() => {
     if (!isAllSelected || excludedFromSelectAll.size === 0 || isCrossInstanceEndpoint) {

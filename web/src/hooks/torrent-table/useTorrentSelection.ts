@@ -13,7 +13,7 @@ import {
   type TorrentSelectionEvent
 } from "@/lib/torrent-selection"
 import type { Torrent } from "@/types"
-import { type RefObject, useCallback, useEffect, useRef } from "react"
+import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
 
 // Minimal structural shape of a TanStack row that the selection logic reads.
 export interface SelectionRow {
@@ -119,7 +119,8 @@ export function useTorrentSelection({
     send({ type: "tick", keys: rows.map(row => getSelectionIdentity(row.original)), checked })
   }, [send, getSelectionIdentity])
 
-  const { checked: isSelectAllChecked, indeterminate: isSelectAllIndeterminate } = selectAllCheckboxFlags(selection, sortedTorrents.length)
+  const rowKeys = useMemo(() => sortedTorrents.map(getSelectionIdentity), [sortedTorrents, getSelectionIdentity])
+  const { checked: isSelectAllChecked, indeterminate: isSelectAllIndeterminate } = selectAllCheckboxFlags(selection, rowKeys)
 
   const handleCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     shiftPressedRef.current = event.shiftKey

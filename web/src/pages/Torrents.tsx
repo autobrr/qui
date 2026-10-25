@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useInstances } from "@/hooks/useInstances"
 import { useIsMobile } from "@/hooks/useMediaQuery"
+import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -73,10 +74,14 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     return normalized.length > 0 ? normalized : undefined
   }, [isAllInstances, persistedUnifiedFilter, activeInstanceIds])
 
-  // A change of instance, instance subset, filters, or search clears the
-  // selection, and so does leaving the page. It lives here, not in a layout,
-  // so it stays when the viewport switches between the table and the cards.
-  const selectionScopeKey = selectionScope(instanceId, unifiedScopeInstanceIds, filters, (routeSearch?.q ?? "").trim())
+  // Mobile detection for responsive layout
+  const isMobile = useIsMobile()
+  const [columnFilters] = usePersistedColumnFilters(instanceId)
+
+  // A change of instance, instance subset, filters, column filters, search, or
+  // layout clears the selection, and so does leaving the page. The page renders
+  // a separate list for each layout, so neither list can own this.
+  const selectionScopeKey = selectionScope(instanceId, unifiedScopeInstanceIds, filters, (routeSearch?.q ?? "").trim(), columnFilters, isMobile)
   useEffect(() => {
     dispatchSelection({ type: "scope", scope: selectionScopeKey })
   }, [dispatchSelection, selectionScopeKey])
@@ -105,9 +110,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
-
-  // Mobile detection for responsive layout
-  const isMobile = useIsMobile()
 
   // Hash currently reflected in the URL, so the Back handler only closes a
   // sheet whose history entry it owns.

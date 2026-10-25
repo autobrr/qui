@@ -208,3 +208,15 @@ describe("useTorrentSelectionDerivations — deleteDialogTotalSize", () => {
     expect(result.current.deleteDialogTotalSize).toBe(50)
   })
 })
+
+describe("useTorrentSelectionDerivations — Exclusions of rows that are not loaded", () => {
+  it("sends an Exclusion in a view across instances when a sort moved its row out of the loaded rows", () => {
+    const { result } = render({
+      isAllSelected: true,
+      isCrossInstanceEndpoint: true,
+      excludedFromSelectAll: new Set(["2:not-loaded"]),
+      getSelectionIdentity: (t: Torrent) => `2:${t.hash}`,
+    })
+    expect(result.current.selectAllExcludedTargets).toEqual([{ instanceId: 2, hash: "not-loaded" }])
+  })
+})

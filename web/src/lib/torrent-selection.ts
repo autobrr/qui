@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { ColumnFilter } from "@/lib/column-filter-utils"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import type { CrossInstanceTorrent, Torrent, TorrentFilters } from "@/types"
 
 // The torrent list selection, shared by the desktop table and the mobile cards.
@@ -15,7 +17,7 @@ export interface TorrentSelectionState {
   selected: ReadonlySet<string>
   // Exclusions: keys the user unticked in Select all mode.
   excluded: ReadonlySet<string>
-  // The instance, instance subset, filters, and search that the selection belongs to.
+  // The instance, instance subset, filters, search, and layout that the selection belongs to.
   scope: string
 }
 
@@ -64,14 +66,18 @@ export function selectionReducer(state: TorrentSelectionState, event: TorrentSel
 }
 
 // The sort is not part of the scope: a sort change keeps the selection.
-// instanceIds is the instance subset of the Unified view.
+// instanceIds is the instance subset of the Unified view. The layout is part of
+// the scope because the mobile cards ignore column filters and keep their own
+// search, so a select-all request from the other layout would reach other torrents.
 export function selectionScope(
   instanceId: number,
   instanceIds: number[] | undefined,
   filters: TorrentFilters | undefined,
-  search: string
+  search: string,
+  columnFilters: ColumnFilter[],
+  isMobile: boolean
 ): string {
-  return JSON.stringify([instanceId, instanceIds ?? null, filters ?? null, search])
+  return JSON.stringify([instanceId, instanceIds ?? null, filters ?? null, search, columnFilters, isMobile])
 }
 
 export function hasSelection(state: TorrentSelectionState): boolean {
@@ -87,12 +93,14 @@ export function selectionCount(state: TorrentSelectionState, totalCount: number)
   return state.isAllSelected ? Math.max(0, totalCount - state.excluded.size) : state.selected.size
 }
 
-export function selectAllCheckboxFlags(state: TorrentSelectionState, rowCount: number) {
+// rowKeys are the keys of the loaded rows. A tick can belong to a row that is
+// not loaded, so the ticks count alone cannot tell whether every row is ticked.
+export function selectAllCheckboxFlags(state: TorrentSelectionState, rowKeys: string[]) {
   if (state.isAllSelected) {
     return { checked: state.excluded.size === 0, indeterminate: state.excluded.size > 0 }
   }
-  const count = state.selected.size
-  return { checked: count > 0 && count === rowCount, indeterminate: count > 0 && count < rowCount }
+  const checked = state.selected.size > 0 && rowKeys.length > 0 && rowKeys.every(key => state.selected.has(key))
+  return { checked, indeterminate: state.selected.size > 0 && !checked }
 }
 
 // Desktop header checkbox: if anything is selected, clear. Otherwise, select all.
@@ -115,4 +123,22 @@ export function getSelectionIdentity(torrent: Torrent, isCrossInstance: boolean,
   const crossInstanceId = (torrent as Partial<CrossInstanceTorrent>).instanceId
   const resolvedInstanceId = typeof crossInstanceId === "number" && crossInstanceId > 0 ? crossInstanceId : instanceId
   return `${resolvedInstanceId}:${torrent.hash}`
+}
+
+// The request targets for selection keys, so a key reaches its torrent when the row is not loaded.
+export function getSelectionTargets(keys: Iterable<string>, isCrossInstance: boolean, instanceId: number): TorrentActionTarget[] {
+  const targets: TorrentActionTarget[] = []
+  for (const key of keys) {
+    if (!isCrossInstance) {
+      targets.push({ instanceId, hash: key })
+      continue
+    }
+    const separator = key.indexOf(":")
+    const targetInstanceId = Number.parseInt(key.slice(0, separator), 10)
+    const hash = key.slice(separator + 1)
+    if (targetInstanceId > 0 && hash !== "") {
+      targets.push({ instanceId: targetInstanceId, hash })
+    }
+  }
+  return targets
 }
