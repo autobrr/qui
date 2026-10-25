@@ -2155,7 +2155,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			summary.recordRuleCounts(
 				models.ActivityActionLimitFailed,
 				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashMaps(batch, plan.shareLimits.ratioRules, plan.shareLimits.seedingRules),
+				buildRuleCountsFromHashMaps(batch, plan.shareLimits.ratioRules, plan.shareLimits.seedingRules, plan.shareLimits.actionRules, plan.shareLimits.modeRules),
 			)
 			summary.addTorrentSamples(collectTorrentNamesForHashes(batch, torrentByHash), 3)
 			if s.activityStore != nil {
@@ -2187,7 +2187,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionShareLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), plan.shareLimits.ratioRules, plan.shareLimits.seedingRules),
+			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), plan.shareLimits.ratioRules, plan.shareLimits.seedingRules, plan.shareLimits.actionRules, plan.shareLimits.modeRules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByShareKey(shareLimitSuccess), torrentByHash), 3)
 		if s.activityStore != nil {

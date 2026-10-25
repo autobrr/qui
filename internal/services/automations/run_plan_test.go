@@ -73,6 +73,29 @@ func TestRunPlan_ShareLimitsSkipTorrentsOnTarget(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"seeding-differs": {id: 2, name: "rule"}}, plan.shareLimits.seedingRules)
 }
 
+// A rule that sets the share action or the mode does not replace the rule that set the ratio
+// or the seeding time of the same torrent.
+func TestRunPlan_ShareLimitsKeepEachRule(t *testing.T) {
+	torrents := []qbt.Torrent{{
+		Hash: "a", Tags: "x", RatioLimit: 1, SeedingTimeLimit: 30, InactiveSeedingTimeLimit: -2,
+		ShareLimitAction: "Stop", ShareLimitsMode: "MatchAny",
+	}}
+	limitRule := planTestRule(1, &models.ActionConditions{ShareLimits: &models.ShareLimitsAction{
+		Enabled: true, RatioLimit: new(2.0), SeedingTimeMinutes: new(int64(60)), Condition: tagsContain("x"),
+	}})
+	actionRule := planTestRule(2, &models.ActionConditions{ShareLimits: &models.ShareLimitsAction{
+		Enabled: true, ShareLimitAction: new("Remove"), ShareLimitsMode: new("MatchAll"), Condition: tagsContain("x"),
+	}})
+
+	plan := planTestRun(t, torrents, []*models.Automation{limitRule, actionRule}, nil)
+	limitRef := map[string]ruleRef{"a": {id: 1, name: "rule"}}
+	actionRef := map[string]ruleRef{"a": {id: 2, name: "rule"}}
+	require.Equal(t, limitRef, plan.shareLimits.ratioRules)
+	require.Equal(t, limitRef, plan.shareLimits.seedingRules)
+	require.Equal(t, actionRef, plan.shareLimits.actionRules)
+	require.Equal(t, actionRef, plan.shareLimits.modeRules)
+}
+
 func TestRunPlan_ActionsWithoutTarget(t *testing.T) {
 	ref := map[string]ruleRef{"a": {id: 3, name: "rule"}}
 	tests := []struct {

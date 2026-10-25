@@ -54,12 +54,14 @@ func (p *plannedTorrents) add(hash string, rule ruleRef) {
 	p.rules[hash] = rule
 }
 
-// plannedShareLimits holds the share limits. The ratio and the seeding time of one torrent
-// can come from two rules.
+// plannedShareLimits holds the share limits. The ratio, the seeding time, the share action
+// and the mode of one torrent can each come from a different rule.
 type plannedShareLimits struct {
 	byTarget     map[shareKey][]string
 	ratioRules   map[string]ruleRef
 	seedingRules map[string]ruleRef
+	actionRules  map[string]ruleRef
+	modeRules    map[string]ruleRef
 }
 
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
@@ -71,6 +73,8 @@ func buildRunPlan(states map[string]*torrentDesiredState, deletions *deletionSel
 			byTarget:     make(map[shareKey][]string),
 			ratioRules:   make(map[string]ruleRef),
 			seedingRules: make(map[string]ruleRef),
+			actionRules:  make(map[string]ruleRef),
+			modeRules:    make(map[string]ruleRef),
 		},
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
@@ -176,10 +180,10 @@ func planShareLimits(plan *plannedShareLimits, hash string, torrent qbt.Torrent,
 		plan.seedingRules[hash] = state.seedingRule
 	}
 	if actionNeedsUpdate {
-		plan.ratioRules[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
+		plan.actionRules[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
 	}
 	if modeNeedsUpdate {
-		plan.seedingRules[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
+		plan.modeRules[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
 	}
 }
 
