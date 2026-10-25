@@ -75,6 +75,8 @@ type OrphanFile struct {
 	Status         FileStatus
 	ErrorMessage   string
 	IsAbandonedDir bool
+
+	files int // files counted into Size, for dropAliasOrphans
 }
 
 // AbandonedDir is a visited directory. The candidate pass decides whether the

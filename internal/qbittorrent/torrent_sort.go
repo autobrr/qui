@@ -51,27 +51,21 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc 
 
 // sortCrossInstanceTorrents sorts Unified rows in place. Rows that compare
 // equal sort by instance, ascending in each direction.
-func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, column string, desc bool, skipTrackerHydration bool) {
+func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, column string, desc bool) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		rows[i] = torrents[i].Torrent
 	}
-	// Each instance's own state sort reads the fetched trackers, and reads the
-	// cached health only when the request skipped the fetch. The shown health
-	// always falls back to the cache, so it can differ.
 	var cachedByInstance map[int]*TrackerHealthCounts
 	health := func(i int) TrackerHealth {
-		var cached *TrackerHealthCounts
-		if skipTrackerHydration {
-			id := torrents[i].InstanceID
-			var ok bool
-			if cached, ok = cachedByInstance[id]; !ok {
-				if cachedByInstance == nil {
-					cachedByInstance = make(map[int]*TrackerHealthCounts)
-				}
-				cached = sm.GetTrackerHealthCounts(id)
-				cachedByInstance[id] = cached
+		id := torrents[i].InstanceID
+		cached, ok := cachedByInstance[id]
+		if !ok {
+			if cachedByInstance == nil {
+				cachedByInstance = make(map[int]*TrackerHealthCounts)
 			}
+			cached = sm.GetTrackerHealthCounts(id)
+			cachedByInstance[id] = cached
 		}
 		return sm.resolveTrackerHealth(rows[i], cached)
 	}

@@ -17,7 +17,9 @@ func TestAlternateTitleQuery(t *testing.T) {
 		releaseName  string
 		arrTitles    []string
 		season       int // season read from the files, which the name lacks
+		numeral      int // season inferred from the Season numeral of a seasonless pack
 		wantTitle    string
+		wantSeason   int // the season that the retry searches in place of the season of the primary query
 		wantOK       bool
 	}{
 		{
@@ -108,6 +110,39 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
+			// An arc subtitle names the pack better than the bare title, and the
+			// retry sends no season, as before #3022.
+			name:         "seasonless numeral pack with a subtitle retries with the subtitle",
+			primaryQuery: "Kaiju Squad 100 II",
+			releaseName:  "Kaiju.Squad.100.II.2011.Harbor.Arc.1080p.BluRay.x265-GRP",
+			numeral:      2,
+			wantTitle:    "Kaiju Squad 100 II Harbor Arc",
+			wantOK:       true,
+		},
+		{
+			name:         "inferred season numeral is dropped when no subtitle exists",
+			primaryQuery: "Kaiju Squad 100 II",
+			releaseName:  "[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]",
+			numeral:      2,
+			wantTitle:    "Kaiju Squad 100",
+			wantSeason:   2,
+			wantOK:       true,
+		},
+		{
+			name:         "slash title retries with the title past the slash",
+			primaryQuery: "Kaiju",
+			releaseName:  "Kaiju/Squad Zero S02E05 1080p WEB H264-GRP",
+			wantTitle:    "Kaiju Squad Zero",
+			wantOK:       true,
+		},
+		{
+			name:         "release without an inferred season keeps its subtitle",
+			primaryQuery: "Kaiju Squad 100 II",
+			releaseName:  "Kaiju.Squad.100.II.2011.Harbor.Arc.1080p.BluRay.x265-GRP",
+			wantTitle:    "Kaiju Squad 100 II Harbor Arc",
+			wantOK:       true,
+		},
+		{
 			name:         "season numeral that starts with L is dropped",
 			primaryQuery: "Long Running Show L",
 			releaseName:  "Long.Running.Show.L.S50.1080p.WEB.h264-GRP",
@@ -153,10 +188,16 @@ func TestAlternateTitleQuery(t *testing.T) {
 				release.Type = rls.Series
 				release.Series = tt.season
 			}
-			got, ok := AlternateTitleQuery(tt.primaryQuery, &release, tt.arrTitles, tt.releaseName)
+			if tt.numeral > 0 {
+				// The files read the name as a seasonless pack.
+				release.Type = rls.Series
+			}
+			side := namedRelease{release: &release, rawName: tt.releaseName, seasonNumeral: tt.numeral}
+			got, season, ok := matcher{}.alternateTitleQuery(tt.primaryQuery, side, tt.arrTitles)
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
 				require.Equal(t, tt.wantTitle, got)
+				require.Equal(t, tt.wantSeason, season)
 			}
 		})
 	}

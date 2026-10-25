@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"testing"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
@@ -29,4 +30,15 @@ func (b *fakeWalkBackend) WalkDir(_ context.Context, _ string, _ fsops.WalkOptio
 	}
 	close(ch)
 	return ch, nil
+}
+
+// newTestProtected builds the Protected path module of one phase and fails the
+// test on an ignore path that is not valid.
+func newTestProtected(t testing.TB, d fsops.PathDialect, ignorePaths []string, tfm *TorrentFileMap) *protectedPaths {
+	t.Helper()
+	protected, err := newProtectedPaths(d, ignorePaths, tfm)
+	if err != nil {
+		t.Fatalf("newProtectedPaths: %v", err)
+	}
+	return protected
 }

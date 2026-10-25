@@ -65,15 +65,19 @@ func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.Fil
 }
 
 // Require returns the backend and the instance row for an instance whose mode
-// grants capability, both from one read, so a caller cannot check one row and
-// act on another. Any other instance fails with ErrNotCapable.
-func (p *Pool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (Backend, *models.Instance, error) {
+// grants every capability, both from one read, so a caller cannot check one
+// row and act on another. Any other instance fails with ErrNotCapable before a
+// backend is built.
+func (p *Pool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, more ...models.FilesystemCapability) (Backend, *models.Instance, error) {
 	instance, err := p.load(ctx, instanceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !models.FilesystemCapabilitiesOf(instance).Has(capability) {
-		return nil, nil, fmt.Errorf("instance %d, %s: %w", instanceID, capability, ErrNotCapable)
+	granted := models.FilesystemCapabilitiesOf(instance)
+	for _, capability := range append([]models.FilesystemCapability{capability}, more...) {
+		if !granted.Has(capability) {
+			return nil, nil, fmt.Errorf("instance %d, %s: %w", instanceID, capability, ErrNotCapable)
+		}
 	}
 	backend, _, err := p.backendFor(instance)
 	if err != nil {

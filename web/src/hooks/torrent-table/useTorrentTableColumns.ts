@@ -7,27 +7,24 @@ import { createColumns, type TableViewMode } from "@/components/torrents/Torrent
 import type { TorrentTableColumnDef } from "@/components/torrents/tanstackTableFeatures"
 import type { SpeedUnit } from "@/lib/speedUnits"
 import type { TrackerCustomizationLookup } from "@/lib/tracker-customizations"
-import type { AppPreferences, Torrent } from "@/types"
+import type { Torrent } from "@/types"
 import type { TFunction } from "i18next"
-import { type RefObject, useMemo } from "react"
+import { useMemo } from "react"
 
 export interface UseTorrentTableColumnsParams {
-  // Selection enhancers (from useTorrentSelection)
-  shiftPressedRef: RefObject<boolean>
-  lastSelectedIndexRef: RefObject<number | null>
+  // Selection (from useTorrentSelection)
   handleSelectAll: () => void
   isSelectAllChecked: boolean
   isSelectAllIndeterminate: boolean
-  handleRowSelection: (selectionIdentity: string, checked: boolean, rowId?: string) => void
-  getSelectionIdentity: (torrent: Torrent) => string
-  isAllSelected: boolean
-  excludedFromSelectAll: Set<string>
+  isTorrentSelected: (torrent: Torrent) => boolean
+  handleCheckboxPointerDown: (event: React.PointerEvent<HTMLElement>) => void
+  handleCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
   // Display / format
   incognitoMode: boolean
   speedUnit: SpeedUnit
   trackerIcons?: Record<string, string>
   formatTimestamp: (timestamp: number, relative?: boolean) => string
-  preferences?: AppPreferences | null
+  instanceMaxRatio?: number
   supportsTrackerHealth: boolean
   isUnifiedView: boolean
   isCrossInstanceEndpoint?: boolean
@@ -51,20 +48,17 @@ export interface TorrentTableColumns {
  * orchestrator only consumes the result.
  */
 export function useTorrentTableColumns({
-  shiftPressedRef,
-  lastSelectedIndexRef,
   handleSelectAll,
   isSelectAllChecked,
   isSelectAllIndeterminate,
-  handleRowSelection,
-  getSelectionIdentity,
-  isAllSelected,
-  excludedFromSelectAll,
+  isTorrentSelected,
+  handleCheckboxPointerDown,
+  handleCheckboxChange,
   incognitoMode,
   speedUnit,
   trackerIcons,
   formatTimestamp,
-  preferences,
+  instanceMaxRatio,
   supportsTrackerHealth,
   isUnifiedView,
   isCrossInstanceEndpoint,
@@ -78,32 +72,24 @@ export function useTorrentTableColumns({
   const columns = useMemo(
     () => createColumns({
       incognitoMode,
-      selectionEnhancers: {
-        shiftPressedRef,
-        lastSelectedIndexRef,
-        // Pass custom selection handlers
-        customSelectAll: {
-          onSelectAll: handleSelectAll,
-          isAllSelected: isSelectAllChecked,
-          isIndeterminate: isSelectAllIndeterminate,
-        },
-        onRowSelection: handleRowSelection,
-        getSelectionIdentity,
-        isAllSelected,
-        excludedFromSelectAll,
+      selection: isReadOnly ? undefined : {
+        onSelectAll: handleSelectAll,
+        isAllChecked: isSelectAllChecked,
+        isIndeterminate: isSelectAllIndeterminate,
+        isSelected: isTorrentSelected,
+        onCheckboxPointerDown: handleCheckboxPointerDown,
+        onCheckboxChange: handleCheckboxChange,
       },
       speedUnit,
       trackerIcons,
       formatTimestamp: (timestamp: number) => formatTimestamp(timestamp, true),
-      instancePreferences: preferences,
+      instanceMaxRatio,
       supportsTrackerHealth,
       showInstanceColumn: isUnifiedView && isCrossInstanceEndpoint,
       viewMode: desktopViewMode as TableViewMode,
       trackerCustomizationLookup,
-      includeSelectionColumn: !isReadOnly,
     }, t),
-    // shiftPressedRef/lastSelectedIndexRef are stable refs (passed in); listed to satisfy exhaustive-deps.
-    [shiftPressedRef, lastSelectedIndexRef, incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, isTorrentSelected, handleCheckboxPointerDown, handleCheckboxChange, instanceMaxRatio, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
   )
 
   const torrentIdentityCounts = useMemo(() => {

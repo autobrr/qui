@@ -10,19 +10,13 @@ import (
 )
 
 // discLayoutMarkers are directory names that indicate disc-based media (Blu-ray, DVD).
-// When detected, torrents must be added paused and only auto-resumed after a full recheck.
+// The Adder adds such a torrent paused and resumes it only after a full recheck.
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
 
 // AddPolicy defines constraints for how a torrent should be added.
 // These policies are derived from torrent content and override user settings.
 type AddPolicy struct {
-	// ForcePaused forces the torrent to be added in paused/stopped state
-	// regardless of the request's StartPaused.
-	ForcePaused bool
-
 	// DiscLayout indicates this is a disc-based media torrent (Blu-ray/DVD).
-	// When true, ForcePaused is set and auto-resume is only allowed after
-	// a full recheck reaches 100%.
 	DiscLayout bool
 
 	// DiscMarker is the marker directory name that triggered disc layout detection
@@ -36,9 +30,8 @@ func PolicyForSourceFiles(sourceFiles qbt.TorrentFiles) AddPolicy {
 	isDisc, marker := isDiscLayoutTorrent(sourceFiles)
 	if isDisc {
 		return AddPolicy{
-			ForcePaused: true,
-			DiscLayout:  true,
-			DiscMarker:  marker,
+			DiscLayout: true,
+			DiscMarker: marker,
 		}
 	}
 	return AddPolicy{}
@@ -82,20 +75,11 @@ func isDiscLayoutTorrent(files qbt.TorrentFiles) (isDisc bool, marker string) {
 	return false, ""
 }
 
-// ApplyToAddOptions applies policy constraints to AddTorrent options.
-// If ForcePaused is set, overrides paused/stopped to "true".
-func (p AddPolicy) ApplyToAddOptions(options map[string]string) {
-	if p.ForcePaused {
-		options["paused"] = "true"
-		options["stopped"] = "true"
+// KeepAtSavePath turns off the download path ("Keep incomplete torrents in") of an
+// add that sets an explicit save path. Without it, qBittorrent moves a torrent that
+// a recheck finds incomplete out of its save path into the download path.
+func KeepAtSavePath(options map[string]string) {
+	if options["savepath"] != "" {
+		options["useDownloadPath"] = "false"
 	}
-}
-
-// StatusSuffix returns a message suffix for result status when policy constraints applied.
-// Returns empty string if no policy constraints are active.
-func (p AddPolicy) StatusSuffix() string {
-	if p.DiscLayout {
-		return " - disc layout detected (" + p.DiscMarker + "), full recheck required"
-	}
-	return ""
 }

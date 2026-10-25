@@ -38,6 +38,7 @@ export interface VersionInfo {
   latestVersion?: string
   updateAvailable: boolean
   selfUpdate: boolean
+  selfUpdateUnavailableReason: "" | "container" | "disabled" | "development" | "directory"
   restart: boolean
 }
 
@@ -45,6 +46,31 @@ export interface SelfUpdateResult {
   version: string
   rollbackCommand: string
   backupError: string
+}
+
+// One preference of the catalog view that GET /instances/{id}/preferences returns.
+export interface PreferenceField {
+  key: string
+  value: unknown
+  tab: "behavior" | "downloads" | "connection" | "speed" | "bittorrent" | "rss" | "webui" | "advanced"
+  section: string
+  control: "switch" | "number" | "text" | "password" | "select" | "path" | "list" | "watchFolders"
+  wireUnit?: string
+  displayUnit?: string
+  optionSource?: "fixed" | "pathAutocomplete" | "networkInterfaces" | "interfaceAddresses"
+  options?: unknown[]
+  dependsOn?: string
+  readOnly?: boolean
+  reason?: string
+}
+
+// One network interface that qBittorrent can bind to. The value "" is "Any interface".
+// available is false for a saved interface or address that qBittorrent does not list.
+export interface NetworkBindingInterface {
+  name: string
+  value: string
+  available: boolean
+  addresses: { address: string; available: boolean }[]
 }
 
 export interface AppPreferences {
@@ -119,7 +145,9 @@ export interface AppPreferences {
   save_resume_data_interval: number
 
   // Startup behavior
-  start_paused_enabled: boolean // NOTE: Not supported by qBittorrent API - handled via localStorage
+  // qBittorrent 5.0 renamed start_paused_enabled to add_stopped_enabled. Each version sends one of the two.
+  start_paused_enabled?: boolean
+  add_stopped_enabled?: boolean
 
   // BitTorrent protocol (fully supported)
   dht: boolean

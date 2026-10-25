@@ -104,7 +104,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -136,7 +135,6 @@ describe("useTorrentExporter", () => {
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-          totalSelected: torrents.length,
         })
       })
 
@@ -165,7 +163,6 @@ describe("useTorrentExporter", () => {
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-          totalSelected: torrents.length,
         })
       })
 
@@ -195,7 +192,6 @@ describe("useTorrentExporter", () => {
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-          totalSelected: torrents.length,
         })
       })
 
@@ -214,7 +210,6 @@ describe("useTorrentExporter", () => {
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-          totalSelected: torrents.length,
         })
       })
 
@@ -243,7 +238,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa", "ccc"],
           torrents,
           isAllSelected: false,
-          totalSelected: 2,
         })
       })
 
@@ -265,7 +259,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -282,7 +275,6 @@ describe("useTorrentExporter", () => {
           hashes: ["", "", ""],
           torrents: [],
           isAllSelected: false,
-          totalSelected: 0,
         })
       })
 
@@ -301,7 +293,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa", "aaa", "aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -324,7 +315,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa", "bbb"],
           torrents,
           isAllSelected: false,
-          totalSelected: 2,
           excludeHashes: ["bbb"],
         })
       })
@@ -343,7 +333,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents,
           isAllSelected: false,
-          totalSelected: 1,
           excludeHashes: ["aaa"],
         })
       })
@@ -364,7 +353,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -380,7 +368,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -401,7 +388,6 @@ describe("useTorrentExporter", () => {
             makeTorrent({ hash: "bbb", name: "" }),
           ],
           isAllSelected: false,
-          totalSelected: 2,
         })
       })
 
@@ -417,7 +403,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "secret" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -440,7 +425,6 @@ describe("useTorrentExporter", () => {
             makeTorrent({ hash: "bbb", name: "beta" }),
           ],
           isAllSelected: false,
-          totalSelected: 2,
         })
       })
 
@@ -449,7 +433,7 @@ describe("useTorrentExporter", () => {
   })
 
   describe("isAllSelected pagination", () => {
-    it("paginates getTorrents (limit 300), dedupes by hash, and honors the totalSelected cap", async () => {
+    it("paginates getTorrents (limit 300) until hasMore is false, and dedupes by hash", async () => {
       const filters = makeFilters({ status: ["downloading"] })
 
       mockedApi.getTorrents
@@ -466,7 +450,7 @@ describe("useTorrentExporter", () => {
             makeTorrent({ hash: "h2", name: "two" }),
             makeTorrent({ hash: "h3", name: "three" }),
           ],
-          hasMore: true,
+          hasMore: false,
         } as never)
       mockedApi.exportTorrent.mockResolvedValue(makeExportResult("p.torrent"))
 
@@ -476,7 +460,6 @@ describe("useTorrentExporter", () => {
           hashes: [],
           torrents: [],
           isAllSelected: true,
-          totalSelected: 3, // cap reached after h1,h2,h3 -> stops before more pages
           filters,
           search: "linux",
           sortField: "name",
@@ -500,7 +483,6 @@ describe("useTorrentExporter", () => {
         sort: "name",
         order: "asc",
       })
-      // Cap hit on page 1; no third page fetched.
       expect(mockedApi.getTorrents).toHaveBeenCalledTimes(2)
       expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(3)
       const exportedHashes = mockedApi.exportTorrent.mock.calls.map((c) => c[1])
@@ -525,7 +507,6 @@ describe("useTorrentExporter", () => {
           hashes: [],
           torrents: [],
           isAllSelected: true,
-          totalSelected: 0, // no cap
           excludeHashes: ["excluded"],
         })
       })
@@ -546,7 +527,6 @@ describe("useTorrentExporter", () => {
           hashes: [],
           torrents: [],
           isAllSelected: true,
-          totalSelected: 5,
         })
       })
 
@@ -569,7 +549,6 @@ describe("useTorrentExporter", () => {
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-          totalSelected: torrents.length,
         })
       })
 
@@ -588,7 +567,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -607,7 +585,6 @@ describe("useTorrentExporter", () => {
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-          totalSelected: 1,
         })
       })
 
@@ -624,7 +601,6 @@ describe("useTorrentExporter", () => {
           hashes: [],
           torrents: [],
           isAllSelected: true,
-          totalSelected: 10,
         })
       })
 

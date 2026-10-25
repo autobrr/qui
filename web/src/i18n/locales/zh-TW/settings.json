@@ -16,6 +16,11 @@
     "security": "安全",
     "logs": "日誌"
   },
+  "nav": {
+    "general": "一般",
+    "connections": "連線",
+    "access": "存取"
+  },
   "language": {
     "cardTitle": "語言",
     "cardDescription": "選擇您偏好的顯示語言"
@@ -438,7 +443,7 @@
       "managementTitle": "授權管理",
       "managementDescription": "管理您的主題授權和進階存取權限",
       "providers": {
-        "dodoPortal": "Dodo 門戶"
+        "licensePortal": "授權門戶"
       },
       "status": {
         "unlockTitle": "解鎖進階主題",
@@ -446,7 +451,9 @@
         "activeTitle": "進階存取已啟用",
         "activeDescription": "您可以存取所有目前和未來的進階主題",
         "activationRequiredTitle": "需要啟用授權",
-        "activationRequiredDescription": "您的授權需要在此裝置上啟用"
+        "activationRequiredDescription": "您的授權需要在此裝置上啟用",
+        "offlineTitle": "無法連線至授權服務",
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此進階主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
@@ -468,10 +475,31 @@
       },
       "details": {
         "productAdded": "{{productName}} · 新增於 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}",
+        "statusLabels": {
+          "invalid": "無效",
+          "offline": "離線",
+          "unknown": "未知"
+        }
       },
       "invalid": {
-        "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺目前已啟用的裝置上停用。"
+        "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"
+      },
+      "errors": {
+        "expired": "您的授權金鑰已過期。",
+        "notActive": "此授權金鑰已不再有效。",
+        "invalid": "此授權金鑰無效。",
+        "notFound": "您輸入的授權金鑰無效。",
+        "databaseCopied": "此授權已在另一臺裝置上啟用。資料庫似乎是複製過來的。",
+        "conditionsMismatch": "授權金鑰不符合要求的條件。",
+        "activationLimit": "已達到授權啟用上限。請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入。開啟 Machine Instances，停用一臺不再使用的裝置，然後重試。",
+        "limitReached": "已達到授權啟用上限。",
+        "usageLimit": "已超出授權使用上限。",
+        "unreachable": "無法連線至授權服務。請稍後重試。",
+        "tooManyAttempts": "嘗試次數過多。請稍候再試。",
+        "rateLimited": "請稍候再試。",
+        "generic": "驗證授權金鑰失敗。請重試。",
+        "deleteFailed": "移除授權失敗。請重試。"
       },
       "actions": {
         "addLicense": "新增授權",
@@ -484,7 +512,7 @@
         "activate": "啟用授權",
         "validating": "驗證中...",
         "openDodoCheckout": "開啟 DodoPayments 結帳",
-        "openDodoPortal": "開啟 Dodo 門戶"
+        "openLicensePortal": "開啟授權門戶"
       },
       "deleteDialog": {
         "title": "移除授權？",
@@ -524,7 +552,7 @@
           },
           "findLicenseKey": {
             "title": "找到您的授權金鑰",
-            "description": "授權金鑰會在結帳後顯示。您也可以稍後從 Dodo 客戶門戶找回。"
+            "description": "授權金鑰會在結帳後顯示。您也可以稍後從授權門戶找回。"
           },
           "activateLicense": {
             "title": "啟用您的授權",
@@ -1001,6 +1029,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "正在檢查支援情況",
+        "checkingDescription": "正在檢查 qui 是否可以安裝此更新。",
+        "failedTitle": "無法檢查更新支援情況",
+        "failedDescription": "無法檢查是否支援自我更新。",
+        "retryDescription": "安裝更新前，請重試支援檢查。",
+        "retry": "重試"
+      },
+      "unavailable": {
+        "description": "此環境不支援自動安裝。",
+        "nextStep": "如何更新",
+        "guide": "更新指南",
+        "container": {
+          "reason": "qui 在容器中執行。更新透過容器映像提供。",
+          "step": "拉取新的 qui 映像，然後使用現有設定和資料卷重新建立容器。"
+        },
+        "disabled": {
+          "reason": "qui 設定中已停用自我更新。",
+          "step": "使用安裝 qui 時所用的套件管理員或安裝方式進行更新。"
+        },
+        "development": {
+          "reason": "此 qui 組建不是發佈版本。自動安裝需要發佈版本。",
+          "step": "停止 qui，將二進位檔替換為官方發佈版本或新組建，然後重新啟動 qui。"
+        },
+        "directory": {
+          "reason": "qui 無法存取或寫入其二進位檔所在的目錄。",
+          "step": "停止 qui，使用有寫入權限的帳號將二進位檔替換為新版本，然後重新啟動 qui。"
+        }
+      },
       "button": "安裝更新",
       "confirmTitle": "安裝更新？",
       "confirmDescription": "qui 會下載新版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。qui 恢復後頁面會自動重新載入。",

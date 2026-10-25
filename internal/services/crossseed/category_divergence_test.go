@@ -117,6 +117,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)

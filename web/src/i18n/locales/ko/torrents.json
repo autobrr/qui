@@ -102,7 +102,12 @@
     "totalSize": "전체 크기: {{size}}",
     "blockCrossSeeds": "cross-seed infohash 차단(재추가 방지)",
     "cancel": "취소",
-    "delete": "삭제"
+    "delete": "삭제",
+    "titleSelectAll_other": "필터와 일치하는 토렌트 {{count}}개를 삭제하시겠습니까?",
+    "selectAllNotice": "전체 선택이 켜져 있습니다. 현재 필터와 일치하는 선택된 토렌트를 삭제합니다.",
+    "notLoaded_other": "그중 {{count}}개는 표에 로드되지 않았습니다.",
+    "andMore": "외 {{more}}개",
+    "deleteCount_other": "토렌트 {{count}}개 삭제"
   },
   "deleteFilesPreference": {
     "label": "디스크에서 파일도 삭제",
@@ -380,6 +385,9 @@
       "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 전역 제한을 사용하려면 비활성화하세요.",
       "uploadLimit": "업로드 제한 설정(KB/s)",
       "downloadLimit": "다운로드 제한 설정(KB/s)",
+      "selectValue": "값 선택",
+      "wasMixed": "(혼합이었음)",
+      "unresolvedMixed": "적용하기 전에 모든 혼합 필드의 값을 선택하세요",
       "cancel": "취소",
       "setting": "설정 중...",
       "confirm": "제한 적용"
@@ -824,6 +832,11 @@
       "moving": "이동 중"
     }
   },
+  "emptyState": {
+    "noTorrents": "토렌트를 찾을 수 없습니다",
+    "noFilterMatches": "현재 필터와 일치하는 토렌트가 없습니다",
+    "noSearchMatches": "현재 검색과 일치하는 토렌트가 없습니다"
+  },
   "filterSidebar": {
     "views": {
       "title": "뷰",
@@ -1260,11 +1273,6 @@
     "matchCount_other": "일치 {{count}}개",
     "deleteSelected": "삭제 ({{count}})",
     "deleteThis": "이 항목 삭제",
-    "statusLabels": {
-      "trackerDown": "트래커 다운",
-      "unregistered": "등록되지 않음",
-      "trackerError": "트래커 오류"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "콘텐츠",
@@ -1288,6 +1296,7 @@
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",
+    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요.",
     "toast": {
       "savePathCopied": "저장 경로가 복사되었습니다",
       "copyFailed": "복사하지 못했습니다"
@@ -1435,25 +1444,6 @@
       "placeholder": "토렌트 검색...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
-    },
-    "shareLimit": {
-      "title": "토렌트 {{count}}개의 공유 제한 설정",
-      "description": "시딩 제한을 구성합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setRatioLimit": "비율 제한 설정",
-      "setSeedingTimeLimit": "시딩 시간 제한 설정(분)",
-      "setInactiveSeedingLimit": "비활성 시딩 제한 설정(분)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
-    },
-    "speedLimit": {
-      "title": "토렌트 {{count}}개의 속도 제한 설정",
-      "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setUploadLimit": "업로드 제한 설정(KB/s)",
-      "setDownloadLimit": "다운로드 제한 설정(KB/s)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
     },
     "ratio": "비율:"
   },

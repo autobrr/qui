@@ -180,6 +180,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)
@@ -245,6 +246,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "pause_failed", result.Status)

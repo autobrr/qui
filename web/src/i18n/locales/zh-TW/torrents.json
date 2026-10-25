@@ -102,7 +102,12 @@
     "totalSize": "總大小：{{size}}",
     "blockCrossSeeds": "封鎖輔種雜湊值（防止重新新增）",
     "cancel": "取消",
-    "delete": "刪除"
+    "delete": "刪除",
+    "titleSelectAll_other": "刪除符合篩選條件的 {{count}} 個種子？",
+    "selectAllNotice": "已開啟全選。此操作會刪除符合目前篩選條件的已選種子。",
+    "notLoaded_other": "其中 {{count}} 個未在表格中載入。",
+    "andMore": "以及另外 {{more}} 個",
+    "deleteCount_other": "刪除 {{count}} 個種子"
   },
   "deleteFilesPreference": {
     "label": "同時從磁碟刪除檔案",
@@ -380,6 +385,9 @@
       "description": "以 KB/s 為單位設定上傳和下載速度限制。停用則使用全侷限制。",
       "uploadLimit": "設定上傳限制（KB/s）",
       "downloadLimit": "設定下載限制（KB/s）",
+      "selectValue": "選擇一個值",
+      "wasMixed": "（原為混合）",
+      "unresolvedMixed": "請在應用之前為所有混合欄位選擇值",
       "cancel": "取消",
       "setting": "正在設定...",
       "confirm": "應用限制"
@@ -824,6 +832,11 @@
       "moving": "移動中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到種子",
+    "noFilterMatches": "沒有符合目前篩選器的種子",
+    "noSearchMatches": "沒有符合目前搜尋的種子"
+  },
   "filterSidebar": {
     "views": {
       "title": "檢視",
@@ -1260,11 +1273,6 @@
     "matchCount_other": "{{count}} 個匹配",
     "deleteSelected": "刪除（{{count}}）",
     "deleteThis": "刪除此項",
-    "statusLabels": {
-      "trackerDown": "Tracker 離線",
-      "unregistered": "未註冊",
-      "trackerError": "Tracker 錯誤"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "內容",
@@ -1288,6 +1296,7 @@
       }
     },
     "noMatches": "未在其他實例上找到匹配的種子",
+    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。",
     "toast": {
       "savePathCopied": "儲存路徑已複製",
       "copyFailed": "複製失敗"
@@ -1435,25 +1444,6 @@
       "placeholder": "搜尋種子...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
-    },
-    "shareLimit": {
-      "title": "為 {{count}} 個種子設定分享限制",
-      "description": "配置做種限制。使用 -1 或停用以移除限制。",
-      "setRatioLimit": "設定分享率限制",
-      "setSeedingTimeLimit": "設定做種時間限制（分鐘）",
-      "setInactiveSeedingLimit": "設定不活躍做種限制（分鐘）",
-      "cancel": "取消",
-      "setting": "正在設定...",
-      "applyLimits": "應用限制"
-    },
-    "speedLimit": {
-      "title": "為 {{count}} 個種子設定速度限制",
-      "description": "以 KB/s 為單位設定上傳和下載速度限制。使用 -1 或停用以移除限制。",
-      "setUploadLimit": "設定上傳限制（KB/s）",
-      "setDownloadLimit": "設定下載限制（KB/s）",
-      "cancel": "取消",
-      "setting": "正在設定...",
-      "applyLimits": "應用限制"
     },
     "ratio": "分享率："
   },

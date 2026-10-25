@@ -763,6 +763,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
 	}
 	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
+	// No backend reflinks over sftp, so reflink mode stays a local-only choice
+	// even though a remote instance has Write (#2942).
+	canReflink := canWrite && models.FilesystemAccessMode(&effective) == models.FilesystemModeLocal
 	effectiveUseHardlinks := existingInstance.UseHardlinks
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
@@ -794,7 +797,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseReflinks {
-		if !canWrite {
+		if !canReflink {
 			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
 			return
 		}
@@ -825,8 +828,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
+	// Drop the old client, backoff, and errors so the new settings are tried at once
 	h.clientPool.RemoveClient(instanceID)
+	h.clientPool.ResetFailureTracking(instanceID) //nolint:contextcheck // the error clear has its own timeout and must outlive a cancelled request
 	// The local access flag decides whether the instance is in remote mode,
 	// and the ssh pool only rereads the row when it dials. Any other edit
 	// leaves the session alone, since Invalidate cuts reads in flight.

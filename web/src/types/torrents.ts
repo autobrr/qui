@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AppPreferences, QBittorrentAppInfo } from "./app"
+import type { QBittorrentAppInfo } from "./app"
 import type { InstanceError } from "./instances"
 
 export interface TorrentTracker {
@@ -253,9 +253,6 @@ export interface InstanceMeta {
 
 /**
  * Torrent list response shared by REST and stream snapshots.
- *
- * `preferences` is tri-state: omitted leaves existing frontend preference caches
- * unchanged, a value replaces them, and `null` clears stale cached preferences.
  */
 export interface TorrentResponse {
   torrents: Torrent[]
@@ -269,11 +266,11 @@ export interface TorrentResponse {
   tags?: string[]
   serverState?: ServerState
   appInfo?: QBittorrentAppInfo
-  /** qBittorrent preferences for this instance; `null` explicitly clears cached preferences. */
-  preferences?: AppPreferences | null
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  // Some instances in the Unified view did not answer.
+  partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE

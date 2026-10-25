@@ -19,7 +19,7 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Title, year, and release group
 - Resolution (1080p, 2160p)
 - Source (WEB-DL, BluRay) and collection (AMZN, NF)
-- Codec (x264, x265) and HDR format
+- Codec (x264, x265) and HDR format. A bare `HDR` counts as `HDR10`.
 - Audio format and channels
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
@@ -62,7 +62,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `hardlink_error` | Failed | You enabled hardlink mode, but qui failed to create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
 | `reflink_error` | Failed | You enabled reflink mode, but qui failed to create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
 | `no_save_path` | Failed | qui did not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Check the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
-| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add, a required file or folder rename failed, or qui failed to pause a misaligned torrent after an alignment failure. | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
+| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add (`error`), a required file or folder rename failed or qui could not confirm it in qBittorrent (`alignment_failed`), or qui failed to pause a misaligned torrent after an alignment failure (`pause_failed`). | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
 
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
@@ -168,7 +168,7 @@ A fansub name also splits its release-group identity across two parsed fields. E
 
 Title, season, episode, and split release-group differences require verification. qui adds these torrents paused and resumes them only after a 100% recheck.
 
-Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, keep the normal fast path after all safety checks.
+Soft differences, such as codec, source, HDR, edition, or a year that only one name has, keep the normal fast path after all safety checks.
 
 If you enable **Skip recheck**, qui skips only decisions that require verification. RSS and autobrr reject these decisions before their planned download.
 

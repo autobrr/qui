@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 // PathDialect is the path grammar of a backend's filesystem. A path that goes
@@ -31,6 +33,9 @@ type PathDialect interface {
 	ToSlash(p string) string
 	Separator() string
 }
+
+// hardlinktree builds plans through its own subset of this interface.
+var _ hardlinktree.PathDialect = PathDialect(nil)
 
 // HostPaths is the dialect of the host filesystem: path/filepath.
 var HostPaths PathDialect = hostPaths{}

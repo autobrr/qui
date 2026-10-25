@@ -49,6 +49,7 @@ func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, erro
 	return false, nil
 }
 func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Mkdir(context.Context, string, fs.FileMode) error    { return nil }
 func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
 	return nil
 }
@@ -197,7 +198,7 @@ func TestPool_RequireGrantsByMode(t *testing.T) {
 		{2, models.CapabilityContent, nil},
 		{3, models.CapabilityRead, remote},
 		{3, models.CapabilityIdentity, nil},
-		{3, models.CapabilityWrite, nil},
+		{3, models.CapabilityWrite, remote},
 		{3, models.CapabilityContent, nil},
 	} {
 		store := &fakeInstanceStore{instances: instances}
@@ -262,4 +263,23 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 
 	_, _, err = b.SupportsReflink(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+}
+
+// A caller that needs two capabilities is refused when either is missing, and
+// no backend is built for the refusal.
+func TestPool_RequireNeedsEveryCapability(t *testing.T) {
+	remote := fakeBackend{kind: "remote"}
+	built := 0
+	pool := NewPoolWithRemote(&fakeInstanceStore{instances: map[int]*models.Instance{
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "hk"},
+	}}, fakeBackend{kind: "local"}, func(*models.Instance) Backend { built++; return remote })
+
+	backend, _, err := pool.Require(t.Context(), 3, models.CapabilityWrite, models.CapabilityIdentity)
+	require.ErrorIs(t, err, ErrNotCapable)
+	assert.Nil(t, backend)
+	assert.Zero(t, built, "a refused Require builds no backend")
+
+	backend, _, err = pool.Require(t.Context(), 3, models.CapabilityRead, models.CapabilityWrite)
+	require.NoError(t, err)
+	assert.Equal(t, remote, backend)
 }
