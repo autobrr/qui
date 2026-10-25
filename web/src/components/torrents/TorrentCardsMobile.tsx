@@ -45,7 +45,7 @@ import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getSelectionIdentity as selectionIdentity, getSelectionTargets, hasSelection, rememberTickedTorrents, selectAllButtonEvent, selectionCount } from "@/lib/torrent-selection"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -973,6 +973,22 @@ export function TorrentCardsMobile({
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
+  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
+  const selectedTorrentsForRequest = useMemo(
+    () => rememberTickedTorrents(tickedTorrentsRef.current, selectedHashes, torrents, getSelectionIdentity),
+    [torrents, selectedHashes, getSelectionIdentity]
+  )
+
+  const getSelectedTorrents = useMemo(() => {
+    if (isAllSelected) {
+      // When all are selected, return all torrents minus exclusions
+      return torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
+    } else {
+      // Regular selection mode
+      return selectedTorrentsForRequest
+    }
+  }, [torrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity, selectedTorrentsForRequest])
+
   const selectedTotalSize = useMemo(() => {
     if (isAllSelected) {
       const aggregateTotalSize = stats?.totalSize ?? 0
@@ -995,23 +1011,11 @@ export function TorrentCardsMobile({
       return Math.max(aggregateTotalSize - excludedSize, 0)
     }
 
-    let total = 0
-    torrents.forEach(torrent => {
-      if (selectedHashes.has(getSelectionIdentity(torrent))) {
-        total += torrent.size || 0
-      }
-    })
-
-    return total
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedHashes, getSelectionIdentity])
+    return getTotalSize(selectedTorrentsForRequest)
+  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedTorrentsForRequest, getSelectionIdentity])
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
-  const selectedTorrentsForRequest = useMemo(
-    () => rememberTickedTorrents(tickedTorrentsRef.current, selectedHashes, torrents, getSelectionIdentity),
-    [torrents, selectedHashes, getSelectionIdentity]
-  )
   const selectedActionTargets = useMemo(
     () => getSelectionTargets(selectedHashes, isCrossInstanceEndpoint, instanceId),
     [selectedHashes, isCrossInstanceEndpoint, instanceId]
@@ -1027,8 +1031,8 @@ export function TorrentCardsMobile({
     if (torrentToDelete) {
       return [torrentToDelete]
     }
-    return selectedTorrentsForRequest
-  }, [torrentToDelete, selectedTorrentsForRequest])
+    return getSelectedTorrents
+  }, [torrentToDelete, getSelectedTorrents])
 
   const excludedTargets = useMemo(
     () => getSelectionTargets(excludedFromSelectAll, isCrossInstanceEndpoint, instanceId),
@@ -1413,16 +1417,6 @@ export function TorrentCardsMobile({
       }
     )
   }, [isAllSelected, selectedRequestHashes, handleTmmConfirm, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, getSelectionIdentity, excludeHashesForRequest, excludedTargets, selectedActionTargets])
-
-  const getSelectedTorrents = useMemo(() => {
-    if (isAllSelected) {
-      // When all are selected, return all torrents minus exclusions
-      return torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
-    } else {
-      // Regular selection mode
-      return selectedTorrentsForRequest
-    }
-  }, [torrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity, selectedTorrentsForRequest])
 
   const handleExport = () => {
     exportTorrents({
@@ -2056,7 +2050,7 @@ export function TorrentCardsMobile({
         crossSeedWarning={crossSeedWarning}
         onConfirm={handleDeleteWrapper}
         isAllSelected={!torrentToDelete && isAllSelected}
-        previewTorrents={showDeleteDialog && !torrentToDelete && isAllSelected? torrents.filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent))): deleteTorrents}
+        previewTorrents={deleteTorrents}
       />
 
       {/* Tags dialog */}
