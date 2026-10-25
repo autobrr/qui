@@ -437,6 +437,9 @@
       "description": "Lege Upload- und Download-Geschwindigkeitsbegrenzungen in KB/s fest. Deaktivieren, um globale Limits zu verwenden.",
       "uploadLimit": "Upload-Limit setzen (KB/s)",
       "downloadLimit": "Download-Limit setzen (KB/s)",
+      "selectValue": "Einen Wert auswählen",
+      "wasMixed": "(war gemischt)",
+      "unresolvedMixed": "Wähle vor dem Anwenden Werte für alle gemischten Felder",
       "cancel": "Abbrechen",
       "setting": "Wird gesetzt...",
       "confirm": "Limits anwenden"
@@ -1518,25 +1521,6 @@
       "placeholder": "Torrents durchsuchen...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
-    },
-    "shareLimit": {
-      "title": "Share-Limits für {{count}} Torrent(s) festlegen",
-      "description": "Seeding-Limits konfigurieren. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setRatioLimit": "Ratio-Limit festlegen",
-      "setSeedingTimeLimit": "Seedingzeit-Limit festlegen (Minuten)",
-      "setInactiveSeedingLimit": "Limit für inaktives Seeding festlegen (Minuten)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
-    },
-    "speedLimit": {
-      "title": "Geschwindigkeitsbegrenzungen für {{count}} Torrent(s) festlegen",
-      "description": "Lege Upload- und Download-Limits in KB/s fest. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setUploadLimit": "Upload-Limit festlegen (KB/s)",
-      "setDownloadLimit": "Download-Limit festlegen (KB/s)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
     },
     "ratio": "Ratio:"
   },

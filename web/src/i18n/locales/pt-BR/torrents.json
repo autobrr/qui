@@ -437,6 +437,9 @@
       "description": "Defina limites de upload e download em KB/s. Desative para usar limites globais.",
       "uploadLimit": "Definir limite de upload (KB/s)",
       "downloadLimit": "Definir limite de download (KB/s)",
+      "selectValue": "Selecione um valor",
+      "wasMixed": "(estava misto)",
+      "unresolvedMixed": "Selecione valores para todos os campos mistos antes de aplicar",
       "cancel": "Cancelar",
       "setting": "Definindo...",
       "confirm": "Aplicar Limites"
@@ -1518,25 +1521,6 @@
       "placeholder": "Pesquisar torrents...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
-    },
-    "shareLimit": {
-      "title": "Definir Limites de Compartilhamento para {{count}} torrent(s)",
-      "description": "Configure os limites de seed. Use -1 ou desative para remover limites.",
-      "setRatioLimit": "Definir limite de ratio",
-      "setSeedingTimeLimit": "Definir limite de tempo de seed (min)",
-      "setInactiveSeedingLimit": "Definir limite de seed inativo (min)",
-      "cancel": "Cancelar",
-      "setting": "Definindo...",
-      "applyLimits": "Aplicar Limites"
-    },
-    "speedLimit": {
-      "title": "Definir Limites de Velocidade para {{count}} torrent(s)",
-      "description": "Defina limites em KB/s. Use -1 ou desative para remover limites.",
-      "setUploadLimit": "Definir limite de upload (KB/s)",
-      "setDownloadLimit": "Definir limite de download (KB/s)",
-      "cancel": "Cancelar",
-      "setting": "Definindo...",
-      "applyLimits": "Aplicar Limites"
     },
     "ratio": "Ratio:"
   },

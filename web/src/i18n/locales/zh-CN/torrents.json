@@ -385,6 +385,9 @@
       "description": "以 KB/s 为单位设置上传和下载速度限制。禁用则使用全局限制。",
       "uploadLimit": "设置上传限制（KB/s）",
       "downloadLimit": "设置下载限制（KB/s）",
+      "selectValue": "选择一个值",
+      "wasMixed": "（原为混合）",
+      "unresolvedMixed": "请在应用之前为所有混合字段选择值",
       "cancel": "取消",
       "setting": "正在设置...",
       "confirm": "应用限制"
@@ -1441,25 +1444,6 @@
       "placeholder": "搜索种子...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "输入后自动搜索"
-    },
-    "shareLimit": {
-      "title": "为 {{count}} 个种子设置分享限制",
-      "description": "配置做种限制。使用 -1 或禁用以移除限制。",
-      "setRatioLimit": "设置分享率限制",
-      "setSeedingTimeLimit": "设置做种时间限制（分钟）",
-      "setInactiveSeedingLimit": "设置不活跃做种限制（分钟）",
-      "cancel": "取消",
-      "setting": "正在设置...",
-      "applyLimits": "应用限制"
-    },
-    "speedLimit": {
-      "title": "为 {{count}} 个种子设置速度限制",
-      "description": "以 KB/s 为单位设置上传和下载速度限制。使用 -1 或禁用以移除限制。",
-      "setUploadLimit": "设置上传限制（KB/s）",
-      "setDownloadLimit": "设置下载限制（KB/s）",
-      "cancel": "取消",
-      "setting": "正在设置...",
-      "applyLimits": "应用限制"
     },
     "ratio": "分享率："
   },
