@@ -724,14 +724,14 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 	if _, exists := cp.failureTracker[instanceID]; exists {
 		delete(cp.failureTracker, instanceID)
 		hadFailures = true
-		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking")
 	}
 
 	// Also reset decryption error tracking on successful connection
 	if _, exists := cp.decryptionTracker[instanceID]; exists {
 		delete(cp.decryptionTracker, instanceID)
 		hadFailures = true
-		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking")
 	}
 
 	// Always clear errors from database on successful connection
@@ -741,7 +741,7 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 	if clearErr := cp.errorStore.ClearErrors(ctx, instanceID); clearErr != nil {
 		log.Error().Err(clearErr).Int("instanceID", instanceID).Msg("Failed to clear errors from database")
 	} else if hadFailures {
-		log.Debug().Int("instanceID", instanceID).Msg("Cleared instance errors from database after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Cleared instance errors from database")
 	}
 }
 
