@@ -40,6 +40,9 @@ func (s *gettableIndexerStore) Get(_ context.Context, id int) (*models.TorznabIn
 
 const torznabGazelleSourceHash = "223759985c562a644428312c8cd3585d04686847"
 
+// torznabGazelleScope asks the Torznab indexer and OPS, the target of the RED source.
+var torznabGazelleScope = searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{"orpheus.network"}}
+
 // newTorznabGazelleFixture builds a Service with one music-capable Torznab
 // indexer pointing at trackerURL and a RED-sourced music torrent whose Gazelle
 // lookup is stubbed to return one match.
@@ -130,9 +133,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 
 	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-torznab-fail-gazelle", downedTracker.URL)
 
-	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
-		IndexerIDs: []int{1},
-	}, clients)
+	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.NoError(t, err, "torznab failure must not discard gazelle matches")
 	require.NotNil(t, resp)
@@ -159,9 +160,7 @@ func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	t.Cleanup(cancel)
 
-	resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
-		IndexerIDs: []int{1},
-	}, clients)
+	resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.Error(t, err, "caller deadline expiry must not be reported as partial success")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -180,9 +179,7 @@ func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T)
 
 	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-trace-gazelle-matches", emptyFeed.URL)
 
-	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
-		IndexerIDs: []int{1},
-	}, clients)
+	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)

@@ -599,10 +599,8 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 				context.Background(),
 				instanceID,
 				sourceHash,
-				TorrentSearchOptions{
-					IndexerIDs:  []int{1},
-					SkipGazelle: true,
-				},
+				TorrentSearchOptions{},
+				searchScope{torznabIndexerIDs: []int{1}},
 				nil,
 			)
 			require.NoError(t, err)
