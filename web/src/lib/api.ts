@@ -1355,6 +1355,7 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
+      gazelle_timed_out?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
     }
@@ -1414,6 +1415,7 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
+      gazelleTimedOut: response.gazelle_timed_out ?? undefined,
       decisionTrace: response.decisionTrace,
     }
   }

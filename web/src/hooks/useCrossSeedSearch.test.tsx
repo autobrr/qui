@@ -405,6 +405,27 @@ describe("useCrossSeedSearch", () => {
     expect(mockedToast.info).toHaveBeenCalledWith("hooks.search.noMatches")
   })
 
+  it("forwards the RED/OPS timeout note instead of a no-matches toast", async () => {
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [], gazelleTimedOut: true })
+    )
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-gazelle-timeout" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).gazelleTimedOut).toBe(true)
+    expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
+  })
+
   it("applies a cooldown on force-refresh and recovers after 30s", async () => {
     const { result, rerender } = await renderSettled()
     // Switch to fake timers only after the background queries have settled so

@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -211,10 +212,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 	searchQuery := BuildTorznabQuery(torrent.Name, release, false)
 	contentInfo := DetermineContentType(release)
 
-	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, false)
-	if searchCancel != nil {
-		defer searchCancel()
-	}
+	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 
 	searchReq := &jackett.TorznabSearchRequest{
 		Query:            searchQuery.Query,
@@ -236,7 +234,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 			return false, ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, fmt.Sprintf("search timed out after %s", searchTimeout))
+			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, fmt.Sprintf("search timed out after %s", timeouts.DefaultSearchTimeout))
 			return true, nil
 		}
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))

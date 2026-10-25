@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
@@ -165,35 +164,6 @@ func TestLookupARRExternalIDsNoInstancesIsNotDegraded(t *testing.T) {
 	require.Equal(t, 1, spy.calls)
 	require.Nil(t, got)
 	require.Empty(t, degraded)
-}
-
-func TestAutomationTorrentSearchContext(t *testing.T) {
-	t.Run("torznab search keeps scheduler-owned deadline", func(t *testing.T) {
-		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), false)
-
-		require.Nil(t, cancel)
-		require.Zero(t, timeout)
-		_, hasDeadline := ctx.Deadline()
-		require.False(t, hasDeadline)
-		priority, ok := jackett.SearchPriority(ctx)
-		require.True(t, ok)
-		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
-	})
-
-	t.Run("gazelle-only search keeps bounded timeout", func(t *testing.T) {
-		start := time.Now()
-		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), true)
-		require.NotNil(t, cancel)
-		defer cancel()
-
-		require.Equal(t, timeouts.MaxSearchTimeout, timeout)
-		deadline, hasDeadline := ctx.Deadline()
-		require.True(t, hasDeadline)
-		require.WithinDuration(t, start.Add(timeouts.MaxSearchTimeout), deadline, time.Second)
-		priority, ok := jackett.SearchPriority(ctx)
-		require.True(t, ok)
-		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
-	})
 }
 
 func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
@@ -1471,7 +1441,7 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 		},
 	}
 
-	results, lookupCompleted, remoteRequestsMade := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	results, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
 	require.Empty(t, results)
 	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
 	require.False(t, remoteRequestsMade)
@@ -1505,7 +1475,7 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 		},
 	}
 
-	results, lookupCompleted, remoteRequestsMade := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	results, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
 	require.Empty(t, results)
 	require.True(t, remoteRequestsMade)
 	require.False(t, lookupCompleted)
@@ -1541,7 +1511,7 @@ func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
 
 	svc := &Service{}
 
-	_, lookupCompleted, remoteRequestsMade := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"redacted.sh", "orpheus.network"}, clients)
+	_, lookupCompleted, remoteRequestsMade, _ := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"redacted.sh", "orpheus.network"}, clients)
 	require.True(t, remoteRequestsMade)
 	require.False(t, lookupCompleted, "the failed site must keep the torrent eligible")
 }
@@ -1616,7 +1586,7 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		},
 	}
 
-	results, lookupCompleted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	results, lookupCompleted, _, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
 	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
 	require.Empty(t, results, "should skip Gazelle search when target tracker content exists locally")
 	require.Equal(t, 0, callCount, "should skip remote Gazelle lookup for matching local content")
@@ -1768,7 +1738,7 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 		},
 	}
 
-	results, lookupCompleted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
+	results, lookupCompleted, _, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
 	require.True(t, lookupCompleted)
 	require.Empty(t, results, "no matches expected with stubbed remote lookup")
 	require.Equal(t, 1, callCount, "should attempt Gazelle lookup when local content is on non-target tracker")

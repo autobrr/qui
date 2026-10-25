@@ -730,6 +730,7 @@
     "partialResults": "Resultados parciais - alguns indexadores não responderam",
     "arrLookupFailed": "Falha na consulta de IDs de metadados - busca apenas por título, os resultados podem estar incompletos",
     "arrNoIds": "Nenhum ID de metadados encontrado para este release - busca apenas por título",
+    "gazelleTimedOut": "RED/OPS não respondeu a tempo",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",

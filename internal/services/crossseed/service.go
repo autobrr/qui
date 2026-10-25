@@ -308,24 +308,16 @@ var findGazelleMatch = gazellemusic.FindMatch
 // local fake.
 var newGazelleClient = gazellemusic.NewClient
 
+// gazelleSearchTimeout limits the RED/OPS lookup of each search. Completion
+// searches run one at a time for each instance, so without it a slow RED/OPS
+// queue holds back every completion. Tests shorten it.
+var gazelleSearchTimeout = 45 * time.Second
+
 func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 	if limit <= 0 {
 		return torznabCrossSeedSearchLimit
 	}
 	return min(limit, torznabCrossSeedSearchLimit)
-}
-
-func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (context.Context, context.CancelFunc, time.Duration) {
-	searchCtx := ctx
-	var cancel context.CancelFunc
-	var timeout time.Duration
-
-	if disableTorznab {
-		timeout = timeouts.MaxSearchTimeout
-		searchCtx, cancel = timeouts.WithSearchTimeout(ctx, timeout)
-	}
-
-	return jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground), cancel, timeout
 }
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
@@ -2922,11 +2914,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityCompletion)
-	if len(scope.torznabIndexerIDs) == 0 {
-		var cancel context.CancelFunc
-		searchCtx, cancel = timeouts.WithSearchTimeout(searchCtx, timeouts.MaxSearchTimeout)
-		defer cancel()
-	}
 	searchResp, _, _, err := s.searchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 		RescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
@@ -6876,7 +6863,8 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 // RED/OPS hosts of its Search scope. gazelleLookupCompleted reports that the
 // Gazelle side needs no retry: every lookup either ran without error or had
 // nothing to look up. A failed lookup on any target clears it, so the caller
-// does not stamp the torrent's Gazelle cooldown.
+// does not stamp the torrent's Gazelle cooldown. timedOut reports that a lookup
+// ran out of the time that ctx allows.
 func (s *Service) searchGazelleMatches(
 	ctx context.Context,
 	instanceID int,
@@ -6884,9 +6872,9 @@ func (s *Service) searchGazelleMatches(
 	sourceFiles qbt.TorrentFiles,
 	targetHosts []string,
 	clients *gazelleClientSet,
-) (results []TorrentSearchResult, gazelleLookupCompleted, remoteRequestsMade bool) {
+) (results []TorrentSearchResult, gazelleLookupCompleted, remoteRequestsMade, timedOut bool) {
 	if s == nil || sourceTorrent == nil {
-		return []TorrentSearchResult{}, false, false
+		return []TorrentSearchResult{}, false, false, false
 	}
 	results = make([]TorrentSearchResult, 0, len(targetHosts))
 	contentMatchedHosts := make(map[string]struct{}, len(targetHosts))
@@ -7003,6 +6991,7 @@ func (s *Service) searchGazelleMatches(
 				Str("hash", sourceTorrent.Hash).
 				Msg("[CROSSSEED-GAZELLE] Search failed")
 			gazelleLookupCompleted = false
+			timedOut = timedOut || errors.Is(matchErr, context.DeadlineExceeded)
 			continue
 		}
 		if match == nil {
@@ -7039,7 +7028,42 @@ func (s *Service) searchGazelleMatches(
 		})
 	}
 
-	return results, gazelleLookupCompleted, remoteRequestsMade
+	return results, gazelleLookupCompleted, remoteRequestsMade, timedOut
+}
+
+type gazelleSearchOutcome struct {
+	results            []TorrentSearchResult
+	lookupCompleted    bool
+	remoteRequestsMade bool
+	timedOut           bool
+}
+
+// startGazelleSearch starts the RED/OPS lookup of one search with its own
+// gazelleSearchTimeout, so it runs beside the Torznab search. The returned
+// function waits for the lookup; it is safe to call more than once.
+func (s *Service) startGazelleSearch(
+	ctx context.Context,
+	instanceID int,
+	sourceTorrent *qbt.Torrent,
+	sourceFiles qbt.TorrentFiles,
+	scope searchScope,
+	clients *gazelleClientSet,
+) func() gazelleSearchOutcome {
+	if len(scope.gazelleHosts) == 0 {
+		outcome := gazelleSearchOutcome{results: []TorrentSearchResult{}, lookupCompleted: scope.gazelleCooldownWithoutLookup}
+		return func() gazelleSearchOutcome { return outcome }
+	}
+	done := make(chan gazelleSearchOutcome, 1)
+	go func() {
+		gazelleCtx, cancel := context.WithTimeout(ctx, gazelleSearchTimeout)
+		defer cancel()
+		var outcome gazelleSearchOutcome
+		outcome.results, outcome.lookupCompleted, outcome.remoteRequestsMade, outcome.timedOut = s.searchGazelleMatches(gazelleCtx, instanceID, sourceTorrent, sourceFiles, scope.gazelleHosts, clients)
+		// A canceled caller is not a RED/OPS timeout.
+		outcome.timedOut = outcome.timedOut && ctx.Err() == nil
+		done <- outcome
+	}()
+	return sync.OnceValue(func() gazelleSearchOutcome { return <-done })
 }
 
 func mergeTorrentSearchResults(gazelleResults, torznabResults []TorrentSearchResult) []TorrentSearchResult {
@@ -7442,26 +7466,24 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		applyContentFilterSnapshot(&sourceInfo, snapshot)
 	}
 
-	gazelleResults := []TorrentSearchResult{}
-	gazelleLookupCompleted := scope.gazelleCooldownWithoutLookup
+	waitGazelle := s.startGazelleSearch(ctx, instanceID, sourceTorrent, sourceFiles, scope, gazelleClients)
 	remoteRequestsMade := false
 	tolerancePercent := defaultSizeMismatchTolerancePercent
-	if len(scope.gazelleHosts) > 0 {
-		gazelleResults, gazelleLookupCompleted, remoteRequestsMade = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, scope.gazelleHosts, gazelleClients)
-	}
 
 	if len(scope.torznabIndexerIDs) == 0 || s.jackettService == nil {
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Str("reason", scope.skipReason).
 			Msg("[CROSSSEED-SEARCH] Search scope asks no Torznab indexer")
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+		gazelle := waitGazelle()
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelle.results)
 		return &TorrentSearchResponse{
-			SourceTorrent: sourceInfo,
-			Results:       gazelleResults,
-			Partial:       false,
-			JobID:         0,
-		}, gazelleLookupCompleted, remoteRequestsMade, nil
+			SourceTorrent:   sourceInfo,
+			Results:         gazelle.results,
+			Partial:         false,
+			JobID:           0,
+			GazelleTimedOut: gazelle.timedOut,
+		}, gazelle.lookupCompleted, gazelle.remoteRequestsMade, nil
 	}
 
 	query := strings.TrimSpace(opts.Query)
@@ -7645,25 +7667,28 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// Caller cancellation is not a tracker failure: propagate it so a
 	// canceled candidate is never recorded as a partial success.
 	torznabFailed := func(err error) (*TorrentSearchResponse, bool, bool, error) {
+		gazelle := waitGazelle()
+		remoteRequestsMade = remoteRequestsMade || gazelle.remoteRequestsMade
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, gazelleLookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
 		}
-		if len(gazelleResults) == 0 {
-			return nil, gazelleLookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(err)
+		if len(gazelle.results) == 0 {
+			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(err)
 		}
 		log.Warn().
 			Err(err).
 			Str("torrentName", sourceTorrent.Name).
-			Int("gazelleMatches", len(gazelleResults)).
+			Int("gazelleMatches", len(gazelle.results)).
 			Msg("[CROSSSEED-SEARCH] Torznab search failed; returning Gazelle matches only")
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelle.results)
 		return &TorrentSearchResponse{
-			SourceTorrent: sourceInfo,
-			Results:       gazelleResults,
-			Partial:       true,
-			JobID:         0,
-			QueryDegraded: queryDegraded,
-		}, gazelleLookupCompleted, remoteRequestsMade, nil
+			SourceTorrent:   sourceInfo,
+			Results:         gazelle.results,
+			Partial:         true,
+			JobID:           0,
+			QueryDegraded:   queryDegraded,
+			GazelleTimedOut: gazelle.timedOut,
+		}, gazelle.lookupCompleted, remoteRequestsMade, nil
 	}
 
 	// Capture per-indexer failures for the decision trace. The callback is
@@ -7858,7 +7883,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	if len(scored) == 0 {
-		combined := mergeTorrentSearchResults(gazelleResults, nil)
+		gazelle := waitGazelle()
+		combined := mergeTorrentSearchResults(gazelle.results, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
 			SourceTorrent:     sourceInfo,
@@ -7869,8 +7895,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			CoveredIndexerIDs: coveredIndexerIDs,
 			TorznabAnswered:   torznabAnswered,
 			QueryDegraded:     queryDegraded,
+			GazelleTimedOut:   gazelle.timedOut,
 			DecisionTrace:     buildDecisionTrace(0, 0),
-		}, gazelleLookupCompleted, remoteRequestsMade, nil
+		}, gazelle.lookupCompleted, remoteRequestsMade, nil
 	}
 
 	if len(sourceFiles) > 0 {
@@ -7879,8 +7906,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, limit)
+	gazelle := waitGazelle()
 	if err != nil {
-		return nil, gazelleLookupCompleted, remoteRequestsMade, err
+		return nil, gazelle.lookupCompleted, remoteRequestsMade, err
 	}
 	if duplicateFilteredCount > 0 {
 		log.Debug().
@@ -7892,7 +7920,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		results = limitTitleRescueResults(results, opts.TitleRescueResultLimit)
 	}
 
-	combined := mergeTorrentSearchResults(gazelleResults, results)
+	combined := mergeTorrentSearchResults(gazelle.results, results)
 	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 
 	return &TorrentSearchResponse{
@@ -7904,8 +7932,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		CoveredIndexerIDs: coveredIndexerIDs,
 		TorznabAnswered:   torznabAnswered,
 		QueryDegraded:     queryDegraded,
+		GazelleTimedOut:   gazelle.timedOut,
 		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
-	}, gazelleLookupCompleted, remoteRequestsMade, nil
+	}, gazelle.lookupCompleted, remoteRequestsMade, nil
 }
 
 func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
@@ -9642,8 +9671,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		staleExcludedIndexerIDs = subtractInts(staleWork.indexerIDs, scope.torznabIndexerIDs)
 	}
 
-	searchDisableTorznab := len(scope.torznabIndexerIDs) == 0
-	if searchDisableTorznab && len(scope.gazelleHosts) == 0 && !scope.gazelleCooldownWithoutLookup {
+	if len(scope.torznabIndexerIDs) == 0 && len(scope.gazelleHosts) == 0 && !scope.gazelleCooldownWithoutLookup {
 		if s.automationStore != nil {
 			if histErr := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, staleExcludedIndexerIDs, processedAt); histErr != nil {
 				log.Debug().Err(histErr).Msg("failed to update indexer search history")
@@ -9662,11 +9690,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 
-	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
-	if searchCancel != nil {
-		defer searchCancel()
-	}
-
+	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 	searchResp, gazelleLookupCompleted, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		FindIndividualEpisodes: state.opts.findIndividualEpisodes,
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
@@ -9703,17 +9727,13 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			return delayAfterCandidate, ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			timeoutDisplay := searchTimeout
-			if timeoutDisplay <= 0 {
-				timeoutDisplay = timeouts.DefaultSearchTimeout
-			}
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
 				TorrentName:  torrent.Name,
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Status:       models.CrossSeedSearchResultStatusSkipped,
-				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
+				Message:      fmt.Sprintf("search timed out after %s", timeouts.DefaultSearchTimeout),
 				ProcessedAt:  processedAt,
 			})
 			s.finishSearchCandidate(state, 0, false)
@@ -9733,13 +9753,17 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if len(searchResp.Results) == 0 {
+		message := "no matches returned"
+		if searchResp.GazelleTimedOut {
+			message = fmt.Sprintf("search timed out after %s", gazelleSearchTimeout)
+		}
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Status:       models.CrossSeedSearchResultStatusSkipped,
-			Message:      "no matches returned",
+			Message:      message,
 			ProcessedAt:  processedAt,
 		})
 		s.finishSearchCandidate(state, 0, false)
@@ -9747,13 +9771,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if searchResp.Partial {
-		logger := log.Debug().
+		log.Debug().
 			Str("torrentHash", torrent.Hash).
-			Int("matches", len(searchResp.Results))
-		if searchTimeout > 0 {
-			logger = logger.Dur("timeout", searchTimeout)
-		}
-		logger.Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
+			Int("matches", len(searchResp.Results)).
+			Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
 	}
 
 	successCount := 0

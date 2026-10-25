@@ -9155,6 +9155,9 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        gazelle_timed_out:
+          type: boolean
+          description: Set when RED/OPS did not answer in time. The results hold only the Torznab matches.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 

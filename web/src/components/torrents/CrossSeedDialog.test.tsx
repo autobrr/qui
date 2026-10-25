@@ -125,6 +125,14 @@ describe("CrossSeedDialog search scope", () => {
     expect(onScopeSearch).toHaveBeenCalledTimes(1)
   })
 
+  it("shows the note when RED/OPS did not answer in time", () => {
+    const { getByText, rerender, queryByText } = render(<CrossSeedDialog {...baseProps} hasSearched gazelleTimedOut />)
+
+    expect(getByText("crossSeedDialog.gazelleTimedOut")).toBeTruthy()
+    rerender(<CrossSeedDialog {...baseProps} hasSearched />)
+    expect(queryByText("crossSeedDialog.gazelleTimedOut")).toBeNull()
+  })
+
   it("shows no indexers and no search button without RED/OPS keys or Torznab indexers", () => {
     const { getByText, queryByText } = render(<CrossSeedDialog {...baseProps} />)
 

@@ -1434,6 +1434,7 @@
     "partialResults": "Resultats parcials: hi ha indexadors que no han respost",
     "arrLookupFailed": "Ha fallat la cerca d'ID de metadades: s'ha cercat només pel títol i els resultats poden ser incomplets",
     "arrNoIds": "No s'ha trobat cap ID de metadades d'aquesta release: s'ha cercat només pel títol",
+    "gazelleTimedOut": "RED/OPS no ha respost a temps",
     "searchScope": "Abast de la cerca",
     "noIndexers": "No hi ha cap indexador de Torznab disponible",
     "noIndexersHelp": "Afegeix o activa indexadors de Torznab a Configuració per cercar cross-seed.",

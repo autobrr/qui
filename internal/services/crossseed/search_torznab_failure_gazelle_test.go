@@ -5,9 +5,12 @@ package crossseed
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,4 +189,79 @@ func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T)
 	require.Len(t, resp.Results, 1, "the gazelle match still reaches the response")
 	require.NotNil(t, resp.DecisionTrace)
 	require.Equal(t, 0, resp.DecisionTrace.FinalMatches, "no torznab candidate was accepted")
+}
+
+// slowGazelleClients returns OPS clients whose fake answers no request, and
+// shortens the RED/OPS limit of each search. started closes at the first
+// RED/OPS request; active counts the requests that still wait.
+func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan struct{}, active *atomic.Int32) {
+	t.Helper()
+	// Not parallel: the test replaces package-level vars.
+	prevTimeout := gazelleSearchTimeout
+	gazelleSearchTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
+	prevFindMatch := findGazelleMatch
+	findGazelleMatch = gazellemusic.FindMatch
+	t.Cleanup(func() { findGazelleMatch = prevFindMatch })
+
+	startedCh := make(chan struct{})
+	var once sync.Once
+	active = &atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		active.Add(1)
+		defer active.Add(-1)
+		once.Do(func() { close(startedCh) })
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := gazellemusic.NewClient("orpheus.network", server.URL, "ops-key")
+	require.NoError(t, err)
+	return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}, startedCh, active
+}
+
+// RED/OPS and Torznab run at the same time. When RED/OPS does not answer in
+// time, the search returns the Torznab results with the timeout note and starts
+// no RED/OPS cooldown.
+func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
+	var torznabSawGazelleWaiting atomic.Bool
+	var gazelleStarted <-chan struct{}
+	var gazelleActive *atomic.Int32
+	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		select {
+		case <-gazelleStarted:
+		case <-time.After(2 * time.Second):
+		}
+		torznabSawGazelleWaiting.Store(gazelleActive.Load() > 0)
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprint(w, `<rss version="2.0"><channel><title>Generic</title><item><title>During - LMK (2024 WF)</title><guid>torznab-guid</guid><size>123</size><enclosure url="https://example.invalid/candidate.torrent" length="123" type="application/x-bittorrent" /></item></channel></rss>`)
+	}))
+	t.Cleanup(tracker.Close)
+
+	svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-slow-gazelle-torznab", tracker.URL)
+	clients, started, active := slowGazelleClients(t)
+	gazelleStarted, gazelleActive = started, active
+
+	resp, gazelleLookupCompleted, _, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
+
+	require.NoError(t, err)
+	require.True(t, torznabSawGazelleWaiting.Load(), "Torznab must run while RED/OPS waits")
+	require.True(t, resp.GazelleTimedOut)
+	require.Len(t, resp.Results, 1)
+	require.Equal(t, "torznab-guid", resp.Results[0].GUID)
+	require.False(t, gazelleLookupCompleted, "a RED/OPS timeout must start no cooldown")
+}
+
+// A RED/OPS-only dialog search that runs out of time returns an empty result
+// with the timeout note, not an error.
+func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testing.T) {
+	svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-slow-gazelle-only", "http://127.0.0.1:1")
+	clients, _, _ := slowGazelleClients(t)
+
+	resp, gazelleLookupCompleted, _, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, searchScope{gazelleHosts: []string{"orpheus.network"}}, clients)
+
+	require.NoError(t, err)
+	require.True(t, resp.GazelleTimedOut)
+	require.Empty(t, resp.Results)
+	require.False(t, gazelleLookupCompleted)
 }

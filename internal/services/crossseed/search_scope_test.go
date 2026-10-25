@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
@@ -276,4 +277,25 @@ func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, found, "the RED/OPS cooldown must cover %s", hash)
 	}
+}
+
+// A Library Scan whose RED/OPS lookup runs out of time records the timeout and
+// starts no RED/OPS cooldown, so the next run asks RED/OPS again.
+func TestSearchRunLoop_GazelleTimeoutStartsNoCooldown(t *testing.T) {
+	name := "Artist - Album (2024) [WEB FLAC]"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 9), Name: name, Progress: 1.0, Size: 1_000, Tracker: "https://tracker.example.invalid/announce"}
+	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-gazelle-timeout", &hashFilteringSyncManager{
+		torrents:    []qbt.Torrent{torrent},
+		filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: {{Name: name + "/01 - Track.flac", Size: 1_000}}},
+	})
+	state.gazelleClients, _, _ = slowGazelleClients(t)
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	require.Len(t, state.run.Results, 1)
+	require.Equal(t, models.CrossSeedSearchResultStatusSkipped, state.run.Results[0].Status)
+	require.Equal(t, "search timed out after 200ms", state.run.Results[0].Message)
+	_, found, err := svc.automationStore.GetSearchHistory(t.Context(), state.opts.InstanceID, torrent.Hash)
+	require.NoError(t, err)
+	require.False(t, found, "a RED/OPS timeout must start no cooldown")
 }

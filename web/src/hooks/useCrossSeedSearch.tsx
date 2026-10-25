@@ -202,7 +202,8 @@ export function useCrossSeedSearch(instanceId: number) {
           })
           setCrossSeedSelectedKeys(defaultSelection)
 
-          if (response.results.length === 0) {
+          // The dialog shows the RED/OPS timeout note instead.
+          if (response.results.length === 0 && !response.gazelleTimedOut) {
             toast.info(t("hooks.search.noMatches"))
           }
         })
@@ -523,6 +524,7 @@ export function useCrossSeedSearch(instanceId: number) {
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
+      gazelleTimedOut={crossSeedSearchResponse?.gazelleTimedOut ?? false}
       decisionTrace={crossSeedSearchResponse?.decisionTrace}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}

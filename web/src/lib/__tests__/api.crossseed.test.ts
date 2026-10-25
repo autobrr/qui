@@ -373,6 +373,22 @@ describe("api.crossseed contract", () => {
 
       expect(result.queryDegraded).toBe("arr_no_ids")
     })
+
+    it("maps the RED/OPS timeout note", async () => {
+      server.use(
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
+          HttpResponse.json({
+            source_torrent: null,
+            results: [],
+            gazelle_timed_out: true,
+          })
+        )
+      )
+
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.gazelleTimedOut).toBe(true)
+    })
   })
 
   describe("applyCrossSeedSearchResults", () => {
