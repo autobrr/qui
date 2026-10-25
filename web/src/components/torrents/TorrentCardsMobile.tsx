@@ -53,6 +53,7 @@ import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomiz
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { getSelectionIdentity as selectionIdentity, hasSelection, selectAllButtonEvent, selectionCount } from "@/lib/torrent-selection"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -111,7 +112,7 @@ import {
 import type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
@@ -122,7 +123,7 @@ import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedU
 import { unitLabel } from "@/lib/unit-format"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 // Mobile-friendly Share Limits Dialog
@@ -1032,10 +1033,11 @@ export function TorrentCardsMobile({
   )
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
-  // Selection identity: hash for single-instance, `${instanceId}:${hash}` for unified scope.
-  const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
-  const [selectionMode, setSelectionMode] = useState(false)
-  const { setIsSelectionMode } = useTorrentSelection()
+  // Selection keys: hash for single-instance, `${instanceId}:${hash}` for unified scope.
+  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { isAllSelected, selected: selectedHashes, excluded: excludedFromSelectAll } = selection
+  // Selection mode means that something is selected, Select all mode included.
+  const selectionMode = hasSelection(selection)
 
   const parentRef = useRef<HTMLDivElement>(null)
   const { isFooterVisible } = useMobileScroll()
@@ -1075,10 +1077,6 @@ export function TorrentCardsMobile({
       order: prev.order === "desc" ? "asc" : "desc",
     }))
   }, [setSortState])
-
-  // Custom "select all" state for handling large datasets
-  const [isAllSelected, setIsAllSelected] = useState(false)
-  const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
@@ -1176,11 +1174,7 @@ export function TorrentCardsMobile({
     instanceIds,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
-        setSelectedHashes(new Set())
-        setSelectionMode(false)
-        setIsSelectionMode(false)
-        setIsAllSelected(false)
-        setExcludedFromSelectAll(new Set())
+        dispatchSelection({ type: "clear" })
       }
     },
   })
@@ -1214,6 +1208,16 @@ export function TorrentCardsMobile({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
+
+  // The search modal filters without the route `q`, so the page scope does not
+  // see it. A search change clears the selection here instead.
+  const selectionSearchRef = useRef(effectiveSearch)
+  useEffect(() => {
+    if (selectionSearchRef.current !== effectiveSearch) {
+      selectionSearchRef.current = effectiveSearch
+      dispatchSelection({ type: "clear" })
+    }
+  }, [effectiveSearch, dispatchSelection])
 
   // Detect user-initiated changes
   useEffect(() => {
@@ -1279,15 +1283,10 @@ export function TorrentCardsMobile({
   // additionally respects user preferences for UI surfaces like dialogs.
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
 
-  const getSelectionIdentity = useCallback((torrent: Torrent): string => {
-    if (!isAllInstancesView) {
-      return torrent.hash
-    }
-
-    const crossInstanceId = (torrent as Partial<CrossInstanceTorrent>).instanceId
-    const resolvedInstanceId = typeof crossInstanceId === "number" && crossInstanceId > 0 ? crossInstanceId : instanceId
-    return `${resolvedInstanceId}:${torrent.hash}`
-  }, [isAllInstancesView, instanceId])
+  const getSelectionIdentity = useCallback(
+    (torrent: Torrent): string => selectionIdentity(torrent, isAllInstancesView, instanceId),
+    [isAllInstancesView, instanceId]
+  )
   const parseSelectionIdentity = useCallback((identity: string): { instanceId: number; hash: string } | null => {
     const trimmedIdentity = identity.trim()
     if (!trimmedIdentity) {
@@ -1326,16 +1325,7 @@ export function TorrentCardsMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, allowSubcategories, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
 
-  // Calculate the effective selection count for display
-  const effectiveSelectionCount = useMemo(() => {
-    if (isAllSelected) {
-      // When all selected, count is total minus exclusions
-      return Math.max(0, totalCount - excludedFromSelectAll.size)
-    } else {
-      // Regular selection mode - use the selectedHashes size
-      return selectedHashes.size
-    }
-  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedHashes.size])
+  const effectiveSelectionCount = selectionCount(selection, totalCount)
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
@@ -1513,26 +1503,6 @@ export function TorrentCardsMobile({
 
   const virtualItems = virtualizer.getVirtualItems()
 
-  // Exit selection mode when no items selected
-  useEffect(() => {
-    if (selectionMode && effectiveSelectionCount === 0) {
-      setSelectionMode(false)
-      setIsSelectionMode(false)
-    }
-  }, [effectiveSelectionCount, selectionMode, setIsSelectionMode])
-
-  // Sync selection mode with context
-  useEffect(() => {
-    setIsSelectionMode(selectionBarVisible)
-  }, [selectionBarVisible, setIsSelectionMode])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      setIsSelectionMode(false)
-    }
-  }, [setIsSelectionMode])
-
   // Reset loaded rows when data changes significantly
   useEffect(() => {
     // Always ensure loadedRows is at least 100 (or total length if less)
@@ -1568,13 +1538,6 @@ export function TorrentCardsMobile({
       setLoadedRows(targetRows)
       setIsLoadingMoreRows(false)
 
-      // Clear selection state when data changes
-      setSelectedHashes(new Set())
-      setSelectionMode(false)
-      setIsSelectionMode(false)
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-
       // User-initiated change: scroll to top
       if (parentRef.current) {
         parentRef.current.scrollTop = 0
@@ -1593,7 +1556,7 @@ export function TorrentCardsMobile({
         setTimeout(() => virtualizer.measure(), 50)
       }, 0)
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, setIsSelectionMode, torrents.length, lastUserAction])
+  }, [filters, effectiveSearch, instanceId, virtualizer, torrents.length, lastUserAction])
 
   // Recalculate virtualizer when view mode changes
   useEffect(() => {
@@ -1622,58 +1585,16 @@ export function TorrentCardsMobile({
 
   // Handlers
   const handleLongPress = useCallback((torrent: Torrent) => {
-    setSelectionMode(true)
-    setSelectedHashes(new Set([getSelectionIdentity(torrent)]))
-  }, [getSelectionIdentity])
+    dispatchSelection({ type: "selectOnly", key: getSelectionIdentity(torrent) })
+  }, [dispatchSelection, getSelectionIdentity])
 
-  const handleSelect = useCallback((selectionIdentity: string, selected: boolean) => {
-    if (isAllSelected) {
-      if (!selected) {
-        // When deselecting in "select all" mode, add to exclusions
-        setExcludedFromSelectAll(prev => new Set(prev).add(selectionIdentity))
-      } else {
-        // When selecting a row that was excluded, remove from exclusions
-        setExcludedFromSelectAll(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(selectionIdentity)
-          return newSet
-        })
-      }
-    } else {
-      // Regular selection mode
-      setSelectedHashes(prev => {
-        const next = new Set(prev)
-        if (selected) {
-          next.add(selectionIdentity)
-        } else {
-          next.delete(selectionIdentity)
-        }
-        return next
-      })
-    }
-  }, [isAllSelected])
+  const handleSelect = useCallback((key: string, selected: boolean) => {
+    dispatchSelection({ type: "tick", keys: [key], checked: selected })
+  }, [dispatchSelection])
 
   const handleSelectAll = useCallback(() => {
-    const currentlySelectedCount = isAllSelected ? effectiveSelectionCount : selectedHashes.size
-    const loadedTorrentsCount = torrents.length
-
-    if (currentlySelectedCount === totalCount || (currentlySelectedCount === loadedTorrentsCount && currentlySelectedCount < totalCount)) {
-      // Deselect all
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setSelectedHashes(new Set())
-    } else if (loadedTorrentsCount >= totalCount) {
-      // All torrents are loaded, use regular selection
-      setSelectedHashes(new Set(torrents.map(getSelectionIdentity)))
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-    } else {
-      // Not all torrents are loaded, use "select all" mode
-      setIsAllSelected(true)
-      setExcludedFromSelectAll(new Set())
-      setSelectedHashes(new Set())
-    }
-  }, [isAllSelected, effectiveSelectionCount, selectedHashes.size, torrents, totalCount, getSelectionIdentity])
+    dispatchSelection(selectAllButtonEvent(selection, totalCount))
+  }, [dispatchSelection, selection, totalCount])
 
   const triggerSelectionAction = useCallback((action: TorrentAction, extra?: Parameters<typeof handleAction>[2]) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
@@ -1931,13 +1852,7 @@ export function TorrentCardsMobile({
           <div className="bg-primary text-primary-foreground px-4 mb-3 flex min-h-7 items-center justify-between">
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  setSelectedHashes(new Set())
-                  setSelectionMode(false)
-                  setIsSelectionMode(false)
-                  setIsAllSelected(false)
-                  setExcludedFromSelectAll(new Set())
-                }}
+                onClick={() => dispatchSelection({ type: "clear" })}
                 className="p-1"
               >
                 <X className="h-4 w-4" />

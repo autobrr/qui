@@ -21,9 +21,8 @@ const EMPTY_TARGETS: TorrentActionTarget[] = []
 
 export interface UseTorrentSelectionDerivationsParams {
   isAllSelected: boolean
-  excludedFromSelectAll: Set<string>
-  selectedRowIds: string[]
-  selectedRowIdSet: Set<string>
+  excludedFromSelectAll: ReadonlySet<string>
+  selectedKeys: ReadonlySet<string>
   getSelectionIdentity: (torrent: Torrent) => string
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
@@ -49,8 +48,7 @@ export interface UseTorrentSelectionDerivationsParams {
 export function useTorrentSelectionDerivations({
   isAllSelected,
   excludedFromSelectAll,
-  selectedRowIds,
-  selectedRowIdSet,
+  selectedKeys,
   getSelectionIdentity,
   getVisibleRows,
   sortedTorrents,
@@ -67,6 +65,10 @@ export function useTorrentSelectionDerivations({
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
+  // The last row seen for each tick. A sort keeps the ticks, so a ticked
+  // torrent can move past the loaded rows, and an action must still reach it.
+  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
+
   // Get selected torrents - handle both regular selection and "select all" mode
   const selectedTorrents = useMemo((): Torrent[] => {
     if (isAllSelected) {
@@ -76,15 +78,25 @@ export function useTorrentSelectionDerivations({
         .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
     }
-    if (selectedRowIdSet.size === 0) {
+    const ticked = tickedTorrentsRef.current
+    for (const key of ticked.keys()) {
+      if (!selectedKeys.has(key)) {
+        ticked.delete(key)
+      }
+    }
+    if (selectedKeys.size === 0) {
       return EMPTY_TORRENTS
     }
-    return getVisibleRowsRef.current()
-      .filter(row => selectedRowIdSet.has(row.id))
-      .map(row => row.original)
+    for (const row of getVisibleRowsRef.current()) {
+      const key = getSelectionIdentity(row.original)
+      if (selectedKeys.has(key)) {
+        ticked.set(key, row.original)
+      }
+    }
+    return [...ticked.values()]
     // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
+  }, [selectedKeys, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
 
   const selectedHashes = useMemo(
     (): string[] => selectedTorrents.length === 0 ? EMPTY_HASHES : selectedTorrents.map(torrent => torrent.hash),
@@ -103,10 +115,9 @@ export function useTorrentSelectionDerivations({
       }
       return Math.max(0, totalCount - excludedFromSelectAll.size)
     } else {
-      // Regular selection mode - use the computed selectedHashes length
-      return selectedRowIds.length
+      return selectedKeys.size
     }
-  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
+  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedKeys.size])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {
