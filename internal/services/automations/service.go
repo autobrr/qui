@@ -1916,12 +1916,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Category and move are not in the Run plan yet.
-	categoryRuleByHash := make(map[string]ruleRef)
-	moveRuleByHash := make(map[string]ruleRef)
-	categoryBatches := make(map[string][]string) // category name -> hashes
-	moveBatches := make(map[string][]string)     // path -> hashes
-
 	deleteHashesByMode := make(map[string][]string)
 	for _, hash := range deletions.order {
 		pending := deletions.byHash[hash]
@@ -1956,48 +1950,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	plan := s.buildRunPlan(ctx, states, deletions, torrentByHash, evalCtx)
-
-	for hash, state := range states {
-		// A delete trigger gets no other action, even when its delete was skipped or blocked.
-		if deletions.isClaimed(hash) {
-			continue
-		}
-		// Another torrent's delete expansion pulled this one in.
-		if _, deleting := deletions.byHash[hash]; deleting {
-			continue
-		}
-		torrent := torrentByHash[hash]
-
-		// Category - filter no-ops by comparing desired vs current
-		if state.category != nil {
-			if torrent.Category != *state.category {
-				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
-				categoryRuleByHash[hash] = state.categoryRule
-			}
-		}
-
-		if state.shouldMove {
-			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
-			moveRuleByHash[hash] = state.moveRule
-		}
-	}
+	plan := s.buildRunPlan(ctx, runPlanInput{
+		instanceID:    instanceID,
+		states:        states,
+		deletions:     deletions,
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      ruleByID,
+		crossSeeds:    crossSeeds,
+		evalCtx:       evalCtx,
+	})
 
 	if dryRun {
-		activities := s.recordDryRunActivities(
-			ctx,
-			instanceID,
-			plan,
-			categoryBatches,
-			moveBatches,
-			torrentByHash,
-			torrents,
-			states,
-			ruleByID,
-			evalCtx,
-			force,
-		)
-		return activities, nil
+		return s.recordDryRunActivities(ctx, instanceID, plan, torrentByHash, force), nil
 	}
 
 	summary := newAutomationSummary()
@@ -2527,165 +2492,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Execute category changes - expand with cross-seeds where winning rule requested it
-	// Sort keys for deterministic execution order
+	// Execute category changes - sort keys for deterministic execution order
 	var successfulMoves []categoryMove
 
-	sortedCategories := make([]string, 0, len(categoryBatches))
-	for cat := range categoryBatches {
-		sortedCategories = append(sortedCategories, cat)
-	}
-	sort.Strings(sortedCategories)
-
-	for _, category := range sortedCategories {
-		hashes := categoryBatches[category]
-		expandedHashes := make([]string, 0, len(hashes))
-
-		type groupExpandKey struct {
-			ruleID  int
-			groupID string
-		}
-
-		// Find torrents whose winning category rule requested grouping expansion (via groupId
-		// or legacy includeCrossSeeds), then expand other torrents that share the same group key.
-		keysToExpand := make(map[groupExpandKey]map[string]struct{})
-		groupIndexByKey := make(map[groupExpandKey]*groupIndex)
-		groupEligibilityByKey := make(map[groupExpandKey]map[string]bool)
-		ruleByGroupKey := make(map[groupExpandKey]ruleRef)
-		for _, hash := range hashes {
-			state, exists := states[hash]
-			if !exists || state == nil {
-				continue
-			}
-			if state.categoryGroupID == "" || state.categoryRuleID <= 0 {
-				expandedHashes = append(expandedHashes, hash)
-				continue
-			}
-			rule := ruleByID[state.categoryRuleID]
-			if rule == nil {
-				// GroupId semantics are strict all-or-none: unresolved grouping rules are skipped.
-				// Legacy includeCrossSeeds should still apply to the trigger even if expansion can't be resolved.
-				if state.categoryIncludeCrossSeeds {
-					expandedHashes = append(expandedHashes, hash)
-				}
-				continue
-			}
-
-			catAction := getCategoryAction(rule)
-
-			k := groupExpandKey{ruleID: rule.ID, groupID: state.categoryGroupID}
-			idx := groupIndexByKey[k]
-			if idx == nil {
-				idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.categoryGroupID, torrents, s.syncManager)
-				groupIndexByKey[k] = idx
-			}
-			if idx == nil {
-				continue
-			}
-
-			groupKey := idx.KeyForHash(hash)
-			if groupKey == "" {
-				continue
-			}
-			if groupEligibilityByKey[k] == nil {
-				groupEligibilityByKey[k] = make(map[string]bool)
-			}
-			eligible, computed := groupEligibilityByKey[k][groupKey]
-			if !computed {
-				eligible = true
-				if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, state.categoryGroupID, idx, hash, torrentByHash) {
-					eligible = false
-				}
-				// GroupId is strict all-or-none: every member must satisfy the action condition.
-				if eligible {
-					if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-					}
-					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-					members := idx.MembersForHash(hash)
-					if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeeds) {
-						eligible = false
-					}
-				}
-				groupEligibilityByKey[k][groupKey] = eligible
-			}
-			if !eligible {
-				continue
-			}
-
-			// Explicit groupId is strict all-or-none (only include if group eligibility is satisfied).
-			expandedHashes = append(expandedHashes, hash)
-			if keysToExpand[k] == nil {
-				keysToExpand[k] = make(map[string]struct{})
-			}
-			keysToExpand[k][groupKey] = struct{}{}
-			if _, exists := ruleByGroupKey[k]; !exists {
-				ruleByGroupKey[k] = ruleRef{id: rule.ID, name: rule.Name}
-			}
-		}
-
-		if len(keysToExpand) > 0 {
-			expandedSet := make(map[string]struct{})
-			for _, h := range expandedHashes {
-				expandedSet[h] = struct{}{}
-			}
-
-			for _, t := range torrents {
-				if t.Category == category {
-					continue // Already in target category
-				}
-				if _, deleting := deletions.byHash[t.Hash]; deleting {
-					continue
-				}
-				if _, exists := expandedSet[t.Hash]; exists {
-					continue // Already in batch
-				}
-				// CRITICAL: Don't override torrent's own computed desired category
-				// If this torrent has its own category set by rules, respect "last rule wins"
-				if state, hasState := states[t.Hash]; hasState && state.category != nil {
-					if *state.category != category {
-						continue // Torrent's winning rule chose a different category
-					}
-				}
-				shouldExpand := false
-				matchedKey := groupExpandKey{}
-				for k, keySet := range keysToExpand {
-					idx := groupIndexByKey[k]
-					if idx == nil {
-						continue
-					}
-					gk := idx.KeyForHash(t.Hash)
-					if gk == "" {
-						continue
-					}
-					if _, ok := keySet[gk]; ok {
-						shouldExpand = true
-						matchedKey = k
-						break
-					}
-				}
-				if shouldExpand {
-					expandedHashes = append(expandedHashes, t.Hash)
-					expandedSet[t.Hash] = struct{}{}
-					if _, exists := categoryRuleByHash[t.Hash]; !exists {
-						if ref, ok := ruleByGroupKey[matchedKey]; ok {
-							categoryRuleByHash[t.Hash] = ref
-						}
-					}
-				}
-			}
-		}
-
-		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, deletions.byHash) {
-			expandedHashes = append(expandedHashes, added.hash)
-			if _, exists := categoryRuleByHash[added.hash]; !exists {
-				if ref, ok := categoryRuleByHash[added.trigger]; ok {
-					categoryRuleByHash[added.hash] = ref
-				}
-			}
-		}
-
-		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
+	for _, category := range slices.Sorted(maps.Keys(plan.category.byTarget)) {
+		limited := limitHashBatch(plan.category.byTarget[category], s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.SetCategory(ctx, instanceID, batch, category); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category failed")
@@ -2730,7 +2541,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionCategoryChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(categoryMoveHashes(successfulMoves), categoryRuleByHash),
+			buildRuleCountsFromHashes(categoryMoveHashes(successfulMoves), plan.category.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(categoryMoveHashes(successfulMoves), torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2747,185 +2558,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Execute moves - sort paths for deterministic processing order
-	sortedPaths := make([]string, 0, len(moveBatches))
-	for path := range moveBatches {
-		sortedPaths = append(sortedPaths, path)
-	}
-	sort.Strings(sortedPaths)
-
-	movedHashes := make(map[string]struct{})
 	successfulMovesByPath := make(map[string]int)
 	failedMovesByPath := make(map[string]int)
 	successfulMoveHashesByPath := make(map[string][]string)
 	failedMoveHashesByPath := make(map[string][]string)
-	for _, path := range sortedPaths {
-		hashes := moveBatches[path]
+	for _, path := range slices.Sorted(maps.Keys(plan.move.byTarget)) {
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
-		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, moveRuleByHash, crossSeeds)
-
-		normalizedDest := normalizePath(path)
-
-		// Before moving, we need to expand move targets to avoid breaking related torrents.
-		var expandedHashes []string
-		type ruleGroupKey struct {
-			ruleID  int
-			groupID string
-		}
-		groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
-
-		legacyKeysToExpand := make(map[string]struct{})
-
-		for _, hash := range hashes {
-			if _, exists := movedHashes[hash]; exists {
-				continue // Already moved
-			}
-
-			state := states[hash]
-			if state != nil && state.moveGroupID != "" {
-				rule := (*models.Automation)(nil)
-				if ruleByID != nil && state.moveRuleID > 0 {
-					rule = ruleByID[state.moveRuleID]
-				}
-
-				// GroupId set but rule can't be resolved: skip (strict all-or-none semantics).
-				if rule == nil {
-					continue
-				}
-
-				{
-					rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
-					idx := groupIndexByKey[rgk]
-					if idx == nil {
-						idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.moveGroupID, torrents, s.syncManager)
-						groupIndexByKey[rgk] = idx
-					}
-
-					members := []string{hash}
-					if idx != nil {
-						if m := idx.MembersForHash(hash); len(m) > 0 {
-							members = m
-						}
-					}
-					if !groupHoldsSharedFiles(members, crossSeeds) {
-						continue
-					}
-
-					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-					def := (*models.GroupDefinition)(nil)
-					if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-						def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
-					}
-					if def == nil {
-						def = builtinGroupDefinition(state.moveGroupID)
-					}
-
-					if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
-						policy := strings.TrimSpace(def.AmbiguousPolicy)
-						if policy == "" {
-							policy = groupAmbiguousVerifyOverlap
-						}
-						if policy == groupAmbiguousSkip {
-							continue
-						}
-						minPercent := def.MinFileOverlapPercent
-						if minPercent <= 0 {
-							minPercent = minFileOverlapPercent
-						}
-						skipGroup := false
-						triggerTorrent, ok := torrentByHash[hash]
-						if !ok {
-							skipGroup = true
-						}
-						for _, otherHash := range members {
-							if skipGroup || otherHash == hash {
-								continue
-							}
-							otherTorrent, ok := torrentByHash[otherHash]
-							if !ok {
-								skipGroup = true
-								break
-							}
-							hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
-							if err != nil || !hasOverlap {
-								skipGroup = true
-								break
-							}
-						}
-						if skipGroup {
-							continue
-						}
-					}
-
-					// GroupId semantics are strict: every member must satisfy the move condition.
-					cond := (*models.RuleCondition)(nil)
-					if rule.Conditions != nil && rule.Conditions.Move != nil {
-						cond = rule.Conditions.Move.Condition
-					}
-					if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-					}
-					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-					if !allGroupMembersMatchCondition(members, torrentByHash, cond, evalCtx) {
-						continue
-					}
-
-					for _, memberHash := range members {
-						if _, exists := movedHashes[memberHash]; exists {
-							continue
-						}
-						if _, deleting := deletions.byHash[memberHash]; deleting {
-							continue
-						}
-						memberTorrent, ok := torrentByHash[memberHash]
-						if !ok {
-							continue
-						}
-						if normalizePath(memberTorrent.SavePath) == normalizedDest {
-							continue // Already in target path
-						}
-						expandedHashes = append(expandedHashes, memberHash)
-						movedHashes[memberHash] = struct{}{}
-						inheritRuleRefForMoveGroup(memberHash, hash, moveRuleByHash)
-					}
-					continue
-				}
-			}
-
-			// Legacy cross-seed expansion behavior
-			expandedHashes = append(expandedHashes, hash)
-			movedHashes[hash] = struct{}{}
-			if t, exists := torrentByHash[hash]; exists {
-				legacyKeysToExpand[crossSeeds.key(t)] = struct{}{}
-			}
-		}
-
-		if len(legacyKeysToExpand) > 0 {
-			for _, t := range torrents {
-				if normalizePath(t.SavePath) == normalizedDest {
-					continue // Already in target path
-				}
-				if _, exists := movedHashes[t.Hash]; exists {
-					continue // Already moved
-				}
-				if _, deleting := deletions.byHash[t.Hash]; deleting {
-					continue
-				}
-				key := crossSeeds.key(t)
-				if _, matched := legacyKeysToExpand[key]; matched {
-					expandedHashes = append(expandedHashes, t.Hash)
-					movedHashes[t.Hash] = struct{}{}
-					inheritRuleRefForCrossSeed(t.Hash, key, moveRuleByHash, ruleByCrossSeedKey)
-				}
-			}
-		}
-
-		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
+		limited := limitHashBatch(plan.move.byTarget[path], s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
-			if len(batch) == 0 {
-				continue
-			}
-
 			if err := s.syncManager.SetLocation(ctx, instanceID, batch, path); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: move failed")
 				failedMovesForPath += len(batch)
@@ -2964,7 +2605,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionMoved,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), moveRuleByHash),
+			buildRuleCountsFromHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), plan.move.rules),
 		)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), torrentByHash), 3)
 		if s.activityStore != nil {
@@ -2989,7 +2630,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, failureCount)
-		recordMoveFailureRuleCounts(summary, failedMoveHashesByPath, moveRuleByHash)
+		recordMoveFailureRuleCounts(summary, failedMoveHashesByPath, plan.move.rules)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByPath(failedMoveHashesByPath), torrentByHash), 3)
 		if s.activityStore != nil {
 			if err := s.activityStore.Create(ctx, activity); err != nil {
@@ -4541,13 +4182,7 @@ func (s *Service) recordDryRunActivities(
 	ctx context.Context,
 	instanceID int,
 	plan runPlan,
-	categoryBatches map[string][]string,
-	moveBatches map[string][]string,
 	torrentByHash map[string]qbt.Torrent,
-	torrents []qbt.Torrent,
-	states map[string]*torrentDesiredState,
-	ruleByID map[int]*models.Automation,
-	evalCtx *EvalContext,
 	recordNoMatch bool,
 ) []*models.AutomationActivity {
 	if s.activityStore == nil {
@@ -4556,12 +4191,6 @@ func (s *Service) recordDryRunActivities(
 
 	createdActivities := make([]*models.AutomationActivity, 0)
 
-	// The dry run reuses the live run's context, so grouping expansion reads the same hardlink data.
-	dryRunEvalCtx := evalCtx
-	if dryRunEvalCtx == nil {
-		dryRunEvalCtx = &EvalContext{ReleaseParser: s.releaseParser}
-	}
-	crossSeeds := buildCrossSeedGroups(torrents, dryRunEvalCtx)
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
 		detailsJSON, _ := json.Marshal(details)
 		activity := &models.AutomationActivity{
@@ -4657,343 +4286,30 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
-	// Categories (include cross-seed expansion)
-	if len(categoryBatches) > 0 && len(states) > 0 {
+	// Categories, with the group members and cross-seeds of the plan
+	if len(plan.category.byTarget) > 0 {
 		var plannedMoves []categoryMove
-		sortedCategories := make([]string, 0, len(categoryBatches))
-		for cat := range categoryBatches {
-			sortedCategories = append(sortedCategories, cat)
+		categoryCounts := make(map[string]int)
+		for _, category := range slices.Sorted(maps.Keys(plan.category.byTarget)) {
+			for _, hash := range plan.category.byTarget[category] {
+				plannedMoves = append(plannedMoves, categoryMove{hash: hash, category: category})
+			}
+			categoryCounts[category] = len(plan.category.byTarget[category])
 		}
-		sort.Strings(sortedCategories)
-
-		for _, category := range sortedCategories {
-			hashes := categoryBatches[category]
-			expandedHashes := make([]string, 0, len(hashes))
-
-			type ruleGroupKey struct {
-				ruleID  int
-				groupID string
-			}
-
-			previewEvalCtx := dryRunEvalCtx
-			keysToExpandByGroupID := make(map[ruleGroupKey]map[string]struct{})
-			groupIndexByGroupID := make(map[ruleGroupKey]*groupIndex)
-			groupEligibilityByGroupID := make(map[ruleGroupKey]map[string]bool)
-			for _, hash := range hashes {
-				state, exists := states[hash]
-				if !exists || state == nil {
-					continue
-				}
-				if state.categoryGroupID == "" {
-					expandedHashes = append(expandedHashes, hash)
-					continue
-				}
-
-				rule := (*models.Automation)(nil)
-				if ruleByID != nil && state.categoryRuleID > 0 {
-					rule = ruleByID[state.categoryRuleID]
-				}
-				if rule == nil {
-					if state.categoryIncludeCrossSeeds {
-						expandedHashes = append(expandedHashes, hash)
-					}
-					continue
-				}
-
-				catAction := getCategoryAction(rule)
-
-				rgk := ruleGroupKey{ruleID: state.categoryRuleID, groupID: state.categoryGroupID}
-				gid := state.categoryGroupID
-				idx := groupIndexByGroupID[rgk]
-				if idx == nil {
-					idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
-					groupIndexByGroupID[rgk] = idx
-				}
-				if idx == nil {
-					continue
-				}
-				groupKey := idx.KeyForHash(hash)
-				if groupKey == "" {
-					continue
-				}
-				if groupEligibilityByGroupID[rgk] == nil {
-					groupEligibilityByGroupID[rgk] = make(map[string]bool)
-				}
-				eligible, computed := groupEligibilityByGroupID[rgk][groupKey]
-				if !computed {
-					eligible = true
-					if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, gid, idx, hash, torrentByHash) {
-						eligible = false
-					}
-					if eligible {
-						if previewEvalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-						}
-						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
-						members := idx.MembersForHash(hash)
-						if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, previewEvalCtx, crossSeeds) {
-							eligible = false
-						}
-					}
-					groupEligibilityByGroupID[rgk][groupKey] = eligible
-				}
-				if !eligible {
-					continue
-				}
-				expandedHashes = append(expandedHashes, hash)
-				if keysToExpandByGroupID[rgk] == nil {
-					keysToExpandByGroupID[rgk] = make(map[string]struct{})
-				}
-				keysToExpandByGroupID[rgk][groupKey] = struct{}{}
-			}
-
-			if len(keysToExpandByGroupID) > 0 {
-				expandedSet := make(map[string]struct{})
-				for _, h := range expandedHashes {
-					expandedSet[h] = struct{}{}
-				}
-
-				for _, t := range torrents {
-					if t.Category == category {
-						continue
-					}
-					if _, exists := expandedSet[t.Hash]; exists {
-						continue
-					}
-					if _, deleting := deletions[t.Hash]; deleting {
-						continue
-					}
-					if state, hasState := states[t.Hash]; hasState && state.category != nil {
-						if *state.category != category {
-							continue
-						}
-					}
-
-					shouldExpand := false
-					for rgk, keySet := range keysToExpandByGroupID {
-						idx := groupIndexByGroupID[rgk]
-						if idx == nil {
-							continue
-						}
-						gk := idx.KeyForHash(t.Hash)
-						if gk == "" {
-							continue
-						}
-						if _, ok := keySet[gk]; ok {
-							shouldExpand = true
-							break
-						}
-					}
-					if shouldExpand {
-						expandedHashes = append(expandedHashes, t.Hash)
-						expandedSet[t.Hash] = struct{}{}
-					}
-				}
-			}
-
-			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, deletions) {
-				expandedHashes = append(expandedHashes, added.hash)
-			}
-
-			for _, hash := range expandedHashes {
-				move := categoryMove{hash: hash, category: category}
-				if t, exists := torrentByHash[hash]; exists {
-					move.name = t.Name
-					if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
-						move.trackerDomain = domains[0]
-					}
-				}
-				plannedMoves = append(plannedMoves, move)
-			}
-		}
-
-		if len(plannedMoves) > 0 {
-			categoryCounts := make(map[string]int)
-			for _, move := range plannedMoves {
-				categoryCounts[move.category]++
-			}
-			createActivity(models.ActivityActionCategoryChanged, map[string]any{"categories": categoryCounts}, func() []ActivityRunTorrent {
-				return buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
-			})
-		}
+		createActivity(models.ActivityActionCategoryChanged, map[string]any{"categories": categoryCounts}, func() []ActivityRunTorrent {
+			return buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
+		})
 	}
 
-	// Moves (include cross-seed expansion)
-	if len(moveBatches) > 0 {
-		sortedPaths := make([]string, 0, len(moveBatches))
-		for path := range moveBatches {
-			sortedPaths = append(sortedPaths, path)
-		}
-		sort.Strings(sortedPaths)
-
-		movedHashes := make(map[string]struct{})
+	// Moves, with the group members and cross-seeds of the plan
+	if moveBatches := plan.move.byTarget; len(moveBatches) > 0 {
 		plannedCounts := make(map[string]int)
-		plannedHashesByPath := make(map[string][]string)
-		previewEvalCtx := dryRunEvalCtx
-
-		for _, path := range sortedPaths {
-			hashes := moveBatches[path]
-			normalizedDest := normalizePath(path)
-			var expandedHashes []string
-
-			type ruleGroupKey struct {
-				ruleID  int
-				groupID string
-			}
-			groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
-			legacyKeysToExpand := make(map[string]struct{})
-
-			for _, hash := range hashes {
-				if _, exists := movedHashes[hash]; exists {
-					continue
-				}
-
-				state := states[hash]
-				if state != nil && state.moveGroupID != "" {
-					rule := (*models.Automation)(nil)
-					if ruleByID != nil && state.moveRuleID > 0 {
-						rule = ruleByID[state.moveRuleID]
-					}
-					if rule == nil {
-						// GroupId semantics are strict all-or-none.
-						continue
-					}
-
-					{
-						rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
-						idx := groupIndexByKey[rgk]
-						if idx == nil {
-							idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, state.moveGroupID, torrents, s.syncManager)
-							groupIndexByKey[rgk] = idx
-						}
-
-						members := []string{hash}
-						if idx != nil {
-							if m := idx.MembersForHash(hash); len(m) > 0 {
-								members = m
-							}
-						}
-						if !groupHoldsSharedFiles(members, crossSeeds) {
-							continue
-						}
-
-						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-						def := (*models.GroupDefinition)(nil)
-						if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-							def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
-						}
-						if def == nil {
-							def = builtinGroupDefinition(state.moveGroupID)
-						}
-
-						if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
-							policy := strings.TrimSpace(def.AmbiguousPolicy)
-							if policy == "" {
-								policy = groupAmbiguousVerifyOverlap
-							}
-							if policy == groupAmbiguousSkip {
-								continue
-							}
-							minPercent := def.MinFileOverlapPercent
-							if minPercent <= 0 {
-								minPercent = minFileOverlapPercent
-							}
-							skipGroup := false
-							triggerTorrent, ok := torrentByHash[hash]
-							if !ok {
-								skipGroup = true
-							}
-							for _, otherHash := range members {
-								if skipGroup || otherHash == hash {
-									continue
-								}
-								otherTorrent, ok := torrentByHash[otherHash]
-								if !ok {
-									skipGroup = true
-									break
-								}
-								hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
-								if err != nil || !hasOverlap {
-									skipGroup = true
-									break
-								}
-							}
-							if skipGroup {
-								continue
-							}
-						}
-
-						cond := (*models.RuleCondition)(nil)
-						if rule.Conditions != nil && rule.Conditions.Move != nil {
-							cond = rule.Conditions.Move.Condition
-						}
-						if previewEvalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-						}
-						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
-						if !allGroupMembersMatchCondition(members, torrentByHash, cond, previewEvalCtx) {
-							continue
-						}
-
-						for _, memberHash := range members {
-							if _, exists := movedHashes[memberHash]; exists {
-								continue
-							}
-							if _, deleting := deletions[memberHash]; deleting {
-								continue
-							}
-							memberTorrent, ok := torrentByHash[memberHash]
-							if !ok {
-								continue
-							}
-							if normalizePath(memberTorrent.SavePath) == normalizedDest {
-								continue
-							}
-							expandedHashes = append(expandedHashes, memberHash)
-							movedHashes[memberHash] = struct{}{}
-						}
-						continue
-					}
-				}
-
-				expandedHashes = append(expandedHashes, hash)
-				movedHashes[hash] = struct{}{}
-				if t, exists := torrentByHash[hash]; exists {
-					legacyKeysToExpand[crossSeeds.key(t)] = struct{}{}
-				}
-			}
-
-			if len(legacyKeysToExpand) > 0 {
-				for _, t := range torrents {
-					if normalizePath(t.SavePath) == normalizedDest {
-						continue
-					}
-					if _, exists := movedHashes[t.Hash]; exists {
-						continue
-					}
-					if _, deleting := deletions[t.Hash]; deleting {
-						continue
-					}
-					key := crossSeeds.key(t)
-					if _, matched := legacyKeysToExpand[key]; matched {
-						expandedHashes = append(expandedHashes, t.Hash)
-						movedHashes[t.Hash] = struct{}{}
-					}
-				}
-			}
-
-			expandedHashes = dedupeHashes(expandedHashes)
-			if len(expandedHashes) > 0 {
-				plannedHashesByPath[path] = expandedHashes
-				plannedCounts[path] = len(expandedHashes)
-			}
+		for path, hashes := range moveBatches {
+			plannedCounts[path] = len(hashes)
 		}
-
-		if len(plannedHashesByPath) > 0 {
-			createActivity(models.ActivityActionMoved, map[string]any{"paths": plannedCounts}, func() []ActivityRunTorrent {
-				return buildMoveRunItems(plannedHashesByPath, torrentByHash, s.syncManager)
-			})
-		}
+		createActivity(models.ActivityActionMoved, map[string]any{"paths": plannedCounts}, func() []ActivityRunTorrent {
+			return buildMoveRunItems(moveBatches, torrentByHash, s.syncManager)
+		})
 	}
 
 	// External programs

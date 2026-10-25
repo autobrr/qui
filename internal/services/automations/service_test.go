@@ -2038,6 +2038,28 @@ func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *te
 	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
 }
 
+// dryRunTestPlan builds the Run plan from the states, as the run does before the dry run.
+func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, evalCtx *EvalContext) (runPlan, map[string]qbt.Torrent) {
+	t.Helper()
+	if evalCtx == nil {
+		evalCtx = &EvalContext{}
+	}
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
+	}
+	plan := s.buildRunPlan(t.Context(), runPlanInput{
+		states:        states,
+		deletions:     &deletionSelection{},
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      ruleByID,
+		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
+		evalCtx:       evalCtx,
+	})
+	return plan, torrentByHash
+}
+
 func TestRecordDryRunActivities_Deletes(t *testing.T) {
 	mockDB := &mockQuerier{
 		activities: make([]*models.AutomationActivity, 0),
@@ -2063,13 +2085,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{deletions: &deletionSelection{byHash: pending}},
-		nil,
-		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
-		[]qbt.Torrent{torrent},
-		map[string]*torrentDesiredState{},
-		nil,
-		nil,
 		true,
 	)
 
@@ -2102,13 +2118,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
-		nil,
-		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
-		[]qbt.Torrent{torrent},
-		map[string]*torrentDesiredState{},
-		nil,
-		nil,
 		true,
 	)
 
@@ -2174,27 +2184,9 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
-	categoryBatches := map[string][]string{
-		"new-category": {"h1"},
-	}
-	torrentByHash := map[string]qbt.Torrent{
-		"h1": torrents[0],
-		"h2": torrents[1],
-	}
-
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		runPlan{deletions: &deletionSelection{}},
-		categoryBatches,
-		nil,
-		torrentByHash,
-		torrents,
-		states,
-		map[int]*models.Automation{1: rule},
-		&EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)},
-		true,
-	)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, map[int]*models.Automation{1: rule}, evalCtx)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
@@ -2224,12 +2216,6 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{deletions: &deletionSelection{}},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
 		nil,
 		true,
 	)
@@ -2278,19 +2264,8 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 	}
 
 	require.NotPanics(t, func() {
-		_ = s.recordDryRunActivities(
-			context.Background(),
-			1,
-			runPlan{deletions: &deletionSelection{}},
-			map[string][]string{"movies": {"abc123"}},
-			nil,
-			map[string]qbt.Torrent{"abc123": torrent},
-			[]qbt.Torrent{torrent},
-			states,
-			ruleByID,
-			nil,
-			true,
-		)
+		plan, torrentByHash := dryRunTestPlan(t, s, []qbt.Torrent{torrent}, states, ruleByID, nil)
+		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 	})
 
 	require.Len(t, mockDB.activities, 1)
@@ -2369,19 +2344,8 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		},
 	}
 
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		runPlan{deletions: &deletionSelection{}},
-		nil,
-		map[string][]string{"/data/moved": {"a"}},
-		torrentByHash,
-		torrents,
-		states,
-		ruleByID,
-		nil,
-		true,
-	)
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -2418,19 +2382,8 @@ func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *test
 			}}
 			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
 
-			_ = s.recordDryRunActivities(
-				t.Context(),
-				1,
-				runPlan{deletions: &deletionSelection{}},
-				nil,
-				map[string][]string{"/data/moved": {"a"}},
-				map[string]qbt.Torrent{"a": torrents[0], "b": torrents[1]},
-				torrents,
-				states,
-				ruleByID,
-				evalCtx,
-				true,
-			)
+			plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, evalCtx)
+			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 			require.Len(t, mockDB.activities, 1)
 			if tc.wantMove {
@@ -2460,12 +2413,6 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 		context.Background(),
 		1,
 		runPlan{deletions: &deletionSelection{}},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
 		nil,
 		false,
 	)
