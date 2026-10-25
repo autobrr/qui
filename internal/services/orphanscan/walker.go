@@ -457,6 +457,11 @@ func walkScanRootWithUnitFilter(
 				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
 				continue
 			}
+			// A subtree that vanished during the walk has nothing left to list,
+			// and its error must not read as a missing root.
+			if errors.Is(entry.Err, fs.ErrNotExist) && entry.Path != root {
+				continue
+			}
 			return nil, nil, false, entry.Err
 		}
 
