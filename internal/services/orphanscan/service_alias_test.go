@@ -95,11 +95,14 @@ func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 		name   string
 		link   func(defaultSavePath string) string
 		ignore string // relative to the link
+		// hardlink gives the torrent's file a second link outside the scan roots.
+		hardlink bool
 	}{
 		// The torrent's file is below an ignore path spelled at the link.
 		{name: "link inside the default save path", link: inside, ignore: "keep"},
 		{name: "link outside pointing in", link: func(d string) string { return filepath.Join(filepath.Dir(d), "aa-out") }, ignore: "keep"},
 		{name: "link itself ignored", link: inside, ignore: "."},
+		{name: "torrent's file has a hardlink", link: inside, ignore: "keep", hardlink: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var target, junk, stray string
@@ -115,6 +118,9 @@ func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 				require.NoError(t, os.Rename(link, target))
 				if err := os.Symlink(target, link); err != nil {
 					t.Skipf("symlinks unavailable: %v", err)
+				}
+				if tc.hardlink {
+					require.NoError(t, os.Link(filepath.Join(target, "keep", "owned.mkv"), filepath.Join(filepath.Dir(defaultSavePath), "owned.mkv")))
 				}
 				junk = filepath.Join(defaultSavePath, "junk.mkv")
 				stray = filepath.Join(target, "stray.mkv")
