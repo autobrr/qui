@@ -517,8 +517,8 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 type CrossMatchResult = crossseed.CrossMatchResult
 
 // filesReader is the slice of the sync manager the hardlink index, the
-// missing-files check, the skipped-files check, and the any-instance season
-// pack set read. ADR 0005.
+// missing-files check, the skipped-files check, the any-instance season
+// pack set, and the file overlap checks read. ADR 0005.
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
@@ -4033,7 +4033,7 @@ func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups
 		hashes = slices.Compact(hashes)
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	evalCtx.CrossSeedFilesByHash = filesByHash
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
@@ -4247,7 +4247,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	}
 
 	// Get files for both torrents
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch files: %w", err)
 	}
@@ -4307,7 +4307,7 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		return false
 	}
 
-	if s == nil || s.syncManager == nil {
+	if s == nil || s.filesReader == nil {
 		return false
 	}
 	triggerTorrent, ok := torrentByHash[triggerHash]
