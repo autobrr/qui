@@ -221,9 +221,10 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 		TargetInstanceIDs:            []int{instanceID},
 		SkipPieceBoundarySafetyCheck: true,
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassStrict,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	})
 	require.NoError(t, err)
@@ -268,9 +269,12 @@ func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
 				SearchDecision: searchDecisionProvenance{
-					Class:            tt.decisionClass,
-					SourceInstanceID: instanceID,
-					SourceHash:       existingHash,
+					Class: tt.decisionClass,
+					// Search stored a strict verdict for a listing that names the
+					// local group.
+					SearchCandidateName: existingName,
+					SourceInstanceID:    instanceID,
+					SourceHash:          existingHash,
 				},
 			})
 			require.NoError(t, err)
@@ -311,9 +315,9 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
 			Class:                 searchCandidateClassExactSizeFallback,
+			SearchCandidateName:   splitName,
 			SourceInstanceID:      instanceID,
 			SourceHash:            existingHash,
-			RelaxedDifferences:    []string{"group"},
 			Relaxed:               differencesOf(differenceGroup),
 			GroupFallbackIdentity: "kiri",
 		},
@@ -685,6 +689,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 		name      string
 		localRoot string
 		decision  searchDecisionProvenance
+		rejected  bool
 	}{
 		{
 			name:      "local copy in a renamed season folder",
@@ -692,14 +697,31 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			decision: searchDecisionProvenance{
 				Class:               searchCandidateClassExactSizeFallback,
 				SearchCandidateName: "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
-				RelaxedDifferences:  []string{"source"},
 				Relaxed:             differencesOf(differenceSource),
 			},
 		},
 		{
 			name:      "local copy in the original folder",
 			localRoot: name,
-			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 S02 [BDRip 1080p HEVC FLAC]",
+			},
+		},
+		{
+			// The listing name has no season, but the download reads one from its files.
+			name:      "listing named as the download",
+			localRoot: "Season 02 [BD]",
+			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name},
+		},
+		{
+			name:      "listing of the next season",
+			localRoot: "Season 02 [BD]",
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 III [BDRip 1080p HEVC FLAC]",
+			},
+			rejected: true,
 		},
 	}
 	for _, tt := range tests {
@@ -738,7 +760,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				SearchDecision:               decision,
 			})
 			require.NoError(t, err)
-			require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+			require.Equal(t, !tt.rejected, resp.Success, "results: %+v", resp.Results)
 		})
 	}
 }

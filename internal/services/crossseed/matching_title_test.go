@@ -12,6 +12,12 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+// strictCompare is the strict compare of two releases without raw names or
+// Sonarr alternate titles.
+func (m matcher) strictCompare(source, candidate *rls.Release, findIndividualEpisodes bool) releaseComparison {
+	return m.compareReleases(namedRelease{release: source}, namedRelease{release: candidate}, nil, nil, findIndividualEpisodes, true)
+}
+
 func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -30,8 +36,8 @@ func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
 		Year:  2025,
 	}
 
-	require.True(t, s.releasesMatch(&base, &same, false), "identical non-TV titles should match")
-	require.False(t, s.releasesMatch(&base, &variantTitle, false), "non-TV titles must match exactly after normalization")
+	require.True(t, s.strictCompare(&base, &same, false).matched(), "identical non-TV titles should match")
+	require.False(t, s.strictCompare(&base, &variantTitle, false).matched(), "non-TV titles must match exactly after normalization")
 }
 
 func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
@@ -55,9 +61,9 @@ func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
 		Year:  2025,
 	}
 
-	require.False(t, s.releasesMatch(&movie, &music, false), "movie and music with same title/year should not match")
-	require.True(t, s.releasesMatch(&movie, &unknown, false), "unknown type should not block matching when other metadata agrees")
-	require.True(t, s.releasesMatch(&unknown, &music, false), "unknown type should not block matching when other metadata agrees")
+	require.False(t, s.strictCompare(&movie, &music, false).matched(), "movie and music with same title/year should not match")
+	require.True(t, s.strictCompare(&movie, &unknown, false).matched(), "unknown type should not block matching when other metadata agrees")
+	require.True(t, s.strictCompare(&unknown, &music, false).matched(), "unknown type should not block matching when other metadata agrees")
 }
 
 func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
@@ -97,9 +103,9 @@ func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
 		Group:  "TALiON",
 	}
 
-	require.False(t, s.releasesMatch(&adamBeyer, &arminVanBuuren, false),
+	require.False(t, s.strictCompare(&adamBeyer, &arminVanBuuren, false).matched(),
 		"different artists with same title should NOT match")
-	require.True(t, s.releasesMatch(&adamBeyer, &sameArtist, false),
+	require.True(t, s.strictCompare(&adamBeyer, &sameArtist, false).matched(),
 		"same artist with same title should match")
 }
 
@@ -146,9 +152,9 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 		Group:  "GROUP",
 	}
 
-	require.False(t, s.releasesMatch(&oct4, &nov29, false),
+	require.False(t, s.strictCompare(&oct4, &nov29, false).matched(),
 		"same year but different month/day should NOT match")
-	require.True(t, s.releasesMatch(&oct4, &sameDate, false),
+	require.True(t, s.strictCompare(&oct4, &sameDate, false).matched(),
 		"same year/month/day should match")
 
 	// Year-only releases should still be allowed to match each other
@@ -159,7 +165,7 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 		Year:   2025,
 		Group:  "GROUP",
 	}
-	require.True(t, s.releasesMatch(&yearOnly, &anotherYearOnly, false),
+	require.True(t, s.strictCompare(&yearOnly, &anotherYearOnly, false).matched(),
 		"year-only releases should match when year is same")
 }
 
@@ -341,7 +347,7 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {
@@ -358,14 +364,14 @@ func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
 	// Example: "FBI" vs "FBI Most Wanted".
 	fbi := rls.ParseString("FBI.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
 	fbiMostWanted := rls.ParseString("FBI.Most.Wanted.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
-	require.False(t, s.releasesMatch(&fbi, &fbiMostWanted, false))
-	require.False(t, s.releasesMatch(&fbiMostWanted, &fbi, false), "match should be symmetric")
+	require.False(t, s.strictCompare(&fbi, &fbiMostWanted, false).matched())
+	require.False(t, s.strictCompare(&fbiMostWanted, &fbi, false).matched(), "match should be symmetric")
 
 	// Another common case: main series vs spinoff where the spinoff embeds the parent title.
 	sao := rls.ParseString("Sword.Art.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
 	ggo := rls.ParseString("Sword.Art.Online.Alternative.Gun.Gale.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
-	require.False(t, s.releasesMatch(&sao, &ggo, false))
-	require.False(t, s.releasesMatch(&ggo, &sao, false), "match should be symmetric")
+	require.False(t, s.strictCompare(&sao, &ggo, false).matched())
+	require.False(t, s.strictCompare(&ggo, &sao, false).matched(), "match should be symmetric")
 }
 
 func TestReleasesMatch_AKAVariants(t *testing.T) {
@@ -436,9 +442,11 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 			var match bool
 			var reason string
 			if tt.candidateName == "" {
-				match, reason = s.releasesMatchWithReason(&tt.source, &tt.candidate, false)
+				comparison := s.strictCompare(&tt.source, &tt.candidate, false)
+				match, reason = comparison.matched(), comparison.reason()
 			} else {
-				match, reason = s.releasesMatchWithReasonAndNames(&tt.source, &tt.candidate, "", tt.candidateName, false)
+				comparison := s.compareReleases(namedRelease{release: &tt.source}, namedRelease{release: &tt.candidate, rawName: tt.candidateName}, nil, nil, false, true)
+				match, reason = comparison.matched(), comparison.reason()
 			}
 
 			if tt.expectedMatch {
@@ -492,7 +500,8 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidate)
 
-			match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, tt.sourceName, tt.candidate, false)
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidate}, nil, nil, false, true)
+			match, reason := comparison.matched(), comparison.reason()
 
 			if tt.wantMatch {
 				require.True(t, match, "got reason %q", reason)
@@ -582,7 +591,8 @@ func TestReleasesMatch_SeasonNumeral(t *testing.T) {
 			}
 			candidate := rls.ParseString(tt.candidateName)
 
-			match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, tt.sourceName, tt.candidateName, false)
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidateName}, nil, nil, false, true)
+			match, reason := comparison.matched(), comparison.reason()
 
 			require.Equal(t, tt.wantReason, reason)
 			require.Equal(t, tt.wantReason == "", match)
@@ -611,25 +621,28 @@ func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
 		Resolution: "720p",
 	}
 
-	match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, "", "", false)
-	require.False(t, match)
-	require.Equal(t, "title mismatch", reason)
+	comparison := s.strictCompare(&source, &candidate, false)
+	require.False(t, comparison.matched())
+	require.Equal(t, "title mismatch", comparison.reason())
 
 	aliases := []string{"Haibara's Teenage New Game+"}
-	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &candidate, "", "", aliases, nil, false)
-	require.True(t, match, "got reason %q", reason)
+	withAliases := func(candidate *rls.Release) releaseComparison {
+		return s.compareReleases(namedRelease{release: &source}, namedRelease{release: candidate}, aliases, nil, false, true)
+	}
+	comparison = withAliases(&candidate)
+	require.True(t, comparison.matched(), "got reason %q", comparison.reason())
 
 	checksumMismatch := candidate
 	checksumMismatch.Sum = "52D759EF"
-	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &checksumMismatch, "", "", aliases, nil, false)
-	require.False(t, match)
-	require.Equal(t, "checksum mismatch", reason)
+	comparison = withAliases(&checksumMismatch)
+	require.False(t, comparison.matched())
+	require.Equal(t, "checksum mismatch", comparison.reason())
 
 	episodeMismatch := candidate
 	episodeMismatch.Episode = 2
-	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &episodeMismatch, "", "", aliases, nil, false)
-	require.False(t, match)
-	require.Equal(t, "episode mismatch", reason)
+	comparison = withAliases(&episodeMismatch)
+	require.False(t, comparison.matched())
+	require.Equal(t, "episode mismatch", comparison.reason())
 }
 
 func TestRawAKATitleParts(t *testing.T) {

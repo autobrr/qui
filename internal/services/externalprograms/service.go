@@ -644,7 +644,7 @@ func (s *Service) logActivity(
 		outcome = models.ActivityOutcomeFailed
 	}
 
-	details, _ := json.Marshal(map[string]string{
+	details, _ := json.Marshal(map[string]string{ //nolint:errchkjson // marshaling map[string]string cannot fail
 		"programName": program.Name,
 	})
 

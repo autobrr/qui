@@ -40,9 +40,7 @@
   "errchkjson": {
     "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
-    "internal/models/dirscan.go": 1,
     "internal/services/automations/service.go": 17,
-    "internal/services/externalprograms/service.go": 1,
     "internal/testutil/qbtstub/qbtstub.go": 1,
     "internal/web/swagger/swagger.go": 1
   },

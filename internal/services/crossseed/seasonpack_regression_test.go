@@ -110,16 +110,6 @@ func TestRollbackSeasonPackTree_RunsUnderCancelledContext(t *testing.T) {
 }
 
 func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
-	localRelease := rls.ParseString("Show.S01E01.1080p.WEB.x264-GRP")
-	packRelease := rls.ParseString("Show.S01.1080p.WEB.x264-GRP")
-	localFiles := map[episodeIdentity]seasonPackLocalFile{
-		{series: 1, episode: 1}: {
-			sourcePath: "/media/Show.S01E01.1080p.WEB.x264-GRP.mkv",
-			size:       10,
-			release:    &localRelease,
-		},
-	}
-
 	// POSIX and Windows forms are rejected on every host, and so are the two
 	// shapes link mode already refuses: a backslash inside a name and a
 	// non-canonical path. The plan goes through hardlinktree's validator.
@@ -133,15 +123,19 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		"Show.S01//Show.S01E01.1080p.WEB.x264-GRP.mkv",
 	} {
 		t.Run(name, func(t *testing.T) {
+			localFiles := map[episodeIdentity]seasonPackLocalFile{
+				{series: 1, episode: 1}: {
+					sourcePath: "/media/Show.S01E01.1080p.WEB.x264-GRP.mkv",
+					size:       10,
+					packFile:   name,
+				},
+			}
 			_, err := matcher{}.buildSeasonPackPlan(
 				fsops.HostPaths,
 				qbt.TorrentFiles{{Name: name, Size: 10}},
-				&packRelease,
 				"Show.S01.1080p.WEB.x264-GRP",
 				t.TempDir(),
 				localFiles,
-				nil,
-				nil,
 			)
 
 			require.ErrorIs(t, err, errLayoutMismatch)
@@ -153,86 +147,67 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 // TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from
 // stripping !/? in title normalization: sequels distinguished only by punctuation
 // (K-On! vs K-On!!) now title-match, because scene naming drops the punctuation
-// anyway. buildSeasonPackPlan still requires exact per-episode byte sizes before
+// anyway. The file check still requires exact per-episode byte sizes before
 // linking - the same size-identity trust cross-seeding rests on everywhere - so a
 // wrong link needs two different encodes with byte-identical sizes. A mismatched
-// file is demoted to pending (downloaded, never linked); with no other files the
-// plan comes up empty and the pack fails.
+// file is demoted to pending (downloaded, never linked).
 func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	packRelease := rls.ParseString("K-On! S01 1080p BluRay FLAC x264-Fansub")
-	local := rls.ParseString("[Fansub] K-On!! - 05 (1080p) [ABC12345]")
+	const (
+		packName  = "K-On! S01 1080p BluRay FLAC x264-Fansub"
+		localName = "[Fansub] K-On!! - 05 (1080p) [ABC12345]"
+	)
+	packRelease := rls.ParseString(packName)
+	local := rls.ParseString(localName)
 	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals.
 	local.Series = packRelease.Series
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(&packRelease, &local, "", "", true, nil, nil)
+	ok, reason := seasonPackEpisodeMatches(matcher, &packRelease, &local, nil, nil)
 	require.True(t, ok, "expected punctuation-only titles to conflate, got reason %q", reason)
 
-	localFiles := map[episodeIdentity]seasonPackLocalFile{
-		{series: 1, episode: 5}: {
-			sourcePath: "/media/[Fansub] K-On!! - 05 (1080p) [ABC12345].mkv",
-			size:       10,
-			release:    &local,
-		},
-	}
-
-	_, err := matcher.buildSeasonPackPlan(
-		fsops.HostPaths,
+	inst := &models.Instance{ID: 1, Name: "Test"}
+	svc := manualMatchTestService(inst,
+		[]qbt.Torrent{{Hash: "kon", Name: localName, Progress: 1}},
+		map[string]qbt.TorrentFiles{"kon": {{Name: localName + ".mkv", Size: 10}}})
+	id := episodeIdentity{series: 1, episode: 5}
+	rejected := make(map[string]string)
+	selected, localFiles, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, inst.ID,
+		map[episodeIdentity][]episodeMatch{id: {{torrentHash: "kon", contentPath: "/media/" + localName + ".mkv", name: localName, release: &local}}},
 		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
-		&packRelease,
-		"K-On! S01 1080p BluRay",
-		t.TempDir(),
-		localFiles,
-		nil,
-		nil,
-	)
-
-	require.ErrorIs(t, err, errLayoutMismatch)
-	require.ErrorContains(t, err, "no pack files could be mapped")
+		&packRelease, packName, nil, nil, rejected)
+	require.NoError(t, err)
+	require.Empty(t, selected)
+	require.Empty(t, localFiles)
+	require.Equal(t, "size_mismatch", rejected["kon"])
 }
 
-// A pack file whose resolved local file fails the size or release check is left
-// pending (downloaded via recheck) instead of failing the whole plan; only
-// verified files are linked.
-func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
-	packRelease := rls.ParseString("Show.S01.1080p.WEB.x264-GRP")
-	release := func(name string) *rls.Release {
-		r := rls.ParseString(name)
-		return &r
-	}
-
+// The plan links only the pack files that a local file verified against. Every
+// other pack file is left pending (downloaded via recheck).
+func TestBuildSeasonPackPlan_LinksOnlyVerifiedFiles(t *testing.T) {
+	const packDir = "Show.S01.1080p.WEB.x264-GRP/"
 	localFiles := map[episodeIdentity]seasonPackLocalFile{
 		{series: 1, episode: 1}: {
 			sourcePath: "/media/Show.S01E01.1080p.WEB.x264-GRP.mkv",
 			size:       10,
-			release:    release("Show.S01E01.1080p.WEB.x264-GRP"),
+			packFile:   packDir + "Show.S01E01.1080p.WEB.x264-GRP.mkv",
 		},
 		{series: 1, episode: 2}: {
 			sourcePath: "/media/Show.S01E02.1080p.WEB.x264-GRP.mkv",
-			size:       99, // size mismatch against the pack file
-			release:    release("Show.S01E02.1080p.WEB.x264-GRP"),
-		},
-		{series: 1, episode: 3}: {
-			sourcePath: "/media/Show.S01E03.720p.WEB.x264-GRP.mkv",
 			size:       10,
-			release:    release("Show.S01E03.720p.WEB.x264-GRP"), // release mismatch (resolution)
 		},
 	}
 
 	build, err := matcher{}.buildSeasonPackPlan(
 		fsops.HostPaths,
 		qbt.TorrentFiles{
-			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
-			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
-			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
+			{Name: packDir + "Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
+			{Name: packDir + "Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
+			{Name: packDir + "Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
 		},
-		&packRelease,
 		"Show.S01.1080p.WEB.x264-GRP",
 		t.TempDir(),
 		localFiles,
-		nil,
-		nil,
 	)
 
 	require.NoError(t, err)
@@ -240,7 +215,7 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01")
 	require.True(t, build.hasPendingFiles())
 	require.Len(t, build.materializedPaths, 1)
-	// Demoted files count toward totalBytes but not linkedBytes — the resume
+	// Pending files count toward totalBytes but not linkedBytes — the resume
 	// gate derives from this split.
 	require.Equal(t, int64(10), build.linkedBytes)
 	require.Equal(t, int64(30), build.totalBytes)
@@ -696,21 +671,24 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	}
 	id := episodeIdentity{series: 1, episode: 1}
 
-	m := matcher{releaseCache: NewReleaseCache()}
+	inst := &models.Instance{ID: 1, Name: "Test"}
+	svc := manualMatchTestService(inst,
+		[]qbt.Torrent{{Hash: "range", Name: rangeName, Progress: 1}},
+		map[string]qbt.TorrentFiles{"range": {{Name: rangeName + ".mkv", Size: 20}}})
+	m := svc.matcher()
 	require.Contains(t, m.extractPackEpisodes(packFiles, &packRelease), id)
 
-	localFile, err := m.resolveSeasonPackLocalFileCandidate(fsops.HostPaths, id, episodeMatch{
-		torrentHash: "range",
-		contentPath: "/media/" + rangeName + ".mkv",
-		release:     m.parseReleaseName(rangeName),
-	}, qbt.TorrentFiles{{Name: rangeName + ".mkv", Size: 20}})
+	_, localFiles, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, inst.ID,
+		map[episodeIdentity][]episodeMatch{id: {{
+			torrentHash: "range",
+			contentPath: "/media/" + rangeName + ".mkv",
+			name:        rangeName,
+			release:     m.parseReleaseName(rangeName),
+		}}},
+		packFiles, &packRelease, packName, nil, nil, nil)
 	require.NoError(t, err)
 
-	build, err := m.buildSeasonPackPlan(
-		fsops.HostPaths, packFiles, &packRelease, packName, t.TempDir(),
-		map[episodeIdentity]seasonPackLocalFile{id: localFile},
-		nil, nil,
-	)
+	build, err := m.buildSeasonPackPlan(fsops.HostPaths, packFiles, packName, t.TempDir(), localFiles)
 	require.NoError(t, err)
 	require.Len(t, build.plan.Files, 1)
 	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01E02")

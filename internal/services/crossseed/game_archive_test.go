@@ -51,7 +51,7 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 				StartPaused:                  new(true),
 				SkipAutoResume:               true,
 				SkipPieceBoundarySafetyCheck: true,
-				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SourceInstanceID: 1, SourceHash: "source"},
+				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name, SourceInstanceID: 1, SourceHash: "source"},
 			})
 			require.NoError(t, err)
 			require.True(t, response.Success, "identical complete game files must apply: %+v", response.Results)

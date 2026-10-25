@@ -59,7 +59,7 @@ Everything else still applies inside the wider roots:
 - Ignore paths, the grace period, and max items per run all apply.
 - A save path missing from disk, such as an unmounted volume, is reported rather than treated as scanned, even when a wider root covers it.
 
-If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
+If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, or a relative download path that a protected folder depends on, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
 
 :::note
 These paths come from qBittorrent, so they are paths as qBittorrent sees them. If qui runs in a different container, they must resolve to the same directories on the host that runs qui.
@@ -77,6 +77,8 @@ These are never reported, even when empty:
 
 - A scan root itself.
 - A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's directory the same way qBittorrent does, including one that inherits from a parent category.
+- The download path while it is turned on, a category's download folder, or any directory above one. qBittorrent will download into it again. qui works out a category's download folder the same way qBittorrent does: its own download path, the one it takes from its parent category, or its folder in its parent category's download folder or in the download path, even when the download path is turned off.
+- A folder that qBittorrent monitors for `.torrent` files, the save path set for it, or any directory above one. If qui removes a monitored folder, qBittorrent stops watching it until qBittorrent restarts.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction.
@@ -85,7 +87,7 @@ On every platform, orphan file scans skip symbolic links and other non-regular e
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
 
 ## Partial scans
 

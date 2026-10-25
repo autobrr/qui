@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"maps"
 	"math"
 	"net/url"
@@ -803,8 +804,8 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	sourceTorrent := sourceTorrents[0]
 
-	// Parse source release for matching
-	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+	reads := s.readLocalTorrents(ctx, sourceInstanceID, func(yield func(*qbt.Torrent) bool) { yield(&sourceTorrent) })
+	sourceRead := reads.read(s.matcher(), sourceInstanceID, &sourceTorrent)
 
 	// Normalize content path for comparison (case-insensitive, cleaned)
 	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
@@ -824,7 +825,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
-	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
 
 	// Check for any errors during local file relationship verification.
 	overlapErr := matchCtx.sourceFilesErr
@@ -857,7 +858,7 @@ func (s *Service) collectLocalMatches(
 	instances []*models.Instance,
 	sourceInstanceID int,
 	sourceTorrent *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	normalizedContentPath string,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
@@ -876,7 +877,7 @@ func (s *Service) collectLocalMatches(
 		}
 
 		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
-			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
 	}
 
 	return matches
@@ -902,10 +903,11 @@ func (s *Service) matchTorrentsInInstance(
 	sourceInstanceID int,
 	normalizedSourceHash string,
 	sourceTorrent *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	normalizedContentPath string,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
+	reads := s.readLocalTorrents(ctx, instance.ID, viewTorrents(cachedTorrents))
 	for i := range cachedTorrents {
 		if ctx.Err() != nil {
 			return matches
@@ -916,7 +918,8 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
+		candidateRead := reads.read(s.matcher(), instance.ID, cached.Torrent)
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRead, cached, candidateRead, normalizedContentPath)
 		if !ok {
 			continue
 		}
@@ -4527,6 +4530,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		withSeason.Series = targetSide.seasonNumeral
 		seasonedTarget = &withSeason
 	}
+	// The listing check also gets the numeral season. A listing named as the
+	// download has only "Title II", which reads as a movie.
+	seasonedSide := targetSide
+	seasonedSide.release = seasonedTarget
 	searchDecision := req.SearchDecision
 
 	// The season pack hint compares every local episode with these, so read them once.
@@ -4627,10 +4634,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		titleRescueHash := ""
 
 		// getMatchTypeFromTitle builds season and episode keys from the existing
-		// torrent's file names. Record only the bound source whose accepted apply-time
-		// mismatch actually changed that structure, or whose episode map equated two
-		// numbering schemes; another stored hard cause must not grant this bypass by
-		// itself.
+		// torrent's file names. Record only the search source whose stored verdict
+		// relaxed that structure, or whose episode map equated two numbering
+		// schemes.
 		structureRelaxedHash := ""
 
 		// Pre-filter torrents before loading files to reduce downstream work
@@ -4661,7 +4667,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			var sourceSide namedRelease
 			if isSearchSource {
 				// Search may have used the selected files to recover structure and
-				// group provenance. Replay that reading before any release-shape gate.
+				// group provenance. Read the torrent as search did.
 				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent)
 			} else {
 				sourceSide = s.matcher().readName(torrent.Name)
@@ -4675,122 +4681,38 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				response.seasonPackEpisodeCandidates = true
 			}
 
-			// Reject forbidden pairing: season pack (new) vs single episode (existing).
-			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release, req.FindIndividualEpisodes); reject {
+			// A new season pack never pairs with one local episode here, whatever the
+			// individual episodes setting. Only a Manual match skips this rule.
+			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release); reject {
 				continue
 			}
 
-			// Check if releases are related (quick filter). Search-origin ARR aliases
-			// describe ONE existing torrent: the search source whose lookup produced
-			// them. Handing them to every candidate would let the new torrent's own
-			// alias set satisfy the title overlap for unrelated torrents, so the
-			// aliases ride along only for the search-source torrent itself, mirroring
-			// the exact-size relaxation below. Exact-size provenance relaxes only
-			// for the specific torrent whose qBittorrent size supplied the search
-			// evidence. File matching and later safety checks still run.
-			var candidateAliasTitles []string
-			var targetAliasTitles []string
-			var episodeMap *models.EpisodeMap
 			if isSearchSource {
-				candidateAliasTitles = searchDecision.SourceTitles
-				// Announce-origin decisions resolve aliases for the incoming
-				// release, which is the target side here.
-				targetAliasTitles = searchDecision.CandidateTitles
-				episodeMap = searchDecision.EpisodeMap
-			}
-			mappedTarget, mappedSource, mappedEpisode := applyEpisodeMap(targetSide, sourceSide, episodeMap)
-			fallbackInput := searchCandidateInput{
-				Source:                 mappedTarget,
-				Candidate:              mappedSource,
-				SourceTitles:           targetAliasTitles,
-				CandidateTitles:        candidateAliasTitles,
-				EpisodeMap:             episodeMap,
-				FindIndividualEpisodes: req.FindIndividualEpisodes,
-			}
-			if mappedEpisode != "" {
-				// The file names still carry the other scheme, so the name-derived
-				// episode keys cannot line up; file sizes decide at apply.
-				structureRelaxedHash = hashKey
-			}
-			replaysExactDecision := isSearchSource &&
-				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
-					searchDecision.StrictChecksumReplay)
-			if replaysExactDecision {
-				// The listing title and info.name can differ by exactly the
-				// resolved alias, so both alias sets count; only one is ever
-				// non-empty per decision origin.
-				if ok, _ := m.searchCandidateMetadataConsistent(
-					searchDecision.SearchCandidateName,
-					targetSide,
-					searchDecision.RelaxedDifferences,
-					slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles),
-					searchDecision.EpisodeMap,
-					req.FindIndividualEpisodes,
-				); !ok {
+				// Apply keeps the verdict that search stored for this torrent and
+				// does not decide the pair again.
+				if !m.downloadReadsAsListing(searchDecision, sourceSide, seasonedSide, req.FindIndividualEpisodes) {
+					log.Debug().
+						Str("targetTitle", req.TorrentName).
+						Str("listing", searchDecision.SearchCandidateName).
+						Str("existingTorrent", torrent.Name).
+						Msg("[CROSSSEED] Downloaded torrent does not read as the listing that search judged")
 					continue
 				}
-			}
-			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
-				fallbackInput.Source,
-				fallbackInput.Candidate,
-				fallbackInput.SourceTitles,
-				fallbackInput.CandidateTitles,
-				req.FindIndividualEpisodes,
-			)
-			replaysStrictChecksum := isSearchSource &&
-				searchDecision.Class == searchCandidateClassStrict &&
-				searchDecision.StrictChecksumReplay
-			if !releasesMatch && replaysStrictChecksum && m.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
-				releasesMatch = true
-				mismatchReason = ""
-			}
-			replaysGroupFallback := isSearchSource &&
-				searchDecision.Class == searchCandidateClassExactSizeFallback &&
-				slices.Contains(searchDecision.RelaxedDifferences, "group")
-			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
-				(searchDecision.Class == searchCandidateClassTitleRescue ||
-					searchDecision.Class == searchCandidateClassWebSourceRelabel)
-			if replaysRelaxedDecision && !m.explicitGroupsAgree(sourceSide, targetSide) {
-				continue
-			}
-			if replaysGroupFallback &&
-				(!m.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
-					!m.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
-				continue
-			}
-			if !releasesMatch {
-				if !isSearchSource {
-					continue
+				// The file names still carry the season or episode that the verdict
+				// relaxed or mapped, so the name-derived keys cannot line up and
+				// file sizes decide.
+				_, _, mappedEpisode := applyEpisodeMap(sourceSide, targetSide, searchDecision.EpisodeMap)
+				if mappedEpisode != "" || searchDecision.Relaxed.has(differenceSeason) || searchDecision.Relaxed.has(differenceEpisode) {
+					structureRelaxedHash = hashKey
 				}
-
-				isTitleRescueSource := searchDecision.Class == searchCandidateClassTitleRescue &&
-					mismatchReason == titleMismatchReason
-				switch {
-				case isTitleRescueSource:
-					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide, targetSide, req.FindIndividualEpisodes); !ok {
-						continue
-					}
+				if searchDecision.Class == searchCandidateClassTitleRescue {
 					titleRescueHash = hashKey
-				case searchDecision.Class == searchCandidateClassExactSizeFallback:
-					if !searchRelaxationAuthorizesCurrentReason(searchDecision.Relaxed, mismatchReason) {
-						continue
-					}
-					if _, ok, _ := m.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
-						continue
-					}
-					if searchRelaxedStructure(mismatchReason) {
-						structureRelaxedHash = hashKey
-					}
-				default:
-					continue
 				}
-				log.Debug().
-					Str("targetTitle", req.TorrentName).
-					Str("existingTorrent", torrent.Name).
-					Str("sourceHash", hashKey).
-					Str("applyMismatchReason", mismatchReason).
-					Strs("relaxedDifferences", searchDecision.RelaxedDifferences).
-					Msg("[CROSSSEED] Search-origin decision relaxed release prefilter")
+			} else if !m.matchVerdict(sourceSide, targetSide, matchEvidence{}, matchPolicy{IndividualEpisodes: req.FindIndividualEpisodes}).Matched {
+				// Each other local torrent gets a new verdict. Apply has no sizes
+				// for it, so exact size, title rescue, and the web source relabel do
+				// not admit it.
+				continue
 			}
 
 			if _, exists := torrentByHash[hashKey]; exists {
@@ -4924,15 +4846,15 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
 		torrentHash = meta.HashV2
 	}
-	// Cached search decisions replay search's file-derived reading even when the
-	// raw name already parses as TV; ordinary/manual apply keeps its raw TV
-	// identity. Non-TV names still need file-derived structure in either path.
+	// With a cached search decision, apply reads the files as search did, also
+	// when the raw name already parses as TV. Ordinary and Manual apply keep the
+	// raw TV identity. Non-TV names still need file-derived structure in either path.
 	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
 	sourceRelease := sourceView.release
 
-	// Carry private search provenance into candidate discovery. Source identity
-	// and the strict rejection that was overridden constrain the release-prefilter
-	// relaxation; existing file and apply safety checks still run normally.
+	// Carry the private search decision into candidate discovery. Apply keeps
+	// its verdict only for the torrent that search compared. The file checks and
+	// the apply safety checks still run.
 	findReq := &FindCandidatesRequest{
 		TorrentName:            meta.Name,
 		TargetRelease:          sourceView,
@@ -5242,18 +5164,10 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents while planning autobrr apply")
 			continue
 		}
-		for _, torrentView := range torrents {
-			if torrentView.Torrent == nil {
-				continue
-			}
-			torrent := torrentView.Torrent
-			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
-				continue
-			}
-			if !matchesWebhookSourceFilters(torrent, settings) {
-				continue
-			}
-
+		sources := s.autobrrApplySources(torrents, settings)
+		// Read the sources as the webhook check reads them, so apply adds what the check accepted.
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, sources)
+		for torrent := range sources {
 			sourceSize := searchSourceSize(torrent)
 			if sourceSize <= 0 {
 				continue
@@ -5265,6 +5179,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
 				episodeMap:             episodeMap,
+				sourceReads:            sourceReads,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -5284,6 +5199,18 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 
 	sortBoundAnnouncementMatches(matches)
 	return matches
+}
+
+// autobrrApplySources yields the local torrents that autobrr apply can use as
+// its source: complete, with no error, and inside the webhook source filters.
+func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
+	return func(yield func(*qbt.Torrent) bool) {
+		for torrent := range viewTorrents(torrents) {
+			if torrent.Progress >= 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+				return
+			}
+		}
+	}
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -6432,10 +6359,8 @@ func (s *Service) selectBestCandidateAddPlan(
 			hashKey == normalizeHash(req.ManualTargetHash)
 
 		// Reject forbidden pairing: season pack (new) vs single episode (existing).
-		// Force-on safety guard: always check regardless of user setting since reaching this
-		// code path means we're actually applying a cross-seed (not just searching).
 		// A Manual match target is the user's explicit pick; the recheck arbitrates.
-		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject && !manualTarget {
+		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
 				bestRejectReason = reason
 			}
@@ -6449,8 +6374,6 @@ func (s *Service) selectBestCandidateAddPlan(
 				continue
 			}
 		} else {
-			// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
-			// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
 			matchResult := s.matcher().getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
 			if matchResult.MatchType == "" && !manualTarget {
 				// Track the rejection reason - prefer more specific reasons
@@ -6460,22 +6383,9 @@ func (s *Service) selectBestCandidateAddPlan(
 				continue
 			}
 
-			// Since we swapped parameters above, swap partial match types to keep caller semantics.
-			actualMatchType = matchResult.MatchType
-			switch actualMatchType {
-			case "":
-				// Pinned Manual match target whose files did not validate: proceed
-				// anyway, verify before seeding, and let the recheck arbitrate.
-				actualMatchType = manualMatchType
-			case "partial-in-pack":
-				actualMatchType = "partial-contains"
-			case "partial-contains":
-				actualMatchType = "partial-in-pack"
-			case "size-partial-in-pack":
-				actualMatchType = "size-partial-contains"
-			case "size-partial-contains":
-				actualMatchType = "size-partial-in-pack"
-			}
+			// A pinned Manual match target whose files did not validate proceeds
+			// anyway: verify before seeding, and let the recheck arbitrate.
+			actualMatchType = cmp.Or(matchResult.MatchType, manualMatchType)
 		}
 
 		score := matchTypePriority(actualMatchType)
@@ -7517,6 +7427,16 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	return query, ok
 }
 
+// TitlesMatch reports whether two release names pass the title rule of the
+// Match verdict. A bare title numeral counts as a season only when it names the
+// season of the other name. Dir Scan has no Service, so it parses through the
+// default parser.
+func TitlesMatch(source *rls.Release, sourceName string, candidate *rls.Release, candidateName string) bool {
+	var comparison releaseComparison
+	matcher{}.compareTitles(&comparison, withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source), sourceName, candidateName, nil, nil)
+	return comparison.matched()
+}
+
 // alternateTitleQuery reads a Read release. season is the inferred Season
 // numeral when the query is the title without it, so that the retry searches
 // that season, and 0 otherwise.
@@ -7573,11 +7493,12 @@ func subtitleTitleQuery(release *rls.Release) string {
 	return release.Title + " " + subtitle
 }
 
-// searchSourceSize returns the source-side size for the search size band.
-// Torznab advertises the full release size, so the comparison must use the
-// torrent's full size: Size only counts wanted files, which misreports every
-// torrent with deselected files while its Progress still reads 1.0. TotalSize
-// can be zero when a client predates the field, so fall back to Size.
+// searchSourceSize returns the full size of a torrent, for the search size
+// band and for the Match verdict on two local torrents. Torznab advertises the
+// full release size, so the comparison must use the torrent's full size: Size
+// only counts wanted files, which misreports every torrent with deselected
+// files while its Progress still reads 1.0. TotalSize can be zero when a
+// client predates the field, so fall back to Size.
 func searchSourceSize(t *qbt.Torrent) int64 {
 	if t.TotalSize > 0 {
 		return t.TotalSize
@@ -9567,9 +9488,16 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		titleKeys []string
 	}
 
+	reads := s.readLocalTorrents(ctx, instanceID, func(yield func(*qbt.Torrent) bool) {
+		for i := range torrents {
+			if !yield(&torrents[i]) {
+				return
+			}
+		}
+	})
 	parsed := make([]torrentWithRelease, 0, len(torrents))
-	for _, torrent := range torrents {
-		read := s.matcher().readName(torrent.Name)
+	for i, torrent := range torrents {
+		read := reads.read(s.matcher(), instanceID, &torrents[i])
 		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
@@ -9594,9 +9522,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
-	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
+	verdictCache := make(map[string]bool) // cache Match verdicts per pair
 
-	// Helper to get cache key for releasesMatch
+	// Helper to get cache key for a pair
 	getMatchCacheKey := func(idx1, idx2 int) string {
 		if idx1 < idx2 {
 			return fmt.Sprintf("%d:%d", idx1, idx2)
@@ -9628,12 +9556,12 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		for _, candidateIdx := range candidateIndices {
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
-			matches, cached := releasesMatchCache[cacheKey]
+			matches, cached := verdictCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches, _ = s.matcher().releasesMatchWithReasonAndNames(current.read.release, candidate.read.release,
-					current.read.rawName, candidate.read.rawName, false)
-				releasesMatchCache[cacheKey] = matches
+				// Dedup has no sizes in its verdict.
+				matches = s.matcher().matchVerdict(current.read, candidate.read, matchEvidence{}, matchPolicy{SkipSizeCheck: true}).Matched
+				verdictCache[cacheKey] = matches
 			}
 
 			if matches {
@@ -12648,6 +12576,14 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
+			for torrent := range viewTorrents(torrentsView) {
+				if (!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
+					return
+				}
+			}
+		})
+
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
 			// Guard against nil torrentView or nil torrentView.Torrent
@@ -12668,13 +12604,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 			}
 			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announcedCandidate, int64(req.Size), announcementMatchPolicy{
-				findIndividualEpisodes:   findIndividualEpisodes,
-				rescueTitleMismatches:    settings.RescueTitleMismatches && !settings.SkipRecheck,
-				allowUnknownSize:         req.Size == 0,
-				skipRecheck:              settings.SkipRecheck,
-				candidateTitles:          aliasTitles,
-				episodeMap:               episodeMap,
-				tolerateOneSidedChecksum: true,
+				findIndividualEpisodes: findIndividualEpisodes,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+				allowUnknownSize:       req.Size == 0,
+				skipRecheck:            settings.SkipRecheck,
+				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
+				sourceReads:            sourceReads,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
 				continue

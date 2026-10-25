@@ -134,10 +134,9 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:        "guid-2",
 		Size:        2048,
 		SearchDecision: searchDecisionProvenance{
-			Class:              searchCandidateClassExactSizeFallback,
-			RelaxedDifferences: []string{"collection"},
-			Relaxed:            differencesOf(differenceCollection),
-			SourceTitles:       []string{"ARR Alias"},
+			Class:        searchCandidateClassExactSizeFallback,
+			Relaxed:      differencesOf(differenceCollection),
+			SourceTitles: []string{"ARR Alias"},
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
@@ -181,7 +180,6 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
 	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
-	require.Equal(t, cached.SearchDecision.RelaxedDifferences, captured.SearchDecision.RelaxedDifferences)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
 

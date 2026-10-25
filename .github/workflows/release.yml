@@ -196,7 +196,7 @@ jobs:
           fi
 
       - name: Run GoReleaser build and publish tags
-        uses: goreleaser/goreleaser-action@v7.2.3
+        uses: goreleaser/goreleaser-action@v7.3.0
         with:
           distribution: goreleaser-pro
           version: "~> v2"

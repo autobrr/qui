@@ -5,7 +5,6 @@ package orphanscan
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"time"
@@ -13,24 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
-
-// categoryPaths returns the on-disk destination of every qBittorrent category,
-// resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, rule qbittorrent.CategoryPathRule) ([]string, error) {
-	categories, err := s.sync.GetCategories(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
-	}
-
-	seen := make(map[string]struct{}, len(categories))
-	for name := range categories {
-		addAbsoluteScanRoot(d, seen, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, rule))
-	}
-
-	return sortedRoots(seen), nil
-}
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
 // before its parent.

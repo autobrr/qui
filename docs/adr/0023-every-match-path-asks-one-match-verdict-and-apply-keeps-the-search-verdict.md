@@ -19,4 +19,4 @@ Each Match path gives the Match verdict four inputs: the source (the local torre
 - No code reads a reason string to decide control flow.
 - The file layout check stays a separate step after the Match verdict. Its inputs have fixed roles, the local files and the new files.
 - The Match verdict always rejects a new season pack against one local episode. Only a Manual match skips this rule.
-- The rollout in #3037 moves the Match paths one step at a time. Until the last step, apply and the paths that compare two local torrents keep their own replay and wrappers.
+- The rollout in #3037 moves the Match paths one step at a time. Until the last step, the paths that compare two local torrents keep their own wrappers. From step 2, apply keeps the search verdict.

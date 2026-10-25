@@ -385,6 +385,9 @@
       "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 전역 제한을 사용하려면 비활성화하세요.",
       "uploadLimit": "업로드 제한 설정(KB/s)",
       "downloadLimit": "다운로드 제한 설정(KB/s)",
+      "selectValue": "값 선택",
+      "wasMixed": "(혼합이었음)",
+      "unresolvedMixed": "적용하기 전에 모든 혼합 필드의 값을 선택하세요",
       "cancel": "취소",
       "setting": "설정 중...",
       "confirm": "제한 적용"
@@ -1441,25 +1444,6 @@
       "placeholder": "토렌트 검색...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
-    },
-    "shareLimit": {
-      "title": "토렌트 {{count}}개의 공유 제한 설정",
-      "description": "시딩 제한을 구성합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setRatioLimit": "비율 제한 설정",
-      "setSeedingTimeLimit": "시딩 시간 제한 설정(분)",
-      "setInactiveSeedingLimit": "비활성 시딩 제한 설정(분)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
-    },
-    "speedLimit": {
-      "title": "토렌트 {{count}}개의 속도 제한 설정",
-      "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setUploadLimit": "업로드 제한 설정(KB/s)",
-      "setDownloadLimit": "다운로드 제한 설정(KB/s)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
     },
     "ratio": "비율:"
   },

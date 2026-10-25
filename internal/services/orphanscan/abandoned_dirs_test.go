@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
-
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -381,206 +379,48 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	}
 }
 
-func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
+// qBittorrent downloads into the download path and each category's download
+// folder again, so the abandoned-directory pass protects them, but they are not
+// scan roots. The category save folders are both.
+func TestDeclaredScanRoots_ProtectsTheDownloadFolders(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
-	archive := filepath.Join(base, "archive")
-
-	tests := []struct {
-		name             string
-		useSubcategories bool
-		categories       map[string]qbt.Category
-		want             []string
-	}{
-		{
-			name:       "absolute save path is used as-is",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: archive}},
-			want:       []string{archive},
-		},
-		{
-			name: "a category with no save path lands under the default save path",
-			// qBittorrent reports an empty savePath for a category that inherits.
-			categories: map[string]qbt.Category{"tv": {Name: "tv", SavePath: ""}},
-			want:       []string{filepath.Join(defaultSavePath, "tv")},
-		},
-		{
-			name:       "a relative save path is taken against the default save path",
-			categories: map[string]qbt.Category{"music": {Name: "music", SavePath: filepath.Join("sorted", "audio")}},
-			want:       []string{filepath.Join(defaultSavePath, "sorted", "audio")},
-		},
-		{
-			name:       "an explicit dot uses the default save path",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: "."}},
-			want:       []string{defaultSavePath},
-		},
-		{
-			name:       "spaces in an explicit save path are preserved",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: " archive "}},
-			want:       []string{filepath.Join(defaultSavePath, " archive ")},
-		},
-		{
-			name:             "a child inherits an explicit dot destination",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: "."},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{defaultSavePath, filepath.Join(defaultSavePath, "hd")},
-		},
-		{
-			name:             "an inheriting subcategory follows its parent, not the default save path",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: archive},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(archive, "hd")},
-		},
-		{
-			name:             "nested inheritance walks the whole parent chain",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"a":     {Name: "a", SavePath: archive},
-				"a/b":   {Name: "a/b", SavePath: ""},
-				"a/b/c": {Name: "a/b/c", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(archive, "b"), filepath.Join(archive, "b", "c")},
-		},
-		{
-			name: "a name qBittorrent cannot use as a directory is converted",
-			// qBittorrent accepts "movies:hd" and creates "movies hd" for it.
-			categories: map[string]qbt.Category{"movies:hd": {Name: "movies:hd", SavePath: ""}},
-			want:       []string{filepath.Join(defaultSavePath, "movies hd")},
-		},
-		{
-			name: "a run of invalid characters collapses into one space",
-			// Utils::Fs::toValidPath replaces [:?"*<>|]+ , so the run is one pad.
-			categories: map[string]qbt.Category{`films:?"x`: {Name: `films:?"x`}},
-			want:       []string{filepath.Join(defaultSavePath, "films x")},
-		},
-		{
-			name:       "a backslash is left alone, since toValidPath does not replace it",
-			categories: map[string]qbt.Category{`a\b`: {Name: `a\b`}},
-			want:       []string{filepath.Join(defaultSavePath, `a\b`)},
-		},
-		{
-			name:             "only the last segment is converted when nesting",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":     {Name: "movies", SavePath: archive},
-				"movies/h:d": {Name: "movies/h:d"},
-			},
-			want: []string{archive, filepath.Join(archive, "h d")},
-		},
-		{
-			name:             "with subcategories off the whole name is a path under the default save path",
-			useSubcategories: false,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: archive},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(defaultSavePath, "movies", "hd")},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-				return tt.categories, nil
-			}
-
-			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, qbittorrent.CategoryPathRule{Nest: tt.useSubcategories})
-			if err != nil {
-				t.Fatalf("categoryPaths: %v", err)
-			}
-
-			want := slices.Clone(tt.want)
-			slices.Sort(want)
-			slices.Sort(got)
-			if !slices.Equal(got, want) {
-				t.Fatalf("categoryPaths = %v, want %v", got, want)
-			}
-		})
-	}
-}
-
-// TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState covers both nesting
-// states through the one accessor. Reading the use_subcategories preference
-// directly would be wrong on qBittorrent 5.2, which dropped it and always
-// inherits through the parent, so the absent field decodes as false.
-func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	defaultSavePath := filepath.Join(base, "torrents")
-	archive := filepath.Join(base, "archive")
+	tv := filepath.Join(defaultSavePath, "tv")
+	tempPath := filepath.Join(base, "incomplete")
+	fast := filepath.Join(base, "fast", "tv")
 
 	for _, tc := range []struct {
-		name                 string
-		subcategoriesEnabled bool
-		want                 string
+		name         string
+		downloadPath string
+		want         []string
 	}{
-		{name: "nesting enabled follows the parent category", subcategoriesEnabled: true, want: filepath.Join(archive, "hd")},
-		{name: "nesting disabled keeps the whole name under the default save path", want: filepath.Join(defaultSavePath, "movies", "hd")},
+		{name: "download path on", downloadPath: tempPath, want: []string{tv, fast, tempPath}},
+		{name: "download path off", want: []string{tv, fast}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) {
-				return tc.subcategoriesEnabled, nil
-			}
-			stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-				return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-			}
-			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-				return map[string]qbt.Category{
-					"movies":    {Name: "movies", SavePath: archive},
-					"movies/hd": {Name: "movies/hd", SavePath: ""},
-				}, nil
-			}
+			stubSync(svc).folders(qbittorrent.InstanceFolders{
+				DefaultSavePath:     defaultSavePath,
+				DownloadPath:        tc.downloadPath,
+				CategorySaveFolders: []string{tv},
+				DownloadFolders:     []string{fast},
+			})
 
-			_, protected, err := svc.declaredScanRoots(context.Background(), fsops.HostPaths, 1, scanScope{AbandonedDirs: true})
+			roots, protected, err := svc.declaredScanRoots(t.Context(), fsops.HostPaths, 1, scanScope{CategoryPaths: true, AbandonedDirs: true})
 			if err != nil {
 				t.Fatalf("declaredScanRoots: %v", err)
 			}
-			if !slices.Contains(protected, tc.want) {
-				t.Fatalf("protected = %v, want %q", protected, tc.want)
+			if !slices.Equal(roots, []string{tv}) {
+				t.Fatalf("roots = %v, want only the category save folder", roots)
+			}
+			if !slices.Equal(protected, tc.want) {
+				t.Fatalf("protected = %v, want %v", protected, tc.want)
 			}
 		})
-	}
-}
-
-// TestDeclaredScanRoots_ProtectsTheQBittorrent53CategoryFolder covers a
-// category with reserved characters on a qBittorrent 5.3 Windows build. The
-// scan must protect "tv_uhd", the folder qBittorrent uses, and not "tv uhd",
-// the folder that 5.2 used.
-func TestDeclaredScanRoots_ProtectsTheQBittorrent53CategoryFolder(t *testing.T) {
-	t.Parallel()
-
-	defaultSavePath := filepath.Join(t.TempDir(), "torrents")
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	stubSync(svc).categoryPathRule = func(context.Context, int) (qbittorrent.CategoryPathRule, error) {
-		return qbittorrent.CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}, nil
-	}
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"tv:uhd": {Name: "tv:uhd"}}, nil
-	}
-
-	_, protected, err := svc.declaredScanRoots(t.Context(), fsops.HostPaths, 1, scanScope{AbandonedDirs: true})
-	if err != nil {
-		t.Fatalf("declaredScanRoots: %v", err)
-	}
-	if want := []string{filepath.Join(defaultSavePath, "tv_uhd")}; !slices.Equal(protected, want) {
-		t.Fatalf("protected = %v, want %v", protected, want)
 	}
 }
 

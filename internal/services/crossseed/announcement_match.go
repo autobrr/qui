@@ -30,12 +30,9 @@ type announcementMatchPolicy struct {
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
 	episodeMap *models.EpisodeMap
-	// tolerateOneSidedChecksum lets the advisory webhook check pass a candidate
-	// whose only strict failure is a CRC tag on one side. IRC announce sizes are
-	// rounded, so the check cannot reach the exact-size checksum relaxation that
-	// apply gets from the real torrent bytes. A false positive here costs one
-	// torrent download; apply re-validates and stays authoritative.
-	tolerateOneSidedChecksum bool
+	// sourceReads holds the local torrents of the scan that readLocalTorrents
+	// read from their files. Without it, a local torrent reads by its name.
+	sourceReads localReads
 }
 
 type announcementCandidateDecision struct {
@@ -55,7 +52,7 @@ func (s *Service) classifyAnnouncementSource(
 		return announcementCandidateDecision{decision: searchCandidateDecision{Class: searchCandidateClassRejected}}
 	}
 
-	rawInput := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	rawInput := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)
 	if candidateSize == 0 {
 		if !policy.allowUnknownSize {
 			return announcementCandidateDecision{decision: searchCandidateDecision{Class: searchCandidateClassRejected}}
@@ -86,13 +83,8 @@ func (s *Service) classifyWebhookAnnouncementSource(
 		return s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
 	}
 
-	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	input := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)
 	decision := s.matcher().classifySearchCandidate(input)
-	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
-		s.matcher().hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		relaxed, _ := s.matcher().withRelaxedDifferenceNeutralized(input, "checksum")
-		decision = s.matcher().classifySearchCandidate(relaxed)
-	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
@@ -113,10 +105,9 @@ func (s *Service) announceAliasTitles(ctx context.Context, announcedName, conten
 	return nil, nil
 }
 
-func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
-	parsedSource := s.releaseCache.Parse(source.Name)
+func (s *Service) announcementRawSearchInput(instanceID int, source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
 	return searchCandidateInput{
-		Source:                 namedRelease{release: parsedSource, rawName: source.Name},
+		Source:                 policy.sourceReads.read(s.matcher(), instanceID, source),
 		Candidate:              candidate,
 		SourceSize:             searchSourceSize(source),
 		CandidateSize:          candidateSize,
