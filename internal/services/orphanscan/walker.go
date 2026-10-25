@@ -205,8 +205,8 @@ func (k *fileKeys) addOther(key fsops.FileKey, path string, nlinks uint64) int {
 	return len(k.refs) - 1
 }
 
-func (w *scanWalker) fileKey(entry fsops.WalkEntry) (fsops.FileKey, bool) {
-	return fsops.FileKeyOf(entry.FileID, w.instance)
+func fileKey(entry fsops.WalkEntry, instance *models.Instance) (fsops.FileKey, bool) {
+	return fsops.FileKeyOf(entry.FileID, instance)
 }
 
 // dropAliasOrphans runs once every root is walked, so walk and root order
@@ -414,6 +414,60 @@ func walkScanRootCollectingDirs(ctx context.Context, root string, protected *pro
 	return orphans, dirs, err
 }
 
+// recordInUse walks a save path that is a symlink through the link and adds
+// the identities of the torrent files it finds to keys, so their twins at the
+// target count as aliases. It skips no ignore paths, since one could only hide
+// files in use.
+func recordInUse(ctx context.Context, root string, protected *protectedPaths, backend fsops.Backend, instance *models.Instance, keys *fileKeys) error {
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
+		IgnoreDirNames:        ignoredOrphanDirNames,
+		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
+		WantFileID:            true,
+		FollowRoot:            true,
+	})
+	if err != nil {
+		cancelWalk()
+		return fmt.Errorf("walk %s: %w", root, err)
+	}
+	defer func() {
+		cancelWalk()
+		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
+		}
+	}()
+	for entry := range ch {
+		if ctx.Err() != nil {
+			break
+		}
+		if entry.Err != nil {
+			// As in the scan walk, a cut connection must not read as a denied
+			// subtree, or a cut-short tree would protect less than it should.
+			// A subtree that vanished during the walk has no files left to
+			// protect, and its error must not read as a missing target.
+			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
+				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
+				continue
+			}
+			if errors.Is(entry.Err, fs.ErrNotExist) && entry.Path != root {
+				continue
+			}
+			return entry.Err
+		}
+		if entry.IsDir || entry.IsSymlink || !protected.torrentFile(entry.Path) {
+			continue
+		}
+		// Without its identity the file's twin at the target would be listed
+		// with no walk error. Over sftp no file has one, so the walk goes on.
+		if entry.FileIDErr != nil && (instance == nil || models.FilesystemCapabilitiesOf(instance).Identity) {
+			return fmt.Errorf("file identity %s: %w", entry.Path, entry.FileIDErr)
+		}
+		if key, ok := fileKey(entry, instance); ok {
+			keys.inUse[key] = struct{}{}
+		}
+	}
+	return ctx.Err()
+}
+
 func walkScanRootWithUnitFilter(
 	ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, maxFiles int,
@@ -424,6 +478,12 @@ func walkScanRootWithUnitFilter(
 	ownKeys := keys == nil
 	if ownKeys {
 		keys = newFileKeys()
+	}
+	// A save path that is itself a symlink is walked only to learn which files
+	// are in use there. Ignore paths, other roots and other torrents are
+	// spelled at the target, so nothing is listed through the link.
+	if info, err := backend.Lstat(ctx, root); err == nil && info.IsSymlink {
+		return nil, nil, false, recordInUse(ctx, root, protected, backend, instance, keys)
 	}
 	w := newScanWalker(ctx, root, protected, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs, keys)
 
@@ -494,7 +554,7 @@ func walkScanRootWithUnitFilter(
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
 			}
-			if key, ok := w.fileKey(entry); ok {
+			if key, ok := fileKey(entry, w.instance); ok {
 				w.keys.inUse[key] = struct{}{}
 			}
 			continue
@@ -504,7 +564,7 @@ func walkScanRootWithUnitFilter(
 		}
 		// Recorded before the grace and name checks: a disc unit's delete removes those files too.
 		ref := -1
-		if key, ok := w.fileKey(entry); ok {
+		if key, ok := fileKey(entry, w.instance); ok {
 			ref = w.keys.addOther(key, path, entry.Nlinks)
 		}
 

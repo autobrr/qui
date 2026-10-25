@@ -83,7 +83,7 @@ These are never reported, even when empty:
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction.
 
-On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
+On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. When a torrent's save path is itself a symbolic link to a folder, qui reads the folder through the link only to learn which files the torrent uses, and does not list those files where it finds them at the link's target. Nothing is listed or deleted through the link. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
@@ -132,7 +132,7 @@ Otherwise, qui reports the path as unavailable.
 
 <OrphanScanDefaultIgnores />
 
-If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path. Filesystem-root ignore paths keep the scan paths in the run, but files under those roots are ignored. Paths on other drives or shares are still scanned normally. If the ignores cover every scan path, an otherwise successful run completes with no orphans.
+If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignored save path is a symbolic link to a folder, qui still reads the folder through the link to learn which files the torrent uses. If the target of the link is missing, qui skips it. If qui cannot read it for another reason, the run is a [partial scan](#partial-scans). If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path. Filesystem-root ignore paths keep the scan paths in the run, but files under those roots are ignored. Paths on other drives or shares are still scanned normally. If the ignores cover every scan path, an otherwise successful run completes with no orphans.
 
 ## Max items per run behavior
 

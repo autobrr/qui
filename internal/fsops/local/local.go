@@ -84,10 +84,21 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		return nil, err
 	}
 
+	// filepath.WalkDir does not descend a root that is a symlink, so a followed
+	// root walks its target and reports each entry under root.
+	walked := root
+	if opts.FollowRoot {
+		if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if walked, err = filepath.EvalSymlinks(root); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		walkErr := filepath.WalkDir(walked, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
 				return fs.SkipAll
 			}
@@ -96,6 +107,14 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			// between our pre-check and the walk's internal stat).
 			if d == nil {
 				return walkErr
+			}
+
+			if walked != root {
+				rel, err := filepath.Rel(walked, path)
+				if err != nil {
+					return err
+				}
+				path = filepath.Join(root, rel)
 			}
 
 			if opts.Skip(d.Name(), path, d.IsDir(), path == root) {

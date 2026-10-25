@@ -216,32 +216,17 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 
 	pruned := make([]string, 0, len(roots))
 	for i, root := range roots {
+		// A walk skips a symlink below its root, so one that is a root of its
+		// own is walked on its own.
+		if info, err := backend.Lstat(ctx, cleaned[i]); err == nil && info.IsSymlink {
+			pruned = append(pruned, root)
+			continue
+		}
 		covered := false
 		for j := range roots {
 			// Keep case-distinct trees: a folded match does not prove walk coverage.
-			if !isPathUnderNormalized(d, cleaned[i], cleaned[j]) {
-				continue
-			}
-			covered = true
-			// WalkDir skips symlinks, including a root that is itself a symlink.
-			for dir := d.Dir(cleaned[i]); ; dir = d.Dir(dir) {
-				info, err := backend.Lstat(ctx, dir)
-				if err != nil || !info.IsDir || info.IsSymlink {
-					covered = false
-					break
-				}
-				// Dir of \\host\share\x is \\host\share\, but a root given as
-				// \\host\share keeps no separator through Clean.
-				if dir == cleaned[j] || dir == cleaned[j]+d.Separator() {
-					break
-				}
-				// Dir of \\host\share never reaches a share-less \\host\.
-				if d.Dir(dir) == dir {
-					covered = false
-					break
-				}
-			}
-			if covered {
+			if isPathUnderNormalized(d, cleaned[i], cleaned[j]) && walkReaches(ctx, backend, cleaned[j], cleaned[i]) {
+				covered = true
 				break
 			}
 		}
@@ -250,6 +235,27 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 		}
 	}
 	return pruned
+}
+
+// walkReaches reports whether the walk of cover reaches below, a path under it.
+// WalkDir skips symlinks, so every directory on the way must be a real one.
+func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string) bool {
+	d := backend.Paths()
+	for dir := d.Dir(below); ; dir = d.Dir(dir) {
+		info, err := backend.Lstat(ctx, dir)
+		if err != nil || !info.IsDir || info.IsSymlink {
+			return false
+		}
+		// Dir of \\host\share\x is \\host\share\, but a root given as
+		// \\host\share keeps no separator through Clean.
+		if dir == cover || dir == cover+d.Separator() {
+			return true
+		}
+		// Dir of \\host\share never reaches a share-less \\host\.
+		if d.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
@@ -715,6 +721,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// run on lstat, with no way for the user to exclude it (issue #2483).
 	rootsBeforeIgnore := len(scanRoots)
 	scanRoots = filterCoveredScanRoots(d, scanRoots, settings.IgnorePaths)
+	// Ignoring a symlinked save path is how a user keeps it, so its files must
+	// still protect their twins at the target.
+	ignoredLinks := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
 
 	log.Info().
 		Int("files", tfm.Len()).
@@ -812,6 +821,24 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		anyRootScanned = true
 		allOrphans = append(allOrphans, orphans...)
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
+	}
+
+	for _, root := range ignoredLinks {
+		if err := recordInUse(ctx, root, protected, backend, instance, keys); err != nil {
+			if ctx.Err() != nil {
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			}
+			// Ignored paths are often unmounted (#2483), so a missing target is
+			// no walk error. Any other error can leave the twins of its files
+			// listed at the target, so the run must not clean up by itself.
+			if isMissingRoot(err) {
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored symlinked save path is not on disk")
+				continue
+			}
+			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
+			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+		}
 	}
 
 	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
@@ -1553,6 +1580,21 @@ func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
 	nPath := fsops.NormalizePath(d, path)
 	nBase := fsops.NormalizePath(d, base)
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
+}
+
+// ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
+// symlinks.
+func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
+	var links []string
+	for _, root := range roots {
+		if slices.Contains(kept, d.Clean(root)) {
+			continue
+		}
+		if info, err := backend.Lstat(ctx, root); err == nil && info.IsSymlink {
+			links = append(links, root)
+		}
+	}
+	return links
 }
 
 func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []string {

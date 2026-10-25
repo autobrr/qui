@@ -45,6 +45,10 @@ type orphanOnlyOptions struct {
 	autoCleanupMaxFiles int
 	scanCategoryPaths   bool
 	wrapBackend         func(b fsops.Backend, defaultSavePath string) fsops.Backend
+	// savePath is the seeded torrent's save path, mydata/ below defaultSavePath
+	// when nil.
+	savePath    func(defaultSavePath string) string
+	ignorePaths func(defaultSavePath string) []string
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -55,6 +59,9 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
+	if opts.savePath != nil {
+		torrentSavePath = opts.savePath(defaultSavePath)
+	}
 
 	torrentFileName := opts.torrentFileName
 	if torrentFileName == "" {
@@ -106,10 +113,14 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	if autoCleanupMaxFiles == 0 {
 		autoCleanupMaxFiles = 100
 	}
+	ignorePaths := []string{}
+	if opts.ignorePaths != nil {
+		ignorePaths = opts.ignorePaths(defaultSavePath)
+	}
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		GracePeriodMinutes:  opts.gracePeriodMinutes,
-		IgnorePaths:         []string{},
+		IgnorePaths:         ignorePaths,
 		ScanIntervalHours:   24,
 		PreviewSort:         "size_desc",
 		MaxFilesPerRun:      maxFiles,
