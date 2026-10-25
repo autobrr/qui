@@ -90,8 +90,8 @@ func TestExecuteScan_KeepsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 			var mirror, junk string
 			opts := orphanOnlyOptions{
 				scanCategoryPaths: true,
-				categories: func(defaultSavePath string) map[string]qbt.Category {
-					return map[string]qbt.Category{category: {Name: category, SavePath: filepath.Join(filepath.Dir(defaultSavePath), category)}}
+				categoryFolders: func(defaultSavePath string) []string {
+					return []string{filepath.Join(filepath.Dir(defaultSavePath), category)}
 				},
 			}
 			f := newOrphanOnlyFixture(t, "orphanscan-hardlink-alias-"+category, opts, func(defaultSavePath string) {
