@@ -35,6 +35,7 @@ type orphanOnlyOptions struct {
 	gracePeriodMinutes int
 	maxFilesPerRun     int
 	categoryFolders    func(defaultSavePath string) []string
+	monitoredFolders   func(defaultSavePath string) []string
 	// torrentFileName is the seeded torrent's file, slash-delimited the way
 	// qBittorrent reports it.
 	torrentFileName string
@@ -91,6 +92,9 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	folders := qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath}
 	if opts.categoryFolders != nil {
 		folders.CategorySaveFolders = opts.categoryFolders(defaultSavePath)
+	}
+	if opts.monitoredFolders != nil {
+		folders.MonitoredFolders = opts.monitoredFolders(defaultSavePath)
 	}
 	stubSync(svc).folders(folders)
 
@@ -202,6 +206,35 @@ func TestExecuteScan_PreviewsParentOfDiscWithMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, run.FilesDeleted)
 	require.Equal(t, 1, run.FoldersDeleted)
+}
+
+// qBittorrent stops watching a monitored folder that is removed, until it
+// restarts. An empty monitored folder, the folder that holds it, and an empty
+// custom save path of a monitored folder all stay.
+func TestExecuteScan_KeepsTheMonitoredFolders(t *testing.T) {
+	var watchParent, watch, watchSaves, leftover string
+	opts := orphanOnlyOptions{
+		monitoredFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "watch", "tv"), filepath.Join(defaultSavePath, "watch-saves")}
+		},
+	}
+	f := newOrphanOnlyFixture(t, "orphanscan-monitored-folders", opts, func(defaultSavePath string) {
+		watchParent = filepath.Join(defaultSavePath, "watch")
+		watch = filepath.Join(watchParent, "tv")
+		watchSaves = filepath.Join(defaultSavePath, "watch-saves")
+		leftover = filepath.Join(defaultSavePath, "leftover")
+		for _, dir := range []string{watch, watchSaves, leftover} {
+			require.NoError(t, os.MkdirAll(dir, 0o750))
+		}
+	})
+
+	require.Equal(t, []string{leftover}, f.previewedDirs(t))
+
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.NoDirExists(t, leftover)
+	require.DirExists(t, watch)
+	require.DirExists(t, watchParent)
+	require.DirExists(t, watchSaves)
 }
 
 // A category folder no torrent uses yet is a scan root of its own inside the

@@ -1323,7 +1323,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategoryPaths) {
-			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category or download destination")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category, download or monitored folder")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
