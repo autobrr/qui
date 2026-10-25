@@ -191,6 +191,7 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 		name         string
 		announcement string
 		sourceName   string
+		skipRecheck  bool
 		wantLog      bool
 	}{
 		{
@@ -204,6 +205,14 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 		{
 			name: "other group", announcement: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA",
 			sourceName: "Silver.Harbor.S01E05.1080p.WEB-DL.H.264-NOVA", wantLog: false,
+		},
+		{
+			name: "fansub tag split across group and site", announcement: fansubTaggedPack,
+			sourceName: fansubBracketPack, skipRecheck: true, wantLog: true,
+		},
+		{
+			name: "split bracket pack of another fansub", announcement: otherFansubTagged,
+			sourceName: fansubBracketPack, skipRecheck: true, wantLog: false,
 		},
 	}
 
@@ -219,7 +228,7 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					return &models.CrossSeedAutomationSettings{}, nil
+					return &models.CrossSeedAutomationSettings{SkipRecheck: tt.skipRecheck}, nil
 				},
 			}
 

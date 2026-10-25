@@ -12539,7 +12539,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// A rejected torrent of the announced group is a near miss: log why, so a
 	// missed cross-seed can be traced without comparing names by hand. A fansub
 	// tag such as [SubsPlease] parses to the site, so the site stands in for an
-	// empty group.
+	// empty group. A bracket pack can split one fansub name across group and
+	// site, and the matcher's cross-field rule reads that split.
 	m := s.matcher()
 	announcedGroup := m.normalizedGroupSiteIdentity(incomingRelease)
 
@@ -12622,16 +12623,22 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				sourceReads:            sourceReads,
 			})
 			if !decision.Accepted {
-				if evt := log.Debug(); evt.Enabled() && announcedGroup != "" &&
-					m.normalizedGroupSiteIdentity(s.releaseCache.Parse(torrent.Name)) == announcedGroup {
-					evt.
-						Str("source", "cross-seed.webhook").
-						Int("instanceId", instance.ID).
-						Str("incomingName", req.TorrentName).
-						Str("existingName", torrent.Name).
-						Str("rejectReason", decision.RejectReason).
-						Str("class", string(decision.Class)).
-						Msg("Webhook check: rejected near miss")
+				if evt := log.Debug(); evt.Enabled() && announcedGroup != "" {
+					source := namedRelease{release: s.releaseCache.Parse(torrent.Name), rawName: torrent.Name}
+					// Only a name with a site can be the split side, and the other
+					// side must have none.
+					if m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
+						(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
+							m.crossFieldGroupSiteFallback(source, announcedCandidate) {
+						evt.
+							Str("source", "cross-seed.webhook").
+							Int("instanceId", instance.ID).
+							Str("incomingName", req.TorrentName).
+							Str("existingName", torrent.Name).
+							Str("rejectReason", decision.RejectReason).
+							Str("class", string(decision.Class)).
+							Msg("Webhook check: rejected near miss")
+					}
 				}
 				continue
 			}
