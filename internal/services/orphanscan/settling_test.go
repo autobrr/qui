@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type mockHealthChecker struct {
@@ -567,9 +568,7 @@ func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	stubSync(f.svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root + "/"}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root + "/"})
 
 	settings, err := f.store.GetSettings(t.Context(), 1)
 	require.NoError(t, err)

@@ -92,6 +92,9 @@ linters:
         - pattern: ^orphanscan\.(isIgnoredPath|isPathProtectedByIgnorePaths|TorrentFileMap\.(Has|HasAnyInDir))$
           pkg: ^github\.com/autobrr/qui/internal/services/orphanscan$
           msg: ask the protected path module in internal/services/orphanscan/protected.go
+        - pattern: ^qbittorrent\.Category(Save|Download)Path$
+          pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
+          msg: read category folders through SyncManager.InstanceFolders
         # No pkg: a call through a local interface expands to the package of the caller.
         - pattern: ^\w+\.\w+\.AddTorrent$
           msg: use crossseed.Adder
@@ -132,6 +135,12 @@ linters:
         linters:
           - forbidigo
         text: preference catalog
+
+      # Only the Instance folders module resolves category folders.
+      - path: internal/qbittorrent/(instance_folders|category_paths)(_test)?\.go$
+        linters:
+          - forbidigo
+        text: SyncManager\.InstanceFolders
 
       # The one-parser rule binds only the cross-seed production code.
       - path-except: ^internal/services/crossseed/

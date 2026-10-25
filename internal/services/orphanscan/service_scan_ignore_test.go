@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -67,13 +68,7 @@ func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string
 			"missing": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: base}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(context.Context, int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: base})
 
 	return svc, store, presentRoot, missingRoot
 }
@@ -341,9 +336,7 @@ func TestExecuteScan_AbsentDeclaredRoot(t *testing.T) {
 			t.Parallel()
 			svc, store, _, missingRoot := newScanTestService(t)
 			declaredRoot := filepath.Join(t.TempDir(), "unused")
-			stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-				return qbt.AppPreferences{SavePath: declaredRoot}, nil
-			}
+			stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: declaredRoot})
 			stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 				if skippedTorrent {
 					return []qbt.Torrent{{Hash: "missing", SavePath: missingRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
@@ -424,13 +417,7 @@ func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
 	svc, store, _, missingRoot := newScanTestService(t)
 	unusedCategory := filepath.Join(t.TempDir(), "unused")
 
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(context.Context, int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"unused": {Name: "unused", SavePath: unusedCategory}}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: filepath.Dir(missingRoot), CategorySaveFolders: []string{unusedCategory}})
 
 	defaults := DefaultSettings()
 	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -457,14 +444,8 @@ func TestExecuteScan_AbsentCategoryPathWithTorrentStillWarns(t *testing.T) {
 
 	svc, store, _, missingRoot := newScanTestService(t)
 
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(context.Context, int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		// The same path the "missing" torrent saves into.
-		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: missingRoot}}, nil
-	}
+	// The same path the "missing" torrent saves into.
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: filepath.Dir(missingRoot), CategorySaveFolders: []string{missingRoot}})
 
 	defaults := DefaultSettings()
 	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{

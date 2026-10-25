@@ -20,6 +20,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. _Avoid_: Consistency, sync.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
+- **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
+- **Mixed value**: A dialog field whose value is different across the selected torrents.
 
 ## Tracker health
 
@@ -45,6 +47,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Leftover folder**: A folder that held a torrent's content and is empty after qui deleted or moved that torrent. A folder that holds only junk files counts as empty. _Avoid_: orphan folder. An abandoned directory is a different thing: orphan scan finds it with a scan.
 - **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, a category's download folder, or the hardlink base dir. A category's download folder is the folder that qBittorrent downloads the category into, and it can be outside both paths. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
+- **Instance folders**: The folders that qBittorrent saves and downloads into for one instance: the default save path, the download path, the save folder and download folder of each category, and each monitored folder with its save path. Folder cleanup and orphan scan read the same Instance folders. _Avoid_: folder layout, category paths.
 - **Folder cleanup**: The step that removes leftover folders after qui deletes or moves a torrent. _Avoid_: prune, managed delete cleanup.
 
 ## Release classification

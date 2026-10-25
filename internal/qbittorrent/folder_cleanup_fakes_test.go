@@ -48,20 +48,14 @@ func (f *fakeRequirer) Require(_ context.Context, instanceID int, _ models.Files
 	return f.backend, &inst, nil
 }
 
-// fakeView models both halves of the nesting state: support is what the
-// qBittorrent version says, and inputs.UseSubcategories the preference.
 type fakeView struct {
-	mu         sync.Mutex
-	torrents   []qbt.Torrent
-	inputs     stopInputs
-	support    nestingSupport
-	liveErr    error
-	inputsErr  error
-	supportErr error
-	refreshes  atomic.Int32
-	inputReads atomic.Int32
-	// versionReads counts the capability refreshes, each a request.
-	versionReads atomic.Int32
+	mu          sync.Mutex
+	torrents    []qbt.Torrent
+	folders     InstanceFolders
+	liveErr     error
+	foldersErr  error
+	refreshes   atomic.Int32
+	folderReads atomic.Int32
 	// synced is when the last hinted sync landed, fakeSyncDelay after the
 	// hint, as the sync manager's debounce does.
 	synced time.Time
@@ -101,25 +95,11 @@ func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[strin
 	return rows, nil
 }
 
-func (v *fakeView) stopFolderInputs(context.Context, int) (stopInputs, error) {
-	v.inputReads.Add(1)
+func (v *fakeView) InstanceFolders(context.Context, fsops.PathDialect, int) (InstanceFolders, error) {
+	v.folderReads.Add(1)
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.inputs, v.inputsErr
-}
-
-func (v *fakeView) categoryNesting(context.Context, int) (nestingSupport, error) {
-	v.versionReads.Add(1)
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.support, v.supportErr
-}
-
-// setUseSubcategories toggles the preference, as qui's own form does.
-func (v *fakeView) setUseSubcategories(on bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.inputs.UseSubcategories = on
+	return v.folders, v.foldersErr
 }
 
 func (v *fakeView) hintRefresh(int) {
@@ -513,18 +493,14 @@ func newStoppedCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
 	}
 	e.d = e.fs.Paths()
 	e.tree("torrents/incomplete/", "torrents/movies/", "torrents/movies hd/", "torrents/tv/anime/", "torrents/qui-links/", "media/")
-	e.view = &fakeView{inputs: stopInputs{
-		DefaultSavePath: e.p("torrents"),
-		TempPath:        e.p("torrents/incomplete"),
-		TempPathEnabled: true,
-		Categories: map[string]qbt.Category{
-			"movies":    {Name: "movies"},
-			"movies:hd": {Name: "movies:hd"},
-			"tv":        {Name: "tv", SavePath: e.p("torrents/tv")},
-			"tv/anime":  {Name: "tv/anime"},
-		},
-		UseSubcategories: true,
-	}, support: nestingSupport{Nests: true}}
+	// Categories movies, movies:hd, tv and tv/anime inherit their folders.
+	e.view = &fakeView{folders: InstanceFolders{
+		DefaultSavePath:     e.p("torrents"),
+		DownloadPath:        e.p("torrents/incomplete"),
+		CategorySaveFolders: []string{e.p("torrents/movies"), e.p("torrents/movies hd"), e.p("torrents/tv"), e.p("torrents/tv/anime")},
+		DownloadFolders: []string{e.p("torrents/incomplete/movies"), e.p("torrents/incomplete/movies hd"),
+			e.p("torrents/incomplete/tv"), e.p("torrents/incomplete/tv/anime")},
+	}}
 	e.req = &fakeRequirer{backend: e.fs, instance: models.Instance{HasLocalFilesystemAccess: true, HardlinkBaseDir: e.p("torrents/qui-links")}}
 	if kind == remoteBackend {
 		e.req.instance = models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "h",
