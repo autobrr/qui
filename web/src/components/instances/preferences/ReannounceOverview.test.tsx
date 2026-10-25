@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { cleanup, render } from "@testing-library/react"
+import { cleanup, fireEvent, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance, InstanceReannounceSettings } from "@/types"
 
@@ -101,11 +101,14 @@ afterEach(() => {
 })
 
 function renderExpanded() {
-  return render(
+  const view = render(
     <TooltipProvider>
-      <ReannounceOverview expandedInstances={["1"]} onExpandedInstancesChange={() => {}} />
+      <ReannounceOverview />
     </TooltipProvider>
   )
+  // The card keeps its own expansion state and starts collapsed.
+  fireEvent.click(view.getByRole("button", { name: "preferences.reannounceOverview.expand" }))
+  return view
 }
 
 describe("ReannounceOverview instance card", () => {
