@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -118,12 +119,25 @@ func (*discPolicySyncManager) RenameTorrent(context.Context, int, string, string
 	return nil
 }
 
-func (*discPolicySyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+func (m *discPolicySyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	for i, file := range m.files[normalizeHash(hash)] {
+		if file.Name == oldPath {
+			m.files[normalizeHash(hash)][i].Name = newPath
+		}
+	}
 	return nil
 }
 
-func (m *discPolicySyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
-	return m.renameFolderErr
+func (m *discPolicySyncManager) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	if m.renameFolderErr != nil {
+		return m.renameFolderErr
+	}
+	for i, file := range m.files[normalizeHash(hash)] {
+		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
+			m.files[normalizeHash(hash)][i].Name = newPath + "/" + suffix
+		}
+	}
+	return nil
 }
 
 func (*discPolicySyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
@@ -158,7 +172,7 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 		Size:        1_000_000_000,
 	}
 	mockSync := &discPolicySyncManager{
-		files: map[string]qbt.TorrentFiles{matchedHash: candidateFiles},
+		files: map[string]qbt.TorrentFiles{matchedHash: candidateFiles, newHash: slices.Clone(sourceFiles)},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {SavePath: "/downloads"},
 		},

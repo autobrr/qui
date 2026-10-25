@@ -15,7 +15,7 @@ Orphan scan finds and removes files in your download directories that no torrent
 ## How it works
 
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
-2. qui flags files that no torrent references as orphans.
+2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too.
 3. Before you confirm deletion, you preview the list.
 4. qui deletes the files, then removes the directories the preview listed.
 
@@ -78,15 +78,16 @@ These are never reported, even when empty:
 - A scan root itself.
 - A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's directory the same way qBittorrent does, including one that inherits from a parent category.
 - The download path while it is turned on, a category's download folder, or any directory above one. qBittorrent will download into it again. qui works out a category's download folder the same way qBittorrent does: its own download path, the one it takes from its parent category, or its folder in its parent category's download folder or in the download path, even when the download path is turned off.
+- A folder that qBittorrent monitors for `.torrent` files, the save path set for it, or any directory above one. If qui removes a monitored folder, qBittorrent stops watching it until qBittorrent restarts.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction.
 
-On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. When a torrent's save path is itself a symbolic link to a folder, qui reads the folder through the link only to learn which files the torrent uses, and does not list those files where it finds them at the link's target, unless they have other hard links. Nothing is listed or deleted through the link. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
+On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. When a torrent's save path is itself a symbolic link to a folder, qui reads the folder through the link only to learn which files the torrent uses, and does not list those files where it finds them at the link's target. Nothing is listed or deleted through the link. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
 
 ## Partial scans
 

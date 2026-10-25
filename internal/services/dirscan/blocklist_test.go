@@ -111,7 +111,7 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 				store:          models.NewDirScanStore(db),
 				adder:          adder,
 				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
-				injector:       NewInjector(nil, manager, adder, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
+				injector:       NewInjector(nil, crossseed.NewAligner(manager), adder, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
 			}
 
 			l := zerolog.New(io.Discard)

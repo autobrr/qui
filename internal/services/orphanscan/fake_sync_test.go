@@ -9,6 +9,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -23,11 +24,12 @@ type fakeSync struct {
 	getClient            func(ctx context.Context, instanceID int) (healthChecker, error)
 	listInstances        func(ctx context.Context) ([]*models.Instance, error)
 	getLastCompletedRun  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
-	getAppPreferences    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	getCategories        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	subcategoriesEnabled func(ctx context.Context, instanceID int) (bool, error)
-	// categoryPathRule, when set, replaces subcategoriesEnabled with a full rule.
-	categoryPathRule func(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
+	instanceFolders      func(ctx context.Context, instanceID int) (qbittorrent.InstanceFolders, error)
+}
+
+// folders stubs the Instance folders with a ready value.
+func (f *fakeSync) folders(folders qbittorrent.InstanceFolders) {
+	f.instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) { return folders, nil }
 }
 
 // stubSync installs a fakeSync on svc the first time it is called and returns
@@ -93,27 +95,9 @@ func (f *fakeSync) GetLastCompletedRun(ctx context.Context, instanceID int) (*mo
 	return f.getLastCompletedRun(ctx, instanceID)
 }
 
-func (f *fakeSync) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	if f.getAppPreferences == nil {
-		return qbt.AppPreferences{}, errNotStubbed
+func (f *fakeSync) InstanceFolders(ctx context.Context, _ fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error) {
+	if f.instanceFolders == nil {
+		return qbittorrent.InstanceFolders{}, errNotStubbed
 	}
-	return f.getAppPreferences(ctx, instanceID)
-}
-
-func (f *fakeSync) GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
-	if f.getCategories == nil {
-		return nil, errNotStubbed
-	}
-	return f.getCategories(ctx, instanceID)
-}
-
-func (f *fakeSync) CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error) {
-	if f.categoryPathRule != nil {
-		return f.categoryPathRule(ctx, instanceID)
-	}
-	if f.subcategoriesEnabled == nil {
-		return qbittorrent.CategoryPathRule{}, errNotStubbed
-	}
-	nest, err := f.subcategoriesEnabled(ctx, instanceID)
-	return qbittorrent.CategoryPathRule{Nest: nest}, err
+	return f.instanceFolders(ctx, instanceID)
 }

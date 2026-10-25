@@ -31,12 +31,10 @@ function baseProps(over: Partial<UseTorrentTableArrowNavigationParams> = {}): Us
     loadMore: vi.fn(),
     isReadOnly: false,
     selectedTorrent: null,
-    selectedRowIds: [],
+    selectedKeys: new Set(),
     lastSelectedIndexRef: { current: null },
     getSelectionIdentity: (torrent: Torrent) => torrent.hash,
-    setRowSelection: vi.fn(),
-    setIsAllSelected: vi.fn(),
-    setExcludedFromSelectAll: vi.fn(),
+    selectOnly: vi.fn(),
     onTorrentSelect: vi.fn(),
     ...over,
   }
@@ -65,8 +63,7 @@ describe("useTorrentTableArrowNavigation", () => {
 
     press("ArrowDown")
 
-    expect(props.setRowSelection).toHaveBeenCalledWith({ hash0: true })
-    expect(props.lastSelectedIndexRef.current).toBe(0)
+    expect(props.selectOnly).toHaveBeenCalledWith(props.rows[0].original, 0)
     expect(scrollToIndex).toHaveBeenCalledWith(0)
   })
 
@@ -81,32 +78,32 @@ describe("useTorrentTableArrowNavigation", () => {
 
     press("ArrowDown")
 
-    expect(props.setRowSelection).toHaveBeenCalledWith({ hash5: true })
+    expect(props.selectOnly).toHaveBeenCalledWith(props.rows[5].original, 5)
     expect(props.onTorrentSelect).toHaveBeenCalledWith(props.rows[5].original)
   })
 
   it("clamps at both ends", () => {
-    const props = baseProps({ selectedRowIds: ["hash0"] })
+    const props = baseProps({ selectedKeys: new Set(["hash0"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
     press("ArrowUp")
 
-    expect(props.setRowSelection).toHaveBeenCalledWith({ hash0: true })
+    expect(props.selectOnly).toHaveBeenCalledWith(props.rows[0].original, 0)
     expect(scrollToIndex).toHaveBeenCalledWith(0)
   })
 
   it("does not open the details panel while it is closed", () => {
-    const props = baseProps({ selectedRowIds: ["hash2"] })
+    const props = baseProps({ selectedKeys: new Set(["hash2"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
     press("ArrowDown")
 
-    expect(props.setRowSelection).toHaveBeenCalledWith({ hash3: true })
+    expect(props.selectOnly).toHaveBeenCalledWith(props.rows[3].original, 3)
     expect(props.onTorrentSelect).not.toHaveBeenCalled()
   })
 
   it("opens the details panel on Enter", () => {
-    const props = baseProps({ selectedRowIds: ["hash2"] })
+    const props = baseProps({ selectedKeys: new Set(["hash2"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
     press("Enter")
@@ -130,12 +127,12 @@ describe("useTorrentTableArrowNavigation", () => {
 
     press("ArrowDown")
 
-    expect(props.setRowSelection).not.toHaveBeenCalled()
+    expect(props.selectOnly).not.toHaveBeenCalled()
     expect(props.onTorrentSelect).toHaveBeenCalledWith(props.rows[2].original)
   })
 
   it("pulls more rows when nearing the loaded window", () => {
-    const props = baseProps({ rows: makeRows(200), safeLoadedRows: 100, selectedRowIds: ["hash59"] })
+    const props = baseProps({ rows: makeRows(200), safeLoadedRows: 100, selectedKeys: new Set(["hash59"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
     press("ArrowDown")
@@ -147,13 +144,13 @@ describe("useTorrentTableArrowNavigation", () => {
   it("stops at the virtualized window, not the full row count", () => {
     // Rows past safeLoadedRows exist in the row model but have no virtual item,
     // so scrolling to them would land on nothing.
-    const props = baseProps({ rows: makeRows(200), safeLoadedRows: 100, selectedRowIds: ["hash99"] })
+    const props = baseProps({ rows: makeRows(200), safeLoadedRows: 100, selectedKeys: new Set(["hash99"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
     press("ArrowDown")
 
     expect(scrollToIndex).toHaveBeenCalledWith(99)
-    expect(props.setRowSelection).toHaveBeenCalledWith({ hash99: true })
+    expect(props.selectOnly).toHaveBeenCalledWith(props.rows[99].original, 99)
   })
 
   it("stays out of the way of typing, modifiers and handled events", () => {
@@ -177,7 +174,7 @@ describe("useTorrentTableArrowNavigation", () => {
     press("ArrowDown", { shiftKey: true })
     press("ArrowDown", { ctrlKey: true })
 
-    expect(props.setRowSelection).not.toHaveBeenCalled()
+    expect(props.selectOnly).not.toHaveBeenCalled()
     expect(scrollToIndex).not.toHaveBeenCalled()
   })
 })

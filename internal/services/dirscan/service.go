@@ -158,7 +158,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,

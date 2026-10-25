@@ -20,6 +20,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. _Avoid_: Consistency, sync.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
+- **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
+- **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
+- **Mixed value**: A dialog field whose value is different across the selected torrents.
 
 ## Tracker health
 
@@ -45,6 +48,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Leftover folder**: A folder that held a torrent's content and is empty after qui deleted or moved that torrent. A folder that holds only junk files counts as empty. _Avoid_: orphan folder. An abandoned directory is a different thing: orphan scan finds it with a scan.
 - **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, a category's download folder, or the hardlink base dir. A category's download folder is the folder that qBittorrent downloads the category into, and it can be outside both paths. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
+- **Instance folders**: The folders that qBittorrent saves and downloads into for one instance: the default save path, the download path, the save folder and download folder of each category, and each monitored folder with its save path. Folder cleanup and orphan scan read the same Instance folders. _Avoid_: folder layout, category paths.
 - **Folder cleanup**: The step that removes leftover folders after qui deletes or moves a torrent. _Avoid_: prune, managed delete cleanup.
 
 ## Release classification
@@ -93,6 +97,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
 - **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
+- **Alignment**: The renames after an add that make the file and folder names of a torrent match the files that are already on disk. _Avoid_: content path alignment, rename alignment.
 - **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
 - **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
 
@@ -102,7 +107,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
 - **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
 - **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
-- **Deletion selection**: The torrents that an Automation rule chooses to remove. _Avoid_: Shared-file group (when referring to selected torrents).
+- **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.
+- **Deletion selection**: The torrents that the delete rules of a run choose to remove: the Delete triggers and the torrents that their expansion pulls in. The preview shows the Deletion selection of one rule. _Avoid_: Shared-file group (when referring to selected torrents).
 - **Projected freed bytes**: The estimated space recovered by removing the selected files. Shared paths count once. _Avoid_: Actual freed space.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
 

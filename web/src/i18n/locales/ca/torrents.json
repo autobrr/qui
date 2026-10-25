@@ -691,25 +691,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "shareLimit": {
-      "title": "Defineix els límits de compartició de {{count}} torrent(s)",
-      "description": "Configura els límits de sembra. Fes servir -1 o desactiva-ho per treure'ls.",
-      "setRatioLimit": "Defineix el límit de ràtio",
-      "setSeedingTimeLimit": "Defineix el límit de temps de sembra (minuts)",
-      "setInactiveSeedingLimit": "Defineix el límit de sembra inactiva (minuts)",
-      "cancel": "Cancel·la",
-      "setting": "S'està definint...",
-      "applyLimits": "Aplica els límits"
-    },
-    "speedLimit": {
-      "title": "Defineix els límits de velocitat de {{count}} torrent(s)",
-      "description": "Defineix els límits de velocitat de pujada i de baixada en KB/s. Fes servir -1 o desactiva-ho per treure'ls.",
-      "setUploadLimit": "Defineix el límit de pujada (KB/s)",
-      "setDownloadLimit": "Defineix el límit de baixada (KB/s)",
-      "cancel": "Cancel·la",
-      "setting": "S'està definint...",
-      "applyLimits": "Aplica els límits"
-    },
     "ratio": "Ràtio:"
   },
   "crossSeedTable": {
@@ -1378,6 +1359,9 @@
       "description": "Defineix els límits de velocitat de pujada i de baixada en KB/s. Desactiva-ho per fer servir els límits globals.",
       "uploadLimit": "Defineix el límit de pujada (KB/s)",
       "downloadLimit": "Defineix el límit de baixada (KB/s)",
+      "selectValue": "Selecciona un valor",
+      "wasMixed": "(era mixt)",
+      "unresolvedMixed": "Selecciona valors per a tots els camps mixtos abans d'aplicar-ho",
       "cancel": "Cancel·la",
       "setting": "S'està definint...",
       "confirm": "Aplica els límits"

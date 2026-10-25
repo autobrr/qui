@@ -489,6 +489,9 @@
       "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
       "uploadLimit": "Nastavit uploadovací limit (KB/s)",
       "downloadLimit": "Nastavit downloadovací limit (KB/s)",
+      "selectValue": "Vybrat hodnotu",
+      "wasMixed": "(bylo smíšené)",
+      "unresolvedMixed": "Vyberte hodnoty pro všechny smíšené pole před použitím",
       "cancel": "Zrušit",
       "setting": "Nastavuji...",
       "confirm": "Použít limity"
@@ -1588,25 +1591,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "shareLimit": {
-      "title": "Nastavení limitů sdílení pro {{count}} torrent(y)",
-      "description": "Nastavte limity seedování pro vybrané torrenty. Všechny tři pole budou použity.",
-      "setRatioLimit": "Nastavit limit poměru",
-      "setSeedingTimeLimit": "Nastavit limit času seedování (minut)",
-      "setInactiveSeedingLimit": "Nastavit limit neaktivního seedování (minut)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
-    "speedLimit": {
-      "title": "Nastavení limitů rychlosti pro {{count}} torrent(y)",
-      "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
-      "setUploadLimit": "Nastavit uploadovací limit (KB/s)",
-      "setDownloadLimit": "Nastavit downloadovací limit (KB/s)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
     "ratio": "Poměr:"
   },
   "tableView": {
@@ -1660,7 +1644,7 @@
     "category": "Kategorie",
     "tags": "Tagy",
     "addedOn": "Přidáno",
-    "completedOn": "Dokončeno",
+    "completedOn": "Dokončeno dne",
     "trackerUrl": "URL trackeru",
     "downLimit": "Limit stahování",
     "upLimit": "Limit odesílání",

@@ -187,8 +187,32 @@ func (f *applyFakeSyncManager) GetTorrentProperties(context.Context, int, string
 	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
 }
 
-func (f *applyFakeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+// AddTorrent lists the files of the added torrent, as qBittorrent does.
+func (f *applyFakeSyncManager) AddTorrent(_ context.Context, _ int, data []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	meta, err := ParseTorrentMetadataWithInfo(data)
+	if err != nil {
+		return nil, err
+	}
+	f.files[normalizeHash(meta.HashV1)] = slices.Clone(meta.Files)
 	return nil, nil
+}
+
+func (f *applyFakeSyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	for i, file := range f.files[normalizeHash(hash)] {
+		if file.Name == oldPath {
+			f.files[normalizeHash(hash)][i].Name = newPath
+		}
+	}
+	return nil
+}
+
+func (f *applyFakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	for i, file := range f.files[normalizeHash(hash)] {
+		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
+			f.files[normalizeHash(hash)][i].Name = newPath + "/" + suffix
+		}
+	}
+	return nil
 }
 
 func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {

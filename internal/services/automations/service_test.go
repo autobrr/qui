@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -1087,8 +1086,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	require.NoError(t, processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil))
-	require.NoError(t, processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -1132,8 +1131,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	require.NoError(t, processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil))
-	require.NoError(t, processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -1175,7 +1174,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -1216,7 +1215,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1262,20 +1261,9 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 		"second": {{Name: "shared/second.mkv", Size: 1_000}},
 	}
 
-	result, err := s.previewDeleteIncludeCrossSeeds(
-		rule,
-		torrents,
-		&EvalContext{},
-		nil,
-		10,
-		0,
-		true,
-		nil,
-		testCrossSeedGroups(torrents),
-		func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
-	)
-
-	require.NoError(t, err)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, true)
+	result := s.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
 }
@@ -1315,16 +1303,17 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 	}
 	for _, unread := range []bool{false, true} {
 		t.Run(fmt.Sprintf("unread=%t", unread), func(t *testing.T) {
-			fetch := func(_ []string) (map[string]qbt.TorrentFiles, error) {
-				if unread {
-					return nil, errors.New("file lists unavailable")
-				}
-				return files, nil
+			evalCtx := &EvalContext{CrossSeedFilesByHash: files, hardlinkIndex: hardlinks}
+			if unread {
+				evalCtx.CrossSeedFilesByHash = nil
 			}
-			result, err := svc.previewDeleteIncludeCrossSeeds(rule, torrents, &EvalContext{}, hardlinks, 10, 0, true, nil, groups, fetch)
-			require.NoError(t, err)
+			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
+				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, eligibleView: true,
+			})
+			result := svc.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 			if unread {
 				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
+				require.True(t, selection.isClaimed("source"), "a trigger whose expansion failed gets no other action")
 			} else {
 				require.Equal(t, 6, result.TotalMatches, "follow Content to Hardlink and Hardlink to Content until no member joins")
 				require.Equal(t, 3, result.CrossSeedCount)
@@ -1783,23 +1772,6 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	}
 }
 
-func TestSetupHardlinkSignatureContext_KeepsGroupingSignatures(t *testing.T) {
-	svc := &Service{}
-	evalCtx := &EvalContext{
-		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
-	}
-	hardlinkIndex := &HardlinkIndex{
-		SignatureByHash:           map[string]string{"abc123": "grouping-sig"},
-		DeleteSafeSignatureByHash: map[string]string{"abc123": "delete-sig"},
-	}
-	cond := &RuleCondition{Field: FieldFreeSpace}
-
-	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
-
-	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
-	require.Same(t, hardlinkIndex, evalCtx.hardlinkIndex)
-}
-
 // -----------------------------------------------------------------------------
 // deleteFreesSpace tests with include mode
 // -----------------------------------------------------------------------------
@@ -2079,12 +2051,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		syncManager:   sm,
 	}
 
-	pending := map[string]pendingDeletion{
-		"abc123": {
-			hash:   "abc123",
-			action: models.ActivityActionDeletedCondition,
-		},
-	}
+	pending := map[string]selectedDeletion{"abc123": {hash: "abc123"}}
 
 	torrent := qbt.Torrent{
 		Hash:    "abc123",

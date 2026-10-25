@@ -177,11 +177,10 @@ func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
 		return map[string]int{
 			"liveTorrents": count(func() error { _, err := r.sm.liveTorrents(ctx, r.instanceID); return err }),
 			"ownRows":      count(func() error { _, err := r.sm.ownRows(ctx, r.instanceID, hashes); return err }),
-			"stopFolderInputs": count(func() error {
-				_, err := r.sm.stopFolderInputs(ctx, r.instanceID)
+			"InstanceFolders": count(func() error {
+				_, err := r.sm.InstanceFolders(ctx, fsops.HostPaths, r.instanceID)
 				return err
 			}),
-			"categoryNesting": count(func() error { _, err := r.sm.categoryNesting(ctx, r.instanceID); return err }),
 		}
 	}
 	require.Equal(t, requests(hashA), requests(hashA, hashB, hashC))
@@ -636,36 +635,6 @@ func TestFolderCleanupMarkContentChecksEachTopLevelEntry(t *testing.T) {
 		snap.markContent(ctx, local.NewBackend())
 		require.Equal(t, tc.want, snap.ContentExisted, tc.name)
 	}
-}
-
-// Before WebAPI 2.11.10 a partial maindata update never reports a category
-// going back to inherit its download path, so the stop folders read the
-// categories from qBittorrent rather than the cache.
-func TestFolderCleanupStopFolderInputsReadTheCategories(t *testing.T) {
-	t.Parallel()
-	r := newTriggerRig(t)
-	r.stub.AddCategory("archive", r.p("torrents/archive"))
-	r.stub.SetCategoryDownloadPath("archive", &qbt.CategoryDownloadPath{Enabled: true, Path: r.p("fast/archive")})
-	r.add()
-	r.stub.SetCategoryDownloadPath("archive", nil)
-
-	in, err := r.sm.stopFolderInputs(t.Context(), r.instanceID)
-	require.NoError(t, err)
-	require.Contains(t, in.Categories, "archive")
-	require.Nil(t, in.Categories["archive"].DownloadPath)
-}
-
-// Without the categories no category folder is a stop folder, so a failed
-// read fails the check.
-func TestFolderCleanupStopFolderInputsFailWhenTheCategoriesCannotBeRead(t *testing.T) {
-	t.Parallel()
-	r := newTriggerRig(t)
-	r.stub.AddCategory("archive", r.p("torrents/archive"))
-	r.add()
-	r.stub.CategoriesStatus = http.StatusInternalServerError
-
-	_, err := r.sm.stopFolderInputs(t.Context(), r.instanceID)
-	require.Error(t, err)
 }
 
 // qBittorrent's setDownloadPath moves an incomplete torrent with ATM off from

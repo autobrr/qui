@@ -23,6 +23,7 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
@@ -241,7 +242,9 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>{children}</TooltipProvider>
+      <TorrentSelectionProvider>
+        <TooltipProvider>{children}</TooltipProvider>
+      </TorrentSelectionProvider>
     </QueryClientProvider>
   )
   return render(<TorrentTableOptimized instanceId={1} filters={makeFilters()} {...props} />, { wrapper })

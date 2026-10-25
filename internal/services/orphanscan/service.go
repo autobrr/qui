@@ -38,9 +38,7 @@ type healthChecker interface {
 type syncReader interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
+	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
 
 type clientReadiness interface {
@@ -80,9 +78,11 @@ type Service struct {
 
 	activityPublisher activity.Publisher
 
-	// Per-instance mutex to prevent overlapping scans
+	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
-	mu         sync.Mutex // protects instanceMu map
+	// Per-instance mutex around run creation only, never held during a scan
+	triggerMu map[int]*sync.Mutex
+	mu        sync.Mutex // protects instanceMu and triggerMu maps
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
@@ -111,6 +111,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		backendPool:       backendPool,
 		activityPublisher: activity.NopPublisher{},
 		instanceMu:        make(map[int]*sync.Mutex),
+		triggerMu:         make(map[int]*sync.Mutex),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
 }
@@ -137,24 +138,6 @@ func (s *Service) emitRun(instanceID int, runID int64) {
 		InstanceID: instanceID,
 		ResourceID: strconv.FormatInt(runID, 10),
 	})
-}
-
-// validDefaultSavePath checks the default save path qBittorrent reported so it
-// can serve as a scan root. Files sitting directly in it are invisible to a
-// torrent-derived root set.
-//
-// A path that cannot be used is an error rather than an empty root: silently
-// falling back to torrent-derived roots would report a clean scan over a
-// narrower tree than the user asked for (discussion #2365).
-func validDefaultSavePath(d fsops.PathDialect, reported string) (string, error) {
-	savePath := d.Clean(reported)
-	if savePath == "." {
-		return "", errors.New("qBittorrent reported an empty default save path")
-	}
-	if !d.IsAbs(savePath) {
-		return "", fmt.Errorf("qBittorrent default save path %q is not absolute", savePath)
-	}
-	return savePath, nil
 }
 
 // walkForScope walks one root into the run's keys, collecting directory
@@ -465,22 +448,23 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 	}
 }
 
-func (s *Service) getInstanceMutex(instanceID int) *sync.Mutex {
+func (s *Service) getInstanceMutex(locks map[int]*sync.Mutex, instanceID int) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.instanceMu[instanceID] == nil {
-		s.instanceMu[instanceID] = &sync.Mutex{}
+	if locks[instanceID] == nil {
+		locks[instanceID] = &sync.Mutex{}
 	}
-	return s.instanceMu[instanceID]
+	return locks[instanceID]
 }
 
 // TriggerScan starts a new orphan scan for an instance.
 // Returns the run ID or an error if a scan is already in progress.
 func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	// Atomically check for active runs and create a new one.
-	// This avoids TOCTOU races between HasActiveRun and CreateRun,
-	// and avoids mutex deadlocks when a goroutine is stuck in a blocking call.
+	// On Postgres at READ COMMITTED, concurrent inserts each pass the store's NOT EXISTS check.
+	mu := s.getInstanceMutex(s.triggerMu, instanceID)
+	mu.Lock()
 	runID, err := s.store.CreateRunIfNoActive(ctx, instanceID, triggeredBy)
+	mu.Unlock()
 	if errors.Is(err, models.ErrRunAlreadyActive) {
 		return 0, ErrScanInProgress
 	}
@@ -601,7 +585,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
 	}
 
-	mu := s.getInstanceMutex(instanceID)
+	mu := s.getInstanceMutex(s.instanceMu, instanceID)
 	if !mu.TryLock() {
 		return ErrScanInProgress
 	}
@@ -1363,7 +1347,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategoryPaths) {
-			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category or download destination")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category, download or monitored folder")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
