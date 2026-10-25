@@ -8,6 +8,7 @@ import { api } from "@/lib/api"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 import { act, renderHook } from "@testing-library/react"
+import { toast } from "sonner"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -184,6 +185,25 @@ describe("useTorrentExporter — select-all", () => {
     })
 
     expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(2)
+  })
+
+  it("exports nothing when an instance in unified scope did not answer", async () => {
+    mockedApi.getCrossInstanceTorrents.mockResolvedValue({
+      torrents: [],
+      crossInstanceTorrents: [makeCrossTorrent({ hash: "aaa", instanceId: 2 })],
+      total: 1,
+      hasMore: false,
+      partialResults: true,
+    })
+
+    const { result } = renderHook(() => useTorrentExporter({ instanceId: 0, incognitoMode: false }))
+
+    await act(async () => {
+      await result.current.exportTorrents(exportSelection([], { isAllSelected: true }))
+    })
+
+    expect(mockedApi.exportTorrent).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("contextMenu.toast.exportFailed")
   })
 
   it("skips excluded instance:hash targets in unified scope", async () => {

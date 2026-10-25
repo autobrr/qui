@@ -64,7 +64,7 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
     try {
       let targets: Torrent[]
       if (isAllSelected) {
-        targets = await fetchAllMatchingTorrents({
+        const matching = await fetchAllMatchingTorrents({
           instanceId,
           instanceIds,
           filters,
@@ -74,6 +74,11 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
           excludeSet,
           excludeTargetSet,
         })
+        if (matching === null) {
+          toast.error(t("contextMenu.toast.exportFailed"))
+          return
+        }
+        targets = matching
       } else {
         targets = dedupeTorrents(torrents, sanitizedHashes, instanceId)
       }
@@ -159,7 +164,7 @@ async function fetchAllMatchingTorrents({
   sortOrder?: "asc" | "desc"
   excludeSet: Set<string>
   excludeTargetSet: Set<string>
-}): Promise<Torrent[]> {
+}): Promise<Torrent[] | null> {
   const results: Torrent[] = []
   const seen = new Set<string>()
   let page = 0
@@ -176,6 +181,10 @@ async function fetchAllMatchingTorrents({
       order: sortOrder,
     }
     const response = allInstances? await api.getCrossInstanceTorrents({ ...params, instanceIds }): await api.getTorrents(instanceId, params)
+    // A partial read would export a subset that looks complete (ADR 0009).
+    if (response.partialResults) {
+      return null
+    }
 
     const pageTorrents = allInstances? response.crossInstanceTorrents ?? response.cross_instance_torrents ?? []: response.torrents ?? []
 
