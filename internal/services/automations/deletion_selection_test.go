@@ -105,3 +105,51 @@ func TestDeletionSelection_LaterClaimStillExpandsWiderScope(t *testing.T) {
 	require.Equal(t, 2, selection.byHash["c"].rule.id)
 	require.True(t, selection.byHash["c"].hardlinkCopy)
 }
+
+func TestDeletionSelection_HardlinkRuleFollowsTakenTorrent(t *testing.T) {
+	// The pack shares files with both episodes, and the library copy is a hardlink of the pack.
+	torrents := []qbt.Torrent{
+		{Hash: "episode1", Tags: "first", AddedOn: 1, SavePath: "/data", ContentPath: "/data/show/e1.mkv"},
+		{Hash: "episode2", Tags: "second", AddedOn: 2, SavePath: "/data", ContentPath: "/data/show/e2.mkv"},
+		{Hash: "pack", AddedOn: 3, SavePath: "/data", ContentPath: "/data/show"},
+		{Hash: "copy", AddedOn: 4, SavePath: "/library", ContentPath: "/library/show"},
+	}
+	packFiles := qbt.TorrentFiles{{Name: "show/e1.mkv", Size: 10}, {Name: "show/e2.mkv", Size: 10}}
+	evalCtx := &EvalContext{
+		SameInstanceContentByHash: map[string][]string{"episode1": {"pack"}, "episode2": {"pack"}, "pack": {"episode1", "episode2"}},
+		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
+			"episode1": {{Name: "show/e1.mkv", Size: 10}},
+			"episode2": {{Name: "show/e2.mkv", Size: 10}},
+			"pack":     packFiles,
+			"copy":     packFiles,
+		},
+		hardlinkIndex: &HardlinkIndex{
+			DeleteSafeSignatureByHash:  map[string]string{"pack": "x", "copy": "x"},
+			DeleteSafeGroupBySignature: map[string][]string{"x": {"pack", "copy"}},
+		},
+	}
+	rule := func(id int, tag string, hardlinks bool) *models.Automation {
+		return &models.Automation{ID: id, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, IncludeHardlinks: hardlinks,
+				Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: tag}},
+		}}
+	}
+
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx, false)
+	require.Equal(t, 1, selection.byHash["pack"].rule.id, "rule 1 claims first, so its expansion takes the pack")
+	require.Contains(t, selection.byHash, "copy", "rule 2 includes hardlinks, so the hardlink copy of the pack goes too")
+	require.True(t, selection.byHash["copy"].hardlinkCopy)
+}
+
+func TestDeletePreview_KeepFilesGroupMemberGetsBadge(t *testing.T) {
+	torrents := []qbt.Torrent{{Hash: "trigger"}, {Hash: "member"}}
+	selection := &deletionSelection{byHash: map[string]selectedDeletion{
+		"trigger": {hash: "trigger", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles, trigger: true},
+		"member":  {hash: "member", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles},
+	}}
+	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
+	result := svc.buildDeletePreviewResult(torrents, selection, &EvalContext{}, previewConfig{limit: 10}, &models.Automation{}, nil)
+	require.False(t, result.Examples[0].IsCrossSeed)
+	require.True(t, result.Examples[1].IsCrossSeed, "the group expansion took the member")
+	require.Zero(t, result.CrossSeedCount, "a keep-files group member is not a cross-seed")
+}

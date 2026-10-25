@@ -179,8 +179,10 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 			triggerTorrents[in.torrents[i].Hash] = &in.torrents[i]
 		}
 	}
-	// Torrents that an include-cross-seeds group took, so a later group does not check them again.
-	includedCrossSeeds := make(map[string]struct{})
+	// Torrents that an include-cross-seeds group took, so a later group does not check them
+	// again. A rule with hardlinks keeps its own set, so it still follows the hardlinks of a
+	// torrent that a rule without hardlinks took.
+	includedCrossSeeds := map[bool]map[string]struct{}{false: {}, true: {}}
 	// Groups whose members do not all match, so the next member does not check them again.
 	rejectedGroups := make(map[ruleGroupKey]struct{})
 	for _, claim := range claims {
@@ -257,7 +259,7 @@ func (s *Service) expandDeleteTrigger(
 	sel *deletionSelection,
 	trigger qbt.Torrent,
 	rule *models.Automation,
-	includedCrossSeeds map[string]struct{},
+	includedCrossSeeds map[bool]map[string]struct{},
 	rejectedGroups map[ruleGroupKey]struct{},
 ) {
 	deleteAction := rule.Conditions.Delete
@@ -283,14 +285,15 @@ func (s *Service) expandDeleteTrigger(
 		if deleteAction.IncludeHardlinks {
 			hardlinks = in.evalCtx.hardlinkIndex
 		}
+		included := includedCrossSeeds[deleteAction.IncludeHardlinks]
 		expanded, ok := deleteCrossSeedGroup(trigger, in.evalCtx.torrentsByHash, in.crossSeeds, hardlinks,
-			includedCrossSeeds, cachedTorrentFilesFetcher(in.evalCtx.CrossSeedFilesByHash))
+			included, cachedTorrentFilesFetcher(in.evalCtx.CrossSeedFilesByHash))
 		if !ok {
 			return
 		}
 		for hash := range expanded.expandedSet {
 			if hash != trigger.Hash {
-				includedCrossSeeds[hash] = struct{}{}
+				included[hash] = struct{}{}
 			}
 		}
 		logMsg := logMsgRemoveTorrentWithFiles

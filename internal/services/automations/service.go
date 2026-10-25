@@ -1207,8 +1207,10 @@ func (s *Service) buildDeletePreviewResult(
 		if !ok {
 			continue
 		}
-		isCrossSeed := selected.deleteMode == DeleteModeWithFilesIncludeCrossSeeds && !selected.trigger && !selected.hardlinkCopy
-		if isCrossSeed {
+		// The badge marks each torrent that the expansion of a Delete trigger took. The count
+		// holds only the cross-seeds of an include-cross-seeds delete.
+		isCrossSeed := !selected.trigger && !selected.hardlinkCopy
+		if isCrossSeed && selected.deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
 			result.CrossSeedCount++
 		}
 
