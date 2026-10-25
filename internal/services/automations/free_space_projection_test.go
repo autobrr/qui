@@ -90,6 +90,28 @@ func TestPlainFreeSpaceProjection_SelectedFileUnion(t *testing.T) {
 	}
 }
 
+// A checking torrent frees no space, so the rule picks the next torrent to reach the target.
+func TestPlainFreeSpaceProjection_SkipsCheckingTorrent(t *testing.T) {
+	for _, preview := range []bool{false, true} {
+		torrents, evalCtx, rule := selectedFilesFixture(t)
+		torrents[0].State = qbt.TorrentStateCheckingUp
+		sm := qbittorrent.NewSyncManager(nil, nil)
+		if preview {
+			svc := &Service{syncManager: sm}
+			result, err := svc.previewDeleteStandard(t.Context(), 1, rule, torrents, evalCtx, DeleteModeWithFiles, false,
+				previewConfig{limit: 10}, nil, buildCrossSeedGroups(torrents, evalCtx))
+			require.NoError(t, err)
+			require.ElementsMatch(t, []string{"second", "other"}, []string{result.Examples[0].Hash, result.Examples[1].Hash})
+		} else {
+			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+			require.Len(t, states, 2)
+			require.True(t, states["second"].shouldDelete)
+			require.True(t, states["other"].shouldDelete)
+		}
+		require.Equal(t, int64(2000), evalCtx.SpaceToClear)
+	}
+}
+
 func TestPlainFreeSpaceProjection_UnreadSelectionStopsRule(t *testing.T) {
 	for _, reverse := range []bool{false, true} {
 		torrents, evalCtx, rule := selectedFilesFixture(t)
