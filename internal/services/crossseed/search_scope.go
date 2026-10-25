@@ -6,7 +6,11 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"maps"
+	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -50,6 +54,9 @@ type searchScopeFacts struct {
 	skipGazelle bool
 	// gazelleKeys are the RED/OPS hosts that have an API key.
 	gazelleKeys []string
+	// gazelleTorznabIndexers maps each Torznab indexer of RED or OPS to its
+	// host.
+	gazelleTorznabIndexers map[int]string
 
 	contentFilter contentFilterFacts
 	// sourceSite is the RED/OPS host that the torrent comes from, or "".
@@ -63,6 +70,9 @@ type searchScopeFacts struct {
 // contentFilterFacts is the result of the content analysis of one torrent.
 type contentFilterFacts struct {
 	err error
+	// discoveryErr reports that qui could not list the Torznab indexers, for
+	// example because Prowlarr or Jackett is down.
+	discoveryErr error
 	// done reports that the content filter finished. When the wait for it timed
 	// out, indexerIDs holds the result of the capability filter.
 	done       bool
@@ -117,6 +127,9 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 		// A missing API key starts no cooldown, so a key that the user adds
 		// later works at the next run.
 	}
+	if len(scope.gazelleHosts) == 0 && f.contentFilter.discoveryErr != nil {
+		return searchScope{err: fmt.Errorf("load torznab indexers: %w", f.contentFilter.discoveryErr)}
+	}
 	return scope
 }
 
@@ -124,7 +137,8 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	if f.torznabOff {
 		return nil, noEligibleIndexersSkipReason, nil
 	}
-	if len(f.requestedIndexerIDs) == 0 {
+	requested := withoutGazelleTorznabIndexers(f.requestedIndexerIDs, f.gazelleTorznabIndexers, f.gazelleKeys)
+	if len(requested) == 0 {
 		// Picked indexers that the setup removed must not expand to every
 		// enabled indexer.
 		if f.picked {
@@ -137,7 +151,7 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	if cf.err != nil {
 		return nil, "", fmt.Errorf("analyze torrent: %w", cf.err)
 	}
-	allowed := intersectInts(cf.indexerIDs, f.requestedIndexerIDs)
+	allowed := intersectInts(cf.indexerIDs, requested)
 	if len(allowed) == 0 {
 		switch {
 		case len(cf.indexerIDs) > 0 && cf.done:
@@ -165,11 +179,12 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 // Library Scan resolves them one time for each run instead.
 func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torrent *qbt.Torrent, f searchScopeFacts, resolveIndexers bool) searchScope {
 	if resolveIndexers && !f.torznabOff {
-		ids, err := s.resolveTorznabIndexerIDs(ctx, f.requestedIndexerIDs, true)
-		if err != nil {
-			return searchScope{err: fmt.Errorf("resolve indexers: %w", err)}
-		}
+		ids, err := s.resolveTorznabIndexerIDs(ctx, f.requestedIndexerIDs)
 		f.requestedIndexerIDs = ids
+		f.contentFilter.discoveryErr = err
+		if err == nil && len(f.gazelleKeys) > 0 {
+			f.gazelleTorznabIndexers = s.gazelleTorznabIndexers(ctx)
+		}
 	}
 
 	if !f.torznabOff && len(f.requestedIndexerIDs) > 0 {
@@ -207,6 +222,7 @@ func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash s
 	s.waitForContentFilteringCompletion(ctx, analysis.FilteringState)
 	snapshot := analysis.FilteringState.Clone()
 	facts := contentFilterFacts{
+		discoveryErr:      snapshot.discoveryErr,
 		done:              snapshot.ContentCompleted,
 		indexerIDs:        snapshot.CapabilityIndexers,
 		seededOn:          len(snapshot.ExcludedIndexers),
@@ -216,4 +232,77 @@ func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash s
 		facts.indexerIDs = snapshot.FilteredIndexers
 	}
 	return facts
+}
+
+// withoutGazelleTorznabIndexers removes the Torznab indexer of each RED/OPS site
+// that has an API key. The search asks that site through its API, and asking it
+// through Torznab too sends the same search two times.
+func withoutGazelleTorznabIndexers(ids []int, gazelleIndexers map[int]string, gazelleKeys []string) []int {
+	return slices.DeleteFunc(slices.Clone(ids), func(id int) bool {
+		host, ok := gazelleIndexers[id]
+		return ok && slices.Contains(gazelleKeys, host)
+	})
+}
+
+// searchRunIndexerIDs resolves the Torznab indexers of a Library Scan one time
+// for each run.
+func (s *Service) searchRunIndexerIDs(ctx context.Context, requested []int, gazelleKeys []string) ([]int, error) {
+	ids, err := s.resolveTorznabIndexerIDs(ctx, requested)
+	if err != nil || len(gazelleKeys) == 0 {
+		return ids, err
+	}
+	return withoutGazelleTorznabIndexers(ids, s.gazelleTorznabIndexers(ctx), gazelleKeys), nil
+}
+
+// resolveTorznabIndexerIDs expands an empty selection to all enabled Torznab
+// indexers. An error means that qui could not list the indexers.
+func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int) ([]int, error) {
+	requested = uniquePositiveInts(requested)
+	if len(requested) > 0 || s.jackettService == nil {
+		return requested, nil
+	}
+	info, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Sorted(maps.Keys(info)), nil
+}
+
+// gazelleTorznabSites finds the Torznab indexers of RED and OPS by the URL or
+// the name of the indexer.
+var gazelleTorznabSites = []struct {
+	host   string
+	urlRE  *regexp.Regexp
+	nameRE *regexp.Regexp
+}{
+	{"redacted.sh", regexp.MustCompile(`(^|[^a-z0-9])redacted([^a-z0-9]|$)`), regexp.MustCompile(`\bredacted\b`)},
+	{"orpheus.network", regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus)([^a-z0-9]|$)`), regexp.MustCompile(`\b(ops|orpheus)\b`)},
+}
+
+// gazelleTorznabIndexers maps each Torznab indexer of RED or OPS to its host.
+// When qui cannot list the indexers, it returns nil and the search keeps them.
+func (s *Service) gazelleTorznabIndexers(ctx context.Context) map[int]string {
+	if s.jackettService == nil {
+		return nil
+	}
+	resp, err := s.jackettService.GetIndexers(ctx)
+	if err != nil || resp == nil {
+		return nil
+	}
+	out := make(map[int]string)
+	for _, idx := range resp.Indexers {
+		id, convErr := strconv.Atoi(strings.TrimSpace(idx.ID))
+		if convErr != nil || id <= 0 {
+			continue
+		}
+		rawURL := normalizeLowerTrim(idx.Description)
+		name := normalizeLowerTrim(idx.Name)
+		for _, site := range gazelleTorznabSites {
+			if site.urlRE.MatchString(rawURL) || site.nameRE.MatchString(name) {
+				out[id] = site.host
+				break
+			}
+		}
+	}
+	return out
 }

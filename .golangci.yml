@@ -92,6 +92,9 @@ linters:
         - pattern: ^orphanscan\.(isIgnoredPath|isPathProtectedByIgnorePaths|TorrentFileMap\.(Has|HasAnyInDir))$
           pkg: ^github\.com/autobrr/qui/internal/services/orphanscan$
           msg: ask the protected path module in internal/services/orphanscan/protected.go
+        - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
         - pattern: ^qbittorrent\.Category(Save|Download)Path$
           pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
           msg: read category folders through SyncManager.InstanceFolders
@@ -159,6 +162,12 @@ linters:
         linters:
           - forbidigo
         text: protected path module
+
+      # Only the Search scope module decides what a search asks (ADR 0029).
+      - path: internal/services/crossseed/search_scope\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Search scope module
 
       # Only the Adder adds a torrent in the cross-seed and Dir Scan packages (ADR 0022).
       - path-except: ^internal/services/(crossseed|dirscan)/

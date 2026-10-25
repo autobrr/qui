@@ -397,6 +397,9 @@ type AsyncIndexerFilteringState struct {
 	// for; category mapping rules can change a torrent's type at runtime, so
 	// readers must not reuse a run computed for a different type (#2313).
 	contentType string
+	// discoveryErr reports that the analysis could not list the Torznab
+	// indexers.
+	discoveryErr error
 
 	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
@@ -411,6 +414,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 		ContentCompleted:      s.ContentCompleted,
 		Error:                 s.Error,
 		contentType:           s.contentType,
+		discoveryErr:          s.discoveryErr,
 	}
 	if len(s.CapabilityIndexers) > 0 {
 		clone.CapabilityIndexers = append([]int(nil), s.CapabilityIndexers...)

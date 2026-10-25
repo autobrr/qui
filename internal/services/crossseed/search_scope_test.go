@@ -134,6 +134,40 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
 		},
 		{
+			name: "one key removes the Torznab indexer of that site only",
+			facts: searchScopeFacts{
+				requestedIndexerIDs: []int{1, 2, 3}, gazelleTorznabIndexers: map[int]string{2: red, 3: ops},
+				contentFilter: contentDone(1, 2, 3), sourceSite: ops, gazelleKeys: []string{red},
+			},
+			want: searchScope{torznabIndexerIDs: []int{1, 3}, gazelleHosts: []string{red}},
+		},
+		{
+			name: "two keys remove the Torznab indexers of both sites",
+			facts: searchScopeFacts{
+				requestedIndexerIDs: []int{1, 2, 3}, gazelleTorznabIndexers: map[int]string{2: red, 3: ops},
+				contentFilter: contentDone(1, 2, 3), sourceSite: red, gazelleKeys: bothKeys,
+			},
+			want: searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+		},
+		{
+			name: "picked indexers of keyed sites do not expand to all indexers",
+			facts: searchScopeFacts{
+				requestedIndexerIDs: []int{2}, picked: true, gazelleTorznabIndexers: map[int]string{2: red},
+				sourceSite: ops, gazelleKeys: []string{red},
+			},
+			want: searchScope{gazelleHosts: []string{red}, skipReason: "no eligible indexers after filtering"},
+		},
+		{
+			name:  "failed indexer discovery still asks RED/OPS",
+			facts: searchScopeFacts{contentFilter: contentFilterFacts{discoveryErr: errors.New("prowlarr down")}, gazelleKeys: bothKeys, musicCheckPassed: true},
+			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: "no eligible indexers"},
+		},
+		{
+			name:    "failed indexer discovery without a RED/OPS site is an error",
+			facts:   searchScopeFacts{contentFilter: contentFilterFacts{discoveryErr: errors.New("prowlarr down")}, gazelleKeys: bothKeys},
+			wantErr: "load torznab indexers: prowlarr down",
+		},
+		{
 			name:  "content filter removes every indexer and music still asks RED/OPS",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentDone(), gazelleKeys: bothKeys, musicCheckPassed: true},
 			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: "no eligible indexers after filtering"},
