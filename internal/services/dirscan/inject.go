@@ -152,9 +152,6 @@ type InjectResult struct {
 	// Success is true if the torrent was added successfully.
 	Success bool
 
-	// TorrentHash is the hash of the added torrent.
-	TorrentHash string
-
 	// Mode describes how the torrent was added: hardlink, reflink, or regular.
 	Mode string
 
@@ -279,7 +276,6 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	default:
 		result.Success = true
 	}
-	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
 }
 
