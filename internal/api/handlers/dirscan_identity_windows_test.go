@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,6 +45,8 @@ func TestWebhookTriggerScan_WindowsDirectoryIdentity(t *testing.T) {
 			require.NoError(t, err)
 			service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, instances,
 				nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
+			hub, events := newActivityHub(t)
+			service.SetActivityPublisher(hub)
 			created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{
 				Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
@@ -71,10 +72,7 @@ func TestWebhookTriggerScan_WindowsDirectoryIdentity(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 			assert.Equal(t, created.ID, response.DirectoryID)
 			assert.Equal(t, path, response.DirectoryPath)
-			require.Eventually(t, func() bool {
-				run, err := service.GetActiveRun(ctx, created.ID)
-				return err == nil && run == nil
-			}, 5*time.Second, 10*time.Millisecond)
+			waitDirScanIdle(t, service, events, created.ID)
 		})
 	}
 }
