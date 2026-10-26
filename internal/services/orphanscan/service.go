@@ -627,8 +627,8 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 // deletion starts under the same lock, so a change either fails the preview
 // before the run starts or sees it deleting. A scan reads the instance under
 // the same lock too, so it never pairs the new settings with the old
-// connection, and publishes its preview under the same lock only if no change
-// was stored since that read. A failure to fail the previews is logged, since
+// connection, and a remote scan publishes its preview under the same lock only
+// if no change was stored since that read. A failure to fail the previews is logged, since
 // the change is stored.
 func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
 	mu := s.getInstanceMutex(s.sshMu, instanceID)
