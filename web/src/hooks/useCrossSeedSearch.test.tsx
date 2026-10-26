@@ -355,6 +355,37 @@ describe("useCrossSeedSearch", () => {
     expect(results.map(r => r.guid)).toEqual(["guid-early"])
   })
 
+  it("keeps the search results when the opening analysis fails after the search", async () => {
+    let rejectAnalyze!: (error: Error) => void
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectAnalyze = reject
+      }) as never
+    )
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult({ guid: "guid-early" })] })
+    )
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-late-analyze-error" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      rejectAnalyze(new Error("analyze boom"))
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).error).toBeNull()
+    const results = dialogProps(result).results as CrossSeedTorrentSearchResponse["results"]
+    expect(results.map(r => r.guid)).toEqual(["guid-early"])
+  })
+
   it("ignores the analysis of a torrent that the dialog no longer shows", async () => {
     const resolvers: Record<string, (info: CrossSeedTorrentSearchResponse["sourceTorrent"]) => void> = {}
     mockedApi.analyzeTorrentForCrossSeedSearch.mockImplementation(((_: number, hash: string) =>
