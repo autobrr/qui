@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -69,35 +70,37 @@ func TestParseTorrentTags(t *testing.T) {
 func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 	t.Parallel()
 
-	initial := qbt.Torrent{
-		Name:      "Example.Release",
-		Hash:      "ABC123",
-		Tracker:   "https://tracker.example/announce",
-		AddedOn:   100,
-		ETA:       86400,
-		Progress:  0,
-		DlSpeed:   0,
-		UpSpeed:   0,
-		NumSeeds:  0,
-		NumLeechs: 0,
-	}
-	refreshed := initial
-	refreshed.Progress = 0.42
-	refreshed.DlSpeed = 1_234_567
-	refreshed.UpSpeed = 12_345
-	refreshed.NumSeeds = 88
-	refreshed.NumLeechs = 11
+	synctest.Test(t, func(t *testing.T) {
+		initial := qbt.Torrent{
+			Name:      "Example.Release",
+			Hash:      "ABC123",
+			Tracker:   "https://tracker.example/announce",
+			AddedOn:   100,
+			ETA:       86400,
+			Progress:  0,
+			DlSpeed:   0,
+			UpSpeed:   0,
+			NumSeeds:  0,
+			NumLeechs: 0,
+		}
+		refreshed := initial
+		refreshed.Progress = 0.42
+		refreshed.DlSpeed = 1_234_567
+		refreshed.UpSpeed = 12_345
+		refreshed.NumSeeds = 88
+		refreshed.NumLeechs = 11
 
-	syncStub := &stubTorrentNotificationSync{
-		torrents:      []qbt.Torrent{refreshed},
-		extractDomain: "tracker.example",
-	}
-	notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
+		syncStub := &stubTorrentNotificationSync{
+			torrents:      []qbt.Torrent{refreshed},
+			extractDomain: "tracker.example",
+		}
+		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-	notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []qbt.Torrent{initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []qbt.Torrent{initial}, 5*time.Millisecond)
 
-	select {
-	case event := <-notifier.events:
+		// notifyTorrentsAddedAfter returns after it sends.
+		require.Len(t, notifier.events, 1)
+		event := <-notifier.events
 		require.Equal(t, notifications.EventTorrentAdded, event.Type)
 		require.Equal(t, 7, event.InstanceID)
 		require.Equal(t, "Example.Release", event.TorrentName)
@@ -108,37 +111,37 @@ func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 		require.Equal(t, int64(88), event.TorrentNumSeeds)
 		require.Equal(t, int64(11), event.TorrentNumLeechs)
 		require.Equal(t, "tracker.example", event.TrackerDomain)
-	case <-time.After(time.Second):
-		t.Fatal("expected delayed torrent_added notification")
-	}
 
-	require.Equal(t, []string{"ABC123"}, syncStub.lastHashes)
+		require.Equal(t, []string{"ABC123"}, syncStub.lastHashes)
+	})
 }
 
 func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 	t.Parallel()
 
-	initial := qbt.Torrent{
-		Name:      "Fallback.Release",
-		Hash:      "DEF456",
-		Tracker:   "https://fallback.example/announce",
-		Progress:  0.11,
-		DlSpeed:   111,
-		UpSpeed:   222,
-		NumSeeds:  3,
-		NumLeechs: 4,
-	}
+	synctest.Test(t, func(t *testing.T) {
+		initial := qbt.Torrent{
+			Name:      "Fallback.Release",
+			Hash:      "DEF456",
+			Tracker:   "https://fallback.example/announce",
+			Progress:  0.11,
+			DlSpeed:   111,
+			UpSpeed:   222,
+			NumSeeds:  3,
+			NumLeechs: 4,
+		}
 
-	syncStub := &stubTorrentNotificationSync{
-		err:           errors.New("temporary failure"),
-		extractDomain: "fallback.example",
-	}
-	notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
+		syncStub := &stubTorrentNotificationSync{
+			err:           errors.New("temporary failure"),
+			extractDomain: "fallback.example",
+		}
+		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-	notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []qbt.Torrent{initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []qbt.Torrent{initial}, 5*time.Millisecond)
 
-	select {
-	case event := <-notifier.events:
+		// notifyTorrentsAddedAfter returns after it sends.
+		require.Len(t, notifier.events, 1)
+		event := <-notifier.events
 		require.Equal(t, notifications.EventTorrentAdded, event.Type)
 		require.Equal(t, "Fallback.Release", event.TorrentName)
 		require.InDelta(t, 0.11, event.TorrentProgress, 1e-9)
@@ -146,9 +149,7 @@ func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 		require.Equal(t, int64(222), event.TorrentUpSpeedBps)
 		require.Equal(t, int64(3), event.TorrentNumSeeds)
 		require.Equal(t, int64(4), event.TorrentNumLeechs)
-	case <-time.After(time.Second):
-		t.Fatal("expected delayed torrent_added notification")
-	}
+	})
 }
 
 func TestNotifyTorrentsAddedAfterRefreshesBatchInOneRead(t *testing.T) {

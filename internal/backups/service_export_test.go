@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -127,30 +128,29 @@ func TestIsExportMetadataUnavailable(t *testing.T) {
 func TestAdaptiveExportDelayCapsSlowExports(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	start := time.Now()
-	// A 10s stall must not be mirrored back as a 10s sleep.
-	require.NoError(t, adaptiveExportDelay(ctx, 20*time.Millisecond, 10*time.Second))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, maxAdaptiveExportDelay)
-	require.Less(t, elapsed, 2*time.Second)
+		start := time.Now()
+		// A 10s stall must not be mirrored back as a 10s sleep.
+		require.NoError(t, adaptiveExportDelay(ctx, 20*time.Millisecond, 10*time.Second))
+		require.Equal(t, maxAdaptiveExportDelay, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayHonorsConfiguredMinAboveCap(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	minDelay := maxAdaptiveExportDelay + 200*time.Millisecond
-	start := time.Now()
-	require.NoError(t, adaptiveExportDelay(ctx, minDelay, 10*time.Second))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, minDelay)
+		minDelay := maxAdaptiveExportDelay + 200*time.Millisecond
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, minDelay, 10*time.Second))
+		require.Equal(t, minDelay, time.Since(start))
+	})
 }
 
 // concurrentExportStub is a thread-safe backupReader for exercising the
