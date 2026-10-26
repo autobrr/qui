@@ -1,7 +1,5 @@
 name: Claude Discussion Triage
 on:
-  discussion:
-    types: [created]
   discussion_comment:
     types: [created]
   schedule:
@@ -17,22 +15,20 @@ on:
 
 jobs:
   # The triage job runs only on workflow_dispatch, the one event that the
-  # Console federation rule accepts, so this job re-triggers discussion events
+  # Console federation rule accepts, so this job re-triggers discussion comments
   # as workflow_dispatch. The sweep and manual runs use the same path.
-  # A new Issue Triage discussion is triaged. Any human comment on a
-  # needs-info or pending-close Issue Triage discussion re-triggers triage. No self-loop: the
+  # A new Issue Triage discussion waits for the daily sweep. Any human comment
+  # on a needs-info or pending-close Issue Triage discussion re-triggers triage. No self-loop: the
   # agent writes with GITHUB_TOKEN, whose events never start workflows; the
   # Bot check filters other apps.
   dispatch:
     runs-on: ubuntu-latest
     if: >
       github.event.discussion.category.slug == 'issue-triage' &&
-      (github.event_name == 'discussion' ||
-       (github.event_name == 'discussion_comment' &&
-        github.event.discussion.state == 'open' &&
-        github.event.comment.user.type != 'Bot' &&
-        (contains(github.event.discussion.labels.*.name, 'needs-info') ||
-         contains(github.event.discussion.labels.*.name, 'pending-close'))))
+      github.event.discussion.state == 'open' &&
+      github.event.comment.user.type != 'Bot' &&
+      (contains(github.event.discussion.labels.*.name, 'needs-info') ||
+       contains(github.event.discussion.labels.*.name, 'pending-close'))
     permissions:
       actions: write
     steps:
@@ -124,7 +120,7 @@ jobs:
     environment: claude
     timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' && inputs.discussion_number
-    # One run per discussion at a time: a creation event and the sweep can
+    # One run per discussion at a time: a comment and the sweep can
     # dispatch the same number, so the second run queues and then stops early
     # because the playbook sees the discussion already triaged.
     concurrency:
