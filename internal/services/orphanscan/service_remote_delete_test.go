@@ -775,6 +775,60 @@ func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
+// saveNewKey stores a new private key through ChangeSSH, as the credentials
+// route does. The user, host, port and pin stay as they were, so the endpoint
+// a scan compares at its end does not change.
+func saveNewKey(t *testing.T, f *modeFixture) {
+	err := f.svc.ChangeSSH(t.Context(), 1, func() error {
+		f.instance.mu.Lock()
+		f.instance.inst.SSHKeyEncrypted = "key-v2"
+		f.instance.mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+// A new private key can see other files through the same server and account.
+// Saved while a remote scan walks, it finds no preview to fail yet, so the
+// scan must not publish the preview it walked with the old key.
+func TestExecuteScan_RemoteKeySavedDuringTheWalkFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-key-mid-walk", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	files := stubSync(f.svc).getTorrentFilesBatch
+	var once sync.Once
+	stubSync(f.svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+		once.Do(func() { saveNewKey(t, f) })
+		return files(ctx, instanceID, hashes)
+	}
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "failed", run.Status)
+	require.Equal(t, ScanModeChangedMessage, run.ErrorMessage)
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
+	f.requireNothingDeleted(t)
+}
+
+// A new private key saved after the scan reloaded the instance passes its
+// endpoint compare and still finds the run scanning. The preview is published
+// under the SSH lock only if no change was stored since the walk began.
+func TestExecuteScan_RemoteKeySavedBeforeThePreviewIsPublishedFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-key-before-preview", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	f.svc.beforePreviewReady = func() { saveNewKey(t, f) }
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "failed", run.Status)
+	require.Equal(t, ScanModeChangedMessage, run.ErrorMessage)
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
+	f.requireNothingDeleted(t)
+}
+
 // serverBackend records the server each walk reaches and holds the first
 // walk until resume closes. The pool serves its cached connection until an
 // SSH change drops it, and only that moves connected to the new server.

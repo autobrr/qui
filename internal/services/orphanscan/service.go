@@ -87,13 +87,18 @@ type Service struct {
 	instanceMu map[int]*sync.Mutex
 	// Per-instance mutex around run creation only, never held during a scan
 	triggerMu map[int]*sync.Mutex
-	// Per-instance mutex around an SSH change, the start of a deletion and the
-	// instance read of a scan
+	// Per-instance mutex around an SSH change, the start of a deletion, and the
+	// instance read and preview write of a scan
 	sshMu map[int]*sync.Mutex
-	mu    sync.Mutex // protects instanceMu, triggerMu and sshMu maps
+	// Per-instance count of stored SSH changes, written and compared under sshMu
+	sshChanges map[int]uint64
+	mu         sync.Mutex // protects instanceMu, triggerMu, sshMu and sshChanges maps
 	// beforeDeletionStart, when set, runs under the SSH lock just before a
 	// deletion starts. Nil outside tests.
 	beforeDeletionStart func()
+	// beforePreviewReady, when set, runs just before a scan takes the SSH lock
+	// to publish its preview. Nil outside tests.
+	beforePreviewReady func()
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
@@ -124,6 +129,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		instanceMu:        make(map[int]*sync.Mutex),
 		triggerMu:         make(map[int]*sync.Mutex),
 		sshMu:             make(map[int]*sync.Mutex),
+		sshChanges:        make(map[int]uint64),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
 }
@@ -621,8 +627,9 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 // deletion starts under the same lock, so a change either fails the preview
 // before the run starts or sees it deleting. A scan reads the instance under
 // the same lock too, so it never pairs the new settings with the old
-// connection. A failure to fail the previews is logged, since the change is
-// stored.
+// connection, and publishes its preview under the same lock only if no change
+// was stored since that read. A failure to fail the previews is logged, since
+// the change is stored.
 func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
 	mu := s.getInstanceMutex(s.sshMu, instanceID)
 	mu.Lock()
@@ -638,11 +645,22 @@ func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() e
 	if err := change(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.sshChanges[instanceID]++
+	s.mu.Unlock()
 	// The change is stored, so a client that goes away now must not skip this.
 	if err := s.failRemotePreviews(context.WithoutCancel(ctx), instanceID); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to fail remote previews after an SSH change")
 	}
 	return nil
+}
+
+// sshChangeCount is the number of SSH changes stored for instanceID. Callers
+// hold its SSH lock.
+func (s *Service) sshChangeCount(instanceID int) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sshChanges[instanceID]
 }
 
 // failRemotePreviews fails the instance's remote previews. Confirm refuses
@@ -782,6 +800,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	sshMu := s.getInstanceMutex(s.sshMu, instanceID)
 	sshMu.Lock()
 	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityRead)
+	sshChanges := s.sshChangeCount(instanceID)
 	sshMu.Unlock()
 	if err != nil {
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
@@ -1096,8 +1115,24 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	// Mark as preview ready (orphans found)
-	if err := s.store.UpdateRunStatus(ctx, runID, "preview_ready"); err != nil {
+	// Mark as preview ready (orphans found). An SSH change fails remote previews
+	// but finds none while the run scans, and a new private key leaves the
+	// endpoint compare above unchanged. So a remote preview is published under
+	// the SSH lock, only if no change was stored since the backend was built. A
+	// later change finds the preview and fails it.
+	if s.beforePreviewReady != nil {
+		s.beforePreviewReady()
+	}
+	sshMu.Lock()
+	if mode == models.FilesystemModeRemote && s.sshChangeCount(instanceID) != sshChanges {
+		sshMu.Unlock()
+		log.Info().Int64("run", runID).Msg("orphanscan: failing scan, SSH settings changed while it ran")
+		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
+		return
+	}
+	err = s.store.UpdateRunStatus(ctx, runID, "preview_ready")
+	sshMu.Unlock()
+	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled before marking preview_ready")
 			return
