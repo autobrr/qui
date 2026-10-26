@@ -131,7 +131,6 @@
       "check": "Comprova"
     },
     "searching": "S'està comprovant si hi ha cross-seed",
-    "searchingProgress": "S'està comprovant si hi ha cross-seed ({{checked}}/{{total}})",
     "error": "No s'ha pogut comprovar si hi ha cross-seed",
     "retry": "Torna-ho a provar",
     "noCrossSeeds": "No s'ha trobat cap cross-seed",

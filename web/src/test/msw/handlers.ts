@@ -94,4 +94,8 @@ export const handlers = [
   http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
     HttpResponse.json({ matches: [] })
   ),
+
+  http.post("*/api/instances/:instanceId/torrents/delete-cross-seeds", () =>
+    HttpResponse.json({ matches: [] })
+  ),
 ]

@@ -131,7 +131,6 @@
       "check": "Verificar"
     },
     "searching": "Verificando cross-seeds",
-    "searchingProgress": "Verificando cross-seeds ({{checked}}/{{total}})",
     "error": "Falha ao verificar cross-seeds",
     "retry": "Tentar novamente",
     "noCrossSeeds": "Nenhum cross-seed encontrado",

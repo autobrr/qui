@@ -554,8 +554,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientHashes,
       clientCount,
     })
-    // The cross-seed warning leaves out the loaded rows, so a second delete only repeats a
-    // cross-seed that the select-all filter matches beyond the loaded rows (#3341).
+    // The cross-seed warning leaves out every selected torrent, so the second delete
+    // never repeats a torrent of the select-all delete (#3341).
     if (isAllSelected && crossSeedTargets.length) {
       const crossSeedHashes = crossSeedTargets.map(target => target.hash)
       await mutation.mutateAsync({

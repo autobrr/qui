@@ -2796,6 +2796,93 @@ paths:
                               type: string
                               description: Canonical peer address.
 
+  /api/instances/{instanceID}/torrents/delete-cross-seeds:
+    post:
+      tags:
+        - Torrents
+      summary: Find the cross-seeds that a delete affects
+      description: Returns the torrents that share files with the selected torrents and that a delete with files affects, on the instance of each selected torrent. The selected torrents are not in the result. The request takes the selection of a bulk action, so a selectAll request checks every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific torrent hashes to check. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: Check all torrents that match the filters, search, and exclusions.
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instances of the unified scope.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                search:
+                  type: string
+                  description: Search query used when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
+                excludeTargets:
+                  type: array
+                  description: Instance and hash pairs to exclude when selectAll is true.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+      responses:
+        '200':
+          description: The affected torrents. matchType is content_path, hardlink, or reflink.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
+        '400':
+          description: Invalid selection
+        '409':
+          description: Instance is disabled
+        '500':
+          description: A file list or a link check could not be read
+        '503':
+          description: Not all instances of the unified scope could be read
   /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:

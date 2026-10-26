@@ -131,7 +131,6 @@
       "check": "Check"
     },
     "searching": "Checking for cross-seeds",
-    "searchingProgress": "Checking for cross-seeds ({{checked}}/{{total}})",
     "error": "Failed to check for cross-seeds",
     "retry": "Retry",
     "noCrossSeeds": "No cross-seeds found",

@@ -127,7 +127,6 @@
       "check": "檢查"
     },
     "searching": "正在檢查輔種",
-    "searchingProgress": "正在檢查輔種（{{checked}}/{{total}}）",
     "error": "檢查輔種失敗",
     "retry": "重試",
     "noCrossSeeds": "未找到輔種",

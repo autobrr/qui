@@ -135,7 +135,6 @@
       "check": "Zkontrolovat"
     },
     "searching": "Hledání křížového sdílení",
-    "searchingProgress": "Hledání křížového sdílení ({{checked}}/{{total}})",
     "error": "Nepodařilo se zkontrolovat křížová sdílení",
     "retry": "Zkusit znovu",
     "noCrossSeeds": "Nenalezena žádná křížová sdílení",
