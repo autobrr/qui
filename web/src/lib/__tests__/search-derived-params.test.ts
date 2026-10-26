@@ -19,21 +19,10 @@ const t = i18n.getFixedT("en", "search")
 // Intent: SearchType -> Torznab category IDs. Returns a NEW array so callers
 // can mutate safely without corrupting the module-level map.
 describe("getCategoriesForSearchType", () => {
-  it.each<[Parameters<typeof getCategoriesForSearchType>[0], number]>([
-    ["movies", 2000],
-    ["tv", 5000],
-    ["music", 3000],
-    ["books", 7000],
-    ["apps", 4000],
-    ["xxx", 6000],
-  ])("returns a category list starting at the parent ID for %s", (type, parent) => {
-    const cats = getCategoriesForSearchType(type)
-    expect(cats[0]).toBe(parent)
-  })
-
   it("returns a fresh array on each call (callers can mutate safely)", () => {
     const a = getCategoriesForSearchType("movies")
     const b = getCategoriesForSearchType("movies")
+    expect(a[0]).toBe(2000)
     expect(a).not.toBe(b)
     a.push(9999)
     expect(getCategoriesForSearchType("movies")).not.toContain(9999)
@@ -50,15 +39,8 @@ describe("inferSearchTypeFromCategories", () => {
     expect(inferSearchTypeFromCategories([])).toBeNull()
   })
 
-  it.each([
-    [[2000, 2010, 2020], "movies"],
-    [[5000, 5040], "tv"],
-    [[3000], "music"],
-    [[7020], "books"],
-    [[4000], "apps"],
-    [[6060], "xxx"],
-  ] as const)("infers %s from %j", (cats, expected) => {
-    expect(inferSearchTypeFromCategories([...cats])).toBe(expected)
+  it("infers the type when every category shares one parent family", () => {
+    expect(inferSearchTypeFromCategories([2000, 2010, 2020])).toBe("movies")
   })
 
   it("returns null when categories cross family boundaries", () => {

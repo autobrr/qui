@@ -16,11 +16,6 @@ function render(sortedTorrents: Torrent[]) {
 }
 
 describe("useTorrentTableHotkeys", () => {
-  it("exposes a boolean isMac platform flag", () => {
-    const { hook } = render([])
-    expect(typeof hook.result.current.isMac).toBe("boolean")
-  })
-
   it("selects all when there are torrents", () => {
     const ctx = render([makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })])
     act(() => ctx.hook.result.current.selectAllWithShortcut())

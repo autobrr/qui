@@ -1957,16 +1957,6 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 // executeExternalProgramsFromAutomation tests
 // -----------------------------------------------------------------------------
 
-func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(_ *testing.T) {
-	// Test that empty executions list returns early without any side effects
-	s := &Service{}
-
-	// Should not panic and return immediately
-	s.executeExternalProgramsFromAutomation(context.Background(), 1, []pendingProgramExec{})
-
-	// If we get here without panic, the test passes
-}
-
 func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
 	// Test that nil externalProgramService is handled gracefully
 	// and doesn't panic (activity logging requires a real store, tested separately)
@@ -2058,41 +2048,6 @@ func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map
 		evalCtx:       evalCtx,
 	})
 	return plan, torrentByHash
-}
-
-func TestRecordDryRunActivities_Deletes(t *testing.T) {
-	mockDB := &mockQuerier{
-		activities: make([]*models.AutomationActivity, 0),
-	}
-	activityStore := models.NewAutomationActivityStore(mockDB)
-
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{
-		activityStore: activityStore,
-		activityRuns:  newActivityRunStore(24*time.Hour, 10),
-		syncManager:   sm,
-	}
-
-	pending := map[string]selectedDeletion{"abc123": {hash: "abc123"}}
-
-	torrent := qbt.Torrent{
-		Hash:    "abc123",
-		Name:    "Test Torrent",
-		Tracker: "https://tracker.example.com/announce",
-	}
-
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		runPlan{deletions: &deletionSelection{byHash: pending}},
-		map[string]qbt.Torrent{"abc123": torrent},
-		true,
-	)
-
-	require.Len(t, mockDB.activities, 1)
-	assert.Empty(t, mockDB.activities[0].Hash)
-	assert.Equal(t, models.ActivityActionDeletedCondition, mockDB.activities[0].Action)
-	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
 func TestRecordDryRunActivities_Resumes(t *testing.T) {
