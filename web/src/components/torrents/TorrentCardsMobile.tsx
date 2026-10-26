@@ -1271,10 +1271,6 @@ export function TorrentCardsMobile({
       hashes = selectedRequestHashes
     }
 
-    // Include cross-seed hashes if user opted to delete them
-    const crossSeedHashesToDelete = deleteCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
-    const hashesToDelete = [...hashes, ...crossSeedHashesToDelete]
-
     let visibleHashes: string[]
     if (torrentToDelete) {
       visibleHashes = [torrentToDelete.hash]
@@ -1286,9 +1282,6 @@ export function TorrentCardsMobile({
       visibleHashes = selectedRequestHashes
     }
 
-    // Include cross-seeds in visible hashes for optimistic updates
-    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashesToDelete]
-
     let totalSelected: number
     if (torrentToDelete) {
       totalSelected = 1
@@ -1298,20 +1291,18 @@ export function TorrentCardsMobile({
       totalSelected = visibleHashes.length
     }
 
-    // Add cross-seed count
-    const totalToDelete = totalSelected + crossSeedHashesToDelete.length
-
     await handleDelete(
-      hashesToDelete,
+      hashes,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
       !torrentToDelete && isAllSelected ? excludeHashesForRequest : undefined,
       {
-        clientHashes: visibleHashesToDelete,
-        totalSelected: totalToDelete,
-        actionTargets: deleteCrossSeeds && deleteActionTargets ? crossSeedDeleteTargets : deleteActionTargets,
+        clientHashes: visibleHashes,
+        totalSelected,
+        actionTargets: deleteActionTargets,
         excludeTargets: !torrentToDelete && isAllSelected? excludedTargets: undefined,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
       }
     )
     setTorrentToDelete(null)

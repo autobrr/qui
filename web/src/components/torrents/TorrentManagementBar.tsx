@@ -283,24 +283,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
-    // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = supportsCrossSeedDeleteTools && deleteCrossSeeds ? [...selectedHashes, ...crossSeedAffectedTorrents.map(t => t.hash)] : selectedHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = supportsCrossSeedDeleteTools && deleteCrossSeeds ? {
-      ...clientMeta,
-      clientHashes: hashesToDelete,
-      totalSelected: hashesToDelete.length,
-      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
-    } : clientMeta
-
     await handleDelete(
-      hashesToDelete,
+      selectedHashes,
       isAllSelected,
       filters,
       search,
       excludeHashes,
-      deleteClientMeta
+      {
+        ...clientMeta,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : undefined,
+      }
     )
   }, [
     actionInstanceId,

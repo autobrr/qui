@@ -172,24 +172,16 @@ export function useBulkActionWrappers({
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
-    // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds ? {
-      ...contextClientMeta,
-      clientHashes: hashesToDelete,
-      totalSelected: hashesToDelete.length,
-      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
-    } : contextClientMeta
-
     await handleDelete(
-      hashesToDelete,
+      contextHashes,
       isAllSelected,
       selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
-      deleteClientMeta
+      {
+        ...contextClientMeta,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
+      }
     )
   }, [
     blockCrossSeedHashes,
