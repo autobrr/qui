@@ -161,43 +161,22 @@ describe("useBulkActionWrappers — delete (cross-seed aware)", () => {
     expect(vi.mocked(params.handleDelete)).toHaveBeenCalled()
   })
 
-  it("appends affected cross-seed hashes when deleteCrossSeeds is enabled", async () => {
+  it("passes the chosen cross-seeds to handleDelete as crossSeedTargets", async () => {
     const params = makeParams({
+      isAllSelected: true,
+      effectiveSelectionCount: 50,
       deleteCrossSeeds: true,
       contextHashes: ["ctx0"],
       crossSeedWarning: { affectedTorrents: [makeTorrent({ hash: "cs1" })] },
     })
     const { result } = render(params)
     await act(async () => { await result.current.handleDeleteWrapper() })
-    const hashes = vi.mocked(params.handleDelete).mock.calls[0][0]
-    expect(hashes).toEqual(["ctx0", "cs1"])
-  })
-
-  it("passes cross-seeds as crossSeedTargets on a select-all delete", async () => {
-    const shared = {
-      isAllSelected: true,
-      effectiveSelectionCount: 50,
-      contextHashes: ["ctx0"],
-      crossSeedWarning: { affectedTorrents: [makeTorrent({ hash: "cs1" })] },
-    }
-    const params = makeParams({ ...shared, deleteCrossSeeds: true })
-    const { result } = render(params)
-    await act(async () => { await result.current.handleDeleteWrapper() })
 
     const call = vi.mocked(params.handleDelete).mock.calls[0]
     expect(call[0]).toEqual(["ctx0"])
     expect(call[1]).toBe(true)
-
-    // contextClientMeta keeps the select-all count and the original context hashes.
-    const plain = makeParams({ ...shared, deleteCrossSeeds: false })
-    const plainRendered = render(plain)
-    await act(async () => { await plainRendered.result.current.handleDeleteWrapper() })
-    const plainMeta = vi.mocked(plain.handleDelete).mock.calls[0][5]
-
-    expect(call[5]).toEqual({
-      ...plainMeta,
-      crossSeedTargets: [{ instanceId: 1, hash: "cs1" }],
-    })
+    expect(call[5]?.totalSelected).toBe(50)
+    expect(call[5]?.crossSeedTargets).toEqual([{ instanceId: 1, hash: "cs1" }])
   })
 })
 

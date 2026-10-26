@@ -1271,13 +1271,6 @@ export function TorrentCardsMobile({
       hashes = selectedRequestHashes
     }
 
-    // A select-all delete cannot list hashes, so its cross-seeds go in a follow-up request instead
-    const mergeCrossSeeds = deleteCrossSeeds && (!!torrentToDelete || !isAllSelected)
-
-    // Include cross-seed hashes in this request when they can be listed
-    const crossSeedHashesToDelete = mergeCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
-    const hashesToDelete = [...hashes, ...crossSeedHashesToDelete]
-
     let visibleHashes: string[]
     if (torrentToDelete) {
       visibleHashes = [torrentToDelete.hash]
@@ -1289,9 +1282,6 @@ export function TorrentCardsMobile({
       visibleHashes = selectedRequestHashes
     }
 
-    // Include cross-seeds in visible hashes for optimistic updates
-    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashesToDelete]
-
     let totalSelected: number
     if (torrentToDelete) {
       totalSelected = 1
@@ -1301,21 +1291,18 @@ export function TorrentCardsMobile({
       totalSelected = visibleHashes.length
     }
 
-    // Add cross-seed count
-    const totalToDelete = totalSelected + crossSeedHashesToDelete.length
-
     await handleDelete(
-      hashesToDelete,
+      hashes,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
       !torrentToDelete && isAllSelected ? excludeHashesForRequest : undefined,
       {
-        clientHashes: visibleHashesToDelete,
-        totalSelected: totalToDelete,
-        actionTargets: deleteCrossSeeds && deleteActionTargets ? crossSeedDeleteTargets : deleteActionTargets,
+        clientHashes: visibleHashes,
+        totalSelected,
+        actionTargets: deleteActionTargets,
         excludeTargets: !torrentToDelete && isAllSelected? excludedTargets: undefined,
-        crossSeedTargets: deleteCrossSeeds && !mergeCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
       }
     )
     setTorrentToDelete(null)

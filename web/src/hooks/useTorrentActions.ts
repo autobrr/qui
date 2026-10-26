@@ -87,7 +87,7 @@ interface ClientMeta {
   totalSelected?: number
   actionTargets?: Array<{ instanceId: number; hash: string }>
   excludeTargets?: Array<{ instanceId: number; hash: string }>
-  // Cross-seeds to delete in a follow-up request; a select-all request cannot list hashes.
+  // Cross-seeds that the user chose to delete with the selection.
   crossSeedTargets?: Array<{ instanceId: number; hash: string }>
 }
 
@@ -532,15 +532,20 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     excludeHashes?: string[],
     clientMeta?: ClientMeta
   ) => {
-    const clientHashes = clientMeta?.clientHashes ?? hashes
-    const clientCount = clientMeta?.totalSelected
-      ?? (clientHashes?.length ?? hashes.length)
+    // A select-all request cannot list hashes, so its cross-seeds go in a second request.
+    // Any other delete lists them with the selection.
+    const crossSeedTargets = clientMeta?.crossSeedTargets ?? []
+    const mergedTargets = isAllSelected ? [] : crossSeedTargets
+    const mergedHashes = mergedTargets.map(target => target.hash)
+    const clientHashes = [...(clientMeta?.clientHashes ?? hashes), ...mergedHashes]
+    const clientCount = (clientMeta?.totalSelected ?? clientMeta?.clientHashes?.length ?? hashes.length) + mergedHashes.length
+    const actionTargets = clientMeta?.actionTargets && [...clientMeta.actionTargets, ...mergedTargets]
     await mutation.mutateAsync({
       action: "delete",
       instanceIds,
-      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
+      targets: isAllSelected ? undefined : actionTargets,
       deleteFiles,
-      hashes: isAllSelected ? [] : hashes,
+      hashes: isAllSelected ? [] : [...hashes, ...mergedHashes],
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
@@ -549,20 +554,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientHashes,
       clientCount,
     })
-    // A select-all request cannot carry hashes, so the chosen cross-seeds go in a second request.
-    // Drop anything the user unticked from the select-all, and anything already covered by the
-    // loaded rows of request 1. Companions outside the loaded window that match the select-all
-    // filter are deleted server-side by request 1 and cannot be detected here.
-    const excludedHashes = new Set(excludeHashes ?? [])
-    const excludedKeys = new Set((clientMeta?.excludeTargets ?? []).map(target => `${target.instanceId}:${target.hash}`))
-    const coveredHashes = new Set(clientMeta?.clientHashes ?? [])
-    const crossSeedTargets = isAllSelected
-      ? (clientMeta?.crossSeedTargets ?? []).filter(target =>
-        !excludedHashes.has(target.hash)
-        && !excludedKeys.has(`${target.instanceId}:${target.hash}`)
-        && !coveredHashes.has(target.hash))
-      : []
-    if (crossSeedTargets.length) {
+    // The cross-seed warning leaves out the loaded rows, so a second delete only repeats a
+    // cross-seed that the select-all filter matches beyond the loaded rows (#3341).
+    if (isAllSelected && crossSeedTargets.length) {
       const crossSeedHashes = crossSeedTargets.map(target => target.hash)
       await mutation.mutateAsync({
         action: "delete",

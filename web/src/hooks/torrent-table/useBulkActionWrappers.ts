@@ -172,28 +172,16 @@ export function useBulkActionWrappers({
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
-    // Select-all cannot list hashes, so its cross-seeds go in a follow-up request (crossSeedTargets)
-    const mergeCrossSeeds = deleteCrossSeeds && !isAllSelected
-    const hashesToDelete = mergeCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = mergeCrossSeeds ? {
-      ...contextClientMeta,
-      clientHashes: hashesToDelete,
-      totalSelected: hashesToDelete.length,
-      actionTargets: crossSeedDeleteTargets,
-    } : {
-      ...contextClientMeta,
-      crossSeedTargets: deleteCrossSeeds && !mergeCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
-    }
-
     await handleDelete(
-      hashesToDelete,
+      contextHashes,
       isAllSelected,
       selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
-      deleteClientMeta
+      {
+        ...contextClientMeta,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
+      }
     )
   }, [
     blockCrossSeedHashes,
