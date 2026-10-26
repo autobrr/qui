@@ -99,3 +99,19 @@ func TestFindDeleteMatchesFailsWhenFilesCannotBeRead(t *testing.T) {
 	_, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
 	require.ErrorContains(t, err, "read the file list of torrent cccc")
 }
+
+// regression: #3341
+func TestFindDeleteMatchesSelectsHybridByV1Hash(t *testing.T) {
+	t.Parallel()
+
+	const name = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
+	files := qbt.TorrentFiles{{Name: name + "/Harbor.Watch.S01E01.mkv", Size: 100}}
+	selected := crossMatchTorrent(1, "aaaa", name, "/data", "/data/"+name, files)
+	selected.view.InfohashV1 = "1111"
+	sharer := crossMatchTorrent(1, "cccc", "Harbor Watch S01", "/data", "/data/"+name, files)
+
+	svc, _ := deleteMatchService(selected, sharer)
+	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"1111"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
+}

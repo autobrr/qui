@@ -9,6 +9,8 @@ import (
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // FindDeleteMatches returns the torrents on the instance, other than the
@@ -34,10 +36,7 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrInvalidRequest)
 	}
 
-	selected := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		selected[normalizeHash(hash)] = struct{}{}
-	}
+	selected := selectedHashes(torrents, hashes)
 	isSelected := func(hash string) bool {
 		_, ok := selected[normalizeHash(hash)]
 		return ok
@@ -50,6 +49,9 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 	}
 	picks := make([][]*candidatePick, len(torrents))
 	for i := range torrents {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if source := torrents[i].Torrent; isSelected(source.Hash) {
 			picks[i] = s.selectCandidates(source, reads.read(s.matcher(), instanceID, source), idx, true)
 		}
@@ -123,4 +125,24 @@ func (b *batchFiles) deleteTier(ctx context.Context, source *qbt.Torrent, instan
 		return "", fmt.Errorf("check the links of torrent %s", c.hash)
 	}
 	return tier, nil
+}
+
+// selectedHashes returns the Hash of each torrent that hashes names. A request
+// can name a hybrid torrent by any of its hashes, as a bulk action can.
+func selectedHashes(torrents []qbittorrent.CrossInstanceTorrentView, hashes []string) map[string]struct{} {
+	requested := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		requested[normalizeHash(hash)] = struct{}{}
+	}
+	selected := make(map[string]struct{}, len(hashes))
+	for i := range torrents {
+		t := torrents[i].Torrent
+		if slices.ContainsFunc(normalizedHashes(t.Hash, t.InfohashV1, t.InfohashV2), func(h string) bool {
+			_, ok := requested[h]
+			return ok
+		}) {
+			selected[normalizeHash(t.Hash)] = struct{}{}
+		}
+	}
+	return selected
 }
