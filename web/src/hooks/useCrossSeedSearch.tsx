@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -63,6 +63,8 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
+  // Each dialog opening gets a new number. A late answer for an earlier opening is ignored.
+  const openingRef = useRef(0)
 
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -187,6 +189,7 @@ export function useCrossSeedSearch(instanceId: number) {
       setCrossSeedApplyResult(null)
       setCrossSeedHasSearched(true)
 
+      const opening = openingRef.current
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
@@ -194,6 +197,9 @@ export function useCrossSeedSearch(instanceId: number) {
           cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
+          if (opening !== openingRef.current) {
+            return
+          }
           setCrossSeedSearchResponse(response)
 
           const defaultSelection = new Set<string>()
@@ -202,12 +208,15 @@ export function useCrossSeedSearch(instanceId: number) {
           })
           setCrossSeedSelectedKeys(defaultSelection)
 
-          // The dialog shows the RED/OPS timeout note instead.
-          if (response.results.length === 0 && !response.gazelleTimedOut) {
+          // The dialog shows the RED/OPS timeout note or the Torznab failure note instead.
+          if (response.results.length === 0 && !response.gazelleTimedOut && !response.torznabFailed) {
             toast.info(t("hooks.search.noMatches"))
           }
         })
         .catch((error: unknown) => {
+          if (opening !== openingRef.current) {
+            return
+          }
           let message = error instanceof Error ? error.message : t("hooks.search.searchFailed")
 
           if (
@@ -226,7 +235,9 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
         .finally(() => {
-          setCrossSeedSearchLoading(false)
+          if (opening === openingRef.current) {
+            setCrossSeedSearchLoading(false)
+          }
         })
     },
     [
@@ -267,6 +278,7 @@ export function useCrossSeedSearch(instanceId: number) {
         return
       }
 
+      const opening = ++openingRef.current
       setCrossSeedTorrent(torrent)
       setCrossSeedDialogOpen(true)
       setCrossSeedSelectedKeys(new Set())
@@ -281,10 +293,16 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
         .then(torrentInfo => {
+          if (opening !== openingRef.current) {
+            return
+          }
           // A search that answered first already holds the source torrent.
           setCrossSeedSearchResponse(prev => prev ?? { sourceTorrent: torrentInfo, results: [] })
         })
         .catch((error: unknown) => {
+          if (opening !== openingRef.current) {
+            return
+          }
           let message = error instanceof Error ? error.message : t("hooks.search.analyzeFailed")
 
           if (message.includes("429") || message.includes("rate limit") || message.includes("too many requests")) {
