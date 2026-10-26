@@ -465,6 +465,10 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 			// A saturated-but-alive WebUI: the request parks until the caller's
 			// deadline expires without ever answering.
 			<-r.Context().Done()
+			// Close the connection with no response. If the handler returns, the
+			// server sends an empty 200, and the client can read it after its
+			// deadline. An empty version is an invalid session, so the test fails.
+			panic(http.ErrAbortHandler)
 		default:
 			http.NotFound(w, r)
 		}
