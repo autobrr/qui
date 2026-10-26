@@ -118,6 +118,15 @@ func (b *slashBackend) RemoveTree(context.Context, *fsops.TreeCreateResult) erro
 
 func (b *slashBackend) Remove(context.Context, string, fsops.RemoveOptions) error { return nil }
 
+func (b *slashBackend) Mkdir(_ context.Context, p string, _ fs.FileMode) error {
+	_, isDir := b.dirs[p]
+	if _, isFile := b.files[p]; isDir || isFile {
+		return &fs.PathError{Op: "mkdir", Path: p, Err: fs.ErrExist}
+	}
+	b.dirs[p] = struct{}{}
+	return nil
+}
+
 func slashBackendService(instance *models.Instance, backend fsops.Backend) *Service {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}}}
 	// The pool hands a local-mode instance its local backend, so Require(Write)
@@ -135,6 +144,7 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		baseDir      string
 		savePath     string
 		file         string
+		existing     string // a folder another torrent already holds
 		wantRoot     string
 		wantCategory string // "" skips it: pathcmp keys rewrite "\" on every host
 	}{
@@ -144,7 +154,11 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		},
 		{
 			name: "flat isolation folder", preset: "flat", baseDir: "/data/hl", savePath: "/data/torrents",
-			file: "movie.mkv", wantRoot: "/data/hl/TorrentName--hash123", wantCategory: "/data/hl",
+			file: "movie.mkv", wantRoot: "/data/hl/TorrentName", wantCategory: "/data/hl",
+		},
+		{
+			name: "flat isolation folder taken", preset: "flat", baseDir: "/data/hl", savePath: "/data/torrents",
+			file: "movie.mkv", existing: "/data/hl/TorrentName", wantRoot: "/data/hl/TorrentName--hash123", wantCategory: "/data/hl",
 		},
 		{
 			name: "backslash in save path", preset: "by-tracker", baseDir: "/data/hl", savePath: `/data/torrents\old`,
@@ -159,6 +173,9 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := tt.savePath + "/" + tt.file
 			backend := newSlashBackend([]string{"/data"}, source)
+			if tt.existing != "" {
+				backend.dirs[tt.existing] = struct{}{}
+			}
 			sync := &rootlessSavePathSyncManager{}
 			instance := &models.Instance{
 				ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
@@ -168,10 +185,12 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			s.syncManager = sync
 
 			files := qbt.TorrentFiles{{Name: tt.file, Size: 5}}
+			adds := withLinkAdder(s)
 			result := s.processHardlinkMode(
 				t.Context(),
+				linkCheck(1, "hash123"),
 				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
+				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
 				&qbt.Torrent{Hash: "matched", ContentPath: path.Dir(source)},
 				"exact", files, files,
 				&qbt.TorrentProperties{SavePath: tt.savePath},
@@ -184,7 +203,8 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 				RootDir: tt.wantRoot,
 				Files:   []hardlinktree.FilePlan{{SourcePath: source, TargetPath: tt.wantRoot + "/" + tt.file}},
 			}, backend.plans[0])
-			require.Equal(t, tt.wantRoot, sync.addedOptions["savepath"])
+			require.Len(t, adds.added, 1)
+			require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			if tt.wantCategory != "" {
 				categorySavePath, ok := s.createdCategories.Load("1:category.cross")
 				require.True(t, ok)
@@ -297,7 +317,7 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	}
 	s := slashBackendService(instance, backend)
 
-	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "hash123", "Movie", "tracker.example",
+	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "Movie", "tracker.example",
 		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
 	require.Equal(t, "/links/tracker.example", got)
 }
@@ -408,6 +428,8 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
 				},
 			}
+			s.settler = idleSettler(s.syncManager)
+			adds := withLinkAdder(s)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {
@@ -433,10 +455,10 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			require.Equal(t, tt.wantRoots, roots)
 			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
 			if tt.wantApplied {
-				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], adds.added[0]["savepath"])
 			} else {
 				require.Equal(t, "link_failed", resp.Reason)
-				require.Empty(t, sm.addCalls)
+				require.Empty(t, adds.added)
 			}
 		})
 	}
@@ -486,6 +508,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			}
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
+			adds := withLinkAdder(s)
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -502,7 +525,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			require.ElementsMatch(t, want, backend.plans[0].Files)
 			if tt.wantRoot != "" {
 				require.Equal(t, tt.wantRoot, backend.plans[0].RootDir)
-				require.Equal(t, tt.wantRoot, sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			}
 		})
 	}

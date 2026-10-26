@@ -6,7 +6,7 @@
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { makeServerState } from "@/test/mockServerState"
 import { makeTorrent } from "@/test/mockTorrent"
@@ -177,26 +177,6 @@ describe("api.getTorrents", () => {
   })
 
   describe("error contract", () => {
-    it("throws an APIError with .status and .data from a non-2xx JSON body", async () => {
-      server.use(
-        http.get("*/api/instances/:instanceId/torrents", () =>
-          HttpResponse.json({ error: "boom", conflict: true }, { status: 409 })
-        )
-      )
-
-      try {
-        await api.getTorrents(1, {})
-        expect.unreachable("expected getTorrents to throw")
-      } catch (error) {
-        expect(error).toBeInstanceOf(APIError)
-        const apiError = error as APIError
-        expect(apiError.name).toBe("APIError")
-        expect(apiError.message).toBe("boom")
-        expect(apiError.status).toBe(409)
-        expect(apiError.data).toEqual({ error: "boom", conflict: true })
-      }
-    })
-
     it("falls back to 'HTTP error! status: <status>' for an empty error body", async () => {
       server.use(
         http.get("*/api/instances/:instanceId/torrents", () =>

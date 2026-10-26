@@ -1,0 +1,282 @@
+name: Lint Ratchet
+on:
+  schedule:
+    # 04:41 UTC daily. Off the top of the hour: GitHub delays or drops
+    # schedules queued at :00.
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+# One dispatched run at a time, from the pick until the pull request exists.
+# A lock on the fix job alone lets the next run pick the same file before
+# the open job makes the pull request.
+concurrency:
+  group: ratchet-${{ github.event_name }}
+
+jobs:
+  # The Console federation rule accepts only workflow_dispatch, so the
+  # schedule dispatches the fix job. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
+  dispatch:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the fix job
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ratchet.yml --repo ${{ github.repository }} --ref ${{ github.event.repository.default_branch }}
+
+  # Takes the next file off scripts/ratchet/allowlist.json and fixes up to 5
+  # of its problems. The open job makes the pull request as the qui-rabbit
+  # app. See
+  # docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
+  fix:
+    runs-on: ubuntu-latest
+    # The claude environment also allows v* tags, for release.yml. Only
+    # admins make those tags, and each new one carries this check, so a
+    # dispatch at a tag never reaches the app key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    environment: claude
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    # Set in the pick step, before any code from the agent runs.
+    outputs:
+      linter: ${{ steps.pick.outputs.linter }}
+      file: ${{ steps.pick.outputs.file }}
+      count: ${{ steps.pick.outputs.count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          # The agent can read .git/config, so leave no token in it.
+          persist-credentials: false
+
+      # One pull request at a time. Linters go in order, and the file with the
+      # fewest problems comes first. A ratchet pull request that is closed
+      # without a merge skips its linter and file for good, unless it was a
+      # draft: a closed draft means try again later. Its branch is
+      # ratchet/<linter>/<file>/<run id>.
+      - name: Pick the next file
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --label ratchet --state open --json url --jq '.[].url')
+          if [[ -n "$open" ]]; then
+            echo "A ratchet pull request is open: $open"
+            exit 0
+          fi
+          skip=$(gh pr list --repo "$GITHUB_REPOSITORY" --label ratchet --state closed --limit 1000 \
+            --json headRefName,mergedAt,isDraft --jq '[.[] | select(.mergedAt == null and (.isDraft | not)) | .headRefName]')
+          pick=$(jq -r --argjson skip "$skip" '
+            . as $allow
+            | [("nilerr", "errchkjson", "gocognit", "contextcheck") as $l
+               | ($allow[$l] // {}) | to_entries | sort_by(.value, .key)[]
+               | {l: $l, f: .key, n: .value}
+               | select("ratchet/\(.l)/\(.f)/" as $p | $skip | any(startswith($p)) | not)]
+            | first // empty | "\(.l) \(.f) \(.n)"' scripts/ratchet/allowlist.json)
+          if [[ -z "$pick" ]]; then
+            echo "No file is left to fix."
+            exit 0
+          fi
+          read -r linter file count <<<"$pick"
+          echo "Picked $linter in $file ($count problems)."
+          {
+            echo "linter=$linter"
+            echo "file=$file"
+            echo "count=$count"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.pick.outputs.file
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          # The tests run code from the agent and write to GOCACHE. A saved cache
+          # would reach later runs on develop, release builds included.
+          cache: false
+
+      - name: Install golangci-lint
+        if: steps.pick.outputs.file
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+          install-only: true
+
+      # Claude Code scrubs credentials from the commands it starts only with
+      # bubblewrap, and Ubuntu 24.04 blocks the user namespaces that
+      # bubblewrap needs.
+      - name: Set up the subprocess sandbox
+        if: steps.pick.outputs.file
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install the Claude Agent SDK
+        if: steps.pick.outputs.file
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts/triage
+
+      # A failed run still opens a draft pull request, so that the bot does not
+      # pick the same file again each day without a human seeing it.
+      - name: Fix the problems
+        id: agent
+        if: steps.pick.outputs.file
+        continue-on-error: true
+        env:
+          AGENT_PROFILE: ratchet
+          RATCHET_FILE: ${{ steps.pick.outputs.file }}
+          REPORT_FILE: ${{ runner.temp }}/report.md
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          ANTHROPIC_FEDERATION_RULE_ID: fdrl_01L8QqdNNYxgrowGMDCkwF2C
+          ANTHROPIC_ORGANIZATION_ID: 7e6f6244-271b-4543-8e58-21e1ad204aae
+          ANTHROPIC_SERVICE_ACCOUNT_ID: svac_013uKKXN8FTGVnEZVPHQoW69
+          ANTHROPIC_WORKSPACE_ID: wrkspc_01TSR9QMRQGxTyymwXyR53KG
+          RATCHET_PROMPT: |
+            You fix lint problems in qui, a Go project. This run is not interactive. The workflow commits your change and opens the pull request, so do not run git. The AGENTS.md rules about commits, pull requests, field tests, and the final report do not apply to this run.
+
+            Target: up to 5 problems that `${{ steps.pick.outputs.linter }}` reports in `${{ steps.pick.outputs.file }}`. Its entry in scripts/ratchet/allowlist.json is ${{ steps.pick.outputs.count }}.
+
+            1. Read the Ratchet section of docs/linting.md.
+            2. List the problems with `golangci-lint run -c scripts/ratchet/golangci.yml --enable-only ${{ steps.pick.outputs.linter }} ./<package dir>/`.
+            3. Fix up to 5 of them. Keep the behaviour the same. For gocognit, split the function into smaller functions. For the other linters, if the code is correct on purpose, add `//nolint:<linter> // <reason>` instead.
+            4. Lower the entry of the file in scripts/ratchet/allowlist.json to the new count. Delete the entry at 0, and delete the linter key when it has no entries left.
+            5. Run `go run ./scripts/ratchet -base HEAD`, `go build ./...`, and `go test -count=1 ./<package dir>/`. All three must pass.
+
+            You can edit only the target file, its `_test.go` file, and scripts/ratchet/allowlist.json. If a fix needs another file, leave that problem and say so in your report.
+
+            End with a short report for the pull request body: each change, why it keeps the behaviour, each nolint comment and its reason, and the result of each check.
+        run: node .github/scripts/triage/run.mjs
+
+      # The permission rules keep the agent to three files. This step makes
+      # sure of it, saves the change as a patch, and then runs the checks.
+      # The checks run code that the agent wrote, so this runner never gets
+      # the app token.
+      - name: Check the change
+        if: steps.pick.outputs.file
+        env:
+          FILE: ${{ steps.pick.outputs.file }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+        run: |
+          problems=()
+          [[ "$AGENT_OUTCOME" == success ]] || problems+=("The agent run failed. The workflow log has its output.")
+          others=$(git status --porcelain | cut -c4- | grep -vxF -e "$FILE" -e "${FILE%.go}_test.go" -e scripts/ratchet/allowlist.json || true)
+          if [[ -n "$others" ]]; then
+            problems+=("The agent changed other files, so this pull request drops its change: ${others//$'\n'/, }")
+            git checkout -- .
+            git clean -fdq
+          fi
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/change.patch"
+          if [[ ! -s "$RUNNER_TEMP/change.patch" ]]; then
+            problems+=("The run made no change.")
+          else
+            # HEAD is the develop commit that the agent started from.
+            go run ./scripts/ratchet -base HEAD || problems+=("\`go run ./scripts/ratchet\` failed.")
+            go build ./... || problems+=("\`go build ./...\` failed.")
+            go test -count=1 "./$(dirname "$FILE")/" || problems+=("\`go test\` failed in $(dirname "$FILE").")
+          fi
+          for p in "${problems[@]}"; do echo "- $p"; done > "$RUNNER_TEMP/problems.md"
+
+      - name: Upload the change
+        if: steps.pick.outputs.file
+        uses: actions/upload-artifact@v7
+        with:
+          name: ratchet
+          path: |
+            ${{ runner.temp }}/change.patch
+            ${{ runner.temp }}/problems.md
+            ${{ runner.temp }}/report.md
+          retention-days: 7
+
+  # Commits the change and opens the pull request on a new runner, which runs
+  # no code from the change. The fix job could have left anything on its
+  # runner, so this job takes only the patch, problems.md and report.md, and
+  # checks the paths in the patch again.
+  open:
+    needs: fix
+    if: needs.fix.outputs.file
+    runs-on: ubuntu-latest
+    environment: claude
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the change
+        uses: actions/download-artifact@v8
+        with:
+          name: ratchet
+          path: ${{ runner.temp }}/ratchet
+
+      - name: Apply the change
+        env:
+          FILE: ${{ needs.fix.outputs.file }}
+        run: |
+          if [[ -s "$RUNNER_TEMP/ratchet/change.patch" ]]; then
+            git apply --index "$RUNNER_TEMP/ratchet/change.patch"
+          fi
+          others=$(git diff --cached --name-only | grep -vxF -e "$FILE" -e "${FILE%.go}_test.go" -e scripts/ratchet/allowlist.json || true)
+          if [[ -n "$others" ]]; then
+            echo "::error::The patch changes other files: ${others//$'\n'/, }"
+            exit 1
+          fi
+
+      - name: Create the app token
+        id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          app-id: ${{ vars.RATCHET_APP_ID }}
+          private-key: ${{ secrets.RATCHET_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The app token pushes, so CI and the review bots run on the pull
+      # request. A push with GITHUB_TOKEN starts no workflow.
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LINTER: ${{ needs.fix.outputs.linter }}
+          FILE: ${{ needs.fix.outputs.file }}
+          COUNT: ${{ needs.fix.outputs.count }}
+          OUT: ${{ runner.temp }}/ratchet
+        run: |
+          branch="ratchet/$LINTER/$FILE/$GITHUB_RUN_ID"
+          draft=()
+          [[ -s "$OUT/problems.md" ]] && draft=(--draft)
+          gh auth setup-git
+          git config user.name 'qui-rabbit[bot]'
+          git config user.email '346308562+qui-rabbit[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git commit -q --allow-empty -m "refactor(lint): fix $LINTER in $(basename "$FILE")"
+          git push -q origin "$branch"
+          {
+            echo "Fixes up to 5 \`$LINTER\` problems in \`$FILE\`. Its allowlist entry was $COUNT."
+            echo
+            if (( ${#draft[@]} )); then
+              echo "This pull request is a draft because:"
+              echo
+              cat "$OUT/problems.md"
+              echo
+            fi
+            echo "## Report"
+            echo
+            cat "$OUT/report.md" 2>/dev/null || echo "The agent wrote no report."
+            echo
+            echo "---"
+            echo "Close this pull request without merging it, and the bot skips \`$LINTER\` in this file for good. Close it as a draft, and the bot tries the file again later. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
+            --title "refactor(lint): fix $LINTER in $(basename "$FILE")" \
+            --body-file "$RUNNER_TEMP/body.md" --label ratchet

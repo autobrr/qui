@@ -4,6 +4,11 @@
     "description": "Services d'automatisation au niveau de l'instance gérés par qui.",
     "noInstances": "Aucune instance configurée. Ajoutez-en une dans les Paramètres pour utiliser les services."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Réannoncer",
+    "orphanScan": "Analyse d'orphelins"
+  },
   "queryBuilder": {
     "noConditions": "Aucune condition",
     "matchesAllTorrents": "Correspond à tous les torrents (soumis à la sélection du tracker).",

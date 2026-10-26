@@ -181,7 +181,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
 	}
 	if err != nil || cacheEntry == nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
 	if cacheEntry.IsNegative {
 		log.Debug().

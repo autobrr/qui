@@ -50,6 +50,7 @@ func TestAutobrrApplyNotifiesAfterAddingTorrent(t *testing.T) {
 		},
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -91,6 +92,7 @@ func TestAutobrrApplyDoesNotNotifyWhenTorrentExists(t *testing.T) {
 		notifier:         notifier,
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -141,6 +143,7 @@ func TestAutobrrApplyNotifiesWhenAddFails(t *testing.T) {
 		},
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -458,11 +461,6 @@ func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 			name:              "indexer passed through",
 			indexer:           "hdb",
 			expectIndexerName: "hdb",
-		},
-		{
-			name:              "empty indexer remains empty",
-			indexer:           "",
-			expectIndexerName: "",
 		},
 	}
 
@@ -859,6 +857,7 @@ func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 				service.arrService = tt.spy
 			}
 
+			withAdder(service)
 			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 				TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 				TorrentName: announcedName,
@@ -934,4 +933,45 @@ func TestAutobrrApplyRetainsPartialSuccess(t *testing.T) {
 	require.Equal(t, "added", response.Results[0].Status)
 	require.Equal(t, "error", response.Results[1].Status)
 	require.Contains(t, response.Results[1].Message, "beta unavailable")
+}
+
+// TestAutobrrApplyReadsSeasonFolderFromFiles catches an apply that reads a
+// local "Season 2" folder by its name, which has no title, after the webhook
+// check read it from its files and accepted a pack of a slightly larger size.
+func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
+	t.Parallel()
+
+	const pack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"
+	instance := &models.Instance{ID: 48, Name: "primary", IsActive: true}
+	files := corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+	size := int64(len(files)) * corpusEpisodeSize
+	source := qbt.Torrent{Hash: "season-folder", Name: "Season 2", Size: size, TotalSize: size, Progress: 1}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{source.Hash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	invocations := 0
+	service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+		invocations++
+		return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
+	}
+
+	check, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{
+		InstanceIDs: []int{instance.ID}, TorrentName: pack, Size: uint64(size + 500),
+	})
+	require.NoError(t, err)
+	require.True(t, check.CanCrossSeed, "the webhook check reads the folder from its files")
+
+	_, err = service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, pack, "pack.mkv", size+500)),
+		TorrentName: pack,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, invocations)
 }

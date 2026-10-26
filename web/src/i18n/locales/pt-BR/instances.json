@@ -1246,7 +1246,10 @@
         "placeholder": "/caminho/final/movimentado",
         "skipIfCrossSeedsDontMatch": "Abortar a mudança caso haja cross-seeds que não condizem com a regra",
         "aboutSkipping": "Sobre pular cross-seeds",
-        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
+        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos.",
+        "errors": {
+          "mustBeAbsolute": "Precisa ser um caminho absoluto, por exemplo /data/archive ou D:\\Archive."
+        }
       },
       "templateHelp": {
         "absolutePath": "Deve ser um caminho absoluto. Os valores vão dentro dele, por exemplo",
@@ -1770,11 +1773,9 @@
       "lastBackup": "Último backup",
       "loading": "Carregando...",
       "progress": "{{current}} de {{total}} torrents ({{percentage}}%)",
-      "status": "Status: {{status}}",
       "noBackupsYet": "Nenhum backup ainda",
       "nextScheduledBackup": "Próximo backup agendado",
       "loadingSchedule": "Carregando agendamento...",
-      "instance": "Instância",
       "automaticBackupsOff": "Backups automáticos estão desligados para esta instância.",
       "enableCadenceToSchedule": "Ative pelo menos um agendamento automático para programar backups.",
       "currentlyRunning": "O backup está em execução.",
@@ -1798,6 +1799,7 @@
       "schedule": {
         "title": "Agendamento automático",
         "description": "As execuções por hora, diárias, semanais e mensais começam após a conclusão do backup anterior.",
+        "keep": "Manter",
         "hourly": "Por hora",
         "hourlyDescription": "Quantos snapshots por hora manter antes de podar os mais antigos.",
         "hourlyTooltip": "Executa aproximadamente uma vez por hora quando backups estão ativados e pelo menos uma hora se passou desde a última execução.",
@@ -1816,8 +1818,7 @@
         "saveChanges": "Salvar alterações",
         "saveAll": "Salvar alterações em todas as instâncias",
         "requiresCadence": "Selecione pelo menos um agendamento (por hora, diário, semanal ou mensal) antes de salvar.",
-        "waitForCapabilities": "Aguarde a conclusão das verificações de capacidade da instância antes de salvar em todas as instâncias.",
-        "changesApplyImmediately": "As alterações são aplicadas a backups futuros assim que você salva."
+        "waitForCapabilities": "Aguarde a conclusão das verificações de capacidade da instância antes de salvar em todas as instâncias."
       }
     },
     "restore": {

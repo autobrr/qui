@@ -5,6 +5,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -336,6 +338,11 @@ func TestComparePaths(t *testing.T) {
 	assert.Equal(t, []string{"a", "a/a", "a/a/z", "a/b", "a b", "a-b", "b"}, paths)
 }
 
+// sftpFixturePath maps a host fixture into pkg/sftp's POSIX namespace, including /C:/ on Windows.
+func sftpFixturePath(p string) string {
+	return fsops.SlashPaths.Join("/", filepath.ToSlash(p))
+}
+
 // lstatBatchTree is a directory with one of each kind of path LstatBatch gets,
 // and enough plain files for two batches.
 func lstatBatchTree(t *testing.T) []string {
@@ -344,7 +351,11 @@ func lstatBatchTree(t *testing.T) []string {
 	file := filepath.Join(dir, "it's -rf $(x).mkv")
 	require.NoError(t, os.WriteFile(file, []byte("data"), 0o600))
 	require.NoError(t, os.Link(file, filepath.Join(dir, "hardlink.mkv")))
-	require.NoError(t, os.Symlink(file, filepath.Join(dir, "symlink.mkv")))
+	err := os.Symlink(file, filepath.Join(dir, "symlink.mkv"))
+	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+		t.Skipf("symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+	}
+	require.NoError(t, err)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o700))
 	paths := make([]string, 0, 5+batchPaths)
 	paths = append(paths, file, filepath.Join(dir, "hardlink.mkv"), filepath.Join(dir, "symlink.mkv"), filepath.Join(dir, "sub"), filepath.Join(dir, "missing"))
@@ -352,6 +363,9 @@ func lstatBatchTree(t *testing.T) []string {
 		p := filepath.Join(dir, "sub", "f"+strconv.Itoa(i))
 		require.NoError(t, os.WriteFile(p, nil, 0o600))
 		paths = append(paths, p)
+	}
+	for i, p := range paths {
+		paths[i] = sftpFixturePath(p)
 	}
 	return paths
 }
@@ -487,13 +501,14 @@ func TestExecStatBatchFollowsLinks(t *testing.T) {
 }
 
 // Each single stat is a round trip, so answering n paths one after the other
-// cannot beat n round trips. On the sftp tier every path is a single stat,
-// and on the exec tier every path that find does not print is one, such as
-// the files of a torrent that were moved away.
+// costs n round trips. On the sftp tier every path is a single stat, and on
+// the exec tier every path that find does not print is one, such as the files
+// of a torrent that were moved away. The latency gives the single stats time
+// to overlap, which the server counts.
 func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	const paths, latency = 64, 25 * time.Millisecond
+	const paths = 64
 	tests := []struct {
 		name    string
 		backend func(t *testing.T) (*Backend, *sshtest.Server)
@@ -514,18 +529,11 @@ func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 				if !tt.missing {
 					require.NoError(t, os.WriteFile(batch[i], nil, 0o600))
 				}
+				batch[i] = sftpFixturePath(batch[i])
 			}
-			server.SetLatency(latency)
-			// Connect first: the dial and the connect probe are round trips too.
-			_, err := backend.client(t.Context())
-			require.NoError(t, err)
+			server.SetLatency(25 * time.Millisecond)
 
-			start := time.Now()
 			_, errs := backend.LstatBatch(t.Context(), batch)
-			elapsed := time.Since(start)
-			serialFloor := time.Duration(paths) * latency
-			t.Logf("%d paths at %v latency: %v (serial floor %v)", paths, latency, elapsed.Round(time.Millisecond), serialFloor)
-
 			for i, err := range errs {
 				if tt.missing {
 					require.ErrorIs(t, err, fs.ErrNotExist, batch[i])
@@ -533,10 +541,8 @@ func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 					require.NoError(t, err, batch[i])
 				}
 			}
-			assert.Less(t, elapsed, serialFloor/2, "the single stats must overlap")
-			// At most batchWidth single stats are in flight, so the batch
-			// cannot beat one round trip for each batchWidth paths.
-			assert.GreaterOrEqual(t, elapsed, time.Duration(paths/batchWidth)*latency, "at most batchWidth single stats in flight")
+			assert.Greater(t, server.MaxInFlight(), 1, "the single stats must overlap")
+			assert.LessOrEqual(t, server.MaxInFlight(), batchWidth, "at most batchWidth single stats in flight")
 		})
 	}
 }

@@ -146,7 +146,7 @@ func (s *TorznabTorrentCacheStore) Cleanup(ctx context.Context, olderThan time.D
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, nil //nolint:nilerr // the delete succeeded; only the row count is unknown
 	}
 	return rows, nil
 }

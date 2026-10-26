@@ -16,6 +16,11 @@
     "security": "Sicurezza",
     "logs": "Log"
   },
+  "nav": {
+    "general": "Generale",
+    "connections": "Connessioni",
+    "access": "Accesso"
+  },
   "language": {
     "cardTitle": "Lingua",
     "cardDescription": "Scegli la lingua di visualizzazione preferita"
@@ -448,7 +453,9 @@
         "activeTitle": "Accesso Premium attivo",
         "activeDescription": "Hai accesso a tutti i temi premium attuali e futuri",
         "activationRequiredTitle": "Attivazione della licenza richiesta",
-        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina"
+        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina",
+        "offlineTitle": "Servizio licenze non raggiungibile",
+        "offlineDescription": "qui non è riuscito a raggiungere il servizio licenze per 7 giorni, quindi i temi Premium sono bloccati. qui controlla all'avvio e una volta al giorno. I temi si sbloccano quando il servizio risponde. Non devi riattivare la licenza."
       },
       "portalHelp": {
         "prefix": "Acquista su DodoPayments, poi inserisci qui la tua chiave di licenza. Se perdi la chiave, recuperala tramite il",
@@ -470,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Aggiunto il {{date}}",
-        "productStatusAndAdded": "{{productName}} • Stato: {{status}} • Aggiunto il {{date}}"
+        "productStatusAndAdded": "{{productName}} • Stato: {{status}} • Aggiunto il {{date}}",
+        "statusLabels": {
+          "invalid": "Non valida",
+          "offline": "Offline",
+          "unknown": "Sconosciuto"
+        }
       },
       "invalid": {
         "dodo": "Questa licenza non è attiva su questa macchina. Clicca su riattiva per usarla qui. Se raggiungi il limite di attivazioni, vai su <portal>licenses.getqui.com</portal>, registrati o accedi con l'email usata per acquistare la licenza e disattiva una macchina che non usi più in Machine Instances."

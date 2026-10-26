@@ -112,30 +112,13 @@ func TestLogsHandler_StreamLogs_SSEHeaders(t *testing.T) {
 	appConfig := createTestConfig(t)
 	handler := NewLogsHandler(appConfig, nil)
 
-	// Use a cancellable context to stop the SSE handler
+	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// Run in a goroutine since SSE blocks
-	done := make(chan struct{})
-	go func() {
-		handler.StreamLogs(rec, req)
-		close(done)
-	}()
-
-	// Give it a moment to set headers
-	time.Sleep(50 * time.Millisecond)
-
-	// Cancel the context to stop the handler
-	cancel()
-
-	// Wait for handler to finish before checking
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handler did not stop within timeout")
-	}
+	handler.StreamLogs(rec, req)
 
 	// Check headers were set
 	headers := rec.Header()
@@ -159,30 +142,13 @@ func TestLogsHandler_StreamLogs_WritesToHub(t *testing.T) {
 	hub.Write("test line 1")
 	hub.Write("test line 2")
 
-	// Use a cancellable context to stop the SSE handler
+	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream?limit=10", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// Run in a goroutine
-	done := make(chan struct{})
-	go func() {
-		handler.StreamLogs(rec, req)
-		close(done)
-	}()
-
-	// Give time for initial history to be sent
-	time.Sleep(100 * time.Millisecond)
-
-	// Cancel the context to stop the handler
-	cancel()
-
-	// Wait for handler to finish before reading body
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handler did not stop within timeout")
-	}
+	handler.StreamLogs(rec, req)
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "test line 1") {

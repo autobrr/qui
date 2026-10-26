@@ -82,14 +82,12 @@
     "cancel": "Zrušit",
     "runNow": "Spustit nyní",
     "saveSettings": "Uložit nastavení automatizace RSS",
-    "reset": "Resetovat",
     "requiresTorznabIndexer": "RSS automatizace vyžaduje alespoň jeden Torznab indexer.",
     "items": "{{count}} položek",
     "failedCount": "{{count}} selhalo",
     "runError": "Chyba: {{message}}",
     "runSummary": "{{runs}} spuštění • +{{added}}",
     "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo",
-    "runDisabledAlreadyRunning": "Spuštění automatizace již probíhá.",
     "runDisabledCooldown": "Ruční spuštění jsou omezena na interval {{minutes}} minut. Zkuste to znovu za {{remaining}}."
   },
   "webhook": {
@@ -198,7 +196,11 @@
       "enabledRedMissingOps": "Gazelle: povoleno (nastaven klíč RED, OPS chybí)",
       "enabledKeysMissing": "Gazelle: povoleno (chybí klíče)"
     },
-    "noMessageProvided": "Nebyla poskytnuta žádná zpráva"
+    "noMessageProvided": "Nebyla poskytnuta žádná zpráva",
+    "cancelDialog": {
+      "title": "Zrušit hledání ve sdílených?",
+      "description": "Tím se zastaví aktuální hledání ve sdílených. Již přidané cross-seedy zůstanou, ale další torrenty se už hledat nebudou."
+    }
   },
   "rules": {
     "hardlinkReflink": "Hardlink / Reflink režim",
@@ -364,6 +366,9 @@
       "matching": "Pravidla, která rozhodují, které kandidáty qui přidá, pro všechny zdroje.",
       "categories": "Kategorie a tagy, které qui přiřadí každému novému cross-seedu."
     }
+  },
+  "run": {
+    "starting": "Spouštění probíhá."
   },
   "seasonPackRuns": {
     "title": "Nedávno spuštěné balíky celých sezón",

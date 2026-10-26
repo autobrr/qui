@@ -5,9 +5,8 @@
 
 import type { Torrent } from "@/types"
 import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
-import type { RowSelectionState } from "@tanstack/react-table"
 import type { Virtualizer } from "@tanstack/react-virtual"
-import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react"
+import { useEffect, type RefObject } from "react"
 
 // Mirrors useKeyboardNavigation: start pulling more rows this far from the end.
 const LOAD_MORE_THRESHOLD = 50
@@ -20,12 +19,10 @@ export interface UseTorrentTableArrowNavigationParams {
   loadMore: () => void
   isReadOnly: boolean
   selectedTorrent?: Torrent | null
-  selectedRowIds: string[]
+  selectedKeys: ReadonlySet<string>
   lastSelectedIndexRef: RefObject<number | null>
   getSelectionIdentity: (torrent: Torrent) => string
-  setRowSelection: Dispatch<SetStateAction<RowSelectionState>>
-  setIsAllSelected: Dispatch<SetStateAction<boolean>>
-  setExcludedFromSelectAll: Dispatch<SetStateAction<Set<string>>>
+  selectOnly: (torrent: Torrent, index: number) => void
   onTorrentSelect?: (torrent: Torrent | null) => void
 }
 
@@ -60,12 +57,10 @@ export function useTorrentTableArrowNavigation({
   loadMore,
   isReadOnly,
   selectedTorrent,
-  selectedRowIds,
+  selectedKeys,
   lastSelectedIndexRef,
   getSelectionIdentity,
-  setRowSelection,
-  setIsAllSelected,
-  setExcludedFromSelectAll,
+  selectOnly,
   onTorrentSelect,
 }: UseTorrentTableArrowNavigationParams) {
   useEffect(() => {
@@ -80,8 +75,9 @@ export function useTorrentTableArrowNavigation({
         }
       }
 
-      if (selectedRowIds.length === 1) {
-        const index = rows.findIndex(row => row.id === selectedRowIds[0])
+      if (selectedKeys.size === 1) {
+        const [key] = selectedKeys
+        const index = rows.findIndex(row => getSelectionIdentity(row.original) === key)
         if (index !== -1) {
           return index
         }
@@ -137,10 +133,7 @@ export function useTorrentTableArrowNavigation({
         // Read-only mode has no row selection, so the panel is the only cursor.
         onTorrentSelect?.(targetRow.original)
       } else {
-        setIsAllSelected(false)
-        setExcludedFromSelectAll(new Set())
-        setRowSelection({ [targetRow.id]: true })
-        lastSelectedIndexRef.current = targetIndex
+        selectOnly(targetRow.original, targetIndex)
 
         if (selectedTorrent) {
           onTorrentSelect?.(targetRow.original)
@@ -165,12 +158,10 @@ export function useTorrentTableArrowNavigation({
     loadMore,
     isReadOnly,
     selectedTorrent,
-    selectedRowIds,
+    selectedKeys,
     getSelectionIdentity,
     onTorrentSelect,
     lastSelectedIndexRef,
-    setRowSelection,
-    setIsAllSelected,
-    setExcludedFromSelectAll,
+    selectOnly,
   ])
 }

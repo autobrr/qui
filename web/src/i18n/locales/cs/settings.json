@@ -16,6 +16,11 @@
     "security": "Bezpečnost",
     "logs": "Logy"
   },
+  "nav": {
+    "general": "Obecné",
+    "connections": "Připojení",
+    "access": "Přístup"
+  },
   "language": {
     "cardTitle": "Jazyk",
     "cardDescription": "Vyberte svůj preferovaný jazyk pro zobrazení"
@@ -450,7 +455,9 @@
         "activeTitle": "Premium přístup aktivní",
         "activeDescription": "Máte přístup ke všem aktuálním a budoucím premium motivům",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
-        "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji"
+        "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji",
+        "offlineTitle": "Licenční služba je nedostupná",
+        "offlineDescription": "qui se 7 dní nemohl spojit s licenční službou, proto jsou premium motivy zamčené. qui ji kontroluje při spuštění a jednou denně. Motivy se odemknou, jakmile služba odpoví. Licenci nemusíte znovu aktivovat."
       },
       "portalHelp": {
         "prefix": "Koupit na DodoPayments, poté sem zadejte svůj licenční klíč. Pokud ztratíte klíč, obnovte ho přes",
@@ -472,7 +479,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Přidáno {{date}}",
-        "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}"
+        "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}",
+        "statusLabels": {
+          "invalid": "Neplatná",
+          "offline": "Offline",
+          "unknown": "Neznámý"
+        }
       },
       "invalid": {
         "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, přejděte na <portal>licenses.getqui.com</portal>, zaregistrujte se nebo se přihlaste e-mailem, který jste použili při nákupu licence, a v Machine Instances deaktivujte stroj, který už nepoužíváte."

@@ -16,6 +16,11 @@
     "security": "Sécurité",
     "logs": "Logs"
   },
+  "nav": {
+    "general": "Général",
+    "connections": "Connexions",
+    "access": "Accès"
+  },
   "language": {
     "cardTitle": "Langue",
     "cardDescription": "Choisissez votre langue d'affichage préférée"
@@ -448,7 +453,9 @@
         "activeTitle": "Accès Premium Actif",
         "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
-        "activationRequiredDescription": "Votre licence doit être activée sur cette machine"
+        "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
+        "offlineTitle": "Service de licences injoignable",
+        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes premium sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
       },
       "portalHelp": {
         "prefix": "Achetez sur DodoPayments, puis saisissez votre clé ici. Si vous la perdez, récupérez-la via",
@@ -470,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Ajouté le {{date}}",
-        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
+        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}",
+        "statusLabels": {
+          "invalid": "Non valide",
+          "offline": "Hors ligne",
+          "unknown": "Inconnu"
+        }
       },
       "invalid": {
         "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, allez sur <portal>licenses.getqui.com</portal>, inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence, puis désactivez une machine que vous n'utilisez plus dans Machine Instances."

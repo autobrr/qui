@@ -23,7 +23,6 @@ import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useInstances } from "@/hooks/useInstances"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
@@ -141,10 +140,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
   const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities)
 
-  // Get instance name for cross-seed warning
-  const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === actionInstanceId), [instances, actionInstanceId])
-
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
@@ -208,10 +203,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   })
 
   // Cross-seed warning for delete dialog
+  const crossSeedSelectAll = useMemo(
+    () => (isAllSelected ? { filters, search, excludeHashes, excludeTargets, instanceIds } : undefined),
+    [isAllSelected, filters, search, excludeHashes, excludeTargets, instanceIds]
+  )
   const crossSeedWarning = useCrossSeedWarning({
     instanceId: actionInstanceId,
-    instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
+    selectAll: crossSeedSelectAll,
   })
   const crossSeedAffectedTorrents = useMemo(
     () => (supportsCrossSeedDeleteTools ? crossSeedWarning.affectedTorrents : []),
@@ -283,24 +282,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
-    // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = supportsCrossSeedDeleteTools && deleteCrossSeeds ? [...selectedHashes, ...crossSeedAffectedTorrents.map(t => t.hash)] : selectedHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = supportsCrossSeedDeleteTools && deleteCrossSeeds ? {
-      ...clientMeta,
-      clientHashes: hashesToDelete,
-      totalSelected: hashesToDelete.length,
-      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
-    } : clientMeta
-
     await handleDelete(
-      hashesToDelete,
+      selectedHashes,
       isAllSelected,
       filters,
       search,
       excludeHashes,
-      deleteClientMeta
+      {
+        ...clientMeta,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : undefined,
+      }
     )
   }, [
     actionInstanceId,

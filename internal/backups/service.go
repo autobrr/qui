@@ -1085,10 +1085,10 @@ func sweepStaleBlobTemps(cacheDir string) {
 	removed := 0
 	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".tmp-") {
-			return nil
+			return nil //nolint:nilerr // the sweep is best-effort, so it skips an entry that it cannot read
 		}
 		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
-			return nil
+			return nil //nolint:nilerr // the sweep keeps a file whose age it cannot read
 		}
 		if root.Remove(filepath.FromSlash(p)) == nil {
 			removed++
@@ -1203,14 +1203,14 @@ func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 			return err
 		}
 		if entryErr != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // the cleanup skips an entry that it cannot read and goes on
 		}
 		if _, ok := referenced[filepath.Join(s.cacheDir, filepath.FromSlash(p))]; ok {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil || info.ModTime().After(cutoff) {
-			return nil
+			return nil //nolint:nilerr // the cleanup keeps a file whose age it cannot read
 		}
 		if root.Remove(filepath.FromSlash(p)) == nil {
 			removed++
