@@ -612,7 +612,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents", { shortcutKey })}
+                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents")}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -635,7 +635,7 @@ export function Header({
                     }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
+                className={`w-full pl-9 ${searchValue ? "pr-16" : "pr-9"} transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
                 } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -680,6 +680,7 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey })}</li>
                       </ul>
                     </div>
                   </TooltipContent>
