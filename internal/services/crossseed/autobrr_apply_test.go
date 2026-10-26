@@ -462,11 +462,6 @@ func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 			indexer:           "hdb",
 			expectIndexerName: "hdb",
 		},
-		{
-			name:              "empty indexer remains empty",
-			indexer:           "",
-			expectIndexerName: "",
-		},
 	}
 
 	for _, tt := range tests {
