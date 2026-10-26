@@ -39,6 +39,14 @@ If the old server no longer exists, for example after a hardware failure or a de
 
 Sign up or sign in at [licenses.getqui.com](https://licenses.getqui.com/) with the email address that you used to buy the license. The portal lists your license keys. **Settings → Premium Themes** also links to the portal.
 
+## Offline use
+
+qui checks the license with the license server when it starts and one time each day after that. If the license server does not answer, the license stays active for 7 days after the last successful check. qui shows no warning during these 7 days.
+
+After 7 days without a successful check, the next check marks the license `offline`. Premium themes and custom themes then lock, and qui applies the default theme. When the license server answers again, the next check makes the license active again. You do not have to enter the key again. To run the check at once, restart qui.
+
+If your network blocks all outgoing traffic from qui, qui cannot reach the license server. The premium features then stop 7 days after the last successful check.
+
 ## Troubleshooting
 
 ### "License activation limit has been reached"

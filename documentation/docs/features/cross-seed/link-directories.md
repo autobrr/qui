@@ -29,12 +29,12 @@ Configure these options per qBittorrent instance in **Cross-Seed > After injecti
 
 qui supports three presets:
 
-- `flat`: one folder per torrent under the base directory
-  - Example: `base/Torrent.Name--abcdef12/...`
-- `by-tracker`: groups by tracker display name, then an optional isolation folder
-  - Example: `base/TrackerName/Torrent.Name--abcdef12/...`
-- `by-instance`: groups by instance name, then an optional isolation folder
-  - Example: `base/MyInstance/Torrent.Name--abcdef12/...`
+- `flat`: puts each torrent directly in the base directory
+  - Example: `base/Torrent.Name/...`
+- `by-tracker`: groups torrents in a folder for each tracker display name
+  - Example: `base/TrackerName/Torrent.Name/...`
+- `by-instance`: groups torrents in a folder for each instance name
+  - Example: `base/MyInstance/Torrent.Name/...`
 
 ### Tracker names (by-tracker)
 
@@ -48,12 +48,14 @@ qui sanitizes folder names to make them filesystem-safe.
 
 ### Isolation folders
 
-If you use `by-tracker` or `by-instance`, qui adds an isolation folder only when needed:
+An isolation folder is a folder that qui adds so that the files of one torrent do not mix with the files of other torrents. All presets use the same rule:
 
-- Torrents with a common root folder do not need isolation.
-- "Rootless" torrents (top-level files) use an isolation folder to avoid collisions.
+- A torrent with a root folder brings its own folder. qui adds no isolation folder.
+- A "rootless" torrent (files at the top level) goes into an isolation folder with the torrent name, for example `Torrent.Name`.
 
-If you use `flat`, qui always uses an isolation folder.
+The folder that qui adds to the preset directory must be new. If a folder with that name already exists, qui puts the torrent in an isolation folder with the name `<torrent name>--<first 8 characters of the info hash>`, for example `Torrent.Name--abcdef12`. So two torrents with the same name do not share a folder.
+
+qui cuts a long torrent name to 245 bytes, so that the folder name with the hash fits the limit of 255 bytes of most filesystems. qui does not move or rename the folders of torrents that it added before.
 
 ## Fallback to regular mode
 

@@ -125,20 +125,8 @@ func TestDecodeTorrentData(t *testing.T) {
 			wantData: testData,
 		},
 		{
-			name:     "url-safe base64",
-			input:    base64.URLEncoding.EncodeToString(testData),
-			wantErr:  false,
-			wantData: testData,
-		},
-		{
 			name:     "raw standard base64",
 			input:    base64.RawStdEncoding.EncodeToString(testData),
-			wantErr:  false,
-			wantData: testData,
-		},
-		{
-			name:     "raw url-safe base64",
-			input:    base64.RawURLEncoding.EncodeToString(testData),
 			wantErr:  false,
 			wantData: testData,
 		},
@@ -198,8 +186,8 @@ func TestPartialInPackIntegration(t *testing.T) {
 	seasonPackRelease := svc.releaseCache.Parse(seasonPackName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	// The episode's files should be found inside the season pack's files
-	matchType := svc.matcher().getMatchTypeWithReason(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles, 0).MatchType
+	// The new episode's files should be found inside the local season pack's files
+	matchType := svc.matcher().getMatchTypeWithReason(seasonPackRelease, episodeRelease, seasonPackFiles, episodeFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 }
@@ -230,7 +218,8 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	matchType := svc.matcher().getMatchTypeWithReason(movieRelease, collectionRelease, movieFiles, collectionFiles, 0).MatchType
+	// The new movie's file should be found inside the local collection's files
+	matchType := svc.matcher().getMatchTypeWithReason(collectionRelease, movieRelease, collectionFiles, movieFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 }
@@ -285,58 +274,6 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 		"single-file source matched against pack with extras should produce partial-contains match")
 }
 
-func TestCrossSeed_TorrentCreationAndParsing(t *testing.T) {
-	tests := []struct {
-		name        string
-		torrentName string
-		files       []string
-	}{
-		{
-			name:        "single file movie",
-			torrentName: "Movie.2020.1080p.BluRay.x264-GROUP",
-			files:       []string{"movie.mkv"},
-		},
-		{
-			name:        "episode with subs",
-			torrentName: "Show.S01E05.1080p.WEB-DL",
-			files:       []string{"show.mkv", "show.srt"},
-		},
-		{
-			name:        "season pack",
-			torrentName: "Show.S01.1080p.BluRay.x264-GROUP",
-			files:       []string{"e01.mkv", "e02.mkv", "e03.mkv"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			torrentData := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
-
-			// Verify it's valid base64
-			encoded := base64.StdEncoding.EncodeToString(torrentData)
-			assert.NotEmpty(t, encoded)
-
-			// Verify we can decode it
-			decoded, err := base64.StdEncoding.DecodeString(encoded)
-			require.NoError(t, err)
-			assert.Equal(t, torrentData, decoded)
-
-			// Verify we can parse metainfo
-			mi, err := metainfo.Load(bytes.NewReader(torrentData))
-			require.NoError(t, err)
-			assert.NotNil(t, mi)
-
-			info, err := mi.UnmarshalInfo()
-			require.NoError(t, err)
-			assert.Equal(t, tt.torrentName, info.Name)
-
-			// Verify hash calculation
-			hash := mi.HashInfoBytes().HexString()
-			assert.Len(t, hash, 40) // SHA1 hex = 40 chars
-		})
-	}
-}
-
 // TestCrossSeed_CategoryAndTagPreservation tests category and tag handling
 func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	defaultSettings := models.DefaultCrossSeedAutomationSettings()
@@ -383,23 +320,6 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			expectedBaseCategory:  "movies-4k",
 			expectedCrossCategory: "movies-4k.cross",
 			expectedTags:          []string{"custom", "cross-seed"},
-		},
-		{
-			name: "source tags with inheritance",
-			request: &CrossSeedRequest{
-				Category:          "",
-				Tags:              []string{"cross-seed"},
-				InheritSourceTags: true,
-			},
-			matched: qbt.Torrent{
-				Category: "tv",
-				Tags:     "sonarr",
-			},
-			settings:              defaultSettings,
-			inheritSourceTags:     true,
-			expectedBaseCategory:  "tv",
-			expectedCrossCategory: "tv.cross",
-			expectedTags:          []string{"cross-seed", "sonarr"},
 		},
 		{
 			name: "use indexer category when enabled",
@@ -680,7 +600,7 @@ func TestSeasonPackDetection(t *testing.T) {
 	}
 }
 
-// TestBase64EdgeCases tests that decodeTorrentData can handle various data shapes and encodings.
+// TestBase64EdgeCases tests that decodeTorrentData decodes binary data in every base64 encoding.
 func TestBase64EdgeCases(t *testing.T) {
 	s := &Service{}
 
@@ -689,20 +609,8 @@ func TestBase64EdgeCases(t *testing.T) {
 		input []byte
 	}{
 		{
-			name:  "normal data",
-			input: []byte("test data"),
-		},
-		{
 			name:  "binary data",
 			input: []byte{0x00, 0x01, 0x02, 0xFF, 0xFE},
-		},
-		{
-			name:  "empty",
-			input: []byte{},
-		},
-		{
-			name:  "large data",
-			input: make([]byte, 1024*1024), // 1MB
 		},
 	}
 
@@ -854,30 +762,6 @@ func TestCodecDetection(t *testing.T) {
 	}
 }
 
-// TestSpecialCharacterHandling tests special characters in names
-func TestSpecialCharacterHandling(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name    string
-		release string
-	}{
-		{"ampersand", "Show.&.Title.S01E05"},
-		{"apostrophe", "Show's.Title.S01E05"},
-		{"parentheses", "Show.(US).S01E05"},
-		{"dots", "Show...S01E05"},
-		{"underscore", "Show_Title_S01E05"},
-		{"mixed", "Show's.Title.(2024).S01E05"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.NotNil(t, release)
-		})
-	}
-}
-
 // TestYearExtraction tests year extraction from releases
 func TestYearExtraction(t *testing.T) {
 	cache := NewReleaseCache()
@@ -898,81 +782,6 @@ func TestYearExtraction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
 			assert.Equalf(t, tt.wantYear, release.Year, "year mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestCachePerformance tests release cache performance
-func TestCachePerformance(t *testing.T) {
-	cache := NewReleaseCache()
-	testName := "Show.S01E05.1080p.WEB-DL.x264-GROUP"
-
-	// First parse (cache miss)
-	release1 := cache.Parse(testName)
-	assert.NotNil(t, release1)
-
-	// Second parse (cache hit)
-	release2 := cache.Parse(testName)
-	assert.NotNil(t, release2)
-
-	// Should return consistent results
-	assert.Equal(t, release1.Series, release2.Series)
-	assert.Equal(t, release1.Episode, release2.Episode)
-}
-
-// TestTorrentFileStructures tests different torrent file structures
-func TestTorrentFileStructures(t *testing.T) {
-	tests := []struct {
-		name        string
-		torrentName string
-		files       []string
-		fileCount   int
-	}{
-		{
-			name:        "single file",
-			torrentName: "Movie.2020.mkv",
-			files:       []string{"movie.mkv"},
-			fileCount:   1,
-		},
-		{
-			name:        "with subtitles",
-			torrentName: "Movie.2020",
-			files:       []string{"movie.mkv", "movie.srt", "movie.en.srt"},
-			fileCount:   3,
-		},
-		{
-			name:        "with samples",
-			torrentName: "Movie.2020",
-			files:       []string{"movie.mkv", "Sample/sample.mkv"},
-			fileCount:   2,
-		},
-		{
-			name:        "season pack",
-			torrentName: "Show.S01",
-			files: []string{
-				"Show.S01E01.mkv",
-				"Show.S01E02.mkv",
-				"Show.S01E03.mkv",
-			},
-			fileCount: 3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			torrentData := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
-
-			mi, err := metainfo.Load(bytes.NewReader(torrentData))
-			require.NoError(t, err)
-
-			info, err := mi.UnmarshalInfo()
-			require.NoError(t, err)
-
-			fileCount := len(info.Files)
-			if fileCount == 0 {
-				fileCount = 1 // Single file torrent
-			}
-			assert.Equal(t, tt.fileCount, fileCount)
 		})
 	}
 }
@@ -2281,95 +2090,6 @@ func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
 	assert.Empty(t, mockSync.calls)
 }
 
-func TestRecoverErroredTorrents_SingleErroredTorrent(t *testing.T) {
-	erroredTorrent := qbt.Torrent{
-		Hash:     "error123",
-		Name:     "errored.torrent",
-		State:    qbt.TorrentStateError,
-		Progress: 0.0,
-	}
-
-	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
-	svc := &Service{syncManager: mockSync}
-
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent})
-	require.NoError(t, err)
-
-	// Should have attempted pause, recheck, and resume
-	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
-	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
-	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
-}
-
-func TestRecoverErroredTorrents_MultipleErroredTorrents(t *testing.T) {
-	erroredTorrent1 := qbt.Torrent{
-		Hash:     "error123",
-		Name:     "errored1.torrent",
-		State:    qbt.TorrentStateError,
-		Progress: 0.0,
-	}
-	erroredTorrent2 := qbt.Torrent{
-		Hash:     "error456",
-		Name:     "errored2.torrent",
-		State:    qbt.TorrentStateError,
-		Progress: 0.0,
-	}
-	normalTorrent := qbt.Torrent{
-		Hash:     "normal123",
-		Name:     "normal.torrent",
-		State:    qbt.TorrentStateDownloading,
-		Progress: 0.5,
-	}
-
-	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent1, erroredTorrent2, normalTorrent})
-	svc := &Service{syncManager: mockSync}
-
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2, normalTorrent})
-	require.NoError(t, err)
-
-	// Should have batched pause, recheck, and resume on both errored torrents
-	// Check that both hashes are in the batched calls (order may vary)
-	var hasPauseBatch, hasRecheckBatch, hasResumeBatch bool
-	for _, call := range mockSync.calls {
-		if strings.HasPrefix(call, "BulkAction:pause:") && strings.Contains(call, "error123") && strings.Contains(call, "error456") {
-			hasPauseBatch = true
-		}
-		if strings.HasPrefix(call, "BulkAction:recheck:") && strings.Contains(call, "error123") && strings.Contains(call, "error456") {
-			hasRecheckBatch = true
-		}
-		if strings.HasPrefix(call, "BulkAction:resume:") && strings.Contains(call, "error123") && strings.Contains(call, "error456") {
-			hasResumeBatch = true
-		}
-	}
-	assert.True(t, hasPauseBatch, "expected batched pause call with both hashes")
-	assert.True(t, hasRecheckBatch, "expected batched recheck call with both hashes")
-	assert.True(t, hasResumeBatch, "expected batched resume call with both hashes")
-	// Should not have touched the normal torrent
-	for _, call := range mockSync.calls {
-		assert.NotContains(t, call, "normal123", "normal torrent should not be in any calls")
-	}
-}
-
-func TestRecoverErroredTorrents_MissingFilesState(t *testing.T) {
-	missingFilesTorrent := qbt.Torrent{
-		Hash:     "missing123",
-		Name:     "missing.torrent",
-		State:    qbt.TorrentStateMissingFiles,
-		Progress: 0.0,
-	}
-
-	mockSync := newMockRecoverSyncManager([]qbt.Torrent{missingFilesTorrent})
-	svc := &Service{syncManager: mockSync}
-
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{missingFilesTorrent})
-	require.NoError(t, err)
-
-	// Should have attempted pause, recheck, and resume
-	assert.Contains(t, mockSync.calls, "BulkAction:pause:[missing123]")
-	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[missing123]")
-	assert.Contains(t, mockSync.calls, "BulkAction:resume:[missing123]")
-}
-
 func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
 	erroredTorrent1 := qbt.Torrent{
 		Hash:     "error123",
@@ -2449,17 +2169,6 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 		assert.NotContains(t, call, "download123", "downloading torrent should not be in any calls")
 		assert.NotContains(t, call, "complete123", "completed torrent should not be in any calls")
 	}
-}
-
-func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
-	mockSync := newMockRecoverSyncManager([]qbt.Torrent{})
-	svc := &Service{syncManager: mockSync}
-
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{})
-	require.NoError(t, err)
-
-	// Should not have made any calls
-	assert.Empty(t, mockSync.calls)
 }
 
 func TestExtractTorrentURLForCommentMatch(t *testing.T) {

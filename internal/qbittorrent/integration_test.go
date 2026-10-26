@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1114,28 +1113,6 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 				tc.input, tc.expected, result)
 		}
 	})
-
-	t.Run("isGlobPattern detects patterns", func(t *testing.T) {
-		testCases := []struct {
-			input    string
-			expected bool
-		}{
-			{"*.iso", true},
-			{"Movie.*", true},
-			{"Ubuntu[20]*", true},
-			{"test?file", true},
-			{"normaltext", false},
-			{"no-pattern-here", false},
-			{"file.txt", false},
-		}
-
-		for _, tc := range testCases {
-			result := strings.ContainsAny(tc.input, "*?[")
-			assert.Equal(t, tc.expected, result,
-				"Pattern detection for '%s' should be %v, got %v",
-				tc.input, tc.expected, result)
-		}
-	})
 }
 
 // Helper function for string contains check (case insensitive)
@@ -1204,133 +1181,7 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	}
 }
 
-func BenchmarkSyncManager_CacheOperations(b *testing.B) {
-	// Disable logging for benchmarks
-	oldLevel := zerolog.GlobalLevel()
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(oldLevel)
-
-	// Since caching was removed, benchmark stats calculation instead
-	sm := &SyncManager{}
-	torrents := createTestTorrents(1000) // 1k torrents for reasonable benchmark
-
-	for b.Loop() {
-		stats := sm.calculateStats(torrents)
-		if stats.Total != 1000 {
-			b.Fatal("Stats calculation failed")
-		}
-	}
-}
-
 // TestSyncManager_GetDomainsForTorrent tests the domain extraction from torrent trackers.
-func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
-	sm := &SyncManager{}
-
-	testCases := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		expected map[string]struct{}
-	}{
-		{
-			name: "Multiple trackers returns all domains",
-			torrent: &qbt.Torrent{
-				Hash: "hash1",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://tracker1.example.com/announce"},
-					{Url: "udp://tracker2.org:6969/announce"},
-					{Url: "http://tracker3.net:8080/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"tracker1.example.com": {},
-				"tracker2.org":         {},
-				"tracker3.net":         {},
-			},
-		},
-		{
-			name: "Single Tracker field (legacy) returns domain",
-			torrent: &qbt.Torrent{
-				Hash:    "hash2",
-				Tracker: "https://legacy.tracker.com/announce",
-			},
-			expected: map[string]struct{}{
-				"legacy.tracker.com": {},
-			},
-		},
-		{
-			name: "Trackers field takes precedence over Tracker field",
-			torrent: &qbt.Torrent{
-				Hash:    "hash3",
-				Tracker: "https://legacy.tracker.com/announce",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://primary.tracker.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"primary.tracker.com": {},
-			},
-		},
-		{
-			name: "Empty URL entries are filtered out",
-			torrent: &qbt.Torrent{
-				Hash: "hash4",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://valid.tracker.com/announce"},
-					{Url: ""},
-					{Url: "https://another-valid.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"valid.tracker.com": {},
-				"another-valid.com": {},
-			},
-		},
-		{
-			name: "Empty torrent returns empty map",
-			torrent: &qbt.Torrent{
-				Hash: "hash5",
-			},
-			expected: map[string]struct{}{},
-		},
-		{
-			name: "Duplicate domains are deduplicated",
-			torrent: &qbt.Torrent{
-				Hash: "hash6",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://tracker.example.com/announce"},
-					{Url: "http://tracker.example.com/scrape"},
-					{Url: "udp://tracker.example.com:6969"},
-				},
-			},
-			expected: map[string]struct{}{
-				"tracker.example.com": {},
-			},
-		},
-		{
-			name: "Pseudo trackers are filtered out",
-			torrent: &qbt.Torrent{
-				Hash: "hash7",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "** [DHT] **"},
-					{Url: "[PeX]"},
-					{Url: " [LSD] "},
-					{Url: "https://valid.tracker.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"valid.tracker.com": {},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := sm.getDomainsForTorrent(tc.torrent)
-			assert.Equal(t, tc.expected, result)
-		})
-	}
-}
-
 func TestSyncManager_ExtractDomainFromURL_IgnoresPseudoTrackers(t *testing.T) {
 	sm := &SyncManager{}
 

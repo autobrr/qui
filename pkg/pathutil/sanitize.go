@@ -7,6 +7,7 @@ package pathutil
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // windowsReservedNames contains device names that are reserved on Windows.
@@ -84,36 +85,33 @@ func TorrentPathComponent(component string) string {
 	return component
 }
 
-// IsolationFolderName generates a human-readable isolation folder name for
-// hardlink cross-seeding. Format: <sanitized-name>--<shortHash>
-//
-// This is used when torrents need isolation (e.g., rootless torrents with
-// Original layout, or NoSubfolder layout) to prevent file conflicts while
-// keeping the folder name readable and unique.
-//
-// Example: "My.Movie.2024.1080p.BluRay--abcdef12"
-func IsolationFolderName(infohash, name string) string {
-	sanitizedName := SanitizePathSegment(name)
+// maxIsolationNameBytes keeps room for "--<shortHash>" in a folder name of
+// 255 bytes, the per-name limit of ext4, Btrfs, ZFS, and NTFS. 255 UTF-8 bytes
+// are never more than 255 UTF-16 units, so the limit also holds on NTFS.
+const maxIsolationNameBytes = 255 - len("--") - 8
 
-	// Truncate very long names to keep folder name reasonable
-	const maxNameLen = 80
-	if len(sanitizedName) > maxNameLen {
-		sanitizedName = sanitizedName[:maxNameLen]
-		// Remove trailing dots/spaces after truncation
-		sanitizedName = strings.TrimRight(sanitizedName, ". ")
+// IsolationFolder returns the name of the isolation folder for a torrent: the
+// sanitized torrent name, cut at a full character to fit 255 bytes with room
+// for the hash of HashedIsolationFolder.
+func IsolationFolder(name string) string {
+	result := SanitizePathSegment(name)
+	if len(result) <= maxIsolationNameBytes {
+		return result
 	}
-
-	// Use first 8 chars of infohash as short hash
-	shortHash := ""
-	if len(infohash) >= 8 {
-		shortHash = strings.ToLower(infohash[:8])
-	} else if infohash != "" {
-		shortHash = strings.ToLower(infohash)
+	cut := maxIsolationNameBytes
+	for cut > 0 && !utf8.RuneStart(result[cut]) {
+		cut--
 	}
-
-	if shortHash == "" {
-		return sanitizedName
+	if result = strings.TrimRight(result[:cut], ". "); result == "" {
+		return "_"
 	}
+	return result
+}
 
-	return sanitizedName + "--" + shortHash
+// HashedIsolationFolder returns <IsolationFolder>--<shortHash>, where shortHash
+// is the first 8 characters of infohash, lowercased. It is the isolation
+// folder for a torrent whose plain name is taken. It is also the automations
+// template variable {{.IsolationFolderName}}.
+func HashedIsolationFolder(infohash, name string) string {
+	return IsolationFolder(name) + "--" + strings.ToLower(infohash[:min(len(infohash), 8)])
 }

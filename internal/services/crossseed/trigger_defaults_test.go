@@ -182,6 +182,7 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 	t.Run("interactive apply", func(t *testing.T) {
 		service, captured := newInteractiveApplyService(t, failingSettings)
 
+		withAdder(service)
 		_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", interactiveApplyRequest(true, nil))
 		require.ErrorIs(t, err, errSettingsUnavailable)
 		assert.Empty(t, *captured)
@@ -206,6 +207,7 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			service, captured := newInteractiveApplyService(t, loader)
 
+			withAdder(service)
 			_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", tt.req)
 			require.NoError(t, err)
 			require.Len(t, *captured, 1)

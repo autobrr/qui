@@ -1644,6 +1644,8 @@ paths:
 
         In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
+        When a sync changes only the server state, the delta has no changed
+        rows and no order, and it carries the new `serverState`.
 
         `stream-error` contains an `error` message and optional retry metadata.
         `heartbeat` keeps the connection alive. Neither advances the data version.
@@ -1654,12 +1656,14 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, and `filters`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
-            same fields as the torrent list filters.
+            same fields as the torrent list filters. If `summary` is true, the
+            frames carry the totals, stats, counts, and server state of the view,
+            but no rows. `summary` needs a single `instanceId`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -4243,14 +4247,14 @@ paths:
         '404':
           description: Directory not found
         '409':
-          description: A scan is already in progress
+          description: A full scan is already queued or in progress. A webhook scan in progress does not block a manual scan.
         '500':
           description: Failed to start scan
     delete:
       tags:
         - Dir Scan
       summary: Cancel a directory scan
-      description: Cancels the currently running scan for the given directory, if any
+      description: Cancels every queued and running scan of the given directory, full scans and webhook scans
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4389,7 +4393,7 @@ paths:
         '404':
           description: No enabled directory matched the provided path
         '409':
-          description: Request conflicts with directory state, such as ambiguous path matches or an active scan
+          description: More than one enabled directory matches the path
         '500':
           description: Failed to start scan
 
@@ -4398,7 +4402,10 @@ paths:
       tags:
         - Dir Scan
       summary: Get directory scan status
-      description: Returns the status of the active scan run or the most recent run (or idle)
+      description: |
+        Returns the queued and running scan runs of the directory. A directory can have a full scan
+        and a webhook scan in progress at the same time. If no run is queued or running, the list holds
+        the most recent run. A directory without runs returns an empty list.
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4407,9 +4414,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/DirScanRun'
-                  - $ref: '#/components/schemas/DirScanIdleStatus'
+                $ref: '#/components/schemas/DirScanStatus'
         '404':
           description: Directory not found
         '500':
@@ -5376,27 +5381,6 @@ paths:
           description: Invalid parameters
         '500':
           description: Failed to analyze torrent
-
-  /api/cross-seed/torrents/{instanceID}/{hash}/async-status:
-    get:
-      tags:
-        - Cross-Seed
-      summary: Get async filtering status
-      description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
-      parameters:
-        - $ref: '#/components/parameters/instanceID'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Current async filtering state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AsyncIndexerFilteringState'
-        '400':
-          description: Invalid parameters
-        '500':
-          description: Failed to get filtering status
 
   /api/cross-seed/torrents/{instanceID}/{hash}/search:
     post:
@@ -7751,6 +7735,12 @@ components:
           type: string
         savePath:
           type: string
+        download_path:
+          description: The category's own download path option, from qBittorrent 4.4. Left out when the category inherits it, false when it is turned off, and the path when it is on. qBittorrent resolves an empty or relative path itself. On qBittorrent 5.1 and earlier a change back to inherit can take until the next full sync to show.
+          oneOf:
+            - type: boolean
+              enum: [false]
+            - type: string
 
     LogSettings:
       type: object
@@ -9063,41 +9053,12 @@ components:
           type: array
           items:
             type: string
-        content_filtering_completed:
-          type: boolean
-          nullable: true
         disc_layout:
           type: boolean
           description: True if this torrent contains disc-based media (Blu-ray/DVD)
         disc_marker:
           type: string
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
-
-    AsyncIndexerFilteringState:
-      type: object
-      properties:
-        capabilities_completed:
-          type: boolean
-        content_completed:
-          type: boolean
-        capability_indexers:
-          type: array
-          items:
-            type: integer
-        filtered_indexers:
-          type: array
-          items:
-            type: integer
-        excluded_indexers:
-          type: object
-          additionalProperties:
-            type: string
-        content_matches:
-          type: array
-          items:
-            type: string
-        error:
-          type: string
 
     CrossSeedTorrentSearchRequest:
       type: object
@@ -9191,6 +9152,12 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        gazelle_timed_out:
+          type: boolean
+          description: Set when a RED/OPS lookup did not answer in time. The results hold the Torznab matches and the matches of each RED/OPS site that answered.
+        torznab_failed:
+          type: boolean
+          description: Set when the Torznab search failed and the results come only from RED/OPS.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 
@@ -10379,15 +10346,15 @@ components:
         - directoryPath
         - scanRoot
 
-    DirScanIdleStatus:
+    DirScanStatus:
       type: object
       properties:
-        status:
-          type: string
-          enum:
-            - idle
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirScanRun'
       required:
-        - status
+        - runs
 
     WarningResponse:
       type: object
@@ -10505,6 +10472,10 @@ components:
           type: string
         skip_checking:
           type: boolean
+          description: Legacy name of seed_mode. qui returns the same value in both fields.
+        seed_mode:
+          type: boolean
+          description: Skip the hash check. If a request has both fields, seed_mode is used.
         upload_limit:
           type: integer
         download_limit:
@@ -10515,6 +10486,10 @@ components:
           type: integer
         share_limit_action:
           type: string
+        share_limits_mode:
+          type: string
+          enum: [Default, MatchAny, MatchAll]
+          description: Default uses the global share limits mode. qBittorrent 5.3 and later.
         ratio_limit:
           type: number
           format: double

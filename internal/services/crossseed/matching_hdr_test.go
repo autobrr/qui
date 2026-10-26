@@ -278,13 +278,15 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceRelease := svc.releaseCache.Parse(tt.sourceName)
 			candidateRelease := svc.releaseCache.Parse(tt.candidateName)
 
-			// First check releasesMatch (metadata comparison)
-			metadataMatch, reason := svc.releasesMatchWithReason(sourceRelease, candidateRelease, false)
+			// First run the strict compare (metadata comparison)
+			comparison := svc.strictCompare(sourceRelease, candidateRelease, false)
+			metadataMatch, reason := comparison.matched(), comparison.reason()
 
 			if tt.wantMatch {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)
 
-				// If metadata matches, also verify file matching works
+				// If metadata matches, also verify file matching works.
+				// The source is the local torrent, and the candidate is the new torrent.
 				matchType := svc.getMatchTypeWithReason(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles, 0).MatchType
 				require.NotEmpty(t, matchType, "%s: should produce a match type", tt.description)
 			} else {

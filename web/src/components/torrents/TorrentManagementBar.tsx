@@ -744,6 +744,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
         onConfirm={handleDeleteWrapper}
+        isAllSelected={isAllSelected}
+        previewTorrents={selectedTorrents}
       />
 
       <TagEditorDialog

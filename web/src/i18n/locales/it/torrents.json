@@ -103,7 +103,15 @@
     "totalSize": "Dimensione totale: {{size}}",
     "blockCrossSeeds": "Blocca gli infohash dei cross-seed (impedisce la ri-aggiunta)",
     "cancel": "Annulla",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Eliminare il {{count}} torrent che corrisponde al filtro?",
+    "titleSelectAll_other": "Eliminare i {{count}} torrent che corrispondono al filtro?",
+    "selectAllNotice": "Seleziona tutto è attivo. Questa azione elimina i torrent selezionati che corrispondono al filtro attuale.",
+    "notLoaded_one": "{{count}} di questi non è caricato nella tabella.",
+    "notLoaded_other": "{{count}} di questi non sono caricati nella tabella.",
+    "andMore": "e altri {{more}}",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrent"
   },
   "deleteFilesPreference": {
     "label": "Elimina anche i file dal disco",
@@ -429,6 +437,9 @@
       "description": "Imposta i limiti di velocità di caricamento e download in KB/s. Disabilita per usare i limiti globali.",
       "uploadLimit": "Imposta limite di caricamento (KB/s)",
       "downloadLimit": "Imposta limite di download (KB/s)",
+      "selectValue": "Seleziona un valore",
+      "wasMixed": "(era misto)",
+      "unresolvedMixed": "Seleziona i valori per tutti i campi misti prima di applicare",
       "cancel": "Annulla",
       "setting": "Impostazione in corso...",
       "confirm": "Applica limiti"
@@ -719,19 +730,18 @@
     "partialResults": "Risultati parziali - alcuni indexer non hanno risposto",
     "arrLookupFailed": "Ricerca degli ID dei metadati non riuscita - ricerca solo per titolo, i risultati potrebbero essere incompleti",
     "arrNoIds": "Nessun ID dei metadati trovato per questa release - ricerca solo per titolo",
+    "gazelleTimedOut": "RED/OPS non ha risposto in tempo",
+    "torznabFailed": "Ricerca Torznab non riuscita - solo risultati RED/OPS",
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
     "noIndexersHelp": "Aggiungi o abilita indexer Torznab in Impostazioni per cercare cross-seed.",
+    "gazelleOnlySearch": "La ricerca interroga solo i siti RED/OPS che hanno una chiave API.",
     "capabilityNote": "Nota sulle funzionalità",
     "capabilityDescription": "Questi indexer non hanno le funzionalità/categorie richieste per questo torrent e verranno ignorati dal server:",
-    "contentFilteringInProgress": "Filtraggio del contenuto in corso",
-    "analyzingContent": "Analisi del contenuto esistente...",
     "smartFilteringActive": "Filtraggio intelligente attivo",
     "indexersFiltered_one": "{{count}} indexer filtrato",
     "indexersFiltered_other": "{{count}} indexer filtrati",
-    "contentFilteringDescription": "Controllo dei tuoi torrent esistenti per trovare duplicati ed escludere i tracker ridondanti. Questo aiuta a evitare di scaricare più volte lo stesso contenuto.",
     "excludedDescription": "Stai già distribuendo questa release da questi tracker, quindi sono esclusi dalla ricerca.",
-    "noContentDuplicates": "Filtraggio del contenuto completato. Nessun contenuto duplicato trovato sui tuoi tracker abilitati.",
     "searchingIndexers": "Ricerca sugli indexer…",
     "noMatchesFound": "Nessuna corrispondenza trovata nella tua ricerca.",
     "selectReleasesToAdd": "Seleziona le release che vuoi aggiungere",
@@ -780,7 +790,6 @@
       "selectAllIndexers": "Seleziona tutto",
       "clearSelection": "Svuota la selezione",
       "search": "Cerca",
-      "filtering": "Filtraggio…",
       "searching": "Ricerca in corso",
       "noneSelected": "Nessuno selezionato",
       "enabledIndexers": "{{count}} abilitati {{suffix}}",
@@ -1336,11 +1345,6 @@
     "matchCount_other": "{{count}} corrispondenze",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina questo",
-    "statusLabels": {
-      "trackerDown": "Tracker non raggiungibile",
-      "unregistered": "Non registrato",
-      "trackerError": "Errore tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenuto",
@@ -1515,25 +1519,6 @@
       "placeholder": "Cerca torrent...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
-    },
-    "shareLimit": {
-      "title": "Imposta limiti di condivisione per {{count}} torrent",
-      "description": "Configura i limiti di distribuzione. Usa -1 o disabilita per rimuovere i limiti.",
-      "setRatioLimit": "Imposta limite di rapporto",
-      "setSeedingTimeLimit": "Imposta limite di tempo di distribuzione (minuti)",
-      "setInactiveSeedingLimit": "Imposta limite di distribuzione inattiva (minuti)",
-      "cancel": "Annulla",
-      "setting": "Impostazione...",
-      "applyLimits": "Applica limiti"
-    },
-    "speedLimit": {
-      "title": "Imposta limiti di velocità per {{count}} torrent",
-      "description": "Imposta i limiti di velocità di caricamento e download in KB/s. Usa -1 o disabilita per rimuovere i limiti.",
-      "setUploadLimit": "Imposta limite di caricamento (KB/s)",
-      "setDownloadLimit": "Imposta limite di download (KB/s)",
-      "cancel": "Annulla",
-      "setting": "Impostazione...",
-      "applyLimits": "Applica limiti"
     },
     "ratio": "Rapporto:"
   },

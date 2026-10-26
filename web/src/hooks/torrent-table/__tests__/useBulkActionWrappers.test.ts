@@ -74,12 +74,11 @@ describe("useBulkActionWrappers — argument forwarding", () => {
   })
 
   it("exports with the select-all/sort context", () => {
-    const params = makeParams({ isAllSelected: true, effectiveSelectionCount: 42 })
+    const params = makeParams({ isAllSelected: true })
     const { result } = render(params)
     act(() => result.current.handleExportWrapper(["x"], [makeTorrent({ hash: "x" })]))
     expect(vi.mocked(params.exportTorrents)).toHaveBeenCalledWith(expect.objectContaining({
       isAllSelected: true,
-      totalSelected: 42,
       search: "query",
       sortField: "added_on",
       sortOrder: "desc",

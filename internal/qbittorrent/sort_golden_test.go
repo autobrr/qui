@@ -147,8 +147,16 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 			_, _ = w.Write(mainData)
 		case "/api/v2/torrents/info":
 			var out []qbt.Torrent
+			if r.URL.Query().Get("hashes") == "" {
+				// The health pass of qBittorrent 5.1 fetches the whole library.
+				for hash, trackers := range trackersByHash {
+					out = append(out, qbt.Torrent{Hash: hash, Trackers: trackers})
+				}
+			}
 			for hash := range strings.SplitSeq(r.URL.Query().Get("hashes"), "|") {
-				out = append(out, qbt.Torrent{Hash: hash, Trackers: trackersByHash[hash]})
+				if hash != "" {
+					out = append(out, qbt.Torrent{Hash: hash, Trackers: trackersByHash[hash]})
+				}
 			}
 			_ = json.MarshalWrite(w, out)
 		default:
@@ -173,6 +181,8 @@ func TestSingleInstanceSortGolden(t *testing.T) {
 	t.Parallel()
 
 	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: newSortTestClient(t, 1, sortGoldenTrackers)}}, nil)
+	// The state sort reads the health that the background pass stores.
+	sm.refreshTrackerHealthCounts(t.Context(), 1)
 	torrents := sortGoldenTorrents()
 
 	var got strings.Builder

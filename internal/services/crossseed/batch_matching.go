@@ -154,22 +154,24 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		linkTiers: make(map[[2]string]localLinkResult),
 	}
 
+	reads := s.readLocalTorrents(ctx, currentInstanceID, viewTorrents(currentTorrents))
+
 	// Select the candidates of every torrent first, so that the file lists they
 	// need are read in one batch per instance.
 	var samePicks, otherPicks [][]*candidatePick
 	var pathGroups [][]int
 	var peerReadFailed bool
 	if needsSame {
-		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding); sameIdx != nil {
-			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true)
+		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding, reads); sameIdx != nil {
+			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true, reads)
 			pathGroups = sharedPathGroups(currentTorrents)
 		}
 	}
 	if needsOther && listErr == nil {
 		var otherIdx *matchIndex
-		otherIdx, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding)
+		otherIdx, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
 		if otherIdx != nil {
-			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false)
+			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false, reads)
 		}
 	}
 	files.prefetch(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, otherPicks)
@@ -307,13 +309,14 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 }
 
 // selectAllCandidates runs selectCandidates for each torrent of the instance.
-func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorrent.CrossInstanceTorrentView, idx *matchIndex, sameInstance bool) [][]*candidatePick {
+func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorrent.CrossInstanceTorrentView, idx *matchIndex, sameInstance bool, reads localReads) [][]*candidatePick {
 	picks := make([][]*candidatePick, len(torrents))
 	for i := range torrents {
 		if ctx.Err() != nil {
 			break
 		}
-		picks[i] = s.selectCandidates(torrents[i].Torrent, idx, sameInstance)
+		source := torrents[i].Torrent
+		picks[i] = s.selectCandidates(source, reads.read(s.matcher(), torrents[i].InstanceID, source), idx, sameInstance)
 	}
 	return picks
 }
@@ -580,7 +583,7 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 }
 
 // buildIndexFromViews builds a matchIndex from CrossInstanceTorrentViews.
-func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentView, needsSeeding bool) *matchIndex {
+func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentView, needsSeeding bool, reads localReads) *matchIndex {
 	if len(views) == 0 {
 		return nil
 	}
@@ -588,7 +591,7 @@ func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentVi
 	idx := newMatchIndex()
 	for i := range views {
 		view := &views[i]
-		s.indexView(idx, view, needsSeeding)
+		s.indexView(idx, view, needsSeeding, reads)
 	}
 
 	return idx
@@ -601,9 +604,10 @@ func newMatchIndex() *matchIndex {
 	}
 }
 
-// buildOtherInstanceIndex builds a matchIndex from all torrents on other instances.
-// readFailed is set when the torrents of an instance could not be read.
-func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool) (idx *matchIndex, readFailed bool) {
+// buildOtherInstanceIndex builds a matchIndex from all torrents on other
+// instances, and adds their reads from files to reads. readFailed is set when
+// the torrents of an instance could not be read.
+func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, readFailed bool) {
 	idx = newMatchIndex()
 	hasEntries := false
 
@@ -622,8 +626,9 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 			continue
 		}
 
+		maps.Copy(reads, s.readLocalTorrents(ctx, inst.ID, viewTorrents(views)))
 		for i := range views {
-			s.indexView(idx, &views[i], needsSeeding)
+			s.indexView(idx, &views[i], needsSeeding, reads)
 			hasEntries = true
 		}
 	}
@@ -635,7 +640,7 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 }
 
 // indexView adds a single torrent view to all indexes.
-func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) {
+func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool, reads localReads) {
 	entry := newCandidateEntry(view, needsSeeding)
 
 	// Index by normalized name
@@ -644,7 +649,7 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 		idx.byName[name] = append(idx.byName[name], entry)
 	}
 
-	read := s.matcher().readName(view.Name)
+	read := reads.read(s.matcher(), view.InstanceID, view.Torrent)
 	candidate := &releaseCandidate{candidateEntry: entry, read: read}
 	date := releaseDate(read.release)
 	for _, title := range s.matcher().titleKeys(read) {
@@ -682,7 +687,7 @@ type candidatePick struct {
 // selectCandidates selects the Name and Release candidates of a source torrent
 // from the index with the same prefilter as the Cross-Seed tab. sameInstance
 // excludes the source itself.
-func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameInstance bool) []*candidatePick {
+func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease, idx *matchIndex, sameInstance bool) []*candidatePick {
 	sourceHash := normalizeHash(source.Hash)
 
 	var picks []*candidatePick
@@ -706,7 +711,6 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 		}
 	}
 
-	sourceRead := s.matcher().readName(source.Name)
 	// A dated source meets the torrents of its date and the undated torrents.
 	// An undated source meets the undated torrents and every dated torrent.
 	sourceDate := releaseDate(sourceRead.release)
@@ -723,18 +727,21 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 					continue
 				}
 				evaluated[c] = struct{}{}
-				match, reason := s.matcher().releasesMatchWithReasonAndNames(sourceRead.release, c.read.release, source.Name, c.read.rawName, false)
+				// The pair shares a Title key and the episode number, so no title or
+				// episode relaxation reaches it.
+				verdict := s.matcher().matchVerdict(sourceRead, c.read,
+					matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy)
 				logReleaseMatchDecision(
 					source.Name,
 					c.read.rawName,
 					false,
 					sourceRead.release,
 					c.read.release,
-					match,
-					reason,
+					verdict.Matched,
+					verdict.RejectReason,
 					"crossseed: release metadata candidate evaluated",
 				)
-				if match {
+				if verdict.Matched {
 					add(c.candidateEntry, matchTypeRelease)
 				}
 			}

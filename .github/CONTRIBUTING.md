@@ -1,16 +1,33 @@
 # Contributing to qui
 
-Thanks for taking interest in contribution! We welcome anyone who wants to contribute.
+Thanks for your interest in qui. First, read [Who can open issues and pull requests](#who-can-open-issues-and-pull-requests).
 
-If you have an idea for a bigger feature or a change then we are happy to discuss it before you start working on it.
-It is usually a good idea to make sure it aligns with the project and is a good fit.
-Open an issue or post in #dev-general on [Discord](https://discord.autobrr.com/qui).
+If you have an idea for a bigger feature or a change, discuss it with us before you start work.
+Start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or post in #dev-general on [Discord](https://discord.autobrr.com/qui).
 
 This document is a guide to help you through the process of contributing to qui.
 
+## Who can open issues and pull requests
+
+Only collaborators on the qui repository can open issues and pull requests.
+We are a small team, and each review of an unplanned pull request takes time from bug fixes.
+
+If you are not a collaborator:
+
+- To report a bug, use the [Issue Triage](https://github.com/autobrr/qui/discussions/new?category=issue-triage) form. A bot triages each report, and confirmed bugs become issues.
+- To suggest a feature, post in [Feature Requests, Ideas](https://github.com/autobrr/qui/discussions/new?category=feature-requests-ideas).
+- To propose a code change, describe it in a Discussion. We do not accept code from people outside the team at this time.
+
+If you are a collaborator and use an AI agent, add this line to your personal agent instructions, for example `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`.
+The agent then skips the collaborator check in [`AGENTS.md`](../AGENTS.md).
+
+```text
+I am a collaborator on autobrr/qui with write access. Skip the collaborator check in the qui AGENTS.md.
+```
+
 ## Become a contributor
 
-* Code: new features, bug fixes, improvements
+* Code: new features, bug fixes, improvements (collaborators only for now)
 * Report bugs
 
 ## Developer guide
@@ -32,13 +49,13 @@ Make sure you have the following dependencies installed before setting up your d
 - **Clone:** Clone the repository, or a [fork](https://github.com/autobrr/qui/fork), to start work on your changes.
 - **Branching:** Create a new branch for your changes. Use a descriptive name for easy understanding.
   - Checkout a new branch for your fix or feature `git checkout -b fix/torrent-actions-issue`
-- **Coding:** Ensure your code is well-commented for clarity. With go use `go fmt`
+- **Coding:** Follow the [coding standards](../CODING_STANDARDS.md). With go use `go fmt`
 - **Commit Guidelines:** We appreciate the use of [Conventional Commit Guidelines](https://www.conventionalcommits.org/en/v1.0.0/#summary) when writing your commits.
   - Examples: `fix(qbittorrent): improve connection pooling`, `feat(torrent): add bulk actions`
   - There is no need for force pushing or rebasing. We squash commits on merge to keep the history clean and manageable.
 - **Pull Requests:** Open a pull request with a clear description of your changes. Reference any related issues.
   - Mark it as Draft if it's still in progress.
-  - Fill in the [PR template](pull_request_template.md). A CI check fails until the PR body has the Description, Breaking change, Behaviour change, Performance, and AI disclosure sections. Write "No breaking change." or "No behaviour change." when that applies. When you edit the PR body, the check runs again.
+  - Fill in the [PR template](pull_request_template.md). For a PR from someone who is not a collaborator, a CI check fails until the PR body has the Description, Breaking change, Behaviour change, Performance, and AI disclosure sections. Write "No breaking change." or "No behaviour change." when that applies. When you edit the PR body, the check runs again.
 - **Code Review:** Be open to feedback during the code review process.
 
 ## Development environment
@@ -129,7 +146,7 @@ goreleaser build --snapshot --clean
 
 ## Tests
 
-The test suite consists of only backend tests at this point. All tests run per commit with GitHub Actions.
+GitHub Actions runs the backend and frontend tests.
 
 ### Run backend tests
 
@@ -138,7 +155,7 @@ We have a mix of unit and integration tests.
 Run all non-integration tests:
 
 ```shell
-go test -v ./...
+make test
 ```
 
 Run Postgres integration tests with a temporary server:
@@ -152,6 +169,12 @@ Each Postgres test keeps its isolated schema. CI runs this command on Linux.
 Use `PostgresIntegration` in the names of tests that need a Postgres server so this command selects them.
 Set `QUI_TEST_POSTGRES_DSN` to use an existing test database instead.
 To select tests, pass Go test arguments to `go run ./internal/testutil/postgres`.
+
+### Run frontend tests
+
+```shell
+make test-frontend
+```
 
 ## AI-assisted contributions
 

@@ -6,7 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,15 +25,15 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick is the worker tick in the rig. It stays well above the 200 ms
-// debounced sync after a write: a hint on every tick closer than that would
-// keep postponing the sync the worker waits on.
-const rigTick = 500 * time.Millisecond
+// rigTick is the worker tick in the rig. It stays above the 200 ms debounced
+// sync after a write: a hint on every tick closer than that would keep
+// postponing the sync the worker waits on.
+const rigTick = 250 * time.Millisecond
 
 // rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
 // removed by mistake is gone by the time requireKept looks, even when the
 // worker first waits a tick for the sync to drop the torrent's row. In the
-// rig a removal lands about 0.5 s after the request.
+// rig a removal lands about 0.3 s after the request.
 const rigKeptWait = 2*rigTick + 500*time.Millisecond
 
 const (
@@ -177,11 +177,10 @@ func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
 		return map[string]int{
 			"liveTorrents": count(func() error { _, err := r.sm.liveTorrents(ctx, r.instanceID); return err }),
 			"ownRows":      count(func() error { _, err := r.sm.ownRows(ctx, r.instanceID, hashes); return err }),
-			"stopFolderInputs": count(func() error {
-				_, err := r.sm.stopFolderInputs(ctx, r.instanceID)
+			"InstanceFolders": count(func() error {
+				_, err := r.sm.InstanceFolders(ctx, fsops.HostPaths, r.instanceID)
 				return err
 			}),
-			"categoryNesting": count(func() error { _, err := r.sm.categoryNesting(ctx, r.instanceID); return err }),
 		}
 	}
 	require.Equal(t, requests(hashA), requests(hashA, hashB, hashC))
@@ -308,6 +307,135 @@ func TestFolderCleanupTriggerEditCategory(t *testing.T) {
 	require.FileExists(t, r.p("torrents/manual/C-GRP/c.mkv"))
 }
 
+// Up to qBittorrent 5.2 an edit replaces every option of the category, so an
+// edit of the save path sends the download path option the category has.
+func TestEditCategoryKeepsTheDownloadPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		option *qbt.CategoryDownloadPath
+	}{
+		{name: "own path", option: &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"}},
+		{name: "turned off", option: &qbt.CategoryDownloadPath{}},
+		{name: "inherited", option: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", tc.option)
+			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+			require.Equal(t, tc.option, r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
+// Before WebAPI 2.11.10 a partial maindata update leaves download_path out
+// when a category goes back to inherit, so the cache can still hold a path.
+// The edit reads the option from qBittorrent instead: here the cache synced
+// before the category went back to inherit.
+func TestEditCategoryReadsTheDownloadPathFresh(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"})
+	r.add()
+	r.stub.SetCategoryDownloadPath("archive", nil)
+	require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Nil(t, r.stub.CategoryDownloadPath("archive"))
+}
+
+// With the download path kept, an edit to the same save path changes nothing,
+// which qBittorrent 5.1 answers with 409. For a category that exists, that is
+// a success with nothing to do.
+func TestEditCategoryAcceptsAnEditThatChangesNothing(t *testing.T) {
+	t.Parallel()
+	option := &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"}
+	for _, path := range []string{"torrents/old/archive", "torrents/old/archive/"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", option)
+			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/old/archive")+strings.TrimPrefix(path, "torrents/old/archive")))
+			require.Equal(t, 1, r.stub.Conflicts("torrents/editCategory"))
+			require.Equal(t, option, r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
+func TestEditCategoryFails(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		category  string
+		fail      func(s *qbtstub.Server)
+		sendsEdit bool
+	}{
+		// Only a 409 for a category that exists counts as nothing to do.
+		{name: "qBittorrent rejects the edit", category: "archive", fail: func(s *qbtstub.Server) { s.Reject = http.StatusInternalServerError }, sendsEdit: true},
+		// Which branch an edit takes depends on the version.
+		{name: "version read fails", category: "archive", fail: func(s *qbtstub.Server) { s.WebAPIVersionStatus = http.StatusBadGateway }},
+		// Without the category's download path the edit would reset it.
+		{name: "category read fails", category: "archive", fail: func(s *qbtstub.Server) { s.CategoriesStatus = http.StatusInternalServerError }},
+		// 5.1 answers a missing category with the same 409 as an edit that
+		// changes nothing.
+		{name: "missing category", category: "missing", fail: func(*qbtstub.Server) {}, sendsEdit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			option := &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"}
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", option)
+			tc.fail(r.stub)
+			require.Error(t, r.sm.EditCategory(t.Context(), r.instanceID, tc.category, r.p("torrents/new")))
+			require.Equal(t, tc.sendsEdit, r.stub.Writes("torrents/editCategory") > 0)
+			require.Equal(t, option, r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
+// The edit reads the version before each edit and sends the save path alone
+// only from WebAPI 2.16.1 (qBittorrent 5.3), where an edit keeps what it
+// leaves out.
+func TestEditCategoryFollowsTheVersion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name              string
+		cachedVersion     string
+		version           string
+		sendsSavePathOnly bool
+	}{
+		{name: "qBittorrent 5.3", cachedVersion: "2.16.1", version: "2.16.1", sendsSavePathOnly: true},
+		// The client's capabilities can predate an in-place downgrade.
+		{name: "downgrade from 5.3", cachedVersion: "2.16.2", version: "2.15.1"},
+		// The partial edit landed while qBittorrent still reported 2.16.0, so
+		// a 2.16.0 build may replace every option.
+		{name: "WebAPI 2.16.0", cachedVersion: "2.16.0", version: "2.16.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.stub.WebAPIVersion = tc.cachedVersion
+			client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
+			require.NoError(t, err)
+			require.NoError(t, client.RefreshCapabilities(t.Context()))
+			r.stub.WebAPIVersion = tc.version
+			option := &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"}
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", option)
+			if tc.sendsSavePathOnly {
+				// The save path alone needs no read of the category.
+				r.stub.CategoriesStatus = http.StatusInternalServerError
+			}
+			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+			require.Equal(t, !tc.sendsSavePathOnly, strings.Contains(r.stub.LastBody("torrents/editCategory"), "downloadPathEnabled"))
+			require.Equal(t, option, r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
 // qBittorrent sets an ATM torrent's save path at once and its content path
 // only once the files have moved, so the sync right after the request caches
 // the new save path with the old content path. The cleanup waits for the
@@ -363,6 +491,7 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 			client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
 			require.NoError(t, err)
 			before := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+			syncs := r.stub.Syncs()
 
 			require.NoError(t, tc.op(r))
 			require.Eventually(t, func() bool {
@@ -370,7 +499,7 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 				return row.SavePath != before.SavePath && row.ContentPath == before.ContentPath
 			}, 5*time.Second, 20*time.Millisecond, "the cache must show the new save path with the old content path")
 			// Let the second sync after the request land before the files move.
-			time.Sleep(300 * time.Millisecond)
+			require.Eventually(t, func() bool { return r.stub.Syncs() >= syncs+2 }, 5*time.Second, 10*time.Millisecond)
 
 			r.stub.FinishMoves()
 			r.requireGone(tc.left)
@@ -553,7 +682,8 @@ func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 
 // hungBackend is a mount where a Stat under hang returns only once release is
 // closed, whatever its context, as os.Stat does on a hung NFS mount. stats
-// counts every Stat that reached it.
+// counts every Stat that reached it, and hung waits for the hung ones to
+// return.
 type hungBackend struct {
 	fsops.Backend
 	hang    string
@@ -561,6 +691,7 @@ type hungBackend struct {
 	release chan struct{}
 	stats   atomic.Int32
 	inside  atomic.Int32
+	hung    sync.WaitGroup
 }
 
 func (b *hungBackend) unhang() {
@@ -576,6 +707,8 @@ func (b *hungBackend) unhang() {
 func (b *hungBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	b.stats.Add(1)
 	if strings.HasPrefix(p, b.hang) {
+		b.hung.Add(1)
+		defer b.hung.Done()
 		b.inside.Add(1)
 		defer b.inside.Add(-1)
 		b.mu.Lock()
@@ -642,7 +775,7 @@ func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
 			require.EqualValues(t, 1, backend.inside.Load(), "hashB's Stat is still hung")
 
 			backend.unhang()
-			require.Eventually(t, func() bool { return backend.inside.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+			backend.hung.Wait()
 			for _, snap := range batch.snaps {
 				require.Equal(t, snap.Hash == hashA, snap.ContentExisted, snap.Hash)
 			}
@@ -692,31 +825,52 @@ func (remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	return &models.Instance{ID: id, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
 }
 
-// statSpy stands in for the SSH host and counts the stats that reached it.
-type statSpy struct {
+// batchSpy stands in for the SSH host: it answers from the local disk and
+// counts the batch stats and the single stats that reached it.
+type batchSpy struct {
 	fsops.Backend
-	stats atomic.Int32
+	batches atomic.Int32
+	stats   atomic.Int32
 }
 
-func (s *statSpy) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+func (s *batchSpy) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
 	s.stats.Add(1)
-	return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+	return s.Backend.Stat(ctx, p)
 }
 
-// The ClientPool's instance store still reads the row as local, the backend
-// pool's store reads it as remote. The snapshot must decide from the backend
-// pool's row alone and skip, rather than stat local paths on the SSH host.
-func TestFolderCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
+func (s *batchSpy) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	s.batches.Add(1)
+	return fsops.StatAll(ctx, s.Backend, paths)
+}
+
+func (s *batchSpy) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	s.batches.Add(1)
+	return fsops.LstatAll(ctx, s.Backend, paths)
+}
+
+// Over SSH a Stat per torrent costs a round trip each, so a remote instance
+// checks the content of the whole batch with one batch stat.
+func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
-	r.add(r.perRelease(hashA, "tv"))
-	spy := &statSpy{}
+	r.add(r.perRelease(hashA, "tv"),
+		qbtstub.Torrent{Hash: hashB, Name: "Film-GRP", SavePath: r.p("torrents/movies"), Category: "movies",
+			Layout: qbtstub.RootFolder, Files: []string{"Film.mkv"}},
+		qbtstub.Torrent{Hash: hashC, Name: "Clip.mkv", SavePath: r.p("torrents/movies"), Category: "movies",
+			Layout: qbtstub.SingleFile})
+	require.NoError(t, os.Remove(r.p("torrents/movies/Clip.mkv")))
+	spy := &batchSpy{Backend: local.NewBackend()}
 	pool := fsops.NewPoolWithRemote(remoteRowStore{}, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
-	fc := NewFolderCleanup(pool, r.sm, &fakeIgnores{})
-	r.sm.SetFolderCleanup(fc)
+	r.sm.SetFolderCleanup(NewFolderCleanup(pool, r.sm, &fakeIgnores{}))
 
-	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA}})
+	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID,
+		FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA, hashB, hashC}})
 
-	require.Empty(t, batch.snaps)
-	require.Zero(t, spy.stats.Load(), "the cleanup must not read the SSH host")
+	require.EqualValues(t, 1, spy.batches.Load())
+	require.Zero(t, spy.stats.Load())
+	existed := map[string]bool{}
+	for _, snap := range batch.snaps {
+		existed[snap.Hash] = snap.ContentExisted
+	}
+	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }

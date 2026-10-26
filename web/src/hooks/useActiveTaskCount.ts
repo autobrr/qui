@@ -19,6 +19,7 @@ export function useActiveTaskCount(instanceId: number | null, enabled: boolean) 
     limit: 1,
     sort: "added_on",
     order: "desc" as const,
+    summary: true,
   }), [activeInstanceId])
 
   const onMessage = useCallback((payload: TorrentStreamPayload) => {

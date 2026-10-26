@@ -228,10 +228,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "two.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "two.mkv")) {
 		t.Fatalf("expected instance 2 file to be protected")
 	}
 
@@ -314,10 +314,10 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv")) {
 		t.Fatalf("expected instance 1 actual content path to be protected")
 	}
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv")) {
 		t.Fatalf("expected instance 2 actual content path to be merged when content paths overlap")
 	}
 }
@@ -481,10 +481,10 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(rootA, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootA, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(rootB, "two.mkv"))) {
+	if newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootB, "two.mkv")) {
 		t.Fatalf("did not expect instance 2 file to be merged without overlap")
 	}
 }
@@ -579,7 +579,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
@@ -645,7 +645,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if len(result.scanRoots) != 0 {

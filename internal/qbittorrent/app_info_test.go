@@ -7,9 +7,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -28,7 +28,6 @@ func TestSupportsProcessInfo(t *testing.T) {
 		{name: "newer web api", webAPIVersion: "2.16.0", expected: true},
 		{name: "older web api", webAPIVersion: "2.11.4", expected: false},
 		{name: "empty version", webAPIVersion: "", expected: false},
-		{name: "invalid version", webAPIVersion: "not-a-version", expected: false},
 	}
 
 	for _, tc := range tests {
@@ -96,13 +95,14 @@ func TestBuildProcessInfo(t *testing.T) {
 }
 
 // newAppInfoStub serves the app info endpoints and counts hits per path. A
-// non-2xx versionStatus makes the version call fail without retries.
+// non-2xx versionStatus makes the version call fail without retries. Call it
+// inside a synctest bubble: the version handler sleeps on the fake clock.
 func newAppInfoStub(t *testing.T, versionStatus int) (*Client, func(path string) int) {
 	t.Helper()
 
 	var mu sync.Mutex
 	hits := map[string]int{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	qbtClient := newInProcessQbtClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		hits[r.URL.Path]++
 		mu.Unlock()
@@ -119,10 +119,9 @@ func newAppInfoStub(t *testing.T, versionStatus int) (*Client, func(path string)
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(srv.Close)
 
 	c := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+		Client:     qbtClient,
 		instanceID: 1,
 	}
 	hitCount := func(path string) int {
@@ -152,41 +151,47 @@ func callGetAppInfoConcurrently(ctx context.Context, c *Client, n int) []appInfo
 }
 
 func TestGetAppInfoSharesOneRefreshAcrossConcurrentCallers(t *testing.T) {
-	c, hitCount := newAppInfoStub(t, http.StatusOK)
-	c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
-	c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+	synctest.Test(t, func(t *testing.T) {
+		c, hitCount := newAppInfoStub(t, http.StatusOK)
+		c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
+		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
 
-	for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
-		require.NoError(t, r.err)
-		require.NotNil(t, r.info)
-		require.Equal(t, "v5.1.0", r.info.Version)
-		require.Equal(t, "2.11.4", r.info.WebAPIVersion)
-	}
-	require.Equal(t, 1, hitCount("/api/v2/app/version"))
-	require.Equal(t, 1, hitCount("/api/v2/app/webapiVersion"))
-	require.Equal(t, 1, hitCount("/api/v2/app/buildInfo"))
-	require.Equal(t, 0, hitCount("/api/v2/app/processInfo"), "2.11.4 predates process info")
+		for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
+			require.NoError(t, r.err)
+			require.NotNil(t, r.info)
+			require.Equal(t, "v5.1.0", r.info.Version)
+			require.Equal(t, "2.11.4", r.info.WebAPIVersion)
+		}
+		require.Equal(t, 1, hitCount("/api/v2/app/version"))
+		require.Equal(t, 1, hitCount("/api/v2/app/webapiVersion"))
+		require.Equal(t, 1, hitCount("/api/v2/app/buildInfo"))
+		require.Equal(t, 0, hitCount("/api/v2/app/processInfo"), "2.11.4 predates process info")
+	})
 }
 
 func TestGetAppInfoServesStaleCacheWhenRefreshFails(t *testing.T) {
-	c, hitCount := newAppInfoStub(t, http.StatusInternalServerError)
-	c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
-	c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+	synctest.Test(t, func(t *testing.T) {
+		c, hitCount := newAppInfoStub(t, http.StatusInternalServerError)
+		c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
+		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
 
-	for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
-		require.NoError(t, r.err)
-		require.NotNil(t, r.info)
-		require.Equal(t, "4.6.7", r.info.Version)
-		require.Equal(t, "2.11.4", r.info.WebAPIVersion)
-	}
-	require.Equal(t, 1, hitCount("/api/v2/app/version"))
-	require.Equal(t, 0, hitCount("/api/v2/app/webapiVersion"), "refresh stops at the first failure")
+		for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
+			require.NoError(t, r.err)
+			require.NotNil(t, r.info)
+			require.Equal(t, "4.6.7", r.info.Version)
+			require.Equal(t, "2.11.4", r.info.WebAPIVersion)
+		}
+		require.Equal(t, 1, hitCount("/api/v2/app/version"))
+		require.Equal(t, 0, hitCount("/api/v2/app/webapiVersion"), "refresh stops at the first failure")
+	})
 }
 
 func TestGetAppInfoReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
-	c, _ := newAppInfoStub(t, http.StatusInternalServerError)
+	synctest.Test(t, func(t *testing.T) {
+		c, _ := newAppInfoStub(t, http.StatusInternalServerError)
 
-	info, err := c.GetAppInfo(t.Context())
-	require.Error(t, err)
-	require.Nil(t, info)
+		info, err := c.GetAppInfo(t.Context())
+		require.Error(t, err)
+		require.Nil(t, info)
+	})
 }

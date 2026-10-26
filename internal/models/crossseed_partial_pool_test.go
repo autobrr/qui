@@ -233,6 +233,38 @@ func TestCrossSeedPartialPoolTransitionsRejectStaleAdmission(t *testing.T) {
 	require.True(t, statusChanged)
 }
 
+func TestCrossSeedPartialPoolReadmissionAfterClockMovesBack(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
+	registration := partialPoolRegistration(t, secondID, firstID, "member", "member", "", "source")
+	_, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	// A persisted admission can be ahead of the wall clock after a clock adjustment.
+	previous := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	_, err = db.ExecContext(t.Context(), `UPDATE cross_seed_partial_pool_members SET created_at = ? WHERE id = ?`, previous, member.ID)
+	require.NoError(t, err)
+	for range 3 {
+		_, current, err := store.RegisterPartialPoolMember(t.Context(), registration)
+		require.NoError(t, err)
+		require.WithinDuration(t, time.Now().UTC(), current.CreatedAt, time.Second, "admission age must follow the wall clock after rollback")
+		require.NotEqual(t, previous, current.CreatedAt)
+		require.Equal(t, current.CreatedAt, current.Files[1].CreatedAt)
+		changed, err := store.TransitionPartialPoolMember(t.Context(), member.ID, previous, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+		require.NoError(t, err)
+		require.False(t, changed)
+		changed, err = store.TransitionPartialPoolMember(t.Context(), member.ID, current.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+		require.NoError(t, err)
+		require.True(t, changed)
+		// A normal admission window must permit downloading, not retain the old hour-long delay.
+		now := time.Now().UTC()
+		claimed, err := store.ClaimPartialPoolDownloader(t.Context(), member.ID, 0, current.CreatedAt, now.Add(3*time.Second), now.Add(time.Second))
+		require.NoError(t, err)
+		require.True(t, claimed)
+		previous = current.CreatedAt
+	}
+}
+
 func TestCrossSeedPartialPoolReAdmissionPreservesLiveFileDependencies(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	registration := partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")

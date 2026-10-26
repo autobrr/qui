@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
@@ -76,16 +77,6 @@ type torrentDesiredState struct {
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 	categoryRule              ruleRef
 
-	// Delete (first rule to trigger wins)
-	shouldDelete           bool
-	deleteMode             string
-	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
-	deleteGroupID          string
-	deleteAtomic           string
-	deleteRuleID           int
-	deleteRuleName         string
-	deleteReason           string
-
 	// Move (first rule to trigger wins)
 	shouldMove           bool
 	movePath             string
@@ -140,6 +131,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	movePathWarned                   bool // one relative-path warning per rule per run
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -202,13 +194,6 @@ func processTorrents(
 	}
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	failedDeleteRules := make(map[int]struct{})
-	if evalCtx != nil && evalCtx.hardlinkIndex != nil && rulesNeedHardlinkSignatureMap(rules) {
-		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(torrents))
-		for _, torrent := range torrents {
-			evalCtx.torrentsByHash[torrent.Hash] = torrent
-		}
-	}
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -240,45 +225,16 @@ func processTorrents(
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
-			if _, failed := failedDeleteRules[rule.ID]; failed {
-				continue
-			}
-			if state.shouldDelete {
-				// Once delete is triggered, stop processing further rules
-				break
-			}
 			ruleStats := getOrCreateRuleStats(stats, rule)
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			if err := processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents); err != nil {
-				failedDeleteRules[rule.ID] = struct{}{}
-				evalCtx.SpaceToClear = 0
-				clear(evalCtx.FilesToClear)
-				clear(evalCtx.FileBytesToClear)
-				log.Warn().Err(err).Int("ruleID", rule.ID).Str("ruleName", rule.Name).
-					Msg("automations: skipping free-space delete rule")
-			}
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
 		if hasActions(state) {
 			states[torrent.Hash] = state
-		}
-	}
-
-	// A late file-read failure cancels the rule's earlier selections too.
-	for hash, state := range states {
-		if _, failed := failedDeleteRules[state.deleteRuleID]; !failed || !state.shouldDelete {
-			continue
-		}
-		state.shouldDelete = false
-		if ruleStats := stats[state.deleteRuleID]; ruleStats != nil {
-			ruleStats.DeleteApplied--
-			ruleStats.DeleteConditionNotMet++
-		}
-		if !hasActions(state) {
-			delete(states, hash)
 		}
 	}
 
@@ -291,10 +247,10 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) error {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
-		return nil
+		return
 	}
 
 	// Load the rule's free space source state before evaluating any conditions.
@@ -536,62 +492,15 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
-	// Delete
-	if conditions.Delete != nil && conditions.Delete.Enabled {
-		// Safety: delete must always have an explicit condition.
-		if conditions.Delete.Condition == nil {
-			if stats != nil {
-				stats.DeleteConditionNotMet++
-			}
-		} else {
-			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
-			if shouldApply {
-				if stats != nil {
-					stats.DeleteApplied++
-				}
-				state.shouldDelete = true
-				state.deleteMode = conditions.Delete.Mode
-				if state.deleteMode == "" {
-					state.deleteMode = DeleteModeKeepFiles
-				}
-				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
-				state.deleteGroupID = strings.TrimSpace(conditions.Delete.GroupID)
-				state.deleteAtomic = strings.TrimSpace(conditions.Delete.Atomic)
-				state.deleteRuleID = rule.ID
-				state.deleteRuleName = rule.Name
-				state.deleteReason = "condition matched"
-
-				// Update the cumulative free space cleared for the "free space" condition.
-				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
-				// accidentally mutate a previously-loaded rule's projection state.
-				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					if !updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, crossSeeds, state.deleteIncludeHardlinks) {
-						state.shouldDelete = false
-						if stats != nil {
-							stats.DeleteApplied--
-							stats.DeleteConditionNotMet++
-						}
-						if state.deleteMode == DeleteModeWithFiles {
-							return fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
-						}
-					}
-				}
-			} else if stats != nil {
-				stats.DeleteConditionNotMet++
-			}
-		}
-	}
-
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
 		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeeds, stats, state)
 	}
-	return nil
 }
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
-	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
-	if !pathValid {
+	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
+	if !ok {
 		if stats != nil {
 			stats.MoveConditionNotMet++
 		}
@@ -600,6 +509,23 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+	// qBittorrent never reports a relative path back as the save path, so the move would repeat every run.
+	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
+		// One warning per rule per run; stats is per rule per run.
+		if stats == nil || !stats.movePathWarned {
+			ruleName := ""
+			if rule != nil {
+				ruleName = rule.Name
+			}
+			log.Warn().Str("rule", ruleName).Str("path", resolvedPath).
+				Msg("automations: skipping move, path is not absolute")
+		}
+		if stats != nil {
+			stats.movePathWarned = true
+			stats.MoveConditionNotMet++
+		}
+		return
+	}
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
@@ -707,23 +633,44 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// resolveMovePath returns the path to use for a move. The path is executed as a
+// renderPathTemplate returns the rendered Move or Export path. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
-func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	data := map[string]any{
+	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker))
+	if err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		return "", false
+	}
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
+}
+
+// renderMovePathSample renders a move path for a placeholder torrent, to check it on save.
+func renderMovePathSample(path string) (string, error) {
+	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
+	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
+}
+
+func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
+	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+}
 
+func executePathTemplate(path string, data map[string]any) (string, error) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
@@ -731,24 +678,13 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		}).
 		Parse(path)
 	if err != nil {
-		// Log template parse error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
-		return "", false
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Log template execution error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
-		return "", false
+		return "", err
 	}
-
-	resolvedPath := strings.TrimSpace(buf.String())
-
-	if resolvedPath == "" {
-		return "", false
-	}
-
-	return resolvedPath, true
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func containsStringFold(list []string, candidate string) bool {
@@ -851,7 +787,6 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
-		state.shouldDelete ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||
 		state.exportToInstance != nil

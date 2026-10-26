@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -85,11 +86,11 @@ func (sm *SyncManager) SetFolderCleanup(fc *FolderCleanup) {
 }
 
 // PrepareFolderCleanup snapshots the torrents op is about to delete or move,
-// from the sync cache plus one Stat per torrent. Call it before sending the
-// request, and Queue the result only once qBittorrent accepted it. It returns
-// within 30 s even while a Stat hangs: content not checked by then reads as
-// missing, which leaves its folder to orphan scan. ctx itself is left as it
-// was, for the request.
+// from the sync cache plus one Stat per torrent, or one batch stat on a backend
+// that batches. Call it before sending the request, and Queue the result only
+// once qBittorrent accepted it. It returns within 30 s even while a Stat hangs:
+// content not checked by then reads as missing, which leaves its folder to
+// orphan scan. ctx itself is left as it was, for the request.
 func (sm *SyncManager) PrepareFolderCleanup(ctx context.Context, instanceID int, op FolderCleanupOp) FolderCleanupBatch {
 	return sm.prepareFolderCleanup(ctx, instanceID, op, false)
 }
@@ -111,14 +112,11 @@ func (sm *SyncManager) prepareFolderCleanup(ctx context.Context, instanceID int,
 	}
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
-	backend, instance, err := fc.pool.Require(ctx, instanceID, models.CapabilityWrite)
+	backend, _, err := fc.pool.Require(ctx, instanceID, models.CapabilityWrite)
 	if err != nil {
 		if !errors.Is(err, fsops.ErrNotCapable) {
 			log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: no backend, skipping")
 		}
-		return FolderCleanupBatch{}
-	}
-	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
 		return FolderCleanupBatch{}
 	}
 	_, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataReadCached)
@@ -256,6 +254,13 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 		}
 	}
 
+	// Not fsops.StatAll: its fallback runs one Stat after another, and a
+	// local Stat on a hung mount ignores ctx.
+	if batch, ok := backend.(fsops.BatchStater); ok {
+		markContentBatch(ctx, instanceID, batch, d, snaps)
+		return snaps
+	}
+
 	// Each Stat marks its own copy and reports it on a channel with room for
 	// all of them, so one still running when ctx ends, as os.Stat on a hung
 	// mount does, writes nothing the caller reads and never blocks.
@@ -317,42 +322,77 @@ collect:
 	return snaps
 }
 
-// markContent Stats the content. Without a root folder the content path is the
-// save path, which still exists as an empty mount point when the disk below it
-// is gone, so the top-level entries are checked instead, until one exists: a
-// file set to Do Not Download or removed by hand is missing on its own. It
-// reports false when ctx ended before the check finished.
+// markContentBatch is markContent for every snapshot, with one batch stat of
+// all their probes, so a remote host costs a few round trips per batch.
+func markContentBatch(ctx context.Context, instanceID int, batch fsops.BatchStater, d fsops.PathDialect, snaps []folderSnapshot) {
+	var paths []string
+	var owner []int
+	for i := range snaps {
+		for p := range snaps[i].contentProbes(d) {
+			paths = append(paths, p)
+			owner = append(owner, i)
+		}
+	}
+	infos, errs := batch.StatBatch(ctx, paths)
+	for j, err := range errs {
+		if err == nil {
+			snaps[owner[j]].markExisted(infos[j])
+		}
+	}
+	if ctx.Err() != nil {
+		log.Info().Err(ctx.Err()).Int("instanceID", instanceID).
+			Msg("folder cleanup: content not checked in time, leaving the folders of torrents not checked to orphan scan")
+	}
+}
+
+// markContent Stats the probes until one exists. It reports false when ctx
+// ended before the check finished.
 func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend) bool {
-	d := backend.Paths()
-	if s.Layout != layoutNoRootFolder {
-		info, err := backend.Stat(ctx, d.Clean(s.ContentPath))
-		if err != nil {
-			return true
-		}
-		s.ContentExisted = true
-		if s.Layout == layoutRootFolder && !info.IsDir {
-			s.Layout = layoutSingleFile
-		}
-		return true
-	}
-	top, err := topLevelNames(s.Files)
-	if err != nil {
-		return true
-	}
-	// An empty mount point can hold one of these, written by a file manager.
-	top = slices.DeleteFunc(top, isJunkName)
-	save := d.Clean(s.ContentPath)
-	for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
+	for p := range s.contentProbes(backend.Paths()) {
 		// ctx ended, so the content counts as not checked.
 		if ctx.Err() != nil {
 			return false
 		}
-		if _, err := backend.Stat(ctx, d.Join(save, d.FromSlash(name))); err == nil {
-			s.ContentExisted = true
+		if info, err := backend.Stat(ctx, p); err == nil {
+			s.markExisted(info)
 			return true
 		}
 	}
 	return true
+}
+
+// contentProbes are the paths of which one must exist for the content to have
+// existed. Without a root folder the content path is the save path, which
+// still exists as an empty mount point when the disk below it is gone, so the
+// top-level entries are probed instead: a file set to Do Not Download or
+// removed by hand is missing on its own.
+func (s *folderSnapshot) contentProbes(d fsops.PathDialect) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if s.Layout != layoutNoRootFolder {
+			yield(d.Clean(s.ContentPath))
+			return
+		}
+		top, err := topLevelNames(s.Files)
+		if err != nil {
+			return
+		}
+		// An empty mount point can hold one of these, written by a file manager.
+		top = slices.DeleteFunc(top, isJunkName)
+		save := d.Clean(s.ContentPath)
+		for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
+			if !yield(d.Join(save, d.FromSlash(name))) {
+				return
+			}
+		}
+	}
+}
+
+// markExisted records that a probe exists.
+func (s *folderSnapshot) markExisted(info *fsops.LstatInfo) {
+	s.ContentExisted = true
+	if s.Layout == layoutRootFolder && !info.IsDir {
+		s.Layout = layoutSingleFile
+	}
 }
 
 // syncedMainData reads the cache without a request. An instance that has not
@@ -405,39 +445,4 @@ func (sm *SyncManager) lastSync(ctx context.Context, instanceID int) (time.Time,
 		return time.Time{}, err
 	}
 	return client.GetLastSyncUpdate(), nil
-}
-
-// categoryNesting is the version half of CategorySavePathsNest, which
-// refreshes qBittorrent's capabilities with a request.
-func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nestingSupport, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nestingSupport{}, fmt.Errorf("failed to get client: %w", err)
-	}
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		return nestingSupport{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
-	}
-	return nestingSupport{Nests: client.NestsCategorySavePaths(), Always: client.SubcategoriesAlwaysEnabled()}, nil
-}
-
-// stopFolderInputs reads the preferences from qBittorrent, not from their 30 s
-// cache, so a default save path changed in its WebUI is a stop folder on the
-// next check. The categories come from the cache.
-func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error) {
-	client, syncManager, err := sm.syncedMainData(ctx, instanceID)
-	if err != nil {
-		return stopInputs{}, err
-	}
-	prefs, err := client.refreshAppPreferences(ctx)
-	if err != nil {
-		return stopInputs{}, err
-	}
-	return stopInputs{
-		DefaultSavePath:  prefs.SavePath,
-		TempPath:         prefs.TempPath,
-		TempPathEnabled:  prefs.TempPathEnabled,
-		Categories:       syncManager.GetCategoriesUnchecked(),
-		UseSubcategories: prefs.UseSubcategories,
-		ScanDirs:         prefs.ScanDirs,
-	}, nil
 }

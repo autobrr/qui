@@ -11,7 +11,6 @@ import type {
   AppPreferences,
   PreferenceField,
   NetworkBindingInterface,
-  AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
   AutomationActivity,
@@ -58,6 +57,7 @@ import type {
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
+  DirScanStatus,
   DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
@@ -934,6 +934,7 @@ class ApiClient {
       order: "asc" | "desc"
       search?: string
       filters?: TorrentFilters | null
+      summary?: boolean
     }>,
     options: { activity?: boolean } = {}
   ): string {
@@ -950,6 +951,7 @@ class ApiClient {
         order: stream.order,
         search: stream.search ?? "",
         filters: serializeFilters(stream.filters) ?? null,
+        summary: stream.summary ?? false,
       }))
       params.set("streams", JSON.stringify(normalized))
     }
@@ -1185,7 +1187,6 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
-      content_filtering_completed?: boolean
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -1213,35 +1214,6 @@ class ApiClient {
       availableIndexers: raw.available_indexers,
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
-      contentMatches: raw.content_matches,
-      contentFilteringCompleted: raw.content_filtering_completed,
-    }
-  }
-
-  async getAsyncFilteringStatus(
-    instanceId: number,
-    hash: string
-  ): Promise<AsyncIndexerFilteringState> {
-    type RawAsyncFilteringState = {
-      capabilities_completed: boolean
-      content_completed: boolean
-      capability_indexers: number[]
-      filtered_indexers: number[]
-      excluded_indexers: Record<string, string>
-      content_matches: string[]
-    }
-
-    const raw = await this.request<RawAsyncFilteringState>(
-      `/cross-seed/torrents/${instanceId}/${hash}/async-status`,
-      { method: "GET" }
-    )
-
-    return {
-      capabilitiesCompleted: raw.capabilities_completed,
-      contentCompleted: raw.content_completed,
-      capabilityIndexers: raw.capability_indexers,
-      filteredIndexers: raw.filtered_indexers,
-      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers) || {},
       contentMatches: raw.content_matches,
     }
   }
@@ -1383,6 +1355,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
+      gazelle_timed_out?: boolean
+      torznab_failed?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
     }
@@ -1442,6 +1416,8 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
+      gazelleTimedOut: response.gazelle_timed_out ?? undefined,
+      torznabFailed: response.torznab_failed ?? undefined,
       decisionTrace: response.decisionTrace,
     }
   }
@@ -2806,10 +2782,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
   }
 
-  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
-    return this.request<DirScanRun | { status: "idle" }>(
-      `/dir-scan/directories/${directoryId}/status`
-    )
+  async getDirScanStatus(directoryId: number): Promise<DirScanStatus> {
+    return this.request<DirScanStatus>(`/dir-scan/directories/${directoryId}/status`)
   }
 
   async listDirScanRuns(

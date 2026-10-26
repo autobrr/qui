@@ -22,7 +22,8 @@ type RuleNeeds struct {
 	SeasonPackAnyInstance bool
 	FreeSpace             bool
 	TrackerNames          bool
-	TrackerEntries        bool // the per-torrent tracker list
+	TrackerURLs           bool // the URL of each tracker, from MainData
+	TrackerEntries        bool // the per-torrent tracker list with status and message
 }
 
 // fieldData is the prepared data one condition field reads. A field without a
@@ -77,8 +78,8 @@ var conditionFieldData = map[ConditionField]fieldData{
 	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }, known: otherInstanceCrossSeedKnown},
 	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }, known: otherInstanceCrossSeedKnown},
 	FieldFreeSpace:              {need: func(n *RuleNeeds) { n.FreeSpace = true }},
-	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
-	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
+	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
+	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
 	FieldTrackerStatus:          {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 	FieldTrackerMessage:         {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 }
@@ -118,7 +119,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	}
 	// An unread extra candidate cannot undo a confirmed positive match.
 	var confirmed map[string]struct{}
-	switch field {
+	switch field { //nolint:exhaustive // Only these fields have a set of confirmed hashes.
 	case FieldExistsOnSameInstance:
 		confirmed = ctx.SameInstanceCrossSeedHashSet
 	case FieldSeedingOnSameInstance:
@@ -233,7 +234,7 @@ func (n *RuleNeeds) addSorting(config *models.SortingConfig) {
 }
 
 // ruleTemplatesUseTrackerName reports whether an enabled action needs the tracker display-name map
-// outside its condition. The "Tracker" match pairs with the key resolveMovePath passes to path
+// outside its condition. The "Tracker" match pairs with the key pathTemplateData passes to path
 // templates, so it also catches {{ index . "Tracker" }}.
 func ruleTemplatesUseTrackerName(ac *models.ActionConditions) bool {
 	if move := ac.Move; move != nil && move.Enabled && strings.Contains(move.Path, "Tracker") {
