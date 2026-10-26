@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -512,7 +513,7 @@ func streamPayload(instanceID int, key string) []map[string]any {
 // seedActiveInstance creates an instance in the store and returns its ID.
 func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 	t.Helper()
-	instance, err := manager.instanceDB.Create(
+	instance, err := manager.instanceDB.(*models.InstanceStore).Create(
 		context.Background(),
 		"Test Instance",
 		"http://localhost:8080",

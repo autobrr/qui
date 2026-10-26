@@ -52,6 +52,10 @@ const (
 	// also uses as the deadline of a full update.
 	syncTimeoutFull   = 60 * time.Second
 	heartbeatInterval = 5 * time.Second
+	// idleFrameAfter is how long a view can go without a data frame before it gets
+	// an idle frame. It must stay below STREAM_DATA_STALE_TIMEOUT_MS (2 minutes) in
+	// web/src/contexts/SyncStreamContext.tsx.
+	idleFrameAfter = 60 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
 	// connection may request, bounding per-connection fan-out and resource use.
 	maxStreamRequests = 64
@@ -166,6 +170,12 @@ type syncProvider interface {
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
 }
 
+// instanceStore is the subset of *models.InstanceStore that the StreamManager
+// depends on, so tests can run a stream without a database.
+type instanceStore interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
 //
 // Lock hierarchy (acquire in this order to prevent deadlock):
@@ -176,7 +186,7 @@ type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
-	instanceDB  *models.InstanceStore
+	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
 	// stream-error meta. Defaults to an offline client-pool lookup; tests override it
@@ -249,6 +259,9 @@ type subscriptionGroup struct {
 	// rebuildFailed makes the next server-state tick rebuild the view, because
 	// the baseline rows are older than the sync that the failed rebuild was for.
 	rebuildFailed bool
+	// lastFrame is when the group last sent a data frame, was created, or failed
+	// a rebuild.
+	lastFrame time.Time
 }
 
 type syncLoopState struct {
@@ -330,6 +343,9 @@ type StreamMeta struct {
 	// then sends it with the rows and counts of the last frame, and does not
 	// rebuild the view.
 	serverState *qbt.ServerState
+	// idle marks a tick for a quiet view. It sends the last frame again, and does
+	// not rebuild the view. See enqueueIdleTicks.
+	idle bool
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -343,7 +359,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore *models.InstanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -520,6 +536,8 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 			options: opts,
 			version: StreamVersion{Major: m.nextStreamMajor},
 			subs:    make(map[string]*subscriptionState),
+			// A view whose first snapshot fails gets its rebuild from an idle tick.
+			lastFrame: time.Now(),
 		}
 		m.groups[state.groupKey] = group
 	}
@@ -1347,6 +1365,56 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta)
 	go m.processGroup(group)
 }
 
+// enqueueIdleTicks sends an idle frame to each view of the instance that sent no
+// data frame for idleFrameAfter, when each instance of the view synced after it.
+// A view with no baseline, or whose last rebuild failed, is rebuilt in full.
+//
+// Idle frames hide a broken path between the sync and the stream manager, which
+// the 2-minute rule caught before: the view stays on the stream with old rows
+// while the syncs succeed. The risk is low. A hung sync stops the idle frames, so
+// the view still stalls.
+func (m *StreamManager) enqueueIdleTicks(instanceID int) {
+	now := time.Now()
+	for _, group := range m.groupsForInstance(instanceID) {
+		group.baselineMu.Lock()
+		lastFrame := group.lastFrame
+		group.baselineMu.Unlock()
+
+		if now.Sub(lastFrame) < idleFrameAfter || !m.syncedAfter(group.options.instanceIDs(), lastFrame) {
+			continue
+		}
+
+		group.mu.Lock()
+		// sending covers a pending tick too, and an idle tick never replaces a real one.
+		if group.sending {
+			group.mu.Unlock()
+			continue
+		}
+		group.pendingMeta = &StreamMeta{
+			InstanceID: group.options.InstanceID,
+			Timestamp:  now,
+			// A tick that has to rebuild the view sends the counts too.
+			IncludeCounts: true,
+			idle:          true,
+		}
+		group.hasPending = true
+		group.sending = true
+		group.mu.Unlock()
+
+		go m.processGroup(group)
+	}
+}
+
+// syncedAfter reports whether each instance had a successful sync after t.
+func (m *StreamManager) syncedAfter(instanceIDs []int, t time.Time) bool {
+	for _, id := range instanceIDs {
+		if !m.lastSuccessfulSyncFn(m.ctx, id).After(t) {
+			return false
+		}
+	}
+	return true
+}
+
 // processGroup drains the coalescing queue for one specific group object. It must
 // operate on the exact *subscriptionGroup that enqueueGroup flipped sending=true on,
 // not re-resolve it by key: the single-processor invariant (the sending flag) is
@@ -1379,13 +1447,16 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		}
 
 		var payload *StreamPayload
+		switch {
 		// A cross-instance view carries no server state, so it rebuilds.
-		if meta.serverState != nil && !opts.isMultiInstance() {
+		case (meta.serverState != nil || meta.idle) && !opts.isMultiInstance():
 			// The same bound as a rebuild, so a stalled task count request
 			// does not hold back the speeds.
 			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.InstanceID), meta)
 			cancel()
+		case meta.idle:
+			payload = group.buildIdlePayload(meta)
 		}
 		// Every enqueued group event is a tick update (init is written synchronously
 		// in onSession, never routed here), so build an incremental update: a delta
@@ -1450,6 +1521,8 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 	if errPayload != nil {
 		group.baselineMu.Lock()
 		group.rebuildFailed = true
+		// An idle tick tries the rebuild again after idleFrameAfter, not at each heartbeat.
+		group.lastFrame = time.Now()
 		group.baselineMu.Unlock()
 		return errPayload
 	}
@@ -2160,6 +2233,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 				return
 			case <-timer.C:
 				m.publishHeartbeat(instanceID)
+				m.enqueueIdleTicks(instanceID) //nolint:contextcheck // a tick builds on the manager context, like every other tick
 				// Jitter each interval so per-instance heartbeats do not align into a
 				// synchronized burst through the single dispatcher.
 				timer.Reset(jitteredInterval(heartbeatInterval))
