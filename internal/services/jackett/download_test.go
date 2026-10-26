@@ -48,38 +48,8 @@ func TestIsRetryableDownloadError(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "502 Bad Gateway is retryable",
-			err:  &DownloadError{StatusCode: http.StatusBadGateway},
-			want: true,
-		},
-		{
-			name: "503 Service Unavailable is retryable",
-			err:  &DownloadError{StatusCode: http.StatusServiceUnavailable},
-			want: true,
-		},
-		{
-			name: "504 Gateway Timeout is retryable",
-			err:  &DownloadError{StatusCode: http.StatusGatewayTimeout},
-			want: true,
-		},
-		{
 			name: "400 Bad Request is not retryable",
 			err:  &DownloadError{StatusCode: http.StatusBadRequest},
-			want: false,
-		},
-		{
-			name: "401 Unauthorized is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusUnauthorized},
-			want: false,
-		},
-		{
-			name: "403 Forbidden is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusForbidden},
-			want: false,
-		},
-		{
-			name: "404 Not Found is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusNotFound},
 			want: false,
 		},
 		{

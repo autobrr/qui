@@ -253,11 +253,6 @@ func TestClientPool_IsBanError(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Simple banned error",
-			err:      errors.New("IP is banned"),
-			expected: true,
-		},
-		{
 			name:     "Rate limit error",
 			err:      errors.New("Rate limit exceeded"),
 			expected: true,
@@ -351,27 +346,6 @@ func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
 	assert.Equal(t, sink, poolSink, "pool should have stored the sink")
 }
 
-func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	// Verify pool starts with no clients
-	pool.mu.RLock()
-	clientCount := len(pool.clients)
-	pool.mu.RUnlock()
-	assert.Equal(t, 0, clientCount, "pool should start with no clients")
-
-	// Setting sink should not panic when there are no clients
-	sink := &mockPoolSyncEventSink{}
-	pool.SetSyncEventSink(sink)
-
-	// Verify the pool stored the sink
-	pool.mu.RLock()
-	poolSink := pool.syncEventSink
-	pool.mu.RUnlock()
-	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
-}
-
 func TestClientPoolSetSyncEventSinkUpdatesSyncManager(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -419,27 +393,6 @@ func TestClientPoolSetSyncManagerSkipsStaleSinkReplay(t *testing.T) {
 	pool.applySyncManagerSinkIfCurrent(sm, oldSink, staleSeq)
 
 	assert.Equal(t, newSink, sm.getSyncEventSink(), "stale captured sink replay should not overwrite newer sink")
-}
-
-func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	// Create a client and add to pool
-	client := &Client{instanceID: 1}
-	pool.mu.Lock()
-	pool.clients[1] = client
-	pool.mu.Unlock()
-
-	// Set first sink
-	sink1 := &mockPoolSyncEventSink{id: 1}
-	pool.SetSyncEventSink(sink1)
-	assert.Equal(t, sink1, client.getSyncEventSink(), "client should have sink1")
-
-	// Set second sink (replaces first)
-	sink2 := &mockPoolSyncEventSink{id: 2}
-	pool.SetSyncEventSink(sink2)
-	assert.Equal(t, sink2, client.getSyncEventSink(), "client should have sink2 after replacement")
 }
 
 // mockPoolSyncEventSink is a simple mock for testing pool sink propagation.

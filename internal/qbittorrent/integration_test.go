@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1114,28 +1113,6 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 				tc.input, tc.expected, result)
 		}
 	})
-
-	t.Run("isGlobPattern detects patterns", func(t *testing.T) {
-		testCases := []struct {
-			input    string
-			expected bool
-		}{
-			{"*.iso", true},
-			{"Movie.*", true},
-			{"Ubuntu[20]*", true},
-			{"test?file", true},
-			{"normaltext", false},
-			{"no-pattern-here", false},
-			{"file.txt", false},
-		}
-
-		for _, tc := range testCases {
-			result := strings.ContainsAny(tc.input, "*?[")
-			assert.Equal(t, tc.expected, result,
-				"Pattern detection for '%s' should be %v, got %v",
-				tc.input, tc.expected, result)
-		}
-	})
 }
 
 // Helper function for string contains check (case insensitive)
@@ -1199,24 +1176,6 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	for b.Loop() {
 		stats := sm.calculateStats(torrents)
 		if stats.Total != 10000 {
-			b.Fatal("Stats calculation failed")
-		}
-	}
-}
-
-func BenchmarkSyncManager_CacheOperations(b *testing.B) {
-	// Disable logging for benchmarks
-	oldLevel := zerolog.GlobalLevel()
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(oldLevel)
-
-	// Since caching was removed, benchmark stats calculation instead
-	sm := &SyncManager{}
-	torrents := createTestTorrents(1000) // 1k torrents for reasonable benchmark
-
-	for b.Loop() {
-		stats := sm.calculateStats(torrents)
-		if stats.Total != 1000 {
 			b.Fatal("Stats calculation failed")
 		}
 	}

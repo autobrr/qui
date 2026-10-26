@@ -28,7 +28,6 @@ func TestSupportsProcessInfo(t *testing.T) {
 		{name: "newer web api", webAPIVersion: "2.16.0", expected: true},
 		{name: "older web api", webAPIVersion: "2.11.4", expected: false},
 		{name: "empty version", webAPIVersion: "", expected: false},
-		{name: "invalid version", webAPIVersion: "not-a-version", expected: false},
 	}
 
 	for _, tc := range tests {

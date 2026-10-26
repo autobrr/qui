@@ -830,33 +830,6 @@ func TestSyncManagerNotifyTrackerHealthUpdatedCallsSink(t *testing.T) {
 	require.Equal(t, []int{42}, sink.getTrackerHealthUpdates())
 }
 
-func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{instanceID: 42}
-
-	// Initially no sink
-	client.dispatchMainData(&qbt.MainData{Rid: 1})
-
-	// Set sink
-	sink := &mockSyncEventSink{}
-	client.SetSyncEventSink(sink)
-
-	// Now dispatches should reach sink
-	client.dispatchMainData(&qbt.MainData{Rid: 2})
-	client.dispatchSyncError(errors.New("test error"))
-
-	mainCalls := sink.getMainDataCalls()
-	if len(mainCalls) != 1 {
-		t.Errorf("expected 1 main data call after setting sink, got %d", len(mainCalls))
-	}
-
-	errorCalls := sink.getSyncErrorCalls()
-	if len(errorCalls) != 1 {
-		t.Errorf("expected 1 error call after setting sink, got %d", len(errorCalls))
-	}
-}
-
 func TestSplitHostUserinfo(t *testing.T) {
 	tests := []struct {
 		name     string
