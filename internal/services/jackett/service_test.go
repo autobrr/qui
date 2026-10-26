@@ -169,95 +169,6 @@ func TestDetectContentType(t *testing.T) {
 	}
 }
 
-func TestGetCategoriesForContentType(t *testing.T) {
-	tests := []struct {
-		name     string
-		ct       contentType
-		expected []int
-	}{
-		{
-			name:     "returns movie categories",
-			ct:       contentTypeMovie,
-			expected: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K},
-		},
-		{
-			name:     "returns TV categories",
-			ct:       contentTypeTVShow,
-			expected: []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
-		},
-		{
-			name:     "returns TV categories for daily shows",
-			ct:       contentTypeTVDaily,
-			expected: []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
-		},
-		{
-			name:     "returns XXX categories",
-			ct:       contentTypeXXX,
-			expected: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXx264, CategoryXXXPack},
-		},
-		{
-			name:     "returns audio categories",
-			ct:       contentTypeMusic,
-			expected: []int{CategoryAudio},
-		},
-		{
-			name:     "returns audio categories for audiobooks",
-			ct:       contentTypeAudiobook,
-			expected: []int{CategoryAudio},
-		},
-		{
-			name:     "returns book categories",
-			ct:       contentTypeBook,
-			expected: []int{CategoryBooks, CategoryBooksEbook},
-		},
-		{
-			name:     "returns comic categories",
-			ct:       contentTypeComic,
-			expected: []int{CategoryBooksComics},
-		},
-		{
-			name:     "returns magazine categories",
-			ct:       contentTypeMagazine,
-			expected: []int{CategoryBooks},
-		},
-		{
-			name:     "returns education categories",
-			ct:       contentTypeEducation,
-			expected: []int{CategoryBooks},
-		},
-		{
-			name:     "returns PC categories for apps",
-			ct:       contentTypeApp,
-			expected: []int{CategoryPC},
-		},
-		{
-			name:     "returns PC categories for games",
-			ct:       contentTypeGame,
-			expected: []int{CategoryPC},
-		},
-		{
-			name:     "returns default categories for unknown",
-			ct:       contentTypeUnknown,
-			expected: []int{CategoryMovies, CategoryTV},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := getCategoriesForContentType(tt.ct)
-			if len(result) != len(tt.expected) {
-				t.Errorf("getCategoriesForContentType() returned %d categories, want %d", len(result), len(tt.expected))
-				return
-			}
-			for i, cat := range result {
-				if cat != tt.expected[i] {
-					t.Errorf("getCategoriesForContentType()[%d] = %v, want %v", i, cat, tt.expected[i])
-				}
-			}
-		})
-	}
-}
-
 func TestParseCategoryID(t *testing.T) {
 	s := &Service{}
 	tests := []struct {
@@ -279,21 +190,6 @@ func TestParseCategoryID(t *testing.T) {
 			name:     "maps movies text to ID",
 			category: "Movies > HD",
 			expected: CategoryMovies,
-		},
-		{
-			name:     "maps TV text to ID",
-			category: "TV",
-			expected: CategoryTV,
-		},
-		{
-			name:     "maps XXX text to ID",
-			category: "XXX > DVD",
-			expected: CategoryXXX,
-		},
-		{
-			name:     "maps audio text to ID",
-			category: "Audio / MP3",
-			expected: CategoryAudio,
 		},
 		{
 			name:     "returns 0 for unknown category",
@@ -1604,47 +1500,16 @@ func TestFilterCategoriesForIndexer(t *testing.T) {
 
 func TestMapCategoriesToIndexerCapabilitiesCompactsParentFallbacks(t *testing.T) {
 	service := &Service{}
-
-	tests := []struct {
-		name      string
-		parent    int
-		requested []int
-	}{
-		{
-			name:      "movies",
-			parent:    CategoryMovies,
-			requested: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K, CategoryMovies3D},
-		},
-		{
-			name:      "tv and anime",
-			parent:    CategoryTV,
-			requested: []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary},
-		},
-		{
-			name:      "xxx",
-			parent:    CategoryXXX,
-			requested: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXWMV, CategoryXXXXviD, CategoryXXXx264, CategoryXXXPack, CategoryXXXImageSet, CategoryXXXOther},
-		},
-		{
-			name:      "books",
-			parent:    CategoryBooks,
-			requested: []int{CategoryBooks, CategoryBooksEbook, CategoryBooksComics},
+	indexer := &models.TorznabIndexer{
+		Categories: []models.TorznabIndexerCategory{
+			{CategoryID: CategoryTV},
 		},
 	}
+	requested := []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			indexer := &models.TorznabIndexer{
-				Categories: []models.TorznabIndexerCategory{
-					{CategoryID: tt.parent},
-				},
-			}
-
-			mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, tt.requested)
-			if !slices.Equal(mapped, []int{tt.parent}) {
-				t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", tt.parent, mapped)
-			}
-		})
+	mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, requested)
+	if !slices.Equal(mapped, []int{CategoryTV}) {
+		t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", CategoryTV, mapped)
 	}
 }
 

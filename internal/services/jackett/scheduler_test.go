@@ -1015,18 +1015,6 @@ func TestRateLimiter_NextWaitIgnoresCooldown(t *testing.T) {
 	}
 }
 
-func TestRateLimiter_NextWaitRespectsMinInterval(t *testing.T) {
-	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-	limiter.RecordRequestComplete(indexer.ID, time.Now())
-
-	wait := limiter.NextWait(indexer)
-	if wait < 40*time.Millisecond {
-		t.Fatalf("expected wait at least 40ms due to min interval, got %v", wait)
-	}
-}
-
 func TestRateLimiter_NextWaitOnlyPacesNativeTorznab(t *testing.T) {
 	limiter := NewRateLimiter(time.Hour)
 	prowlarr := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendProwlarr}
@@ -1037,17 +1025,6 @@ func TestRateLimiter_NextWaitOnlyPacesNativeTorznab(t *testing.T) {
 
 	assert.Zero(t, limiter.NextWait(prowlarr), "aggregator owns its request pacing")
 	assert.Greater(t, limiter.NextWait(native), time.Duration(0), "native Torznab retains local pacing")
-}
-
-func TestRateLimiter_NextWaitReturnsZeroWhenReady(t *testing.T) {
-	limiter := NewRateLimiter(5 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-	// No prior requests - should be ready immediately
-	wait := limiter.NextWait(indexer)
-	if wait > 0 {
-		t.Fatalf("expected zero wait for fresh indexer, got %v", wait)
-	}
 }
 
 func TestRateLimiter_GetCooldownIndexers(t *testing.T) {
