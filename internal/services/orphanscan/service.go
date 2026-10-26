@@ -1006,7 +1006,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	if partial {
 		scanWarnings = append(scanWarnings, "Automatic cleanup is disabled for partial scans. Review the results before deleting files.")
 	}
-	// On the exec tier the only way to miss an identity is the walk falling back to sftp.
+	// On the exec tier an identity is missed by the walk falling back to sftp or by a
+	// walk error, including one in an ignored path.
 	if keys.incomplete && len(allOrphans) > 0 && mode == models.FilesystemModeRemote && models.FilesystemCapabilitiesOf(instance).Identity {
 		scanWarnings = append(scanWarnings, IdentityIncompleteMessage)
 	}
