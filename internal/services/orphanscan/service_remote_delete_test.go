@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -169,8 +170,8 @@ func (b cutWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.Wal
 	return out, nil
 }
 
-// The run is bound to the SSH user, host and port it walked. A change between
-// the scan and the confirm, or after the confirm, fails the run.
+// The run is bound to the SSH user, host, port and pin it walked. A change
+// between the scan and the confirm, or after the confirm, fails the run.
 func TestDeletion_RemoteEndpointChangedFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +182,7 @@ func TestDeletion_RemoteEndpointChangedFailsTheRun(t *testing.T) {
 		{"host", func(inst *models.Instance) { inst.SSHHost = "other.example" }},
 		{"port", func(inst *models.Instance) { inst.SSHPort = 2222 }},
 		{"user", func(inst *models.Instance) { inst.SSHUsername = "someone-else" }},
+		{"pin", func(inst *models.Instance) { inst.SSHHostKeyEncrypted = "enc-v2" }},
 	} {
 		t.Run(tc.name+" changed before the confirm", func(t *testing.T) {
 			t.Parallel()
@@ -599,4 +601,130 @@ func TestExecuteDeletion_RemoteSSHChangeStopsTheLoop(t *testing.T) {
 			require.Equal(t, map[string]int{"deleted": 1, "skipped": skipped}, statuses)
 		})
 	}
+}
+
+// replacePin stores a new pin at the same user, host and port, as the replace
+// route does, and then runs the route's FailRemotePreviews.
+func replacePin(t *testing.T, f *modeFixture) {
+	f.instance.mu.Lock()
+	f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
+	f.instance.mu.Unlock()
+	if err := f.svc.FailRemotePreviews(t.Context(), 1); err != nil {
+		t.Error(err)
+	}
+}
+
+// replacePinOnFileMap replaces the pin the next time a scan or a deletion
+// builds its file map. That is after the backend is built and, in a deletion,
+// before its first entry.
+func replacePinOnFileMap(t *testing.T, f *modeFixture) {
+	files := stubSync(f.svc).getTorrentFilesBatch
+	var once sync.Once
+	stubSync(f.svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+		once.Do(func() { replacePin(t, f) })
+		return files(ctx, instanceID, hashes)
+	}
+}
+
+// A pin replaced while a remote scan runs leaves the mode and the address as
+// they were, and FailRemotePreviews finds no preview yet. The scan compares
+// the pin at its end, so a preview walked on the old server never becomes one
+// a confirm or automatic cleanup could delete on the new one.
+func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-pin-mid-scan", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	replacePinOnFileMap(t, f)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "failed", run.Status)
+	require.Equal(t, ScanModeChangedMessage, run.ErrorMessage)
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
+	f.requireNothingDeleted(t)
+}
+
+// The replace route's 409 check can pass just before a deletion marks its run
+// deleting, and the route's FailRemotePreviews then finds no preview to fail.
+// The deletion compares the pin the run was walked with, so a pin stored after
+// the run went deleting still stops it before any delete.
+func TestExecuteDeletion_RemotePinReplacedAfterTheStartDeletesNothing(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-pin-at-delete-start", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	var statusAtReplace string
+	var once sync.Once
+	f.instance.onGet = func() {
+		once.Do(func() {
+			statusAtReplace = f.run(t, run.ID).Status
+			replacePin(t, f)
+		})
+	}
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	require.Equal(t, "deleting", statusAtReplace, "the pin must change after the run went deleting")
+	failed := f.run(t, run.ID)
+	require.Equal(t, "failed", failed.Status)
+	require.Equal(t, FilesystemModeChangedMessage, failed.ErrorMessage)
+	f.requireNothingDeleted(t)
+}
+
+// An SSH change between the deletion's start check and its first entry stops
+// the run before any delete, and a run that deleted nothing ends failed.
+func TestExecuteDeletion_RemoteSSHChangeBeforeTheFirstEntryFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-ssh-change-before-delete", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	replacePinOnFileMap(t, f)
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	failed := f.run(t, run.ID)
+	require.Equal(t, "failed", failed.Status)
+	require.Zero(t, failed.FilesDeleted)
+	require.Contains(t, failed.ErrorMessage, FilesystemModeChangedMessage)
+	f.requireNothingDeleted(t)
+	files, err := f.store.ListFiles(t.Context(), run.ID, 100, 0, "")
+	require.NoError(t, err)
+	for _, file := range files {
+		require.Equal(t, "skipped", file.Status)
+	}
+}
+
+// A deletion that cannot reload the instance cannot tell whether the SSH
+// settings changed, so it stops before the next entry.
+func TestExecuteDeletion_RemoteInstanceReloadErrorStopsTheLoop(t *testing.T) {
+	t.Parallel()
+
+	var f *modeFixture
+	f = newModeFixture(t, "orphanscan-remote-reload-error-mid-delete", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return changeAfterRemoveBackend{
+			Backend: countingBackend{Backend: newTestBackend(), removes: f.removes},
+			once:    &sync.Once{},
+			change: func() {
+				stubSync(f.svc).listInstances = func(context.Context) ([]*models.Instance, error) {
+					return nil, errors.New("database is locked")
+				}
+			},
+		}
+	})
+	f.setTier(models.SSHTierExec)
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(f.orphan), "a-later.mkv"), []byte("later"), 0o600))
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	done := f.run(t, run.ID)
+	require.Equal(t, 1, done.FilesDeleted)
+	require.Contains(t, done.ErrorMessage, FilesystemModeChangedMessage)
+	require.EqualValues(t, 1, f.removes.Load(), "no Remove may follow the failed reload")
+	require.FileExists(t, f.owned)
 }

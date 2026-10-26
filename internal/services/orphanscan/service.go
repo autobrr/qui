@@ -7,6 +7,8 @@ package orphanscan
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -606,10 +608,8 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 }
 
 // FailRemotePreviews fails the instance's remote previews after its SSH
-// settings are saved or its host key is replaced. The run records the user,
-// host and port, but not the pin, so a key replaced at the same address, or
-// pinned anew after moving away and back, would point the preview at another
-// server.
+// settings are saved or its host key is replaced. Confirm refuses them anyway,
+// since the run records the pin it walked with, but this frees them at once.
 func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error {
 	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
 	if err != nil {
@@ -665,12 +665,16 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 
 // walkedEndpoint names the SSH server and account a remote walk reads through
 // instance, and is empty for any other mode. The account is part of it because
-// a username change keeps the pin and can see other files.
+// a username change keeps the pin and can see other files. A digest of the
+// stored pin is part of it because a key replaced at the same address is
+// another server. The pin is sealed with a random nonce, so pinning the same
+// key again also changes the digest.
 func walkedEndpoint(instance *models.Instance) string {
 	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
 		return ""
 	}
-	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort))
+	pin := sha256.Sum256([]byte(instance.SSHHostKeyEncrypted))
+	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) + "#" + hex.EncodeToString(pin[:8])
 }
 
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
@@ -946,6 +950,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// A mode change mid-scan cuts a remote walk short as a lost connection. The
 	// roots walked before it would otherwise land as a preview no confirm can use.
+	// A pin replaced at the same address leaves the mode as it was, so the
+	// endpoint is compared too, or the preview would be deleted on the new server.
 	reloaded, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -955,7 +961,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
 		return
 	}
-	if current := models.FilesystemAccessMode(reloaded); current != mode {
+	if current := models.FilesystemAccessMode(reloaded); current != mode || walkedEndpoint(reloaded) != walkedEndpoint(instance) {
 		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).
 			Msg("orphanscan: failing scan, filesystem access changed while it ran")
 		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
@@ -1357,8 +1363,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// The remote backend redials with the instance's current row, so an SSH
 	// change mid-run would send the remaining deletes to another server. The
 	// SSH routes refuse a change while a deletion runs, and this catches one
-	// that raced that check. The pin is compared as stored, so this is one
-	// database read per entry.
+	// that raced that check. The run's endpoint holds a digest of the pin it
+	// was walked with, so this is one database read per entry.
 	var sshChanged bool
 	checkSSH := func() bool {
 		if mode != models.FilesystemModeRemote {
@@ -1368,7 +1374,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		if err != nil {
 			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot reload the instance")
 			sshChanged = true
-		} else if walkedEndpoint(current) != run.FilesystemEndpoint || current.SSHHostKeyEncrypted != instance.SSHHostKeyEncrypted {
+		} else if walkedEndpoint(current) != run.FilesystemEndpoint {
 			log.Info().Int64("run", runID).Msg("orphanscan: stopping deletion, the SSH settings changed during it")
 			sshChanged = true
 		}

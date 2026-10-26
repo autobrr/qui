@@ -5,6 +5,8 @@ package orphanscan
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -37,9 +39,15 @@ import (
 type switchableInstance struct {
 	mu   sync.Mutex
 	inst models.Instance
+	// onGet, when set, runs before each read, so a test can change the row
+	// at the moment the pool loads it.
+	onGet func()
 }
 
 func (s *switchableInstance) Get(_ context.Context, _ int) (*models.Instance, error) {
+	if s.onGet != nil {
+		s.onGet()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inst := s.inst
@@ -319,7 +327,8 @@ func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	require.True(t, run.IdentityComplete)
 	require.Empty(t, run.ErrorMessage)
-	require.Equal(t, "qui@"+server.Addr, run.FilesystemEndpoint)
+	pin := sha256.Sum256([]byte(f.instance.inst.SSHHostKeyEncrypted))
+	require.Equal(t, "qui@"+server.Addr+"#"+hex.EncodeToString(pin[:8]), run.FilesystemEndpoint)
 }
 
 // A row on the exec tier whose find is refused walks over sftp, so the row's

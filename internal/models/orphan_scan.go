@@ -56,7 +56,8 @@ type OrphanScanRun struct {
 	FilesystemMode FilesystemMode `json:"filesystemMode"`
 	// IdentityComplete is whether the walk read a file identity for every regular file it met.
 	IdentityComplete bool `json:"identityComplete"`
-	// FilesystemEndpoint is the SSH user@host:port a remote run was walked over, and empty otherwise.
+	// FilesystemEndpoint is the SSH user@host:port a remote run was walked over, with a digest of
+	// the host-key pin, and empty otherwise.
 	FilesystemEndpoint string `json:"-"`
 }
 
