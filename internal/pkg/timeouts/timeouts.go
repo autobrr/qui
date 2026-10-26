@@ -27,7 +27,7 @@ func SetDefaultSearchTimeoutForTest(timeout time.Duration) (restore func()) {
 	return func() { defaultSearchTimeout = previous }
 }
 
-// AdaptiveSearchTimeout scales the timeout linearly per indexer (starting from DefaultSearchTimeout)
+// AdaptiveSearchTimeout scales the timeout linearly per indexer (starting from defaultSearchTimeout)
 // and caps the total budget at MaxSearchTimeout.
 func AdaptiveSearchTimeout(indexerCount int) time.Duration {
 	if indexerCount <= 1 {
