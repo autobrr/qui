@@ -6,6 +6,7 @@ package sse
 import (
 	"context"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,22 +23,26 @@ import (
 // only need Write to block so the drain goroutine parks.
 type blockingResponseWriter struct {
 	gate    chan struct{}
+	entered chan struct{} // closed on the first Write
+	enter   func()
 	header  http.Header
-	writes  atomic.Int32
 	flushes atomic.Int32
 }
 
 func newBlockingResponseWriter() *blockingResponseWriter {
+	entered := make(chan struct{})
 	return &blockingResponseWriter{
-		gate:   make(chan struct{}),
-		header: make(http.Header),
+		gate:    make(chan struct{}),
+		entered: entered,
+		enter:   sync.OnceFunc(func() { close(entered) }),
+		header:  make(http.Header),
 	}
 }
 
 func (w *blockingResponseWriter) Header() http.Header { return w.header }
 
 func (w *blockingResponseWriter) Write(p []byte) (int, error) {
-	w.writes.Add(1)
+	w.enter()
 	<-w.gate // park until released
 	return len(p), nil
 }
@@ -103,10 +108,8 @@ func TestOverflowingClientIsDropped(t *testing.T) {
 		flushMessage(i)
 	}
 
-	// Overflow must have dropped exactly this client.
-	require.Eventually(t, func() bool {
-		return cancelCalls.Load() == 1
-	}, time.Second, 5*time.Millisecond, "cancel must be invoked exactly once on overflow")
+	// Flush drops on overflow before it returns, so this client is already dropped.
+	require.Equal(t, int32(1), cancelCalls.Load(), "cancel must be invoked exactly once on overflow")
 	require.True(t, bw.failed.Load(), "writer must be marked failed after overflow")
 
 	// A subsequent Write reports the drop so go-sse's next Send removes the session.
@@ -151,9 +154,7 @@ func TestFlushReturnsImmediatelyWhileSocketBlocks(t *testing.T) {
 	_, err := bw.Write([]byte("first"))
 	require.NoError(t, err)
 	bw.Flush()
-	require.Eventually(t, func() bool {
-		return rw.writes.Load() == 1
-	}, time.Second, 5*time.Millisecond, "drain goroutine should park on the blocked socket write")
+	receive(t, rw.entered, "the drain goroutine to park on the blocked socket write")
 
 	// A second Flush must return immediately even though the socket is stuck.
 	_, err = bw.Write([]byte("second"))
@@ -194,20 +195,22 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
+	subscribed := watchSubscriptions(manager)
 	srv := startStreamServer(t, manager)
 
 	// Connection A: read its init so it subscribes, then leave its reader idle.
 	readerA, _ := connectStream(t, srv, streamPayload(instanceID, "slow-A"))
 	readerA.waitForEvent(t, streamEventInit, 5*time.Second)
+	receive(t, subscribed, "connection A to subscribe")
 
 	// Connection B: a healthy fast reader on the same view (same group).
 	readerB, _ := connectStream(t, srv, streamPayload(instanceID, "fast-B"))
 	readerB.waitForEvent(t, streamEventInit, 5*time.Second)
+	receive(t, subscribed, "connection B to subscribe")
 
-	// Fire updates; B must receive a tick frame promptly while A's reader sits idle.
-	updateB := readerB.waitForTickTriggered(t, 5*time.Second, func() {
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
-	})
+	// Fire an update; B must receive a tick frame promptly while A's reader sits idle.
+	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
+	updateB := readerB.waitForTick(t, 5*time.Second)
 	require.True(t, isTickEvent(updateB.event), "expected a tick frame, got %q", updateB.event)
 }
 

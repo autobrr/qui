@@ -189,13 +189,14 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 
 	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi")
 	require.NoError(t, err)
+	builds := provider.signalBuilds()
 
 	// An update from either member must rebuild the aggregated group.
 	manager.HandleMainData(2, &qbt.MainData{Rid: 1})
+	receive(t, builds, "the aggregated group build")
 
-	require.Eventually(t, func() bool {
-		provider.mu.Lock()
-		defer provider.mu.Unlock()
-		return provider.crossInstanceCalls > 0 && provider.torrentsCalls == 0
-	}, 2*time.Second, 10*time.Millisecond, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
+	require.Zero(t, provider.torrentsCalls)
 }
