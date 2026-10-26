@@ -63,7 +63,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
-  // Each dialog opening gets a new number. A late answer for an earlier opening is ignored.
+  // Each opening and each close of the dialog changes the number. A late answer for an earlier opening is ignored.
   const openingRef = useRef(0)
 
   const { data: crossSeedSettings } = useQuery({
@@ -369,6 +369,7 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [])
 
   const closeCrossSeedDialog = useCallback(() => {
+    openingRef.current++
     setCrossSeedDialogOpen(false)
     const shouldPreserveError = Boolean(
       crossSeedSearchError && (

@@ -417,6 +417,36 @@ describe("useCrossSeedSearch", () => {
     expect(results.map(r => r.guid)).not.toContain("guid-a")
   })
 
+  it("ignores the search results that arrive after the dialog closes", async () => {
+    let resolveSearch!: (response: CrossSeedTorrentSearchResponse) => void
+    mockedApi.searchCrossSeedTorrent.mockReturnValue(
+      new Promise(resolve => {
+        resolveSearch = resolve
+      }) as never
+    )
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-closed" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onClose as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolveSearch(makeSearchResponse({ results: [] }))
+      await Promise.resolve()
+    })
+
+    expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
+  })
+
   it("forwards the partial flag from the search response to the dialog", async () => {
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
       makeSearchResponse({ results: [makeResult()], partial: true })
