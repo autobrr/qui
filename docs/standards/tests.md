@@ -12,4 +12,5 @@
   - It adds a table row that runs the same branch as another row. The match corpus in `internal/services/crossseed/match_corpus_test.go` is an exception, because it grows freely.
   - It checks a CSS class string or static markup in a frontend test.
 - To wait for a goroutine, use a channel. To test code that waits on a timer, run the test in `synctest.Test`. In that test, `time.Sleep` moves a fake clock and takes no real time. Outside `synctest.Test`, do not use `time.Sleep`. A real sleep makes the test slow, and the test fails at random on a slow CI runner.
+- A test that touches a database, also through a store or a service, does not run in `synctest.Test`. On the fake clock, the statement cache closes its statements, and the test fails at random with "statement is closed".
 - If a test comes from a bug fix, put `// regression: #N` on the line above it. N is the number of the fix PR or the issue. Before you remove a test with this tag, show that another test catches the same bug.
