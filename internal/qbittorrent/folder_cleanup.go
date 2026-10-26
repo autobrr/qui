@@ -184,6 +184,10 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 	}
 }
 
+// SetTickForTest sets how often the worker checks its queue. Call it before
+// Start. Product code does not call it.
+func (c *FolderCleanup) SetTickForTest(tick time.Duration) { c.tick = tick }
+
 // Start runs the one worker until ctx ends or Stop is called.
 func (c *FolderCleanup) Start(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
