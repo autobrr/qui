@@ -40,7 +40,6 @@
     "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
     "internal/services/automations/service.go": 16,
-    "internal/testutil/qbtstub/qbtstub.go": 1,
     "internal/web/swagger/swagger.go": 1
   },
   "gocognit": {
