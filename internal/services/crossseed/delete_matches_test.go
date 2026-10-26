@@ -115,3 +115,29 @@ func TestFindDeleteMatchesSelectsHybridByV1Hash(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
+
+// A torrent that shares the files of one selected torrent and is a linked copy
+// of another breaks when the selection is deleted, whatever the torrent order.
+// regression: #3341
+func TestFindDeleteMatchesSharedPathOutranksLink(t *testing.T) {
+	t.Parallel()
+
+	const name = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
+	root := t.TempDir()
+	dataDir, linkDir := filepath.Join(root, "data"), filepath.Join(root, "links")
+	require.NoError(t, os.MkdirAll(dataDir, 0o755))
+	require.NoError(t, os.MkdirAll(linkDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, name+".mkv"), []byte("data"), 0o600))
+	require.NoError(t, os.Link(filepath.Join(dataDir, name+".mkv"), filepath.Join(linkDir, name+".mkv")))
+
+	files := qbt.TorrentFiles{{Name: name + ".mkv", Size: 4}}
+	source := crossMatchTorrent(1, "aaaa", name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	linkedSource := crossMatchTorrent(1, "bbbb", name, linkDir, filepath.Join(linkDir, name+".mkv"), files)
+	// A linked copy of aaaa, and a sharer of the files of bbbb.
+	sharer := crossMatchTorrent(1, "cccc", name, linkDir, filepath.Join(linkDir, name+".mkv"), files)
+
+	svc, _ := deleteMatchService(source, linkedSource, sharer)
+	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa", "bbbb"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
+}

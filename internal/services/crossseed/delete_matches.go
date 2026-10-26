@@ -72,8 +72,7 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 	files.prefetch(ctx, instanceID, torrents, pathGroups, picks)
 	files.addSharedPathPicks(ctx, instanceID, torrents, pathGroups, picks, CrossMatchNeeds{})
 
-	var matches []LocalMatch
-	matched := make(map[string]struct{})
+	matches := deleteMatches{at: make(map[string]int)}
 	for i := range torrents {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -89,21 +88,19 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 		}
 		for _, p := range picks[i] {
 			c := p.entry
-			if _, done := matched[c.hash]; done || isSelected(c.hash) || c.view.ContentPath == "" {
+			if isSelected(c.hash) || c.view.ContentPath == "" || matches.shared(c.hash) {
 				continue
 			}
 			tier, err := files.deleteTier(ctx, source, instanceID, sourceData, p)
 			if err != nil {
 				return nil, err
 			}
-			if tier != matchTypeContentPath && tier != matchTypeHardlink && tier != matchTypeReflink {
-				continue
+			if tier == matchTypeContentPath || tier == matchTypeHardlink || tier == matchTypeReflink {
+				matches.add(c.hash, newLocalMatch(instance, c.view, tier))
 			}
-			matched[c.hash] = struct{}{}
-			matches = append(matches, newLocalMatch(instance, c.view, tier))
 		}
 	}
-	return matches, nil
+	return matches.list, nil
 }
 
 // deleteTier returns the tier of a candidate of a selected torrent on the same
@@ -125,6 +122,30 @@ func (b *batchFiles) deleteTier(ctx context.Context, source *qbt.Torrent, instan
 		return "", fmt.Errorf("check the links of torrent %s", c.hash)
 	}
 	return tier, nil
+}
+
+// deleteMatches keeps one match for each torrent. A shared path outranks a
+// link, because the delete removes the files of a torrent that shares a path.
+type deleteMatches struct {
+	list []LocalMatch
+	at   map[string]int
+}
+
+// shared reports whether the torrent hash already has a shared-path match.
+func (d *deleteMatches) shared(hash string) bool {
+	at, ok := d.at[hash]
+	return ok && d.list[at].MatchType == matchTypeContentPath
+}
+
+func (d *deleteMatches) add(hash string, m LocalMatch) {
+	at, ok := d.at[hash]
+	switch {
+	case !ok:
+		d.at[hash] = len(d.list)
+		d.list = append(d.list, m)
+	case m.MatchType == matchTypeContentPath:
+		d.list[at].MatchType = m.MatchType
+	}
 }
 
 // selectedHashes returns the Hash of each torrent that hashes names. A request

@@ -60,9 +60,9 @@ export function useCrossSeedWarning({
   useEffect(() => () => abortRef.current?.abort(), [])
 
   const search = useCallback(async () => {
+    abortRef.current?.abort()
     if (!selectAll && torrents.length === 0) return
 
-    abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -72,6 +72,8 @@ export function useCrossSeedWarning({
     try {
       const selection = selectAll ? { selectAll: true, ...selectAll } : { targets: buildTorrentActionTargets(torrents, instanceId) }
       const matches = await api.getDeleteCrossSeeds(instanceId, selection, controller.signal)
+      // The body can finish reading after the abort.
+      if (controller.signal.aborted) return
       setAffectedTorrents(matches.map(toCompatibleMatch))
       setSearchState("complete")
     } catch (error) {

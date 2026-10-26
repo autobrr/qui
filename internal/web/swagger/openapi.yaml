@@ -2877,6 +2877,8 @@ paths:
                   - matches
         '400':
           description: Invalid selection
+        '409':
+          description: Instance is disabled
         '500':
           description: A file list or a link check could not be read
         '503':

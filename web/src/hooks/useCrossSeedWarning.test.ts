@@ -89,4 +89,20 @@ describe("useCrossSeedWarning", () => {
     await act(async () => reject(new DOMException("aborted", "AbortError")))
     expect(result.current.searchState).toBe("idle")
   })
+
+  // A response can finish reading after the abort, because the browser reads
+  // the body before it resolves response.json() in a later task.
+  // regression: #3341
+  it("drops a result that arrives after reset", async () => {
+    let resolve: (matches: LocalCrossSeedMatch[]) => void = () => {}
+    getDeleteCrossSeeds.mockReturnValue(new Promise(r => { resolve = r }))
+    const { result } = renderHook(() => useCrossSeedWarning({ instanceId: 1, torrents: loaded }))
+
+    act(() => { result.current.search() })
+    act(() => result.current.reset())
+    await act(async () => resolve([match]))
+
+    expect(result.current.searchState).toBe("idle")
+    expect(result.current.affectedTorrents).toEqual([])
+  })
 })
