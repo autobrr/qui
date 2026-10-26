@@ -135,3 +135,4 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 - Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
 - The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.
+- When a PR adds, changes, or removes a test, apply `docs/standards/tests.md`, and ask for a new test only when it allows one. A real `time.Sleep` in a Go test outside `synctest.Test` is a defect: on a slow CI runner the test fails at random. Name the test and the wait that a channel or `synctest.Test` can replace.
