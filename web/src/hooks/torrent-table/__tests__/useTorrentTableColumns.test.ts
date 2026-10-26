@@ -5,25 +5,20 @@
 
 import { type UseTorrentTableColumnsParams, useTorrentTableColumns } from "@/hooks/torrent-table/useTorrentTableColumns"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { Torrent } from "@/types"
 import { renderHook } from "@testing-library/react"
 import type { TFunction } from "i18next"
-import type { RefObject } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 const passthroughT = ((key: string) => key) as unknown as TFunction
 
 function makeParams(overrides: Partial<UseTorrentTableColumnsParams> = {}): UseTorrentTableColumnsParams {
   return {
-    shiftPressedRef: { current: false } as RefObject<boolean>,
-    lastSelectedIndexRef: { current: null } as RefObject<number | null>,
     handleSelectAll: vi.fn(),
     isSelectAllChecked: false,
     isSelectAllIndeterminate: false,
-    handleRowSelection: vi.fn(),
-    getSelectionIdentity: (t: Torrent) => t.hash,
-    isAllSelected: false,
-    excludedFromSelectAll: new Set(),
+    isTorrentSelected: () => false,
+    handleCheckboxPointerDown: vi.fn(),
+    handleCheckboxChange: vi.fn(),
     incognitoMode: false,
     speedUnit: "bytes",
     trackerIcons: undefined,

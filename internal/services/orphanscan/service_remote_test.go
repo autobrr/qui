@@ -24,6 +24,8 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -120,13 +122,7 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
@@ -230,9 +226,7 @@ func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	stubSync(f.svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
@@ -724,6 +718,11 @@ func TestMaybeAutoCleanup_ModeChangedOnACanceledRunDoesNotNotify(t *testing.T) {
 	f.requireNoFailureEvent(t)
 }
 
+// runChanges hands each activity event of the service to the test.
+type runChanges chan activity.Event
+
+func (c runChanges) Publish(event activity.Event) { c <- event }
+
 // An SSH preview can never be confirmed, so it must not strand later scans.
 func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 	t.Parallel()
@@ -746,12 +745,20 @@ func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 			require.Positive(t, old.FilesFound)
 
 			f.instance.set(tc.modeNow)
+			// A preview sends no notification, but each status change of a
+			// run publishes an activity event, so the run is read again only
+			// after it changed.
+			changes := make(runChanges, 64)
+			f.svc.SetActivityPublisher(changes)
 			runID, err := f.svc.TriggerScan(t.Context(), 1, tc.triggeredBy)
 			require.NoError(t, err)
-			require.Eventually(t, func() bool {
-				status := f.run(t, runID).Status
-				return status != "pending" && status != "scanning"
-			}, 10*time.Second, 10*time.Millisecond)
+			for status := f.run(t, runID).Status; status == "pending" || status == "scanning"; status = f.run(t, runID).Status {
+				select {
+				case <-changes:
+				case <-time.After(10 * time.Second):
+					t.Fatalf("the replacement scan is still %s", status)
+				}
+			}
 
 			require.Equal(t, "canceled", f.run(t, old.ID).Status)
 			replacement := f.run(t, runID)

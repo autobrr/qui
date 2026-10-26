@@ -91,30 +91,31 @@ func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "present.mkv"), []byte("present"), 0o600))
-	torrent := qbt.Torrent{Hash: "hash", SavePath: dir, Progress: 1}
 	cond := &RuleCondition{Field: FieldHasMissingFiles, Operator: OperatorEqual, Value: "true"}
 	snapshot := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	remote := &models.Instance{ID: 1, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
 
 	for _, test := range []struct {
-		name    string
-		row     *models.Instance
-		known   bool
-		missing bool
+		name     string
+		row      *models.Instance
+		savePath string
+		known    bool
+		missing  bool
 	}{
-		{name: "still local", row: snapshot, known: true},
-		{name: "now remote", row: remote, known: true, missing: true},
-		{name: "now without access", row: &models.Instance{ID: 1}},
+		{name: "still local", row: snapshot, savePath: dir, known: true},
+		{name: "now remote", row: remote, savePath: "/remote", known: true, missing: true},
+		{name: "now without access", row: &models.Instance{ID: 1}, savePath: dir},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+			torrent := qbt.Torrent{Hash: "hash", SavePath: test.savePath, Progress: 1}
 
 			service := &Service{
 				filesReader: fakeFilesReader{files: qbt.TorrentFiles{{Name: "present.mkv"}}},
 				backendPool: fsops.NewPoolWithRemote(rowGetter{row: test.row}, localbackend.NewBackend(),
 					func(*models.Instance) fsops.Backend {
 						// The remote host does not have the local test directory.
-						return batchBackend{errs: map[string]error{path.Join(filepath.ToSlash(dir), "present.mkv"): fs.ErrNotExist}}
+						return batchBackend{errs: map[string]error{path.Join(test.savePath, "present.mkv"): fs.ErrNotExist}}
 					}),
 			}
 			rule := &models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}

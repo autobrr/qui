@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -148,6 +147,30 @@ func TestOrphanScan_RoutesAdmitLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
+func TestOrphanScan_RoutesAnswerNotFoundForUnknownInstance(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "orphan-scan-unknown-instance")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	router := newOrphanScanRouter(NewOrphanScanHandler(models.NewOrphanScanStore(db), instances, nil))
+
+	for _, route := range []struct{ method, path, body string }{
+		{http.MethodGet, "/settings", ""},
+		{http.MethodPut, "/settings", "{}"},
+		{http.MethodPost, "/scan", ""},
+		{http.MethodGet, "/runs", ""},
+		{http.MethodGet, "/runs/999", ""},
+		{http.MethodPost, "/runs/999/confirm", ""},
+		{http.MethodDelete, "/runs/999", ""},
+	} {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), route.method, "/api/instances/404/orphan-scan"+route.path, strings.NewReader(route.body)))
+			require.Equal(t, http.StatusNotFound, resp.Code, resp.Body.String())
+			require.JSONEq(t, `{"error":"Instance not found"}`, resp.Body.String())
+		})
+	}
+}
+
 func TestOrphanScan_ConfirmConflictsNameTheirReason(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "orphan-scan-confirm-conflicts")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -193,6 +216,8 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, err)
 	store := models.NewOrphanScanStore(db)
 	service := orphanscan.NewService(orphanscan.DefaultConfig(), instances, store, nil, nil, nil)
+	hub, events := newActivityHub(t)
+	service.SetActivityPublisher(hub)
 	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
 
 	previewWithFiles := func(instanceID int, mode models.FilesystemMode) int64 {
@@ -225,7 +250,7 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, json.Unmarshal(accepted.Body.Bytes(), &body))
 	require.Equal(t, "canceled", status(oldRemote))
 	// The service has no backend pool, so the new run fails fast. Wait for it before the database closes.
-	require.Eventually(t, func() bool { return status(body.RunID) == "failed" }, 5*time.Second, 10*time.Millisecond)
+	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 
 	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
 	oldLocal := previewWithFiles(local.ID, models.FilesystemModeLocal)

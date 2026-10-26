@@ -110,6 +110,8 @@ func TestStat(t *testing.T) {
 	if err := os.Symlink(file, link); err != nil {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
+	linkInfo, err := os.Lstat(link)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name      string
@@ -123,8 +125,7 @@ func TestStat(t *testing.T) {
 		{name: "file", path: file, size: 5, identity: true},
 		{name: "dir", path: remotePath(dir), isDir: true, identity: true},
 		{name: "symlink followed", path: link, size: 5, identity: true},
-		// A symlink's own size is the length of its target path.
-		{name: "symlink not followed", path: link, lstat: true, isSymlink: true, size: int64(len(file))},
+		{name: "symlink not followed", path: link, lstat: true, isSymlink: true, size: linkInfo.Size()},
 		{name: "file lstat", path: file, lstat: true, size: 5, identity: true},
 	}
 	for _, tt := range tests {
@@ -180,8 +181,15 @@ func TestPortableNotExistErrors(t *testing.T) {
 	_, err = b.WalkDir(ctx, missing, fsops.WalkOptions{})
 	require.ErrorIs(t, err, fs.ErrNotExist)
 
-	_, err = b.Statfs(ctx, missing)
-	require.ErrorIs(t, err, fs.ErrNotExist)
+	t.Run("statfs", func(t *testing.T) {
+		b, server := newBackend(t)
+		if runtime.GOOS == "windows" {
+			server.SetSFTP(sshtest.SFTPStatVFS)
+		}
+		_, err := b.Statfs(t.Context(), missing)
+		require.ErrorIs(t, err, fs.ErrNotExist)
+		assert.Contains(t, err.Error(), missing)
+	})
 }
 
 func TestReadDir(t *testing.T) {
@@ -207,6 +215,26 @@ func TestReadDir(t *testing.T) {
 	assert.False(t, byName["a.txt"].IsSymlink)
 	assert.True(t, byName["sub"].IsDir)
 	assert.True(t, byName["link.txt"].IsSymlink)
+	assert.True(t, byName["a.txt"].Mode.IsRegular())
+	assert.True(t, byName["sub"].Mode.IsDir())
+	assert.NotZero(t, byName["link.txt"].Mode&fs.ModeSymlink)
+}
+
+func TestReadDirModeTypeOnly(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	writeFile(t, remotePath(dir, "file.txt"), "synthetic payload")
+	require.NoError(t, os.Mkdir(remotePath(dir, "sub"), 0o755))
+	entries, err := b.ReadDir(t.Context(), remotePath(dir))
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	for _, entry := range entries {
+		info, err := os.Lstat(filepath.Join(dir, entry.Name))
+		require.NoError(t, err)
+		assert.Equal(t, info.Mode().Type(), entry.Mode)
+	}
 }
 
 func TestWalkDir_Basic(t *testing.T) {
@@ -671,6 +699,43 @@ func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {
 	assert.NotContains(t, byRel, path.Join("link", "inside.txt"), "a symlinked dir must not be descended")
 }
 
+func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
+	t.Parallel()
+
+	for name, newTier := range map[string]func(*testing.T) (*Backend, *sshtest.Server){"sftp": newBackend, "exec": newExecBackend} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			b, _ := newTier(t)
+			dir := t.TempDir()
+			writeFile(t, remotePath(dir, "target", "sub", "inside.txt"), "i")
+			if err := os.Symlink(remotePath(dir, "target"), remotePath(dir, "link")); err != nil {
+				t.Skipf("symlinks unsupported: %v", err)
+			}
+			link := remotePath(dir, "link")
+
+			for _, follow := range []bool{false, true} {
+				ch, err := b.WalkDir(t.Context(), link, fsops.WalkOptions{FollowRoot: follow, WantFileID: true})
+				require.NoError(t, err)
+				var paths []string
+				for entry := range ch {
+					require.NoError(t, entry.Err)
+					paths = append(paths, entry.Path)
+					// Only the exec tier has identities, so this fails if find -H fell back to sftp.
+					if name == "exec" && entry.Mode.IsRegular() {
+						require.False(t, entry.FileID.IsZero(), entry.Path)
+					}
+				}
+				want := []string{link}
+				if follow {
+					want = append(want, path.Join(link, "sub"), path.Join(link, "sub", "inside.txt"))
+				}
+				require.Equal(t, want, paths, "FollowRoot %v", follow)
+			}
+		})
+	}
+}
+
 func TestWalkDir_UnreadableSubdirEmitsEntryErrAndContinues(t *testing.T) {
 	t.Parallel()
 
@@ -784,10 +849,18 @@ func TestWalkDir_SurvivesDroppedConnection(t *testing.T) {
 func TestStatfs(t *testing.T) {
 	t.Parallel()
 
-	b, _ := newBackend(t)
+	b, server := newBackend(t)
+	if runtime.GOOS == "windows" {
+		server.SetSFTP(sshtest.SFTPStatVFS)
+	}
 	dir := remotePath(t.TempDir())
 	result, err := b.Statfs(t.Context(), dir)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" {
+		assert.Equal(t, int64(4096*50), result.BytesAvailable)
+		assert.Equal(t, int64(4096*1000), result.BytesTotal)
+		return
+	}
 	assert.Positive(t, result.BytesAvailable)
 	assert.Positive(t, result.BytesTotal)
 	assert.LessOrEqual(t, result.BytesAvailable, result.BytesTotal)
@@ -832,7 +905,10 @@ func TestStatfsWithoutStatvfsExtension(t *testing.T) {
 func TestSameFilesystem(t *testing.T) {
 	t.Parallel()
 
-	b, _ := newBackend(t)
+	b, server := newBackend(t)
+	if runtime.GOOS == "windows" {
+		server.SetSFTP(sshtest.SFTPStatVFS)
+	}
 	dir := t.TempDir()
 	first := remotePath(dir, "a")
 	second := remotePath(dir, "b")
@@ -840,8 +916,8 @@ func TestSameFilesystem(t *testing.T) {
 	require.NoError(t, os.Mkdir(second, 0o755))
 
 	same, err := b.SameFilesystem(t.Context(), first, second)
-	if runtime.GOOS != "darwin" {
-		// pkg/sftp's linux statvfs server sends no fsid (OpenSSH's does).
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
+		// pkg/sftp's Linux statvfs server sends no fsid (OpenSSH's does).
 		require.ErrorIs(t, err, fsops.ErrUnsupported)
 		return
 	}

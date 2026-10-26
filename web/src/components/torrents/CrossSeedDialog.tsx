@@ -69,6 +69,8 @@ export interface CrossSeedDialogProps {
   error: string | null
   applyResult: CrossSeedApplyResponse | null
   indexerOptions: CrossSeedIndexerOption[]
+  /** RED/OPS is on and has an API key, so a search runs without Torznab indexers. */
+  gazelleConfigured: boolean
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
   indexerNameMap: Record<number, string>
@@ -94,6 +96,8 @@ export interface CrossSeedDialogProps {
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   partial?: boolean
   queryDegraded?: string
+  gazelleTimedOut?: boolean
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
@@ -119,6 +123,7 @@ const CrossSeedDialogComponent = ({
   error,
   applyResult,
   indexerOptions,
+  gazelleConfigured,
   indexerMode,
   selectedIndexerIds,
   indexerNameMap,
@@ -144,6 +149,8 @@ const CrossSeedDialogComponent = ({
   cacheMetadata,
   partial,
   queryDegraded,
+  gazelleTimedOut,
+  torznabFailed,
   decisionTrace,
   canForceRefresh,
   refreshCooldownLabel,
@@ -299,18 +306,10 @@ const CrossSeedDialogComponent = ({
               )}
             </div>
           )}
-          {partial && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t("crossSeedDialog.partialResults")}</span>
-            </div>
-          )}
-          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t(queryDegradedMessageKeys[queryDegraded])}</span>
-            </div>
-          )}
+          {partial && <HeaderWarning>{t("crossSeedDialog.partialResults")}</HeaderWarning>}
+          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <HeaderWarning>{t(queryDegradedMessageKeys[queryDegraded])}</HeaderWarning>}
+          {gazelleTimedOut && <HeaderWarning>{t("crossSeedDialog.gazelleTimedOut")}</HeaderWarning>}
+          {torznabFailed && <HeaderWarning>{t("crossSeedDialog.torznabFailed")}</HeaderWarning>}
         </DialogHeader>
         <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}
@@ -321,7 +320,6 @@ const CrossSeedDialogComponent = ({
                 indexerMode={indexerMode}
                 selectedIndexerIds={selectedIndexerIds}
                 excludedIndexerIds={excludedIndexerEntries.map(entry => entry.id)}
-                contentFilteringCompleted={sourceTorrent?.contentFilteringCompleted ?? false}
                 onIndexerModeChange={onIndexerModeChange}
                 onToggleIndexer={onToggleIndexer}
                 onSelectAllIndexers={onSelectAllIndexers}
@@ -330,11 +328,14 @@ const CrossSeedDialogComponent = ({
                 isSearching={isLoading}
               />
             ) : (
-              <div className="space-y-1.5 text-sm text-muted-foreground">
-                <p className="font-medium">{t("crossSeedDialog.noIndexers")}</p>
-                <p className="text-xs">
-                  {t("crossSeedDialog.noIndexersHelp")}
-                </p>
+              <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1.5">
+                  <p className="font-medium">{t("crossSeedDialog.noIndexers")}</p>
+                  <p className="text-xs">
+                    {gazelleConfigured ? t("crossSeedDialog.gazelleOnlySearch") : t("crossSeedDialog.noIndexersHelp")}
+                  </p>
+                </div>
+                {gazelleConfigured && <ScopeSearchButton onClick={onScopeSearch} isSearching={isLoading} disabled={isLoading} />}
               </div>
             )}
             {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
@@ -353,59 +354,35 @@ const CrossSeedDialogComponent = ({
           </div>
 
           {/* Content-based filtering info */}
-          {(sourceTorrent && !sourceTorrent.contentFilteringCompleted) || excludedIndexerEntries.length > 0 ? (
+          {excludedIndexerEntries.length > 0 && (
             <Collapsible open={excludedOpen} onOpenChange={setExcludedOpen}>
               <div className="rounded-lg border bg-accent/10">
                 <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-accent/20 transition-colors">
                   <div className="flex items-center gap-2 text-sm text-accent-foreground">
                     <ChevronRight className={`h-3.5 w-3.5 transition-transform ${excludedOpen ? "rotate-90" : ""}`} />
-                    {!sourceTorrent?.contentFilteringCompleted ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span className="font-medium">{t("crossSeedDialog.contentFilteringInProgress")}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {t("crossSeedDialog.analyzingContent")}
-                        </Badge>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium">{t("crossSeedDialog.smartFilteringActive")}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {t("crossSeedDialog.indexersFiltered", { count: excludedIndexerEntries.length })}
-                        </Badge>
-                      </>
-                    )}
+                    <span className="font-medium">{t("crossSeedDialog.smartFilteringActive")}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {t("crossSeedDialog.indexersFiltered", { count: excludedIndexerEntries.length })}
+                    </Badge>
                   </div>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="px-2.5 pb-2.5">
-                    {!sourceTorrent?.contentFilteringCompleted ? (
-                      <p className="text-xs text-muted-foreground">
-                        {t("crossSeedDialog.contentFilteringDescription")}
-                      </p>
-                    ) : excludedIndexerEntries.length > 0 ? (
-                      <>
-                        <p className="text-xs text-muted-foreground">
-                          {t("crossSeedDialog.excludedDescription")}
-                        </p>
-                        <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
-                          {excludedIndexerEntries.map(entry => (
-                            <li key={entry.id} className="break-words">
-                              • {entry.name}
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {t("crossSeedDialog.noContentDuplicates")}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {t("crossSeedDialog.excludedDescription")}
+                    </p>
+                    <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
+                      {excludedIndexerEntries.map(entry => (
+                        <li key={entry.id} className="break-words">
+                          • {entry.name}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </CollapsibleContent>
               </div>
             </Collapsible>
-          ) : null}
+          )}
           {!hasSearched ? null : isLoading ? (
             <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -820,7 +797,6 @@ interface CrossSeedScopeSelectorProps {
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
   excludedIndexerIds: number[]
-  contentFilteringCompleted: boolean
   onIndexerModeChange: (mode: "all" | "custom") => void
   onToggleIndexer: (indexerId: number) => void
   onSelectAllIndexers: () => void
@@ -861,7 +837,6 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
   indexerMode,
   selectedIndexerIds,
   excludedIndexerIds,
-  contentFilteringCompleted,
   onIndexerModeChange,
   onToggleIndexer,
   onSelectAllIndexers,
@@ -874,8 +849,7 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length
   const disableCustomSelection = total === 0
-  const filteringInProgress = !contentFilteringCompleted
-  const scopeSearchDisabled = filteringInProgress || isSearching || (indexerMode === "custom" && selectedCount === 0)
+  const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
 
   // Calculate the actual count of indexers that will be used for search
   const searchIndexerCount = useMemo(() => {
@@ -936,7 +910,7 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
           <div className="text-xs text-muted-foreground">
             {statusText}
           </div>
-          {contentFilteringCompleted && excludedCount > 0 && (
+          {excludedCount > 0 && (
             <div className="text-xs font-medium text-primary">
               {searchText}
             </div>
@@ -1005,29 +979,35 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <Button
-            size="sm"
-            onClick={onScopeSearch}
-            disabled={scopeSearchDisabled}
-            className="h-7 text-xs"
-          >
-            {filteringInProgress ? (
-              <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                {t("crossSeedDialog.scope.filtering")}
-              </>
-            ) : isSearching ? (
-              <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                {t("crossSeedDialog.scope.searching")}
-              </>
-            ) : (
-              t("crossSeedDialog.scope.search")
-            )}
-          </Button>
+          <ScopeSearchButton onClick={onScopeSearch} isSearching={isSearching} disabled={scopeSearchDisabled} />
         </div>
       </div>
     </div>
   )
 })
 CrossSeedScopeSelector.displayName = "CrossSeedScopeSelector"
+
+function HeaderWarning({ children }: { children: string }) {
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function ScopeSearchButton({ onClick, isSearching, disabled }: { onClick: () => void; isSearching: boolean; disabled: boolean }) {
+  const { t } = useTranslation("torrents")
+  return (
+    <Button size="sm" onClick={onClick} disabled={disabled} className="h-7 shrink-0 text-xs">
+      {isSearching ? (
+        <>
+          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+          {t("crossSeedDialog.scope.searching")}
+        </>
+      ) : (
+        t("crossSeedDialog.scope.search")
+      )}
+    </Button>
+  )
+}

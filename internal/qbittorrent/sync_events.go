@@ -16,3 +16,9 @@ type SyncEventSink interface {
 	HandleTrackerHealthUpdated(instanceID int)
 	HandleSyncError(instanceID int, err error)
 }
+
+// ServerStateOnly reports whether a sync changed the server state and nothing
+// else. Such a sync changes no torrent row and no sidebar count.
+func ServerStateOnly(c qbt.MainDataChanges) bool {
+	return c.ServerState && len(c.Torrents) == 0 && len(c.TorrentsRemoved) == 0 && !c.Categories && !c.Tags && !c.Trackers
+}

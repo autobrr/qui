@@ -26,8 +26,10 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick is folder cleanup's production tick, which the rig runs at.
-const rigTick = 3 * time.Second
+// rigTick is the worker tick in the rig, in place of the 3 s production tick.
+// It stays above the 200 ms debounced sync after a write: a hint on every tick
+// closer than that would keep postponing the sync the worker waits on.
+const rigTick = 250 * time.Millisecond
 
 // rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
 // removed by mistake is gone by the time requireKept looks, even when the
@@ -85,6 +87,7 @@ func newProxyRigWorker(t *testing.T, start bool) *proxyRig {
 
 	sm := qbittorrent.NewSyncManager(pool, nil)
 	fc := qbittorrent.NewFolderCleanup(fsops.NewPool(instanceStore, local.NewBackend()), sm, noIgnores{})
+	fc.SetTickForTest(rigTick)
 	if start {
 		fc.Start(t.Context())
 	}
@@ -215,6 +218,7 @@ func TestProxyFolderCleanupHungMountDoesNotHoldTheRequest(t *testing.T) {
 	mount := hungMount{Backend: local.NewBackend(), hang: r.p("torrents/movies/Film-GRP"), release: make(chan struct{})}
 	t.Cleanup(func() { close(mount.release) })
 	fc := qbittorrent.NewFolderCleanup(hungMountPool{fsops.NewPool(r.handler.instanceStore, local.NewBackend()), mount}, r.handler.syncManager, noIgnores{})
+	fc.SetTickForTest(rigTick)
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 	r.handler.syncManager.SetFolderCleanup(fc)

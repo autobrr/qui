@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
+	"testing/synctest"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
@@ -106,21 +106,23 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 }
 
 func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
-	server := NewServer(&Dependencies{
-		Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+	synctest.Test(t, func(t *testing.T) {
+		server := NewServer(&Dependencies{
+			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		})
+
+		// http.Server.Shutdown starts the registered callbacks on every call.
+		require.NoError(t, server.Shutdown(t.Context()))
+		require.NoError(t, server.Shutdown(t.Context()))
+
+		// Each callback runs in its own goroutine; wait for both so a double close panics here.
+		synctest.Wait()
+		select {
+		case <-server.shuttingDown:
+		default:
+			t.Fatal("shutdown signal was not sent")
+		}
 	})
-
-	// http.Server.Shutdown starts the registered callbacks on every call.
-	require.NoError(t, server.Shutdown(t.Context()))
-	require.NoError(t, server.Shutdown(t.Context()))
-
-	select {
-	case <-server.shuttingDown:
-	case <-time.After(time.Second):
-		t.Fatal("shutdown signal was not sent")
-	}
-	// The second callback runs in its own goroutine; let it run so a double close panics here.
-	time.Sleep(50 * time.Millisecond)
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {

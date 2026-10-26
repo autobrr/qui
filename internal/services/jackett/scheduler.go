@@ -739,7 +739,8 @@ var detachedExecWarnAfter = 30 * time.Second
 // awaitDetachedExec waits for an exec whose context has ended and drops its
 // late result. The caller already got the context error.
 func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExecResult) {
-	timer := time.NewTimer(detachedExecWarnAfter)
+	warnAfter := detachedExecWarnAfter
+	timer := time.NewTimer(warnAfter)
 	defer timer.Stop()
 	select {
 	case <-done:
@@ -763,7 +764,7 @@ func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExec
 	log.Warn().
 		Int("indexerID", item.task.indexer.ID).
 		Str("indexer", item.task.indexer.Name).
-		Dur("pastDeadline", detachedExecWarnAfter).
+		Dur("pastDeadline", warnAfter).
 		Msg("Torznab search still running after its context ended; indexer slot stays held and its queued searches fail until it returns")
 	<-done
 }

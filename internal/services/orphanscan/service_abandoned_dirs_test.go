@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -60,16 +61,7 @@ func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{
-			"movies": {Name: "movies", SavePath: categoryPath},
-			"test":   {Name: "test", SavePath: ""},
-		}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath, CategorySaveFolders: []string{categoryPath, inheritedCategoryPath}})
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,

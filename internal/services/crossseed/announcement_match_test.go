@@ -180,6 +180,12 @@ func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
 		{"season", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S02E05.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"episode", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E06.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"missing announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264", false, true},
+		// Without a resolution the pair cannot take the exact size class, so only
+		// a strict match or a web source relabel admits it.
+		{"missing announcement group without resolution", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with web relabel", "Sample.Show.S08E11.WEBRip.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with codec", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.265", false, false},
+		{"missing announcement group with codec and resolution", "Sample.Show.S08E11.1080p.WEB-DL.H.264-NTb", "Sample Show S08E11 1080p WEB-DL H.265", false, true},
 		{"conflicting announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-KIRI", false, false},
 		{"split group", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", false, true},
 		{"split group with skip recheck", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", true, false},
@@ -335,19 +341,17 @@ func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
 
 			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
 			if tt.wantAccepted {
-				require.Equal(t, searchCandidateClassExactSizeFallback, got.decision.Class)
-				require.Contains(t, got.decision.RelaxedDifferences, "checksum")
+				require.Equal(t, searchCandidateClassStrict, got.decision.Class)
 			}
 		})
 	}
 }
 
-// TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum protects the
-// advisory check's checksum tolerance: IRC announce sizes are rounded, so a
-// CRC tag on only the local file name must not veto a within-tolerance check
-// when everything else matches strictly. Apply omits the policy flag and keeps
-// demanding strict, because it classifies real torrent bytes.
-func TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum(t *testing.T) {
+// TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum: IRC announce
+// sizes are rounded, so only a strict match passes the webhook check. A CRC tag
+// on one name is no difference, so it does not veto that strict match. Two
+// tags that differ still do.
+func TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum(t *testing.T) {
 	const (
 		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
 		announceName = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
@@ -360,48 +364,45 @@ func TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum(t *testing.T
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	source := qbt.Torrent{Name: sourceName, Size: size, TotalSize: size, Progress: 1}
 
 	tests := []struct {
 		name          string
+		sourceName    string
 		candidateName string
 		candidateSize int64
-		tolerate      bool
 		wantAccepted  bool
 	}{
 		{
-			name:          "one-sided checksum within tolerance tolerated",
-			candidateName: announceName, candidateSize: roundedSize,
-			tolerate: true, wantAccepted: true,
+			name:       "CRC tag on the source only",
+			sourceName: sourceName, candidateName: announceName, candidateSize: roundedSize,
+			wantAccepted: true,
 		},
 		{
-			name:          "apply policy still rejects one-sided checksum",
-			candidateName: announceName, candidateSize: roundedSize,
+			name:       "CRC tag on the announce only",
+			sourceName: "[KiraSubs] Frieren S2 - 10 (1080p).mkv", candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv", candidateSize: roundedSize,
+			wantAccepted: true,
 		},
 		{
-			name:          "conflicting checksums stay rejected",
-			candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [DEADBEEF].mkv", candidateSize: roundedSize,
-			tolerate: true,
+			name:       "conflicting checksums stay rejected",
+			sourceName: sourceName, candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [DEADBEEF].mkv", candidateSize: roundedSize,
 		},
 		{
-			name:          "other strict failures stay rejected",
-			candidateName: "Frieren: Beyond Journey's End S02E10 720p CR WEB-DL AAC 2.0 H.264-KiraSubs", candidateSize: roundedSize,
-			tolerate: true,
+			name:       "other strict failures stay rejected",
+			sourceName: sourceName, candidateName: "Frieren: Beyond Journey's End S02E10 720p CR WEB-DL AAC 2.0 H.264-KiraSubs", candidateSize: roundedSize,
 		},
 		{
-			name:          "out-of-tolerance size stays rejected",
-			candidateName: announceName, candidateSize: size * 2,
-			tolerate: true,
+			name:       "out-of-tolerance size stays rejected",
+			sourceName: sourceName, candidateName: announceName, candidateSize: size * 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Name: tt.sourceName, Size: size, TotalSize: size, Progress: 1}
 			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
 
-			got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, tt.candidateSize, announcementMatchPolicy{
-				candidateTitles:          aliasTitles,
-				tolerateOneSidedChecksum: tt.tolerate,
+			got := svc.classifyWebhookAnnouncementSource(t.Context(), 1, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				candidateTitles: aliasTitles,
 			})
 
 			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
@@ -434,22 +435,22 @@ func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
 		},
 		{
 			name:     "approved descriptive fallback",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"codec", "source", "checksum"}},
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceSource)},
 			want:     true,
 		},
 		{
 			name:     "group fallback permits recheck",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"group"}},
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
 			want:     true,
 		},
 		{
 			name:        "group fallback rejects skip recheck",
-			decision:    searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"group"}},
+			decision:    searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
 			skipRecheck: true,
 		},
 		{
-			name:     "future relaxation rejects by default",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"future-token"}},
+			name:     "relaxed episode rejects",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceEpisode)},
 		},
 		{
 			name:     "empty fallback rejects by default",
@@ -567,11 +568,58 @@ func TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode(t *testing.T
 	candidate := namedRelease{release: svc.releaseCache.Parse(announceName), rawName: announceName}
 
 	got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, size, announcementMatchPolicy{
-		findIndividualEpisodes:   true,
-		tolerateOneSidedChecksum: true,
+		findIndividualEpisodes: true,
 	})
 
 	require.True(t, got.decision.Accepted, got.decision.RejectReason)
 	require.Equal(t, searchCandidateClassExactSizeFallback, got.decision.Class)
 	require.Contains(t, got.decision.RelaxedDifferences, "episode")
+}
+
+func TestWebhookCandidate(t *testing.T) {
+	const (
+		movie   = "The.Squad.of.Madame.K.1953.1080p.BluRay.x264-GRP"
+		episode = "Kaiju.Squad.S01E01.1080p.WEB.H264-GRP"
+		pack    = "Kaiju.Squad.S01.1080p.WEB.H264-GRP"
+		size    = int64(1_449_551_462)
+	)
+	tests := []struct {
+		name        string
+		source      string
+		announce    string
+		skipRecheck bool
+		// unknownSize leaves the local torrent without a reported size.
+		unknownSize bool
+		wantClass   searchCandidateClass
+		wantReason  string
+	}{
+		{name: "match", source: movie, announce: "The Squad of Madame K... 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassStrict},
+		{name: "classifier reject", source: movie, announce: "Other Title 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassRejected, wantReason: "title mismatch"},
+		{name: "skip recheck", source: episode, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", skipRecheck: true, wantClass: searchCandidateClassRejected, wantReason: webhookSkipRecheckReason},
+		{name: "unknown local size", source: pack, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", unknownSize: true, wantClass: searchCandidateClassRejected, wantReason: "unknown local size"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row := corpusRow{source: tt.source, sourceSize: size}
+			if tt.unknownSize {
+				row.sourceSize = 0
+			}
+			svc := row.corpusService(false)
+			torrent := row.sourceTorrent()
+			announced := namedRelease{release: svc.releaseCache.Parse(tt.announce), rawName: tt.announce}
+
+			match, decision := svc.webhookCandidate(t.Context(), corpusInstance, &torrent, announced, uint64(size), announcementMatchPolicy{
+				findIndividualEpisodes: true,
+				skipRecheck:            tt.skipRecheck,
+			})
+
+			require.Equal(t, tt.wantReason == "", decision.Accepted)
+			require.Equal(t, tt.wantReason, decision.RejectReason)
+			require.Equal(t, tt.wantClass, decision.Class)
+			if decision.Accepted {
+				require.Equal(t, corpusSourceHash, match.TorrentHash)
+				require.Equal(t, "exact", match.MatchType)
+			}
+		})
+	}
 }

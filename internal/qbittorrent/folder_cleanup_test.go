@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -204,11 +205,16 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 		{name: "download path", stop: "torrents/incomplete"},
 		{name: "category", stop: "torrents/movies"},
 		{name: "subcategory", stop: "torrents/tv/anime"},
-		{name: "category with invalid characters", stop: "torrents/movies hd"},
 		{name: "hardlink base dir", stop: "torrents/qui-links"},
 		{name: "category under the download path", stop: "torrents/incomplete/tv"},
 		{name: "subcategory under the download path", stop: "torrents/incomplete/tv/anime"},
-		{name: "category with invalid characters under the download path", stop: "torrents/incomplete/movies hd"},
+		{
+			name: "category's own download path",
+			stop: "fast/movies",
+			edit: func(e *cleanupEnv) {
+				e.view.folders.DownloadFolders = append(e.view.folders.DownloadFolders, e.p("fast/movies"))
+			},
+		},
 		{
 			name: "inner of two hardlink base dirs",
 			stop: "torrents/links/inner",
@@ -217,56 +223,18 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 			},
 		},
 		{
-			name: "monitored folder that saves into itself",
+			name: "monitored folder",
 			stop: "torrents/watch",
 			edit: func(e *cleanupEnv) {
-				e.view.inputs.ScanDirs = qbt.MonitoredFolders{
-					e.p("torrents/watch"): qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeMonitoredFolder),
-				}
+				e.view.folders.MonitoredFolders = []string{e.p("torrents/watch")}
 			},
-		},
-		{
-			name: "monitored folder that saves into the default save path",
-			stop: "torrents/blackhole",
-			edit: func(e *cleanupEnv) {
-				e.view.inputs.ScanDirs = qbt.MonitoredFolders{
-					e.p("torrents/blackhole"): qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeDefaultSavePath),
-				}
-			},
-		},
-		{
-			name: "custom save path of a monitored folder",
-			stop: "torrents/from-watch",
-			edit: func(e *cleanupEnv) {
-				e.view.inputs.ScanDirs = qbt.MonitoredFolders{
-					e.p("media/watch"): qbt.NewMonitoredFolderCustomPath(e.p("torrents/from-watch")),
-				}
-			},
-		},
-		{
-			name: "relative custom save path of a monitored folder, under the default save path",
-			stop: "torrents/from-watch",
-			edit: func(e *cleanupEnv) {
-				e.view.inputs.ScanDirs = qbt.MonitoredFolders{
-					e.p("media/watch"): qbt.NewMonitoredFolderCustomPath("from-watch"),
-				}
-			},
-		},
-		{
-			name: "monitored folder that is not absolute is skipped",
-			stop: "torrents",
-			edit: func(e *cleanupEnv) {
-				e.view.inputs.ScanDirs = qbt.MonitoredFolders{
-					"watch": qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeMonitoredFolder),
-				}
-			},
-			removed: []string{"torrents/watch"},
 		},
 		{
 			name: "download path turned off is an ordinary folder",
 			stop: "torrents",
 			edit: func(e *cleanupEnv) {
-				e.view.inputs.TempPathEnabled = false
+				e.view.folders.DownloadPath = ""
+				e.view.folders.DownloadFolders = nil
 			},
 			removed: []string{"torrents/incomplete"},
 		},
@@ -274,17 +242,10 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 			name: "category under a download path turned off is an ordinary folder",
 			stop: "torrents",
 			edit: func(e *cleanupEnv) {
-				e.view.inputs.TempPathEnabled = false
+				e.view.folders.DownloadPath = ""
+				e.view.folders.DownloadFolders = nil
 			},
 			removed: []string{"torrents/incomplete/tv", "torrents/incomplete"},
-		},
-		{
-			name: "subcategory without nesting",
-			stop: "torrents/tv/anime",
-			edit: func(e *cleanupEnv) {
-				e.view.inputs.UseSubcategories = false
-				e.view.inputs.Categories["tv/anime"] = qbt.Category{Name: "tv/anime"}
-			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -316,57 +277,49 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 // that save path, as it does with no monitored folder at all.
 func TestFolderCleanupMonitoredFoldersDoNotBoundTheClimb(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		scanDirs func(e *cleanupEnv) qbt.MonitoredFolders
-		save     string
-		kept     []string
-		removed  []string
+		name      string
+		monitored func(e *cleanupEnv) []string
+		save      string
+		kept      []string
+		removed   []string
 	}{
 		{
-			name:     "no monitored folder",
-			scanDirs: func(*cleanupEnv) qbt.MonitoredFolders { return nil },
-			save:     "media/watch/tv",
-			kept:     []string{"media/watch/tv"},
+			name:      "no monitored folder",
+			monitored: func(*cleanupEnv) []string { return nil },
+			save:      "media/watch/tv",
+			kept:      []string{"media/watch/tv"},
 		},
 		{
-			name: "recursive watch that saves into itself",
-			scanDirs: func(e *cleanupEnv) qbt.MonitoredFolders {
-				return qbt.MonitoredFolders{e.p("media/watch"): qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeMonitoredFolder)}
-			},
-			save: "media/watch/tv",
-			kept: []string{"media/watch/tv"},
+			name:      "recursive watch that saves into itself",
+			monitored: func(e *cleanupEnv) []string { return []string{e.p("media/watch")} },
+			save:      "media/watch/tv",
+			kept:      []string{"media/watch/tv"},
 		},
 		{
-			name: "recursive watch with a custom save path",
-			scanDirs: func(e *cleanupEnv) qbt.MonitoredFolders {
-				return qbt.MonitoredFolders{e.p("media/watch"): qbt.NewMonitoredFolderCustomPath(e.p("media/manual"))}
-			},
-			save: "media/manual/tv",
-			kept: []string{"media/manual/tv"},
+			name:      "recursive watch with a custom save path",
+			monitored: func(e *cleanupEnv) []string { return []string{e.p("media/manual"), e.p("media/watch")} },
+			save:      "media/manual/tv",
+			kept:      []string{"media/manual/tv"},
 		},
 		{
-			name: "broad monitored folder above everything",
-			scanDirs: func(e *cleanupEnv) qbt.MonitoredFolders {
-				return qbt.MonitoredFolders{e.p(""): qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeDefaultSavePath)}
-			},
-			save: "media/manual/tv",
-			kept: []string{"media/manual/tv"},
+			name:      "broad monitored folder above everything",
+			monitored: func(e *cleanupEnv) []string { return []string{e.p("")} },
+			save:      "media/manual/tv",
+			kept:      []string{"media/manual/tv"},
 		},
 		{
 			// scan_dirs does not say whether a watch is recursive, so a watch
 			// subfolder below a stop folder climbs to the stop folder.
-			name: "watch subfolder below the default save path",
-			scanDirs: func(e *cleanupEnv) qbt.MonitoredFolders {
-				return qbt.MonitoredFolders{e.p("torrents/watch"): qbt.NewMonitoredFolderTarget(qbt.MonitoredFolderModeMonitoredFolder)}
-			},
-			save:    "torrents/watch/tv",
-			kept:    []string{"torrents/watch"},
-			removed: []string{"torrents/watch/tv"},
+			name:      "watch subfolder below the default save path",
+			monitored: func(e *cleanupEnv) []string { return []string{e.p("torrents/watch")} },
+			save:      "torrents/watch/tv",
+			kept:      []string{"torrents/watch"},
+			removed:   []string{"torrents/watch/tv"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-				e.view.inputs.ScanDirs = tc.scanDirs(e)
+				e.view.folders.MonitoredFolders = tc.monitored(e)
 				e.tree(tc.save+"/Rel-GRP/a.mkv", "media/watch/")
 				snap := e.rootFolder(tc.save, "Rel-GRP")
 				e.rm(tc.save + "/Rel-GRP/a.mkv")
@@ -681,7 +634,7 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 
 // A torrent's own row decides that it waits, so a check that finds every
 // item waiting builds no scope: no full read of the cached torrents and no
-// preferences request. It still asks for a sync.
+// preferences or categories request. It still asks for a sync.
 func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 	for _, move := range []bool{false, true} {
 		t.Run(fmt.Sprint("move=", move), func(t *testing.T) {
@@ -694,12 +647,12 @@ func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 				e.view.setTorrents(row(snap))
 				e.run(snap)
 				e.tick(4)
-				require.Zero(t, e.view.inputReads.Load())
+				require.Zero(t, e.view.folderReads.Load())
 				require.EqualValues(t, 5, e.view.refreshes.Load())
 
 				e.view.setTorrents()
 				e.tick(1)
-				require.EqualValues(t, 1, e.view.inputReads.Load())
+				require.EqualValues(t, 1, e.view.folderReads.Load())
 				e.requireTree([]string{"torrents/tv"}, []string{"torrents/tv/Show"})
 			})
 		})
@@ -731,6 +684,160 @@ func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 		time.Sleep(e.fc.deadline)
 		synctest.Wait()
 		e.requireTree([]string{"torrents/tv/Pack/Empty", "torrents/tv/Pack"}, nil)
+	})
+}
+
+// A torrent's subfolder that is now a symlink also reads as content left until
+// the deadline, and the folders below it are in the folder it points to.
+func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Sub/Other/c.mkv", "torrents/tv/Show/Plain/b.mkv")
+		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Sub/Other/c.mkv", "Plain/b.mkv")
+		e.rm("torrents/tv/Show/Sub", "torrents/tv/Show/Plain/b.mkv")
+		e.fs.symlink(e.p("torrents/tv/Show/Sub"))
+		e.tree("torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub/Other/")
+		e.run(snap)
+		time.Sleep(e.fc.deadline)
+		synctest.Wait()
+		e.requireTree([]string{"torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub/Other", "torrents/tv/Show/Sub"},
+			[]string{"torrents/tv/Show/Plain"})
+	})
+}
+
+// The climb from a single file's folder does not remove a folder below a
+// symlink either.
+func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/A/B/f.mkv")
+		snap := e.singleFile("torrents/tv", "A/B/f.mkv")
+		e.rm("torrents/tv/A")
+		e.fs.symlink(e.p("torrents/tv/A"))
+		e.tree("torrents/tv/A/B/")
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/A/B", "torrents/tv/A"}, nil)
+	})
+}
+
+// A root folder below a symlink is in the folder the symlink points to, so
+// the walk down does not start.
+func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/A/Pack/a.mkv")
+		snap := e.rootFolder("torrents/tv", "A/Pack")
+		e.rm("torrents/tv/A")
+		e.fs.symlink(e.p("torrents/tv/A"))
+		e.tree("torrents/tv/A/Pack/Empty/")
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/A/Pack/Empty", "torrents/tv/A/Pack", "torrents/tv/A"}, nil)
+	})
+}
+
+// The check for a symlink above each folder reads every folder once, so a
+// deeper torrent costs no more Lstats of its top folder, and more folders
+// below a symlink cost no more Lstats of the symlink.
+func TestFolderCleanupReadsEachFolderAboveOnce(t *testing.T) {
+	topLstats := func(depth int) int32 {
+		var n atomic.Int32
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			parts := make([]string, depth)
+			for i := range parts {
+				parts[i] = fmt.Sprintf("L%d", i+1)
+			}
+			file := strings.Join(parts, "/") + "/a.mkv"
+			e.tree("torrents/tv/Show/" + file)
+			snap := e.noRoot("torrents/tv/Show", file)
+			e.rm("torrents/tv/Show/" + file)
+			top := e.p("torrents/tv/Show/L1")
+			e.fs.(*memTree).lstatErr = func(p string) error {
+				if p == top {
+					n.Add(1)
+				}
+				return nil
+			}
+			e.run(snap)
+			e.requireTree([]string{"torrents/tv"}, []string{"torrents/tv/Show"})
+		})
+		return n.Load()
+	}
+	require.Equal(t, topLstats(4), topLstats(12))
+
+	linkLstats := func(below int) int32 {
+		var n atomic.Int32
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			files := make([]string, 0, below)
+			for i := range below {
+				files = append(files, fmt.Sprintf("Sub/D%d/E/a.mkv", i))
+			}
+			snap := e.noRoot("torrents/tv/Show", files...)
+			e.fs.symlink(e.p("torrents/tv/Show/Sub"))
+			for i := range below {
+				e.tree(fmt.Sprintf("torrents/tv/Show/Sub/D%d/E/", i))
+			}
+			link := e.p("torrents/tv/Show/Sub")
+			e.fs.(*memTree).lstatErr = func(p string) error {
+				if p == link {
+					n.Add(1)
+				}
+				return nil
+			}
+			e.run(snap)
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree([]string{"torrents/tv/Show/Sub/D0/E"}, nil)
+		})
+		return n.Load()
+	}
+	require.Equal(t, linkLstats(2), linkLstats(6))
+}
+
+// A folder in between whose Lstat fails keeps the folders below it. The
+// content check lists Mid but never Lstats it, so the clean runs.
+func TestFolderCleanupKeepsFoldersBelowAnUnreadableFolder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		e.tree("torrents/tv/Show/Sub/Mid/Deeper/a.mkv")
+		snap := e.noRoot("torrents/tv/Show", "Sub/Mid/Deeper/a.mkv")
+		e.rm("torrents/tv/Show/Sub/Mid/Deeper/a.mkv")
+		mid := e.p("torrents/tv/Show/Sub/Mid")
+		e.fs.(*memTree).lstatErr = func(p string) error {
+			if p == mid {
+				return fs.ErrPermission
+			}
+			return nil
+		}
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/Show/Sub/Mid/Deeper"}, nil)
+	})
+}
+
+// A folder that is already gone does not stop the climb, which goes on to the
+// stop folder.
+func TestFolderCleanupClimbPassesAGoneFolder(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		e.tree("torrents/x/A/B/f.mkv")
+		snap := e.singleFile("torrents/x", "A/B/f.mkv")
+		e.rm("torrents/x/A")
+		e.run(snap)
+		e.requireTree([]string{"torrents"}, []string{"torrents/x"})
+	})
+}
+
+// A save path that is a symlink is the user's setting, and the torrent's
+// folders below it are still cleaned.
+func TestFolderCleanupCleansBelowASymlinkedSavePath(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.fs.symlink(e.p("torrents/linked"))
+		e.tree("torrents/linked/Show/Sub/a.mkv")
+		snap := e.noRoot("torrents/linked", "Show/Sub/a.mkv")
+		e.rm("torrents/linked/Show/Sub/a.mkv")
+		e.run(snap)
+		e.requireTree([]string{"torrents/linked"}, []string{"torrents/linked/Show"})
 	})
 }
 
@@ -1332,12 +1439,9 @@ func TestFolderCleanupFailsClosed(t *testing.T) {
 		name string
 		edit func(e *cleanupEnv)
 	}{
-		{"preferences unreadable", func(e *cleanupEnv) { e.view.inputsErr = errors.New("boom") }},
-		{"qBittorrent version unreadable", func(e *cleanupEnv) { e.view.supportErr = errors.New("boom") }},
+		{"instance folders unreadable", func(e *cleanupEnv) { e.view.foldersErr = errors.New("boom") }},
 		{"ignore paths unreadable", func(e *cleanupEnv) { e.ignores.err = errors.New("boom") }},
 		{"torrents unreadable", func(e *cleanupEnv) { e.view.liveErr = errors.New("boom") }},
-		{"default save path not absolute", func(e *cleanupEnv) { e.view.inputs.DefaultSavePath = "torrents" }},
-		{"download path not absolute", func(e *cleanupEnv) { e.view.inputs.TempPath = "incomplete" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
@@ -1397,132 +1501,6 @@ func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
 
 	require.Equal(t, []*pendingFolder{item}, fc.checkInstance(t.Context(), 1, []*pendingFolder{item}, time.Now()))
 	require.ErrorIs(t, item.judgeErr, unavailable)
-}
-
-// nestEnv gives subcategory tv/anime a different folder flat and nested,
-// because its parent tv has its own save path: torrents/tv/anime flat and
-// media/tv/anime nested. One check has already run, so the version check is
-// held.
-func nestEnv(t *testing.T, support nestingSupport, useSubcategories bool) *cleanupEnv {
-	e := newCleanupEnv(t, slashBackend)
-	e.view.mu.Lock()
-	e.view.inputs.Categories["tv"] = qbt.Category{Name: "tv", SavePath: e.p("media/tv")}
-	e.view.inputs.UseSubcategories = useSubcategories
-	e.view.support = support
-	e.view.mu.Unlock()
-	e.tree("media/tv/anime/", "torrents/tv/Prime-GRP/")
-	e.run(e.noRoot("torrents/tv/Prime-GRP", "a.mkv"))
-	return e
-}
-
-// requireCategoryFolderKept deletes a release from category tv/anime's
-// folder and checks that the folder itself stays.
-func (e *cleanupEnv) requireCategoryFolderKept(folder string) {
-	e.t.Helper()
-	e.tree(folder + "/Rel-GRP/")
-	e.run(e.noRoot(folder+"/Rel-GRP", "a.mkv"))
-	e.requireTree([]string{folder}, []string{folder + "/Rel-GRP"})
-}
-
-// The worker decides nesting by CategorySavePathsNest's rule: the version
-// must nest, and then either always does or the preference is on.
-func TestFolderCleanupNestsAsCategorySavePathsNestDoes(t *testing.T) {
-	for _, tc := range []struct {
-		name             string
-		support          nestingSupport
-		useSubcategories bool
-		folder           string
-	}{
-		{"4.6 ignores the preference", nestingSupport{}, true, "torrents/tv/anime"},
-		{"5.0 with subcategories on", nestingSupport{Nests: true}, true, "media/tv/anime"},
-		{"5.0 with subcategories off", nestingSupport{Nests: true}, false, "torrents/tv/anime"},
-		{"5.2 ignores the preference", nestingSupport{Nests: true, Always: true}, false, "media/tv/anime"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				e := nestEnv(t, tc.support, tc.useSubcategories)
-				e.requireCategoryFolderKept(tc.folder)
-			})
-		})
-	}
-}
-
-// The preferences are read on every check, so a use_subcategories toggle
-// reaches the next check, even while the version check is still held. A stale value would leave the real
-// category folder out of the stop folders.
-func TestFolderCleanupSeesAUseSubcategoriesToggle(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		from   bool
-		wait   time.Duration
-		folder string
-	}{
-		{"flat to nested on the next check", false, 10 * time.Second, "media/tv/anime"},
-		{"nested to flat on the next check", true, 10 * time.Second, "torrents/tv/anime"},
-		{"flat to nested after the version check expires", false, folderCleanupVersionTTL + time.Second, "media/tv/anime"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				e := nestEnv(t, nestingSupport{Nests: true}, tc.from)
-				e.view.setUseSubcategories(!tc.from)
-				time.Sleep(tc.wait)
-				synctest.Wait()
-				e.requireCategoryFolderKept(tc.folder)
-			})
-		})
-	}
-}
-
-// Reading what qBittorrent's version says about nesting refreshes its
-// capabilities with a request. The worker reuses that for a minute and does
-// not keep an error, but reads the preferences on every check.
-func TestFolderCleanupReusesTheVersionCheckForAMinute(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		e := nestEnv(t, nestingSupport{Nests: true}, false)
-		require.EqualValues(t, 1, e.view.versionReads.Load())
-		require.EqualValues(t, 1, e.view.inputReads.Load())
-
-		e.view.setUseSubcategories(true)
-		e.requireCategoryFolderKept("media/tv/anime")
-		require.EqualValues(t, 1, e.view.versionReads.Load(), "a check within the minute reuses the version check")
-		require.EqualValues(t, 2, e.view.inputReads.Load(), "every check reads the preferences")
-
-		// Let the tick due at the same instant run first, on an empty queue.
-		time.Sleep(folderCleanupVersionTTL)
-		synctest.Wait()
-		e.tree("torrents/tv/Rel2-GRP/")
-		e.run(e.noRoot("torrents/tv/Rel2-GRP", "a.mkv"))
-		require.EqualValues(t, 2, e.view.versionReads.Load(), "a check after the minute asks again")
-		e.requireTree(nil, []string{"torrents/tv/Rel2-GRP"})
-
-		// Another instance's check after the minute drops this one's
-		// expired entry.
-		time.Sleep(folderCleanupVersionTTL)
-		synctest.Wait()
-		e.tree("torrents/tv/Other-GRP/")
-		other := e.noRoot("torrents/tv/Other-GRP", "a.mkv")
-		other.InstanceID = 2
-		e.run(other)
-		require.EqualValues(t, 3, e.view.versionReads.Load())
-		require.NotContains(t, e.fc.nesting, 1, "an expired entry is dropped")
-		require.Contains(t, e.fc.nesting, 2)
-
-		// An error fails closed and is not kept.
-		e.view.mu.Lock()
-		e.view.supportErr = errors.New("boom")
-		e.view.mu.Unlock()
-		e.tree("torrents/tv/Rel3-GRP/")
-		e.run(e.noRoot("torrents/tv/Rel3-GRP", "a.mkv"))
-		require.EqualValues(t, 4, e.view.versionReads.Load())
-		e.requireTree([]string{"torrents/tv/Rel3-GRP"}, nil)
-
-		e.view.mu.Lock()
-		e.view.supportErr = nil
-		e.view.mu.Unlock()
-		e.tick(1)
-		require.EqualValues(t, 5, e.view.versionReads.Load(), "an error is asked again on the next tick")
-		e.requireTree(nil, []string{"torrents/tv/Rel3-GRP"})
-	})
 }
 
 func TestFolderCleanupNeverRemovesASymlink(t *testing.T) {
@@ -1664,47 +1642,51 @@ func (h *hungLstat) Lstat(_ context.Context, _ string) (*fsops.LstatInfo, error)
 // after stopWait and leaves the worker to its call.
 func TestFolderCleanupStopReturnsPastAHungLstat(t *testing.T) {
 	t.Parallel()
-	backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
-	t.Cleanup(func() { close(backend.release) })
-	fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
-	fc.tick = time.Millisecond
-	fc.stopWait = 100 * time.Millisecond
-	fc.Start(t.Context())
-	fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
-		Layout: layoutRootFolder, ContentExisted: true}}, 0)
-	<-backend.entered
+	synctest.Test(t, func(t *testing.T) {
+		backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
+		// The bubble ends only once the worker leaves its call.
+		defer close(backend.release)
+		fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
+		fc.Start(t.Context())
+		fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
+			Layout: layoutRootFolder, ContentExisted: true}}, 0)
+		<-backend.entered
 
-	start := time.Now()
-	fc.Stop()
-	require.Less(t, time.Since(start), 2*time.Second)
+		start := time.Now()
+		fc.Stop()
+		require.Equal(t, fc.stopWait, time.Since(start))
+	})
 }
 
 // Run once with -race: the worker ticks while many callers hand over work.
+// Each caller wakes on a tick, so it runs alongside the worker.
 func TestFolderCleanupConcurrentEnqueue(t *testing.T) {
-	root := t.TempDir()
-	tree := localTree{Backend: local.NewBackend(), t: t}
-	view := &fakeView{inputs: stopInputs{DefaultSavePath: root}}
-	fc := NewFolderCleanup(&fakeRequirer{backend: tree, instance: models.Instance{HasLocalFilesystemAccess: true}}, view, &fakeIgnores{})
-	fc.tick = time.Millisecond
-	fc.Start(t.Context())
-	t.Cleanup(fc.Stop)
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		tree := localTree{Backend: local.NewBackend(), t: t}
+		view := &fakeView{folders: InstanceFolders{DefaultSavePath: root}}
+		fc := NewFolderCleanup(&fakeRequirer{backend: tree, instance: models.Instance{HasLocalFilesystemAccess: true}}, view, &fakeIgnores{})
+		fc.Start(t.Context())
+		t.Cleanup(fc.Stop)
 
-	d := fsops.HostPaths
-	var wg sync.WaitGroup
-	dirs := make([]string, 0, 16)
-	for i := range 16 {
-		dir := d.Join(root, fmt.Sprintf("Rel%d-GRP", i))
-		tree.mkdir(dir)
-		dirs = append(dirs, dir)
-		wg.Go(func() {
-			fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: strconv.Itoa(i), SavePath: dir, ContentPath: dir,
-				Layout: layoutNoRootFolder, Files: []string{"a.mkv"}, ContentExisted: true}}, 0)
-		})
-	}
-	wg.Wait()
-	require.Eventually(t, func() bool {
-		return !slices.ContainsFunc(dirs, tree.exists)
-	}, 5*time.Second, 5*time.Millisecond)
+		d := fsops.HostPaths
+		var wg sync.WaitGroup
+		dirs := make([]string, 0, 16)
+		for i := range 16 {
+			dir := d.Join(root, fmt.Sprintf("Rel%d-GRP", i))
+			tree.mkdir(dir)
+			dirs = append(dirs, dir)
+			wg.Go(func() {
+				time.Sleep(time.Duration(i%4) * fc.tick)
+				fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: strconv.Itoa(i), SavePath: dir, ContentPath: dir,
+					Layout: layoutNoRootFolder, Files: []string{"a.mkv"}, ContentExisted: true}}, 0)
+			})
+		}
+		wg.Wait()
+		time.Sleep(fc.tick)
+		synctest.Wait()
+		require.False(t, slices.ContainsFunc(dirs, tree.exists))
+	})
 }
 
 func TestCleanTorrentFileName(t *testing.T) {
@@ -1741,7 +1723,8 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 		t.Skip("host dialect is Windows only on Windows")
 	}
 	d := fsops.HostPaths
-	scope := &cleanupScope{d: d, stops: []string{`C:\Data\Torrents`, `C:\Data\Torrents\TV`, `\\nas\share\torrents`}}
+	scope := &cleanupScope{d: d, stops: []string{`C:\Data\Torrents`, `C:\Data\Torrents\TV`, `\\nas\share\torrents`},
+		ignored: func(string) bool { return false }}
 	require.Equal(t, `C:\Data\Torrents\TV`, scope.stopFor(`C:\Data\Torrents\TV\Show`))
 	require.Equal(t, `\\nas\share\torrents`, scope.stopFor(`\\nas\share\torrents\x`))
 	// The climb limit compares exactly; a case variant is only protected.
@@ -1749,6 +1732,13 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 	require.Empty(t, scope.stopFor(`D:\elsewhere`))
 	require.True(t, pathUnder(d, fsops.NormalizePath(d, `C:\x`), fsops.NormalizePath(d, `C:\`)))
 	require.False(t, pathUnder(d, fsops.NormalizePath(d, `C:\Data\TorrentsX`), fsops.NormalizePath(d, `C:\Data\Torrents`)))
+	// Clean leaves a share root bare, and Dir below it adds the separator back.
+	share := d.Clean(`\\nas\share`)
+	require.Equal(t, share+`\`, d.Dir(share+`\Show`))
+	require.False(t, pathUnder(d, share+`\`, share))
+	require.True(t, pathAtOrUnder(d, share+`\`, share))
+	require.True(t, pathUnder(d, share+`\Show`, share))
+	require.False(t, scope.insideSealed(share, share+`\Show`))
 
 	snap := folderSnapshot{SavePath: `C:\Data\Torrents\TV`, DownloadPath: `C:\Data\Incomplete`, ContentPath: `C:\Data\Incomplete\Show`, Layout: layoutRootFolder}
 	anchor, folder, ok := snap.placement(d)

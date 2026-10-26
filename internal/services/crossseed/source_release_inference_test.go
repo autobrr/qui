@@ -190,7 +190,7 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, 37, *query.Episode)
 }
 
-func TestDeriveSearchSourceRelease_ReplaysCategoryMappedView(t *testing.T) {
+func TestDeriveSearchSourceRelease_KeepsCategoryMappedView(t *testing.T) {
 	const instanceID = 1
 	torrent := qbt.Torrent{
 		Hash:     "category-mapped-source",
@@ -401,6 +401,55 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	require.NotEqual(t, contentDetectionRelease.Sum, searchRelease.Sum)
 
 	candidate := svc.releaseCache.Parse("Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA")
-	match, reason := svc.matcher().releasesMatchWithReason(searchRelease, candidate, false)
-	require.True(t, match, "season pack candidate should not be rejected by file-level identity, got %q", reason)
+	comparison := svc.matcher().strictCompare(searchRelease, candidate, false)
+	require.True(t, comparison.matched(), "season pack candidate should not be rejected by file-level identity, got %q", comparison.reason())
+}
+
+// fileRequestRecorder records the hashes whose file lists a test asks for.
+type fileRequestRecorder struct {
+	*fakeSyncManager
+	requested []string
+}
+
+func (r *fileRequestRecorder) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	r.requested = append(r.requested, hashes...)
+	return r.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+}
+
+func TestReadLocalTorrentsReadsOnlyNamesThatNeedFiles(t *testing.T) {
+	instance := &models.Instance{ID: 1, Name: "main"}
+	const pack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"
+	torrents := []qbt.Torrent{
+		{Hash: "folder", Name: "Season 2"},
+		{Hash: "batch", Name: "[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]"},
+		{Hash: "pack", Name: pack},
+		{Hash: "episode", Name: "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"},
+		{Hash: "movie", Name: "Kaiju.Squad.2020.1080p.BluRay.x264-GRP"},
+		{Hash: "unread", Name: "Season 3"},
+	}
+	files := map[string]qbt.TorrentFiles{
+		"folder": corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		"batch":  corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+	}
+	recorder := &fileRequestRecorder{fakeSyncManager: newFakeSyncManager(instance, torrents, files)}
+	svc := manualMatchTestService(instance, nil, nil)
+	svc.syncManager = recorder
+	settingsLoads := 0
+	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settingsLoads++
+		return &models.CrossSeedAutomationSettings{}, nil
+	}
+
+	reads := svc.readLocalTorrents(t.Context(), instance.ID, viewTorrents(buildCrossInstanceViews(instance, torrents)))
+
+	require.ElementsMatch(t, []string{"folder", "batch", "unread"}, recorder.requested)
+	require.Equal(t, 1, settingsLoads, "the batch loads the category mapping rules once")
+	folder := reads.read(svc.matcher(), instance.ID, &torrents[0])
+	require.Equal(t, "Kaiju Squad", folder.release.Title)
+	require.Equal(t, 2, folder.release.Series)
+	batch := reads.read(svc.matcher(), instance.ID, &torrents[1])
+	require.True(t, isTVSeasonPack(batch.release), "the batch files give the season pack")
+	// A torrent whose files did not load keeps its name read.
+	require.Empty(t, reads.read(svc.matcher(), instance.ID, &torrents[5]).release.Title)
+	require.Equal(t, pack, reads.read(svc.matcher(), instance.ID, &torrents[2]).rawName)
 }

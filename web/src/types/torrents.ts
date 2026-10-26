@@ -269,6 +269,8 @@ export interface TorrentResponse {
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  // Some instances in the Unified view did not answer.
+  partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE

@@ -828,7 +828,7 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 	}
 }
 
-func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
+func TestDeletionSelection_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 	const instanceID = 902
 	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
 	dir := t.TempDir()
@@ -849,16 +849,16 @@ func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 		}},
 	}
 	evalCtx := &EvalContext{InstanceHasTrustedIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
-	require.Empty(t, processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil))
+	require.Empty(t, selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false).triggers)
 
 	// Known unlinked torrents still match the same delete rule.
 	for _, torrent := range torrents {
 		index.ScopeByHash[torrent.Hash] = HardlinkScopeNone
 	}
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
-	require.Len(t, states, len(torrents))
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false)
+	require.Len(t, selection.triggers, len(torrents))
 	for _, torrent := range torrents {
-		require.True(t, states[torrent.Hash].shouldDelete)
+		require.Contains(t, selection.byHash, torrent.Hash)
 	}
 }
 
@@ -881,29 +881,30 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[stale])
 	require.NoError(t, os.Remove(filepath.Join(torrents[1].SavePath, "data.bin")))
 	torrentByHash := map[string]qbt.Torrent{unknown: torrents[0], stale: torrents[1], readable: torrents[2]}
-	deleteHashes := map[string][]string{DeleteModeWithFiles: {unknown, stale, readable}}
-	pending := map[string]pendingDeletion{unknown: {ruleID: 1}, stale: {ruleID: 1}, readable: {ruleID: 1}}
+	pending := &deletionSelection{byHash: map[string]selectedDeletion{
+		unknown: {rule: ruleRef{id: 1}}, stale: {rule: ruleRef{id: 1}}, readable: {rule: ruleRef{id: 1}},
+	}}
 	scope := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeNone}
 	category := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
 	rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: scope}}}
 	rules := map[int]*models.Automation{1: rule}
 
-	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Equal(t, map[string]string{unknown: "hardlink scope unknown", stale: "files no longer readable"}, blocked)
 
 	// An independent OR match still requires verification when the rule uses hardlink data.
 	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
 	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasTrustedIdentity: true}, 0))
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Contains(t, blocked, unknown)
 
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, deleteHashes, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, pending, rules)
 	require.Len(t, blocked, len(torrents))
 
 	// Rules without hardlink data do not need a scope or a filesystem rescan.
 	rule.Conditions.Delete.Condition = category
 	for _, index := range []*HardlinkIndex{index, nil} {
-		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules))
+		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules))
 	}
 }
 
@@ -1233,8 +1234,8 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 
 			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: tt.condition}}}
 			blocked := service.blockedDeleteCandidates(t.Context(), instanceA.ID, index,
-				map[string]qbt.Torrent{hash: torrent}, map[string][]string{DeleteModeWithFiles: {hash}},
-				map[string]pendingDeletion{hash: {ruleID: 1}}, map[int]*models.Automation{1: rule})
+				map[string]qbt.Torrent{hash: torrent},
+				&deletionSelection{byHash: map[string]selectedDeletion{hash: {rule: ruleRef{id: 1}}}}, map[int]*models.Automation{1: rule})
 			require.Equal(t, tt.want, blocked)
 		})
 	}

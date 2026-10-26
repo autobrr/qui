@@ -103,7 +103,15 @@
     "totalSize": "Gesamtgröße: {{size}}",
     "blockCrossSeeds": "Cross-Seed-Infohashes blockieren (erneutes Hinzufügen verhindern)",
     "cancel": "Abbrechen",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "titleSelectAll_one": "Den {{count}} Torrent löschen, der zum Filter passt?",
+    "titleSelectAll_other": "{{count}} Torrents löschen, die zum Filter passen?",
+    "selectAllNotice": "Alle auswählen ist aktiv. Dies löscht die ausgewählten Torrents, die zum aktuellen Filter passen.",
+    "notLoaded_one": "{{count}} davon ist nicht in der Tabelle geladen.",
+    "notLoaded_other": "{{count}} davon sind nicht in der Tabelle geladen.",
+    "andMore": "und {{more}} weitere",
+    "deleteCount_one": "{{count}} Torrent löschen",
+    "deleteCount_other": "{{count}} Torrents löschen"
   },
   "deleteFilesPreference": {
     "label": "Dateien auch von der Festplatte löschen",
@@ -123,7 +131,6 @@
       "check": "Prüfen"
     },
     "searching": "Auf Cross-Seeds wird geprüft",
-    "searchingProgress": "Auf Cross-Seeds wird geprüft ({{checked}}/{{total}})",
     "error": "Prüfung auf Cross-Seeds fehlgeschlagen",
     "retry": "Erneut versuchen",
     "noCrossSeeds": "Keine Cross-Seeds gefunden",
@@ -429,6 +436,9 @@
       "description": "Lege Upload- und Download-Geschwindigkeitsbegrenzungen in KB/s fest. Deaktivieren, um globale Limits zu verwenden.",
       "uploadLimit": "Upload-Limit setzen (KB/s)",
       "downloadLimit": "Download-Limit setzen (KB/s)",
+      "selectValue": "Einen Wert auswählen",
+      "wasMixed": "(war gemischt)",
+      "unresolvedMixed": "Wähle vor dem Anwenden Werte für alle gemischten Felder",
       "cancel": "Abbrechen",
       "setting": "Wird gesetzt...",
       "confirm": "Limits anwenden"
@@ -719,19 +729,18 @@
     "partialResults": "Teilergebnisse – einige Indexer haben nicht geantwortet",
     "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
     "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
+    "gazelleTimedOut": "RED/OPS hat nicht rechtzeitig geantwortet",
+    "torznabFailed": "Torznab-Suche fehlgeschlagen – nur RED/OPS-Ergebnisse",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
     "noIndexersHelp": "Füge in den Einstellungen Torznab-Indexer hinzu oder aktiviere sie, um nach Cross-Seeds zu suchen.",
+    "gazelleOnlySearch": "Die Suche fragt nur die RED/OPS-Seiten ab, für die ein API-Schlüssel hinterlegt ist.",
     "capabilityNote": "Hinweis zu Fähigkeiten",
     "capabilityDescription": "Diesen Indexern fehlen die erforderlichen Fähigkeiten/Kategorien für diesen Torrent und sie werden vom Server übersprungen:",
-    "contentFilteringInProgress": "Inhaltsfilterung läuft",
-    "analyzingContent": "Vorhandene Inhalte werden analysiert...",
     "smartFilteringActive": "Intelligente Filterung aktiv",
     "indexersFiltered_one": "{{count}} Indexer gefiltert",
     "indexersFiltered_other": "{{count}} Indexer gefiltert",
-    "contentFilteringDescription": "Deine vorhandenen Torrents werden geprüft, um Duplikate zu finden und überflüssige Tracker auszuschließen. So wird vermieden, denselben Inhalt mehrfach herunterzuladen.",
     "excludedDescription": "Du seedest diesen Release bereits von diesen Trackern, daher werden sie von der Suche ausgeschlossen.",
-    "noContentDuplicates": "Inhaltsfilterung abgeschlossen. Keine doppelten Inhalte auf deinen aktivierten Trackern gefunden.",
     "searchingIndexers": "Indexer werden durchsucht…",
     "noMatchesFound": "Keine Treffer in deiner Suche gefunden.",
     "selectReleasesToAdd": "Wähle die Releases aus, die du hinzufügen möchtest",
@@ -780,7 +789,6 @@
       "selectAllIndexers": "Alle auswählen",
       "clearSelection": "Auswahl aufheben",
       "search": "Suchen",
-      "filtering": "Wird gefiltert…",
       "searching": "Wird gesucht",
       "noneSelected": "Keine ausgewählt",
       "enabledIndexers": "{{count}} aktiviert {{suffix}}",
@@ -1336,11 +1344,6 @@
     "matchCount_other": "{{count}} Treffer",
     "deleteSelected": "Löschen ({{count}})",
     "deleteThis": "Diesen löschen",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Nicht registriert",
-      "trackerError": "Tracker-Fehler"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Inhalt",
@@ -1515,25 +1518,6 @@
       "placeholder": "Torrents durchsuchen...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
-    },
-    "shareLimit": {
-      "title": "Share-Limits für {{count}} Torrent(s) festlegen",
-      "description": "Seeding-Limits konfigurieren. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setRatioLimit": "Ratio-Limit festlegen",
-      "setSeedingTimeLimit": "Seedingzeit-Limit festlegen (Minuten)",
-      "setInactiveSeedingLimit": "Limit für inaktives Seeding festlegen (Minuten)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
-    },
-    "speedLimit": {
-      "title": "Geschwindigkeitsbegrenzungen für {{count}} Torrent(s) festlegen",
-      "description": "Lege Upload- und Download-Limits in KB/s fest. Verwende -1 oder deaktiviere, um Limits zu entfernen.",
-      "setUploadLimit": "Upload-Limit festlegen (KB/s)",
-      "setDownloadLimit": "Download-Limit festlegen (KB/s)",
-      "cancel": "Abbrechen",
-      "setting": "Wird festgelegt...",
-      "applyLimits": "Limits anwenden"
     },
     "ratio": "Ratio:"
   },

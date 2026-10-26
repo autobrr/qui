@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -76,6 +77,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	g.baselineFP = newFP
 	g.baselineOrder = order
 	g.baselineSnapshot = &snapshot
+	g.rebuildFailed = false
 	g.version.Minor++
 
 	if forceFull {
@@ -120,6 +122,46 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		Type:    streamEventDelta,
 		Data:    &deltaResp,
 		Delta:   delta,
+		Meta:    meta,
+		Version: new(g.version),
+	}
+}
+
+// buildServerStatePayload sends a new server state with the rows and counts of the
+// last frame, as a delta with no changed rows. It returns nil when the view must
+// be rebuilt: the group has no baseline yet, the last rebuild failed, or the
+// subcategory mode changed, which changes the category counts.
+func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	prev := g.baselineSnapshot
+	if prev == nil || g.rebuildFailed {
+		return nil
+	}
+	if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+		return nil
+	}
+
+	snapshot := *prev
+	snapshot.ServerState = serverState
+	snapshot.InstanceMeta = instanceMeta
+	snapshot.ActiveTaskCount = activeTaskCount
+	// The tick comes from a successful sync, so the rows are fresh again.
+	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
+	g.baselineSnapshot = &snapshot
+	baseVersion := g.version
+	g.version.Minor++
+
+	deltaResp := snapshot
+	deltaResp.Torrents = nil
+	deltaResp.CrossInstanceTorrents = nil
+	deltaResp.Counts = nil
+
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   &StreamDelta{BaseVersion: baseVersion},
 		Meta:    meta,
 		Version: new(g.version),
 	}

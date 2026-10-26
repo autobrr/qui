@@ -4,6 +4,11 @@
     "description": "Servizi di automazione a livello di istanza gestiti da qui.",
     "noInstances": "Nessuna istanza configurata. Aggiungine una in Impostazioni per usare i servizi."
   },
+  "tabs": {
+    "workflows": "Workflow",
+    "reannounce": "Riannuncia",
+    "orphanScan": "Scansione orfani"
+  },
   "queryBuilder": {
     "noConditions": "Nessuna condizione",
     "matchesAllTorrents": "Corrisponde a tutti i torrent (in base alla selezione del tracker).",
@@ -123,7 +128,7 @@
       "NUM_LEECHS": "Leecher attivi",
       "NUM_COMPLETE": "Seeder totali",
       "NUM_INCOMPLETE": "Leecher totali",
-      "TRACKERS_COUNT": "Tracker",
+      "TRACKERS_COUNT": "Numero di tracker",
       "PRIORITY": "Priorità in coda",
       "GROUP_SIZE": "Dimensione del gruppo",
       "PRIVATE": "Privato",

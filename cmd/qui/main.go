@@ -733,6 +733,10 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
+	settler := crossseed.NewSettler(syncManager, seasonPackRunStore)
+	settleCtx, settleCancel := context.WithCancel(context.Background())
+	defer settleCancel()
+	settler.Start(settleCtx)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -748,6 +752,7 @@ func (app *Application) runServer() {
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
+		settler,
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
@@ -778,16 +783,15 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedBlocklistStore)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
-	})
+	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -1015,9 +1019,6 @@ func (app *Application) runServer() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		partialPoolCancel()
-		if err := clientPool.Close(); err != nil {
-			return err
-		}
 		select {
 		case <-partialPoolDone:
 		case <-ctx.Done():
@@ -1027,6 +1028,8 @@ func (app *Application) runServer() {
 		// Deferred so it also runs when Shutdown returns an error. Stop
 		// ignores snapshots a request still hands in.
 		defer folderCleanup.Stop()
+		// Keep pooled clients usable until in-flight HTTP requests finish.
+		defer clientPool.Close()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
 		}

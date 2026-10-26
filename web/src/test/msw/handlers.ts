@@ -80,7 +80,6 @@ export const handlers = [
       instance_id: Number(params.instanceId),
       hash: params.hash,
       name: "test-torrent",
-      content_filtering_completed: true,
     })
   ),
 
@@ -88,22 +87,15 @@ export const handlers = [
     HttpResponse.json({ source_torrent: null, results: [], cache: undefined })
   ),
 
-  http.get("*/api/cross-seed/torrents/:instanceId/:hash/async-status", () =>
-    HttpResponse.json({
-      capabilities_completed: true,
-      content_completed: true,
-      capability_indexers: [],
-      filtered_indexers: [],
-      excluded_indexers: {},
-      content_matches: [],
-    })
-  ),
-
   http.post("*/api/cross-seed/torrents/:instanceId/:hash/apply", () =>
     HttpResponse.json({ results: [] })
   ),
 
   http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+    HttpResponse.json({ matches: [] })
+  ),
+
+  http.post("*/api/instances/:instanceId/torrents/delete-cross-seeds", () =>
     HttpResponse.json({ matches: [] })
   ),
 ]

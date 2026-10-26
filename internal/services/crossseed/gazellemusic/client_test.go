@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -73,6 +74,32 @@ func TestClientTalksToATestServer(t *testing.T) {
 	}
 	if result == nil || result.TorrentID != 7 {
 		t.Fatalf("expected the test server's torrent, got %+v", result)
+	}
+}
+
+// A request that would wait in the queue past the deadline of ctx fails at
+// once. The caller must see that as the deadline, not as a failed lookup.
+func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","response":{}}`))
+	}))
+	defer server.Close()
+	client, err := NewClient("orpheus.network", server.URL, "key")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	// Take the one token, so the next request has to wait about 2 s.
+	client.limiter.Allow()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	_, err = client.SearchByHash(ctx, "abc")
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("the request must fail before the deadline, not wait for it")
 	}
 }
 

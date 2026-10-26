@@ -1281,7 +1281,10 @@
         "placeholder": "např. /data/torrents",
         "skipIfCrossSeedsDontMatch": "Přeskočit, pokud křížová sdílení neodpovídají podmínkám pravidla",
         "aboutSkipping": "O přeskakování přesunu, když existují křížová sdílení",
-        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla."
+        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla.",
+        "errors": {
+          "mustBeAbsolute": "Musí to být absolutní cesta, například /data/archive nebo D:\\Archive."
+        }
       },
       "templateHelp": {
         "absolutePath": "Musí jít o absolutní cestu. Hodnoty se vkládají do ní, například",
@@ -1798,11 +1801,9 @@
       "lastBackup": "Poslední záloha",
       "loading": "Načítání...",
       "progress": "{{current}} z {{total}} torrentů ({{percentage}}%)",
-      "status": "Stav: {{status}}",
       "noBackupsYet": "Zatím nejsou žádné zálohy",
       "nextScheduledBackup": "Další naplánovaná záloha",
       "loadingSchedule": "Načítání plánu...",
-      "instance": "Instance",
       "automaticBackupsOff": "Automatické zálohování jsou vypnuto pro tuto instanci.",
       "enableCadenceToSchedule": "Povolte alespoň jednu automatickou časovou jednotku pro naplánování záloh.",
       "currentlyRunning": "Záloha je aktuálně spuštěna.",
@@ -1826,6 +1827,7 @@
       "schedule": {
         "title": "Automatické časové jednotky",
         "description": "Hodinové, denní, týdenní a měsíční zálohy začnou po dokončení předchozí zálohy a po uplynutí jejich intervalu. Vypněte je všechny, pokud zálohy spouštíte pouze manuálně.",
+        "keep": "Ponechat",
         "hourly": "Hodinové",
         "hourlyDescription": "Kolik hodinových záloh si mám uchovat před tím, než se starší zmažou.",
         "hourlyTooltip": "Spustí se přibližně jednou za hodinu, když jsou zálohy povoleny a minulo alespoň hodinu od posledního spuštění.",
@@ -1844,8 +1846,7 @@
         "saveChanges": "Uložit změny",
         "saveAll": "Uložit změny do všech instancí",
         "requiresCadence": "Vyberte alespoň jednu časovou jednotku (hodinově, denně, týdně nebo měsíčně) před uložením.",
-        "waitForCapabilities": "Počkejte na dokončení kontrol schopností instance před uložením do všech instancí.",
-        "changesApplyImmediately": "Změny se použijí na budoucí zálohy hned po uložení."
+        "waitForCapabilities": "Počkejte na dokončení kontrol schopností instance před uložením do všech instancí."
       }
     },
     "restore": {

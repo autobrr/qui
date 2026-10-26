@@ -9,7 +9,9 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 var errNotStubbed = errors.New("orphanscan test: call not stubbed")
@@ -22,9 +24,12 @@ type fakeSync struct {
 	getClient            func(ctx context.Context, instanceID int) (healthChecker, error)
 	listInstances        func(ctx context.Context) ([]*models.Instance, error)
 	getLastCompletedRun  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
-	getAppPreferences    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	getCategories        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	subcategoriesEnabled func(ctx context.Context, instanceID int) (bool, error)
+	instanceFolders      func(ctx context.Context, instanceID int) (qbittorrent.InstanceFolders, error)
+}
+
+// folders stubs the Instance folders with a ready value.
+func (f *fakeSync) folders(folders qbittorrent.InstanceFolders) {
+	f.instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) { return folders, nil }
 }
 
 // stubSync installs a fakeSync on svc the first time it is called and returns
@@ -90,23 +95,9 @@ func (f *fakeSync) GetLastCompletedRun(ctx context.Context, instanceID int) (*mo
 	return f.getLastCompletedRun(ctx, instanceID)
 }
 
-func (f *fakeSync) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	if f.getAppPreferences == nil {
-		return qbt.AppPreferences{}, errNotStubbed
+func (f *fakeSync) InstanceFolders(ctx context.Context, _ fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error) {
+	if f.instanceFolders == nil {
+		return qbittorrent.InstanceFolders{}, errNotStubbed
 	}
-	return f.getAppPreferences(ctx, instanceID)
-}
-
-func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
-	if f.getCategories == nil {
-		return nil, errNotStubbed
-	}
-	return f.getCategories(ctx, instanceID)
-}
-
-func (f *fakeSync) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
-	if f.subcategoriesEnabled == nil {
-		return false, errNotStubbed
-	}
-	return f.subcategoriesEnabled(ctx, instanceID)
+	return f.instanceFolders(ctx, instanceID)
 }

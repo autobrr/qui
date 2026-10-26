@@ -134,29 +134,30 @@ func InstanceHealthBlockerMessage(err error) (string, bool) {
 
 // ClientPool manages multiple qBittorrent client connections
 type ClientPool struct {
-	clients            map[int]*Client
-	instanceStore      *models.InstanceStore
-	errorStore         *models.InstanceErrorStore
-	cache              *ttlcache.Cache[string, *TorrentResponse]
-	mu                 sync.RWMutex
-	failurePersistence *semaphore.Weighted // Orders failure state changes with error-store writes.
-	creationMu         sync.Mutex          // Protects creationLocks.
-	creationLocks      map[int]*sync.Mutex // Retained for the pool lifetime so each instance has one lock identity.
-	creations          sync.WaitGroup      // Tracks constructors until their final publish decision.
-	lifecycleCtx       context.Context
-	lifecycleCancel    context.CancelFunc
-	closed             bool
-	closeDone          chan struct{}
-	healthTicker       *time.Ticker
-	stopHealth         chan struct{}
-	failureTracker     map[int]*failureInfo
-	decryptionTracker  map[int]*decryptionErrorInfo
-	syncEventSink      SyncEventSink
-	syncEventSinkSeq   uint64
-	completionHandler  TorrentCompletionHandler
-	addedHandler       TorrentAddedHandler
-	syncManager        *SyncManager  // Reference for starting background tasks
-	clientTimeout      time.Duration // HTTP transport timeout for every pooled client
+	clients           map[int]*Client
+	instanceStore     *models.InstanceStore
+	errorStore        *models.InstanceErrorStore
+	cache             *ttlcache.Cache[string, *TorrentResponse]
+	mu                sync.RWMutex
+	stateCommit       *semaphore.Weighted         // Serializes client publication and failure state with persisted errors.
+	creationMu        sync.Mutex                  // Protects creationLocks.
+	creationLocks     map[int]*semaphore.Weighted // Retained for the pool lifetime so each instance has one lock identity.
+	creations         sync.WaitGroup              // Tracks constructors until their final publish decision.
+	lifecycleCtx      context.Context
+	lifecycleCancel   context.CancelFunc
+	closed            bool
+	closeDone         chan struct{}
+	healthTicker      *time.Ticker
+	stopHealth        chan struct{}
+	failureTracker    map[int]*failureInfo
+	decryptionTracker map[int]*decryptionErrorInfo
+	syncEventSink     SyncEventSink
+	syncEventSinkSeq  uint64
+	completionNotify  TorrentCompletionHandler
+	completionHandler TorrentCompletionHandler
+	addedHandler      TorrentAddedHandler
+	syncManager       *SyncManager  // Reference for starting background tasks
+	clientTimeout     time.Duration // HTTP transport timeout for every pooled client
 }
 
 // NewClientPool creates a new client pool. clientTimeout is the HTTP transport
@@ -169,20 +170,20 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 
 	cp := &ClientPool{
-		clients:            make(map[int]*Client),
-		failurePersistence: semaphore.NewWeighted(1),
-		instanceStore:      instanceStore,
-		errorStore:         errorStore,
-		cache:              cache,
-		clientTimeout:      clientTimeout,
-		creationLocks:      make(map[int]*sync.Mutex),
-		lifecycleCtx:       lifecycleCtx,
-		lifecycleCancel:    lifecycleCancel,
-		closeDone:          make(chan struct{}),
-		healthTicker:       time.NewTicker(healthCheckInterval),
-		stopHealth:         make(chan struct{}),
-		failureTracker:     make(map[int]*failureInfo),
-		decryptionTracker:  make(map[int]*decryptionErrorInfo),
+		clients:           make(map[int]*Client),
+		stateCommit:       semaphore.NewWeighted(1),
+		instanceStore:     instanceStore,
+		errorStore:        errorStore,
+		cache:             cache,
+		clientTimeout:     clientTimeout,
+		creationLocks:     make(map[int]*semaphore.Weighted),
+		lifecycleCtx:      lifecycleCtx,
+		lifecycleCancel:   lifecycleCancel,
+		closeDone:         make(chan struct{}),
+		healthTicker:      time.NewTicker(healthCheckInterval),
+		stopHealth:        make(chan struct{}),
+		failureTracker:    make(map[int]*failureInfo),
+		decryptionTracker: make(map[int]*decryptionErrorInfo),
 	}
 
 	// Start health check routine
@@ -207,9 +208,10 @@ func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
 	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
 }
 
-// SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
-func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks for new and existing clients when torrents complete.
+func (cp *ClientPool) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	cp.mu.Lock()
+	cp.completionNotify = notify
 	cp.completionHandler = handler
 
 	clients := make([]*Client, 0, len(cp.clients))
@@ -219,7 +221,7 @@ func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandl
 	cp.mu.Unlock()
 
 	for _, client := range clients {
-		client.SetTorrentCompletionHandler(handler)
+		client.SetTorrentCompletionHandler(notify, handler)
 	}
 }
 
@@ -268,7 +270,7 @@ func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sink SyncEv
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
-func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
+func (cp *ClientPool) getInstanceLock(instanceID int) *semaphore.Weighted {
 	cp.creationMu.Lock()
 	defer cp.creationMu.Unlock()
 
@@ -276,7 +278,7 @@ func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
 		return lock
 	}
 
-	lock := &sync.Mutex{}
+	lock := semaphore.NewWeighted(1)
 	cp.creationLocks[instanceID] = lock
 	return lock
 }
@@ -332,13 +334,13 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 		// lock the create path uses) so a burst runs ONE health check and records
 		// ONE failure per backoff window, instead of each caller advancing the
 		// backoff and inflating it toward maxBackoff far faster than the real
-		// outage. TryLock, not Lock: a queued caller must be able to honor its own
+		// outage. TryAcquire, not Acquire: a queued caller must be able to honor its own
 		// context rather than block behind a slow probe. See discussion #2096.
 		instanceLock := cp.getInstanceLock(instanceID)
-		if !instanceLock.TryLock() {
+		if !instanceLock.TryAcquire(1) {
 			return nil, &InstanceHealthBlockerError{Kind: InstanceHealthBlockerHealthCheckInProgress, InstanceID: instanceID}
 		}
-		defer instanceLock.Unlock()
+		defer instanceLock.Release(1)
 
 		// Re-check: a probe that finished just before we acquired the lock may
 		// have recovered the client or already recorded the failure.
@@ -370,10 +372,22 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 }
 
 // createClientWithTimeout creates a new client connection with custom timeout
-func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
+func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (result *Client, err error) {
+	creationCtx, cancelCreation := context.WithCancel(ctx)
+	stopLifecycleCancel := context.AfterFunc(cp.lifecycleCtx, cancelCreation)
+	defer func() {
+		stopLifecycleCancel()
+		cancelCreation()
+		if cp.lifecycleCtx.Err() != nil {
+			result, err = nil, ErrPoolClosed
+		}
+	}()
+
 	instanceLock := cp.getInstanceLock(instanceID)
-	instanceLock.Lock()
-	defer instanceLock.Unlock()
+	if err := instanceLock.Acquire(creationCtx, 1); err != nil {
+		return nil, err
+	}
+	defer instanceLock.Release(1)
 
 	cp.mu.Lock()
 	if cp.closed {
@@ -401,13 +415,6 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	lifecycleCtx := cp.lifecycleCtx
 	cp.mu.Unlock()
 	defer cp.creations.Done()
-
-	creationCtx, cancelCreation := context.WithCancel(ctx)
-	stopLifecycleCancel := context.AfterFunc(lifecycleCtx, cancelCreation)
-	defer func() {
-		stopLifecycleCancel()
-		cancelCreation()
-	}()
 
 	// Get instance details
 	instance, err := cp.instanceStore.Get(creationCtx, instanceID)
@@ -454,16 +461,13 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	client, err := NewClientWithTimeout(creationCtx, instanceID, instance.Host, instance.Username, password, apiKey, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout, cp.clientTimeout)
 	if err != nil {
 		// Without an authenticated client, a login deadline needs backoff rather than another full login.
-		if ctx.Err() != context.Canceled && !isContextStopped(err) {
+		if shouldTrackFailure(ctx, err) {
 			failure := err
 			if IsDeadlineExpired(err) {
 				// Persist a connection failure, rather than an operational context error the store ignores.
 				failure = errors.New("qBittorrent login timed out: " + err.Error())
 			}
 			cp.trackFailure(instanceID, failure)
-		}
-		if lifecycleCtx.Err() != nil {
-			return nil, ErrPoolClosed
 		}
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
@@ -483,34 +487,25 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	}
 
 	// Close marks the pool closed before waiting, so publication cannot follow shutdown.
-	if err := cp.failurePersistence.Acquire(lifecycleCtx, 1); err != nil {
-		return nil, ErrPoolClosed
+	if !cp.lockState(creationCtx) {
+		return nil, creationCtx.Err()
 	}
-	cp.mu.Lock()
-	if cp.closed {
+	if err := ctx.Err(); isContextStopped(err) {
 		cp.mu.Unlock()
-		cp.failurePersistence.Release(1)
-		return nil, ErrPoolClosed
-	}
-	if err := ctx.Err(); err == context.Canceled {
-		cp.mu.Unlock()
-		cp.failurePersistence.Release(1)
+		cp.stateCommit.Release(1)
 		return nil, err
 	}
 	if cp.syncEventSinkSeq != sinkSeq {
 		client.SetSyncEventSink(cp.syncEventSink)
 	}
-	client.SetTorrentCompletionHandler(cp.completionHandler)
+	client.SetTorrentCompletionHandler(cp.completionNotify, cp.completionHandler)
 	client.SetTorrentAddedHandler(cp.addedHandler)
 	cp.clients[instanceID] = client
 	cp.resetFailureTrackingLocked(instanceID)
 	sm := cp.syncManager
 	cp.mu.Unlock()
 	cp.clearInstanceErrors(lifecycleCtx, instanceID)
-	cp.failurePersistence.Release(1)
-	if lifecycleCtx.Err() != nil {
-		return nil, ErrPoolClosed
-	}
+	cp.stateCommit.Release(1)
 
 	if sm != nil {
 		sm.StartTrackerHealthRefresh(instanceID)
@@ -546,7 +541,9 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 	// This prevents a race where StartTrackerHealthRefresh could be called
 	// after StopTrackerHealthRefresh for the same instance.
 	instanceLock := cp.getInstanceLock(instanceID)
-	instanceLock.Lock()
+	if err := instanceLock.Acquire(cp.lifecycleCtx, 1); err != nil {
+		return
+	}
 
 	cp.mu.Lock()
 	delete(cp.clients, instanceID)
@@ -558,7 +555,7 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 		sm.StopTrackerHealthRefresh(instanceID)
 	}
 
-	instanceLock.Unlock()
+	instanceLock.Release(1)
 
 	log.Info().Int("instanceID", instanceID).Msg("Removed client from pool")
 }
@@ -665,13 +662,11 @@ func (cp *ClientPool) Close() error {
 	// detaching clients or stopping their auxiliary workers.
 	cp.creations.Wait()
 	// Failure writes use the lifecycle context; join them before clearing their state.
-	if err := cp.failurePersistence.Acquire(context.Background(), 1); err != nil {
-		return err
-	}
-	defer cp.failurePersistence.Release(1)
+	_ = cp.stateCommit.Acquire(context.Background(), 1)
+	defer cp.stateCommit.Release(1)
 
 	cp.mu.Lock()
-	// Collect instance IDs and syncManager reference before releasing lock.
+	// Collect instance IDs and syncManager reference before releasing lock
 	instanceIDs := make([]int, 0, len(cp.clients))
 	for id := range cp.clients {
 		instanceIDs = append(instanceIDs, id)
@@ -728,22 +723,37 @@ func (cp *ClientPool) backoffRemainingLocked(instanceID int) time.Duration {
 	return remaining
 }
 
+// lockState holds mu and the commit gate on success; callers release mu before I/O.
+func (cp *ClientPool) lockState(ctx context.Context) bool {
+	// An expired sync budget may publish immediately, but cannot wait on persistence.
+	if !cp.stateCommit.TryAcquire(1) {
+		if err := cp.stateCommit.Acquire(ctx, 1); err != nil {
+			return false
+		}
+	}
+	cp.mu.Lock()
+	if cp.closed {
+		cp.mu.Unlock()
+		cp.stateCommit.Release(1)
+		return false
+	}
+	return true
+}
+
+func shouldTrackFailure(ctx context.Context, err error) bool {
+	return ctx.Err() == nil && !isContextStopped(err)
+}
+
 func shouldTrackProbeFailure(ctx context.Context, err error) bool {
-	return ctx.Err() == nil && !isContextStopped(err) && !IsDeadlineExpired(err)
+	return shouldTrackFailure(ctx, err) && !IsDeadlineExpired(err)
 }
 
 // trackFailure records a failure and applies exponential backoff
 func (cp *ClientPool) trackFailure(instanceID int, err error) {
-	if err := cp.failurePersistence.Acquire(cp.lifecycleCtx, 1); err != nil {
+	if !cp.lockState(cp.lifecycleCtx) {
 		return
 	}
-	defer cp.failurePersistence.Release(1)
-
-	cp.mu.Lock()
-	if cp.closed {
-		cp.mu.Unlock()
-		return
-	}
+	defer cp.stateCommit.Release(1)
 
 	info, exists := cp.failureTracker[instanceID]
 	if !exists {
@@ -782,16 +792,10 @@ func (cp *ClientPool) calculateBackoff(attempts int, initialDuration, maxDuratio
 
 // ResetFailureTracking clears failure tracking for successful connections or explicit user actions
 func (cp *ClientPool) ResetFailureTracking(instanceID int) {
-	if err := cp.failurePersistence.Acquire(cp.lifecycleCtx, 1); err != nil {
+	if !cp.lockState(cp.lifecycleCtx) {
 		return
 	}
-	defer cp.failurePersistence.Release(1)
-
-	cp.mu.Lock()
-	if cp.closed {
-		cp.mu.Unlock()
-		return
-	}
+	defer cp.stateCommit.Release(1)
 	cp.resetFailureTrackingLocked(instanceID)
 	cp.mu.Unlock()
 	cp.clearInstanceErrors(cp.lifecycleCtx, instanceID)
@@ -800,19 +804,19 @@ func (cp *ClientPool) ResetFailureTracking(instanceID int) {
 func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 	if _, exists := cp.failureTracker[instanceID]; exists {
 		delete(cp.failureTracker, instanceID)
-		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking")
 	}
 
-	// Also reset decryption error tracking on successful connection
+	// Also reset decryption error tracking
 	if _, exists := cp.decryptionTracker[instanceID]; exists {
 		delete(cp.decryptionTracker, instanceID)
-		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking")
 	}
 }
 
 // clearInstanceErrors runs outside cp.mu so database delays do not block pool readers.
 func (cp *ClientPool) clearInstanceErrors(ctx context.Context, instanceID int) {
-	// Always clear errors from database on successful connection
+	// Always clear errors from database
 	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()

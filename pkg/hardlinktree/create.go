@@ -74,9 +74,14 @@ func mkdirAllTracked(dir string, created *[]string) error {
 // a link to the source.
 var ErrTargetExists = errors.New("target already exists")
 
-// targetSatisfiesPlan reports whether fp's target already is a hardlink to its
-// source, so Create can skip it. A target holding anything else is the
-// collision ErrTargetExists names.
+// targetSatisfiesPlan reports whether fp's target already is the hardlink
+// that Create would make, so Create can skip it. A target holding anything
+// else is the collision ErrTargetExists names.
+//
+// The target is read without following, so a symlink planted there reports
+// its own inode and never passes. The source is matched both ways: link(2)
+// follows a symlinked source on macOS and not on Linux, so the link an
+// earlier run made carries either identity depending on the host.
 func targetSatisfiesPlan(fp FilePlan) (bool, error) {
 	info, err := os.Lstat(fp.TargetPath)
 	if err != nil {
@@ -85,9 +90,8 @@ func targetSatisfiesPlan(fp FilePlan) (bool, error) {
 		}
 		return false, fmt.Errorf("check target %s: %w", fp.TargetPath, err)
 	}
-	if info.Mode().IsRegular() {
-		srcInfo, srcErr := os.Stat(fp.SourcePath)
-		if srcErr == nil && os.SameFile(srcInfo, info) {
+	for _, stat := range []func(string) (os.FileInfo, error){os.Lstat, os.Stat} {
+		if srcInfo, srcErr := stat(fp.SourcePath); srcErr == nil && os.SameFile(srcInfo, info) {
 			return true, nil
 		}
 	}
