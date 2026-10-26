@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -110,66 +111,70 @@ func TestPoolWaiterHonoursContext(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+	listener := sshtest.NewHangingListener(t)
+	inst := pinnedInstanceAt(t, listener.Addr)
 	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	// Bounds the first dial, so a waiter that does not honour its ctx fails
+	// the test instead of hanging it.
 	pool.dialer.timeout = 2 * time.Second
 
+	firstCtx, cancelFirst := context.WithCancel(t.Context())
+	defer cancelFirst()
 	first := make(chan error, 1)
 	go func() {
-		_, err := pool.SFTP(t.Context(), inst)
+		_, err := pool.SFTP(firstCtx, inst)
 		first <- err
 	}()
-	// Let the first caller take the entry and block in the handshake.
-	require.Eventually(t, func() bool {
-		pool.mu.Lock()
-		defer pool.mu.Unlock()
-		entry := pool.conns[inst.ID]
-		return entry != nil && len(entry.sem) == 1
-	}, time.Second, 10*time.Millisecond)
+	// The first caller holds the entry while it waits in the handshake.
+	<-listener.Accepted
 
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-	start := time.Now()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	_, err := pool.SFTP(ctx, inst)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(start), time.Second, "the waiter must not sit out the other caller's dial")
+	require.ErrorIs(t, err, context.Canceled)
+	select {
+	case err := <-first:
+		t.Fatalf("the first dial ended before the waiter gave up: %v", err)
+	default:
+	}
 
-	require.Error(t, <-first, "the hanging handshake fails on the dialer's own deadline")
+	cancelFirst()
+	require.ErrorIs(t, <-first, context.Canceled)
 }
 
 // A caller that was already waiting on the entry when Close ran must not dial
 // through the orphaned entry afterwards, whichever of the two took the entry
-// first.
+// first. The test holds the entry, as a dial in progress does, so the bubble
+// can see the waiter and Close queue on it.
 func TestPoolCloseRefusesAWaitingCaller(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
-	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
-	pool.dialer.timeout = time.Second
+	addr := sshtest.DeadAddr(t)
+	synctest.Test(t, func(t *testing.T) {
+		inst := pinnedInstanceAt(t, addr)
+		pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+		entry := newEntry()
+		pool.conns[inst.ID] = entry
+		require.NoError(t, entry.lock(t.Context()))
 
-	first := make(chan error, 1)
-	go func() {
-		_, err := pool.SFTP(t.Context(), inst)
-		first <- err
-	}()
-	require.Eventually(t, func() bool {
-		pool.mu.Lock()
-		defer pool.mu.Unlock()
-		entry := pool.conns[inst.ID]
-		return entry != nil && len(entry.sem) == 1
-	}, time.Second, 10*time.Millisecond)
+		waiter := make(chan error, 1)
+		go func() {
+			_, err := pool.SFTP(t.Context(), inst)
+			waiter <- err
+		}()
+		synctest.Wait()
+		closed := make(chan struct{})
+		go func() {
+			pool.Close()
+			close(closed)
+		}()
+		synctest.Wait()
+		entry.unlock()
 
-	waiter := make(chan error, 1)
-	go func() {
-		_, err := pool.SFTP(t.Context(), inst)
-		waiter <- err
-	}()
-	time.Sleep(50 * time.Millisecond) // let the waiter queue on the entry
-	pool.Close()
-
-	require.Error(t, <-first)
-	require.ErrorIs(t, <-waiter, ErrPoolClosed, "a caller queued behind Close must not dial through the orphaned entry")
+		require.ErrorIs(t, <-waiter, ErrPoolClosed, "a caller queued behind Close must not dial through the orphaned entry")
+		<-closed
+	})
 }
 
 func TestPoolReusesConnection(t *testing.T) {
@@ -303,7 +308,7 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
 	t.Parallel()
 
-	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t).Addr)
 	pool := poolFor(sshtest.NewSigner().PublicKey().Marshal(), inst)
 	pool.dialer.timeout = 2 * time.Second
 	t.Cleanup(pool.Close)

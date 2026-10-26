@@ -26,34 +26,17 @@ func writeWideTree(t *testing.T, root string, dirs int) {
 	}
 }
 
-// Compare with a serial walk of the same tree and connection. Measuring the
-// control avoids assuming that the runner delivers the configured latency
-// exactly, especially with Windows timer granularity and shared runner load.
+// The latency gives the workers time to overlap their round trips, which the
+// server counts.
 func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	const dirs, latency = 48, 25 * time.Millisecond
+	const dirs = 16
 	b, server := newBackend(t)
-	server.SetLatency(latency)
+	server.SetLatency(25 * time.Millisecond)
 	dir := t.TempDir()
 	writeWideTree(t, dir, dirs)
-	// Both timers must use an established SSH/SFTP connection.
-	_, err := b.Stat(t.Context(), remotePath(dir))
-	require.NoError(t, err)
 
-	start := time.Now()
-	siblings, err := b.ReadDir(t.Context(), remotePath(dir))
-	require.NoError(t, err)
-	serialEntries := 1 + len(siblings)
-	for _, sibling := range siblings {
-		children, err := b.ReadDir(t.Context(), remotePath(dir, sibling.Name))
-		require.NoError(t, err)
-		serialEntries += len(children)
-	}
-	serialElapsed := time.Since(start)
-	require.Equal(t, 1+2*dirs, serialEntries)
-
-	start = time.Now()
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
 	n := 0
@@ -61,11 +44,10 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 		require.NoError(t, entry.Err)
 		n++
 	}
-	elapsed := time.Since(start)
-	t.Logf("%d directories at %v latency: walked %d entries in %v (serial control %v)", dirs, latency, n, elapsed.Round(time.Millisecond), serialElapsed.Round(time.Millisecond))
 
 	assert.Equal(t, 1+2*dirs, n)
-	assert.Less(t, elapsed, serialElapsed/2, "siblings must be walked concurrently")
+	assert.Greater(t, server.MaxInFlight(), 1, "siblings must be walked concurrently")
+	assert.LessOrEqual(t, server.MaxInFlight(), walkWorkers, "one request in flight for each worker")
 }
 
 // The contract that survives concurrency: entries within one directory are
@@ -100,11 +82,13 @@ func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	assert.Equal(t, []string{"a", "z"}, byDir["b"])
 }
 
-// walkGoroutines counts goroutines still inside walk or the walker.
+// walkGoroutines counts goroutines still inside walk or the walker. The
+// context.AfterFunc callback of walk is left out: it only wakes the workers,
+// and it can still be running after walk returns.
 func walkGoroutines() int {
 	buf := make([]byte, 1<<20)
 	stacks := string(buf[:runtime.Stack(buf, true)])
-	return strings.Count(stacks, "fsops/remote.(*Backend).walk") + strings.Count(stacks, "fsops/remote.(*walker)")
+	return strings.Count(stacks, "fsops/remote.(*Backend).walk(") + strings.Count(stacks, "fsops/remote.(*walker)")
 }
 
 // A cancelled walk ends every goroutine it started, whether the consumer
@@ -137,7 +121,7 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 			tt.stop(b, cancel)
 			for range ch { //nolint:revive // drain
 			}
-			assert.Eventually(t, func() bool { return walkGoroutines() == 0 }, 2*time.Second, 10*time.Millisecond, "walker goroutines left after the walk stopped")
+			assert.Zero(t, walkGoroutines(), "walker goroutines left after the walk closed its channel")
 		})
 	}
 }

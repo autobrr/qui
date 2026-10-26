@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -50,6 +51,8 @@ type orphanOnlyOptions struct {
 	// when nil.
 	savePath    func(defaultSavePath string) string
 	ignorePaths func(defaultSavePath string) []string
+	// events, when set, gets the notifications of the service.
+	events chan notifications.Event
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -84,7 +87,11 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	if opts.wrapBackend != nil {
 		backend = opts.wrapBackend(backend, defaultSavePath)
 	}
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, backend))
+	var notifier notifications.Notifier
+	if opts.events != nil {
+		notifier = scanNotifier{events: opts.events}
+	}
+	svc := NewService(DefaultConfig(), nil, store, nil, notifier, fsops.NewPool(stubInstanceGetter{}, backend))
 	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
@@ -486,9 +493,11 @@ func TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed(t *testing.
 // a threshold the settings describe as a file count.
 func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T) {
 	var orphans, dirs []string
+	events := make(chan notifications.Event, 1)
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-autocleanup", orphanOnlyOptions{
 		scheduled:           true,
 		autoCleanupMaxFiles: 2,
+		events:              events,
 	}, func(defaultSavePath string) {
 		for _, name := range []string{"one", "two"} {
 			dir := filepath.Join(defaultSavePath, name)
@@ -497,10 +506,13 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 			writeFile(t, orphans[len(orphans)-1])
 		}
 	})
-	require.Eventually(t, func() bool {
-		run, err := f.store.GetRun(t.Context(), f.runID)
-		return err == nil && run.Status == "completed"
-	}, 10*time.Second, 50*time.Millisecond, "two orphan files are within a threshold of two, whatever their directories add")
+	// A preview sends no notification, so the first one is the cleanup's.
+	select {
+	case event := <-events:
+		require.Equal(t, notifications.EventOrphanScanCompleted, event.Type, "run error: %s", event.ErrorMessage)
+	case <-time.After(10 * time.Second):
+		t.Fatal("two orphan files are within a threshold of two, whatever their directories add")
+	}
 
 	// Two files and two directories: four entries, two of them files.
 	entries, err := f.store.ListFiles(t.Context(), f.runID, 100, 0, "size_desc")
