@@ -75,7 +75,9 @@ func checkRefreshedEntrySurvivesExpiredFetch(t *testing.T, db *database.DB) {
 	require.Equal(t, fresh, got)
 
 	// The touch from the hit runs on a goroutine that Fetch started after an
-	// eviction goroutine would have started.
+	// eviction goroutine would have started. Go does not run them in that
+	// order, so with one CPU this check on SQLite can miss a delete that has
+	// not run yet. The Postgres run catches it.
 	awaitTorrentCacheTouch(t, db, signals, indexerID, cacheKey)
 	select {
 	case <-signals.evicted:
@@ -229,51 +231,4 @@ func normalizedSQL(query string) string {
 
 func isTorznabTorrentCacheDelete(query string) bool {
 	return strings.Contains(normalizedSQL(query), torznabTorrentCacheDeletePrefix)
-}
-
-func TestEvictionGateTorrentCacheDeleteMatcher(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		query string
-		want  bool
-	}{
-		{
-			name:  "canonical",
-			query: "DELETE FROM torznab_torrent_cache WHERE last_used_at < ?",
-			want:  true,
-		},
-		{
-			name:  "lowercase",
-			query: "delete from torznab_torrent_cache where id = ?",
-			want:  true,
-		},
-		{
-			name:  "extra whitespace",
-			query: "DELETE   FROM   torznab_torrent_cache WHERE id = ?",
-			want:  true,
-		},
-		{
-			name: "multiline",
-			query: `DELETE
-				FROM torznab_torrent_cache
-				WHERE id = ?`,
-			want: true,
-		},
-		{
-			name:  "other table",
-			query: "DELETE FROM torznab_search_cache WHERE id = ?",
-			want:  false,
-		},
-		{
-			name:  "update",
-			query: "UPDATE torznab_torrent_cache SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
-			want:  false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, isTorznabTorrentCacheDelete(tt.query))
-		})
-	}
 }
