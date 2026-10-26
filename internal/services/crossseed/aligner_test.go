@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -142,81 +143,91 @@ func testAligner(sync alignerSync) *Aligner {
 func TestAligner_Align_RenamesFilesThenFolder(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{
-		hash: alignerHash,
-		files: qbt.TorrentFiles{
-			{Name: "Old.Root/movie.mkv"},
-			{Name: "Old.Root/movie.nfo"},
-		},
-	}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{
+			hash: alignerHash,
+			files: qbt.TorrentFiles{
+				{Name: "Old.Root/movie.mkv"},
+				{Name: "Old.Root/movie.nfo"},
+			},
+		}
 
-	ok := testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
-		Files:      []FileRename{{OldPath: "Old.Root/movie.mkv", NewPath: "Old.Root/Movie (2020).mkv"}},
-		FolderFrom: "Old.Root",
-		FolderTo:   "Movie (2020)",
+		ok := NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+			Files:      []FileRename{{OldPath: "Old.Root/movie.mkv", NewPath: "Old.Root/Movie (2020).mkv"}},
+			FolderFrom: "Old.Root",
+			FolderTo:   "Movie (2020)",
+		})
+
+		require.True(t, ok)
+		require.Equal(t, []string{
+			"file:Old.Root/movie.mkv>Old.Root/Movie (2020).mkv",
+			"folder:Old.Root>Movie (2020)",
+		}, fake.renames)
+		require.Equal(t, []string{"Movie (2020)/Movie (2020).mkv", "Movie (2020)/movie.nfo"}, fake.names())
 	})
-
-	require.True(t, ok)
-	require.Equal(t, []string{
-		"file:Old.Root/movie.mkv>Old.Root/Movie (2020).mkv",
-		"folder:Old.Root>Movie (2020)",
-	}, fake.renames)
-	require.Equal(t, []string{"Movie (2020)/Movie (2020).mkv", "Movie (2020)/movie.nfo"}, fake.names())
 }
 
 func TestAligner_Align_WaitsForAsyncRename(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, lagReads: 3}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, lagReads: 3}
 
-	ok := testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
-		Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		ok := NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+			Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		})
+
+		require.True(t, ok)
+		require.Equal(t, []string{"file:a.mkv>b.mkv"}, fake.renames)
 	})
-
-	require.True(t, ok)
-	require.Equal(t, []string{"file:a.mkv>b.mkv"}, fake.renames)
 }
 
 func TestAligner_Align_RetriesDroppedRenames(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Old/a.mkv"}}, dropRenames: 2}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Old/a.mkv"}}, dropRenames: 2}
 
-	ok := testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{FolderFrom: "Old", FolderTo: "New"})
+		ok := NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{FolderFrom: "Old", FolderTo: "New"})
 
-	require.True(t, ok)
-	require.Equal(t, []string{"folder:Old>New", "folder:Old>New", "folder:Old>New"}, fake.renames)
-	require.Equal(t, []string{"New/a.mkv"}, fake.names())
+		require.True(t, ok)
+		require.Equal(t, []string{"folder:Old>New", "folder:Old>New", "folder:Old>New"}, fake.renames)
+		require.Equal(t, []string{"New/a.mkv"}, fake.names())
+	})
 }
 
 func TestAligner_Align_FailsAfterThreeDroppedRenames(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, dropRenames: 3}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, dropRenames: 3}
 
-	ok := testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
-		Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		ok := NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+			Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		})
+
+		require.False(t, ok)
+		require.Len(t, fake.renames, 3)
 	})
-
-	require.False(t, ok)
-	require.Len(t, fake.renames, 3)
 }
 
 func TestAligner_Align_AcceptsAPIErrorWhenListShowsNewName(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{
-		hash:      alignerHash,
-		files:     qbt.TorrentFiles{{Name: "b.mkv"}},
-		renameErr: errors.New("invalid newPath or oldPath, or newPath already in use"),
-	}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{
+			hash:      alignerHash,
+			files:     qbt.TorrentFiles{{Name: "b.mkv"}},
+			renameErr: errors.New("invalid newPath or oldPath, or newPath already in use"),
+		}
 
-	ok := testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
-		Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		ok := NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+			Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		})
+
+		require.True(t, ok)
+		require.Len(t, fake.renames, 1)
 	})
-
-	require.True(t, ok)
-	require.Len(t, fake.renames, 1)
 }
 
 func TestAligner_Align_UnreadableFileListIsNotConfirmed(t *testing.T) {
@@ -234,15 +245,17 @@ func TestAligner_Align_UnreadableFileListIsNotConfirmed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fake := &alignerFake{
-				hash:      alignerHash,
-				files:     qbt.TorrentFiles{{Name: "Old/a.mkv"}},
-				filesErr:  errors.New("file list unavailable"),
-				renameErr: tt.renameErr,
-			}
+			synctest.Test(t, func(t *testing.T) {
+				fake := &alignerFake{
+					hash:      alignerHash,
+					files:     qbt.TorrentFiles{{Name: "Old/a.mkv"}},
+					filesErr:  errors.New("file list unavailable"),
+					renameErr: tt.renameErr,
+				}
 
-			require.False(t, testAligner(fake).Align(t.Context(), 1, alignerHash, tt.plan))
-			require.Len(t, fake.renames, 3)
+				require.False(t, NewAligner(fake).Align(t.Context(), 1, alignerHash, tt.plan))
+				require.Len(t, fake.renames, 3)
+			})
 		})
 	}
 }
@@ -260,9 +273,11 @@ func TestAligner_Align_ListWithNeitherPathIsNotConfirmed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Other/c.mkv"}}}
+			synctest.Test(t, func(t *testing.T) {
+				fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Other/c.mkv"}}}
 
-			require.False(t, testAligner(fake).Align(t.Context(), 1, alignerHash, tt.plan))
+				require.False(t, NewAligner(fake).Align(t.Context(), 1, alignerHash, tt.plan))
+			})
 		})
 	}
 }
@@ -273,70 +288,80 @@ func TestAligner_Align_FailureWarningNamesTheRenameError(t *testing.T) {
 	log.Logger = zerolog.New(&buf).Level(zerolog.WarnLevel)
 	t.Cleanup(func() { log.Logger = previousLogger })
 
-	fake := &alignerFake{
-		hash:      alignerHash,
-		files:     qbt.TorrentFiles{{Name: "a.mkv"}},
-		renameErr: errors.New("invalid newPath or oldPath, or newPath already in use"),
-	}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{
+			hash:      alignerHash,
+			files:     qbt.TorrentFiles{{Name: "a.mkv"}},
+			renameErr: errors.New("invalid newPath or oldPath, or newPath already in use"),
+		}
 
-	require.False(t, testAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
-		Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
-	}))
-	require.Contains(t, buf.String(), `"error":"invalid newPath or oldPath, or newPath already in use"`)
+		require.False(t, NewAligner(fake).Align(t.Context(), 1, alignerHash, AlignmentPlan{
+			Files: []FileRename{{OldPath: "a.mkv", NewPath: "b.mkv"}},
+		}))
+		require.Contains(t, buf.String(), `"error":"invalid newPath or oldPath, or newPath already in use"`)
+	})
 }
 
 func TestAligner_Align_IgnoresRunContextCancel(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Old/a.mkv"}}}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "Old/a.mkv"}}}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
 
-	ok := testAligner(fake).Align(ctx, 1, alignerHash, AlignmentPlan{
-		Files:      []FileRename{{OldPath: "Old/a.mkv", NewPath: "Old/b.mkv"}},
-		FolderFrom: "Old",
-		FolderTo:   "New",
+		ok := NewAligner(fake).Align(ctx, 1, alignerHash, AlignmentPlan{
+			Files:      []FileRename{{OldPath: "Old/a.mkv", NewPath: "Old/b.mkv"}},
+			FolderFrom: "Old",
+			FolderTo:   "New",
+		})
+
+		require.True(t, ok)
+		require.Equal(t, []string{"New/b.mkv"}, fake.names())
 	})
-
-	require.True(t, ok)
-	require.Equal(t, []string{"New/b.mkv"}, fake.names())
 }
 
 func TestAligner_WaitForFiles_WaitsUntilTorrentIsListed(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, hiddenReads: 3}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, hiddenReads: 3}
 
-	hash, files, ok := testAligner(fake).WaitForFiles(t.Context(), 1, []string{strings.ToUpper(alignerHash)})
+		hash, files, ok := NewAligner(fake).WaitForFiles(t.Context(), 1, []string{strings.ToUpper(alignerHash)})
 
-	require.True(t, ok)
-	require.Equal(t, alignerHash, hash)
-	require.Equal(t, qbt.TorrentFiles{{Name: "a.mkv"}}, files)
-	require.Equal(t, 4, fake.filesCalls)
+		require.True(t, ok)
+		require.Equal(t, alignerHash, hash)
+		require.Equal(t, qbt.TorrentFiles{{Name: "a.mkv"}}, files)
+		require.Equal(t, 4, fake.filesCalls)
+	})
 }
 
 func TestAligner_WaitForFiles_FindsV2OnlyTorrentByTruncatedHash(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHashV2[:40], files: qbt.TorrentFiles{{Name: "a.mkv"}}}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHashV2[:40], files: qbt.TorrentFiles{{Name: "a.mkv"}}}
 
-	hash, _, ok := testAligner(fake).WaitForFiles(t.Context(), 1, []string{alignerHashV2})
+		hash, _, ok := NewAligner(fake).WaitForFiles(t.Context(), 1, []string{alignerHashV2})
 
-	require.True(t, ok)
-	require.Equal(t, alignerHashV2[:40], hash)
+		require.True(t, ok)
+		require.Equal(t, alignerHashV2[:40], hash)
+	})
 }
 
 func TestAligner_WaitForFiles_GivesUpWhenTorrentNeverListed(t *testing.T) {
 	t.Parallel()
 
-	fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, hiddenReads: 1 << 30}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	synctest.Test(t, func(t *testing.T) {
+		fake := &alignerFake{hash: alignerHash, files: qbt.TorrentFiles{{Name: "a.mkv"}}, hiddenReads: 1 << 30}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
 
-	hash, files, ok := testAligner(fake).WaitForFiles(ctx, 1, []string{alignerHash})
+		hash, files, ok := NewAligner(fake).WaitForFiles(ctx, 1, []string{alignerHash})
 
-	require.False(t, ok)
-	require.Empty(t, hash)
-	require.Empty(t, files)
-	require.Greater(t, fake.filesCalls, 1, "a cancelled run context must not end the wait")
+		require.False(t, ok)
+		require.Empty(t, hash)
+		require.Empty(t, files)
+		require.Greater(t, fake.filesCalls, 1, "a cancelled run context must not end the wait")
+	})
 }

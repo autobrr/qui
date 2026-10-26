@@ -283,7 +283,6 @@ const (
 	// file is an irrelevant sidecar, never auto-resume above this much missing data.
 	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
 	minSearchIntervalSecondsTorznab       = 60
-	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
 	maxCompletionCheckingAttempts         = 3
 	torznabCrossSeedSearchLimit           = 100
@@ -311,6 +310,10 @@ var newGazelleClient = gazellemusic.NewClient
 // searches run one at a time for each instance, so without it a slow RED/OPS
 // queue holds back every completion. Tests shorten it.
 var gazelleSearchTimeout = 45 * time.Second
+
+// minSearchIntervalSecondsGazelleOnly is the shortest wait between two
+// candidates of a Library Scan that searches only RED/OPS. Tests shorten it.
+var minSearchIntervalSecondsGazelleOnly = 5
 
 func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 	if limit <= 0 {
