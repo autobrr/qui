@@ -47,9 +47,13 @@ func (g *hashFilteringSyncManager) GetTorrents(_ context.Context, _ int, opts qb
 
 // newSearchRunLoopFixture builds a Service with a running search-run state
 // backed by a migrated SQLite store, ready for searchRunLoop. Gazelle match
-// lookups are stubbed to find nothing.
+// lookups are stubbed to find nothing, and the run does not wait between
+// candidates.
 func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilteringSyncManager) (*Service, *searchRunState) {
 	t.Helper()
+	prevInterval := minSearchIntervalSecondsGazelleOnly
+	minSearchIntervalSecondsGazelleOnly = 0
+	t.Cleanup(func() { minSearchIntervalSecondsGazelleOnly = prevInterval })
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, dbName)
 
@@ -82,7 +86,7 @@ func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilte
 	require.NoError(t, err)
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 1},
+		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
 	}
 	state.gazelleClients = clients
 
@@ -109,7 +113,6 @@ func runSearchLoopToCompletion(t *testing.T, svc *Service, state *searchRunState
 		close(done)
 	}()
 
-	// Gazelle-only runs wait minSearchIntervalSecondsGazelleOnly after a candidate that sent a request.
 	select {
 	case <-done:
 	case <-time.After(15 * time.Second):

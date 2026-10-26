@@ -1809,9 +1809,10 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 		Results:         []models.CrossSeedSearchResult{},
 	})
 	require.NoError(t, err)
+	// A 60 s interval outlasts the 5 s guard, so a wrong sleep fails the test.
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 1},
+		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 60},
 		queue: []qbt.Torrent{
 			sourceTorrent,
 		},
@@ -1856,14 +1857,11 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 		close(done)
 	}()
 
-	require.Eventually(t, func() bool {
-		select {
-		case <-done:
-			return true
-		default:
-			return false
-		}
-	}, 2*time.Second, 10*time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("search run loop did not finish")
+	}
 
 	svc.searchMu.Lock()
 	processed := state.run.Processed
@@ -2069,14 +2067,11 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 	}()
 
 	defer cancel()
-	require.Eventually(t, func() bool {
-		select {
-		case <-done:
-			return true
-		default:
-			return false
-		}
-	}, 2*time.Second, 10*time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("search run loop did not finish")
+	}
 
 	svc.searchMu.Lock()
 	nextWake := state.nextWake
@@ -2246,14 +2241,11 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 		close(done)
 	}()
 
-	require.Eventually(t, func() bool {
-		select {
-		case <-done:
-			return true
-		default:
-			return false
-		}
-	}, 2*time.Second, 10*time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("search run loop did not finish")
+	}
 
 	svc.searchMu.Lock()
 	nextWake := state.nextWake
