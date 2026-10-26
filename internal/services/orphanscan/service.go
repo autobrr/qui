@@ -87,9 +87,13 @@ type Service struct {
 	instanceMu map[int]*sync.Mutex
 	// Per-instance mutex around run creation only, never held during a scan
 	triggerMu map[int]*sync.Mutex
-	// Per-instance mutex around an SSH change and the start of a deletion
+	// Per-instance mutex around an SSH change, the start of a deletion and the
+	// instance read of a scan
 	sshMu map[int]*sync.Mutex
 	mu    sync.Mutex // protects instanceMu, triggerMu and sshMu maps
+	// beforeDeletionStart, when set, runs under the SSH lock just before a
+	// deletion starts. Nil outside tests.
+	beforeDeletionStart func()
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
@@ -610,12 +614,15 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	return nil
 }
 
-// ChangeSSH runs change, which stores new SSH settings for the instance, and
-// then fails the instance's remote previews. A running deletion redials with
-// the stored settings, so it returns ErrDeletionInProgress without running
-// change while a deletion runs. A deletion starts under the same lock, so a
-// change either fails the preview before the run starts or sees it deleting.
-// A failure to fail the previews is logged, since the change is stored.
+// ChangeSSH runs change, which stores new SSH settings for the instance and
+// drops its pooled connection, and then fails the instance's remote previews.
+// A running deletion redials with the stored settings, so it returns
+// ErrDeletionInProgress without running change while a deletion runs. A
+// deletion starts under the same lock, so a change either fails the preview
+// before the run starts or sees it deleting. A scan reads the instance under
+// the same lock too, so it never pairs the new settings with the old
+// connection. A failure to fail the previews is logged, since the change is
+// stored.
 func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
 	mu := s.getInstanceMutex(s.sshMu, instanceID)
 	mu.Lock()
@@ -631,7 +638,8 @@ func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() e
 	if err := change(); err != nil {
 		return err
 	}
-	if err := s.failRemotePreviews(ctx, instanceID); err != nil {
+	// The change is stored, so a client that goes away now must not skip this.
+	if err := s.failRemotePreviews(context.WithoutCancel(ctx), instanceID); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to fail remote previews after an SSH change")
 	}
 	return nil
@@ -768,7 +776,13 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, "backend pool not configured")
 		return
 	}
+	// Under the SSH lock, so the row is read before an SSH change or after the
+	// change dropped the pooled connection. A row read between the two names
+	// the new server while the pool still serves the connection to the old one.
+	sshMu := s.getInstanceMutex(s.sshMu, instanceID)
+	sshMu.Lock()
 	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityRead)
+	sshMu.Unlock()
 	if err != nil {
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
 		return
@@ -1275,6 +1289,9 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// cannot store a change between its check and this start.
 	mu := s.getInstanceMutex(s.sshMu, instanceID)
 	mu.Lock()
+	if s.beforeDeletionStart != nil {
+		s.beforeDeletionStart()
+	}
 	started, err := s.store.StartRunDeletion(ctx, runID)
 	mu.Unlock()
 	if err != nil {

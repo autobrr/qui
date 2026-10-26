@@ -315,32 +315,36 @@ func TestSSHRoutesInvalidateThePool(t *testing.T) {
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	open := func() *sftp.Client {
-		t.Helper()
-		stored, err := f.store.Get(t.Context(), f.instance.ID)
-		require.NoError(t, err)
-		client, err := f.sshPool.SFTP(t.Context(), stored)
-		require.NoError(t, err)
-		return client
-	}
-	closed := func(client *sftp.Client) bool { _, err := client.Getwd(); return err != nil }
-
-	client := open()
+	client := f.openSFTP()
 	f.putCredentials()
-	assert.True(t, closed(client), "saving credentials must end the old session")
+	assert.True(t, sftpClosed(client), "saving credentials must end the old session")
 
-	client = open()
+	client = f.openSFTP()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
-	assert.True(t, closed(client), "replacing the pin must end the old session")
+	assert.True(t, sftpClosed(client), "replacing the pin must end the old session")
 
-	client = open()
+	client = f.openSFTP()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
-	assert.True(t, closed(client), "clearing credentials must end the old session")
+	assert.True(t, sftpClosed(client), "clearing credentials must end the old session")
 
 	f.putCredentials()
-	client = open()
+	client = f.openSFTP()
 	require.Equal(t, http.StatusOK, f.do(http.MethodDelete, "", "").Code)
-	assert.True(t, closed(client), "deleting the instance must end its session")
+	assert.True(t, sftpClosed(client), "deleting the instance must end its session")
+}
+
+func (f *sshFixture) openSFTP() *sftp.Client {
+	f.t.Helper()
+	stored, err := f.store.Get(f.t.Context(), f.instance.ID)
+	require.NoError(f.t, err)
+	client, err := f.sshPool.SFTP(f.t.Context(), stored)
+	require.NoError(f.t, err)
+	return client
+}
+
+func sftpClosed(client *sftp.Client) bool {
+	_, err := client.Getwd()
+	return err != nil
 }
 
 // Ticking local access takes the instance out of remote mode. A session opened
@@ -672,9 +676,11 @@ func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T)
 }
 
 // fakeOrphanScan records the instances whose remote previews were failed.
+// afterChange, when set, runs where ChangeSSH still holds its lock.
 type fakeOrphanScan struct {
-	failed   []int
-	deleting bool
+	failed      []int
+	deleting    bool
+	afterChange func()
 }
 
 func (f *fakeOrphanScan) ChangeSSH(_ context.Context, instanceID int, change func() error) error {
@@ -683,6 +689,9 @@ func (f *fakeOrphanScan) ChangeSSH(_ context.Context, instanceID int, change fun
 	}
 	if err := change(); err != nil {
 		return err
+	}
+	if f.afterChange != nil {
+		f.afterChange()
 	}
 	f.failed = append(f.failed, instanceID)
 	return nil
@@ -756,4 +765,30 @@ func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+}
+
+// A scan reads the instance under the orphan scan lock, so each SSH change
+// must drop the pooled connection before the lock is released. Otherwise a
+// scan could read the new settings and still get the old connection.
+func TestSSHChangesInvalidateThePoolUnderTheOrphanScanLock(t *testing.T) {
+	f := newSSHFixture(t, "ssh-invalidate-under-lock")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	var client *sftp.Client
+	var closedUnderLock bool
+	f.handler.orphanScan = &fakeOrphanScan{afterChange: func() { closedUnderLock = sftpClosed(client) }}
+	host, port := f.endpoint()
+	body, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "qui", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+
+	for _, change := range []struct{ method, path, body string }{
+		{http.MethodPut, "/ssh-credentials", string(body)},
+		{http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)},
+		{http.MethodDelete, "/ssh-credentials", ""},
+	} {
+		client, closedUnderLock = f.openSFTP(), false
+		require.Equal(t, http.StatusNoContent, f.do(change.method, change.path, change.body).Code, change.path)
+		require.True(t, closedUnderLock, "%s %s", change.method, change.path)
+	}
 }

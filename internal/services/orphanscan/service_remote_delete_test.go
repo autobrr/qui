@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -491,6 +492,72 @@ func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
+// A deletion holds the SSH lock until its run is deleting, so a change that
+// arrives while the deletion starts waits for it and then stores nothing.
+func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
+	t.Parallel()
+
+	once := &sync.Once{}
+	removing := make(chan struct{})
+	resume := make(chan struct{})
+	var f *modeFixture
+	f = newModeFixture(t, "orphanscan-delete-start-vs-ssh-change", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return pausingRemoveBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, once: once, removing: removing, resume: resume}
+	})
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	starting := make(chan struct{})
+	start := make(chan struct{})
+	f.svc.beforeDeletionStart = func() {
+		close(starting)
+		<-start
+	}
+	deleted := make(chan struct{})
+	go func() {
+		f.svc.executeDeletion(t.Context(), 1, run.ID)
+		close(deleted)
+	}()
+	<-starting
+
+	changed := make(chan error, 1)
+	go func() {
+		changed <- f.svc.ChangeSSH(t.Context(), 1, func() error {
+			f.instance.mu.Lock()
+			f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
+			f.instance.mu.Unlock()
+			return nil
+		})
+	}()
+	// A change that did not wait for the lock finishes, or passes its
+	// deletion check, well within this wait.
+	time.Sleep(200 * time.Millisecond)
+	close(start)
+
+	require.ErrorIs(t, <-changed, ErrDeletionInProgress)
+	close(resume)
+	<-deleted
+	stored, err := f.instance.Get(t.Context(), 1)
+	require.NoError(t, err)
+	require.Equal(t, "enc-v1", stored.SSHHostKeyEncrypted)
+	require.Equal(t, "completed", f.run(t, run.ID).Status)
+}
+
+// A change that fails stores nothing, so the remote preview keeps its review.
+func TestChangeSSH_FailedChangeKeepsThePreview(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-ssh-change-fails", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	errStore := errors.New("store failed")
+	require.ErrorIs(t, f.svc.ChangeSSH(t.Context(), 1, func() error { return errStore }), errStore)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
+}
+
 // ignoredTorrentDirFixture adds keep/kept.mkv to the fixture's torrent and
 // ignores keep/, so the scan walk never enters the folder that holds it.
 func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string) string, extra ...qbt.Torrent) (keep string) {
@@ -706,6 +773,83 @@ func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
 	require.Equal(t, ScanModeChangedMessage, run.ErrorMessage)
 	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
 	f.requireNothingDeleted(t)
+}
+
+// serverBackend records the server each walk reaches and holds the first
+// walk until resume closes. The pool serves its cached connection until an
+// SSH change drops it, and only that moves connected to the new server.
+type serverBackend struct {
+	fsops.Backend
+	connected *atomic.Value
+	mu        *sync.Mutex
+	walked    *[]string
+	once      *sync.Once
+	walking   chan struct{}
+	resume    <-chan struct{}
+}
+
+func (b serverBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	b.mu.Lock()
+	*b.walked = append(*b.walked, b.connected.Load().(string))
+	b.mu.Unlock()
+	b.once.Do(func() {
+		close(b.walking)
+		<-b.resume
+	})
+	return b.Backend.WalkDir(ctx, root, opts)
+}
+
+// An SSH change stores the new pin and then drops the pooled connection. A
+// scan that read the row between the two would walk the old server under the
+// new pin, and the change would find no preview to fail yet. The scan reads
+// the row under the change's lock, so it walks the new server.
+func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
+	t.Parallel()
+
+	var connected atomic.Value
+	connected.Store("old")
+	var mu sync.Mutex
+	var walked []string
+	walking := make(chan struct{})
+	resume := make(chan struct{})
+	var f *modeFixture
+	f = newModeFixture(t, "orphanscan-scan-vs-ssh-change", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return serverBackend{
+			Backend:   countingBackend{Backend: newTestBackend(), removes: f.removes},
+			connected: &connected, mu: &mu, walked: &walked,
+			once: &sync.Once{}, walking: walking, resume: resume,
+		}
+	})
+	f.setTier(models.SSHTierExec)
+	runID, err := f.store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	require.NoError(t, err)
+
+	scanned := make(chan struct{})
+	require.NoError(t, f.svc.ChangeSSH(t.Context(), 1, func() error {
+		f.instance.mu.Lock()
+		f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
+		f.instance.mu.Unlock()
+		go func() {
+			f.svc.executeScan(t.Context(), 1, runID)
+			close(scanned)
+		}()
+		// A scan that did not wait for the lock reaches its walk well within
+		// this wait.
+		select {
+		case <-walking:
+		case <-time.After(500 * time.Millisecond):
+		}
+		connected.Store("new")
+		return nil
+	}))
+	close(resume)
+	<-scanned
+
+	run := f.run(t, runID)
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"new"}, walked)
 }
 
 // ChangeSSH refuses a pin once the run is deleting, but one stored around it

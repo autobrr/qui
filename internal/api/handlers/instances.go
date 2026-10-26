@@ -57,10 +57,11 @@ func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
 // with orphanscan.ErrDeletionInProgress.
 const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
 
-// changeSSH runs change, which stores new SSH settings, through the orphan
-// scan service: it refuses the change while a deletion runs, since the
-// deletion redials with the stored settings, and fails the instance's remote
-// previews after it.
+// changeSSH runs change, which stores new SSH settings and invalidates the
+// pooled connection, through the orphan scan service: it refuses the change
+// while a deletion runs, since the deletion redials with the stored settings,
+// and fails the instance's remote previews after it. The invalidation belongs
+// inside change, since a scan reads the instance under the same lock.
 func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
 	if h.orphanScan == nil {
 		return change()
