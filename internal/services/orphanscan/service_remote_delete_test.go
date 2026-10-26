@@ -829,6 +829,33 @@ func TestExecuteScan_RemoteKeySavedBeforeThePreviewIsPublishedFailsTheRun(t *tes
 	f.requireNothingDeleted(t)
 }
 
+// A new private key saved while failing the previews hits a database error
+// leaves a ready preview walked with the old key. The key is part of the
+// endpoint, so confirm still refuses that preview and deletes nothing.
+func TestConfirmDeletion_RemoteKeySavedWhenFailingThePreviewsErrsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-key-fail-previews-errs", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	_, err := f.db.ExecContext(t.Context(), `
+		CREATE TRIGGER refuse_failing_runs BEFORE UPDATE OF status ON orphan_scan_runs
+		WHEN NEW.status = 'failed'
+		BEGIN SELECT RAISE(ABORT, 'injected store error'); END
+	`)
+	require.NoError(t, err)
+	saveNewKey(t, f)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status, "the injected error must keep the preview ready")
+	_, err = f.db.ExecContext(t.Context(), `DROP TRIGGER refuse_failing_runs`)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrFilesystemModeChanged)
+	require.Equal(t, "failed", f.run(t, run.ID).Status)
+	f.requireNothingDeleted(t)
+}
+
 // serverBackend records the server each walk reaches and holds the first
 // walk until resume closes. The pool serves its cached connection until an
 // SSH change drops it, and only that moves connected to the new server.

@@ -628,8 +628,9 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 // before the run starts or sees it deleting. A scan reads the instance under
 // the same lock too, so it never pairs the new settings with the old
 // connection, and a remote scan publishes its preview under the same lock only
-// if no change was stored since that read. A failure to fail the previews is logged, since
-// the change is stored.
+// if no change was stored since that read. A failure to fail the previews is
+// only logged, since the change is stored, and every save changes the
+// endpoint, so confirm refuses those previews anyway.
 func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
 	mu := s.getInstanceMutex(s.sshMu, instanceID)
 	mu.Lock()
@@ -664,8 +665,8 @@ func (s *Service) sshChangeCount(instanceID int) uint64 {
 }
 
 // failRemotePreviews fails the instance's remote previews. Confirm refuses
-// those whose user, host, port or pin changed, but a save that keeps them,
-// such as a new private key, is caught only here.
+// them anyway, since every save changes the endpoint, but failing them here
+// shows the change in the preview right away.
 func (s *Service) failRemotePreviews(ctx context.Context, instanceID int) error {
 	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
 	if err != nil {
@@ -712,18 +713,21 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 	return backend.Paths(), nil
 }
 
-// walkedEndpoint names the SSH server and account a remote walk reads through
-// instance, and is empty for any other mode. The account is part of it because
-// a username change keeps the pin and can see other files. A digest of the
-// stored pin is part of it because a key replaced at the same address is
-// another server. The pin is sealed with a random nonce, so pinning the same
-// key again also changes the digest.
+// walkedEndpoint names the SSH server and credentials a remote walk reads
+// through instance, and is empty for any other mode. The account is part of it
+// because a username change keeps the pin and can see other files. A digest of
+// the stored pin is part of it because a host key replaced at the same address
+// is another server, and a digest of the stored private key because another
+// key can log in to another view of the same server. Both are sealed with a
+// random nonce, so any save of either changes the digest, even of the same key.
 func walkedEndpoint(instance *models.Instance) string {
 	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
 		return ""
 	}
 	pin := sha256.Sum256([]byte(instance.SSHHostKeyEncrypted))
-	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) + "#" + hex.EncodeToString(pin[:8])
+	key := sha256.Sum256([]byte(instance.SSHKeyEncrypted))
+	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) +
+		"#" + hex.EncodeToString(pin[:8]) + "." + hex.EncodeToString(key[:8])
 }
 
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity

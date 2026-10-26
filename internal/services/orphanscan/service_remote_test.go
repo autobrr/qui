@@ -328,7 +328,8 @@ func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
 	require.True(t, run.IdentityComplete)
 	require.Empty(t, run.ErrorMessage)
 	pin := sha256.Sum256([]byte(f.instance.inst.SSHHostKeyEncrypted))
-	require.Equal(t, "qui@"+server.Addr+"#"+hex.EncodeToString(pin[:8]), run.FilesystemEndpoint)
+	key := sha256.Sum256([]byte(f.instance.inst.SSHKeyEncrypted))
+	require.Equal(t, "qui@"+server.Addr+"#"+hex.EncodeToString(pin[:8])+"."+hex.EncodeToString(key[:8]), run.FilesystemEndpoint)
 }
 
 // A row on the exec tier whose find is refused walks over sftp, so the row's
