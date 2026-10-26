@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -676,13 +677,15 @@ type fakeOrphanScan struct {
 	deleting bool
 }
 
-func (f *fakeOrphanScan) FailRemotePreviews(_ context.Context, instanceID int) error {
+func (f *fakeOrphanScan) ChangeSSH(_ context.Context, instanceID int, change func() error) error {
+	if f.deleting {
+		return orphanscan.ErrDeletionInProgress
+	}
+	if err := change(); err != nil {
+		return err
+	}
 	f.failed = append(f.failed, instanceID)
 	return nil
-}
-
-func (f *fakeOrphanScan) DeletionInProgress(context.Context, int) (bool, error) {
-	return f.deleting, nil
 }
 
 // A saved SSH change can point an old remote preview at another server with
@@ -710,10 +713,14 @@ func TestSSHChangesFailRemoteOrphanPreviews(t *testing.T) {
 	mismatch := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(sshtest.NewSigner().PublicKey()))
 	require.Equal(t, http.StatusConflict, mismatch.Code)
 	require.Len(t, scans.failed, 2, "a refused replace")
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+	require.Equal(t, []int{f.instance.ID, f.instance.ID, f.instance.ID}, scans.failed, "clearing the credentials")
 }
 
 // A running orphan scan deletion redials with the stored SSH settings, so a
-// credentials save or a pin replace waits for it to finish.
+// credentials save, a pin replace or a credentials clear waits for it to
+// finish.
 func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
 	f := newSSHFixture(t, "ssh-wait-orphan-deletion")
 	f.putCredentials()
@@ -734,13 +741,19 @@ func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
 	require.Equal(t, http.StatusConflict, replace.Code, replace.Body.String())
 	require.Contains(t, replace.Body.String(), "orphan scan is deleting")
 
+	cleared := f.do(http.MethodDelete, "/ssh-credentials", "")
+	require.Equal(t, http.StatusConflict, cleared.Code, cleared.Body.String())
+	require.Contains(t, cleared.Body.String(), "orphan scan is deleting")
+
 	after, err := f.store.Get(t.Context(), f.instance.ID)
 	require.NoError(t, err)
 	require.Equal(t, before.SSHUsername, after.SSHUsername)
 	require.Equal(t, before.SSHHostKeyEncrypted, after.SSHHostKeyEncrypted)
+	require.Equal(t, before.SSHKeyEncrypted, after.SSHKeyEncrypted)
 	require.Empty(t, scans.failed)
 
 	scans.deleting = false
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 }

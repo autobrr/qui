@@ -42,8 +42,7 @@ type InstancesHandler struct {
 }
 
 type orphanScanGuard interface {
-	FailRemotePreviews(ctx context.Context, instanceID int) error
-	DeletionInProgress(ctx context.Context, instanceID int) (bool, error)
+	ChangeSSH(ctx context.Context, instanceID int, change func() error) error
 }
 
 // SetOrphanScan wires the orphan scan service in. A server built without one
@@ -54,36 +53,19 @@ func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
 	}
 }
 
-// failRemotePreviews runs after the SSH change is stored, so a failure is
-// logged rather than answered as a failed save.
-func (h *InstancesHandler) failRemotePreviews(ctx context.Context, instanceID int) {
-	if h.orphanScan == nil {
-		return
-	}
-	if err := h.orphanScan.FailRemotePreviews(ctx, instanceID); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to fail remote orphan scan previews after an SSH change")
-	}
-}
+// sshChangeDuringDeletionMessage is the 409 body for an SSH change refused
+// with orphanscan.ErrDeletionInProgress.
+const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
 
-// refuseDuringOrphanDeletion answers 409 while an orphan scan deletes on the
-// instance and reports whether it answered. The deletion's remote backend
-// redials with the stored SSH settings, so a change would move the remaining
-// deletes to another server.
-func (h *InstancesHandler) refuseDuringOrphanDeletion(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+// changeSSH runs change, which stores new SSH settings, through the orphan
+// scan service: it refuses the change while a deletion runs, since the
+// deletion redials with the stored settings, and fails the instance's remote
+// previews after it.
+func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
 	if h.orphanScan == nil {
-		return false
+		return change()
 	}
-	deleting, err := h.orphanScan.DeletionInProgress(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to check for a running orphan scan deletion")
-		RespondError(w, http.StatusInternalServerError, "Failed to check for a running orphan scan deletion")
-		return true
-	}
-	if deleting {
-		RespondError(w, http.StatusConflict, "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings.")
-		return true
-	}
-	return false
+	return h.orphanScan.ChangeSSH(ctx, instanceID, change)
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {

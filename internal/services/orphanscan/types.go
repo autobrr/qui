@@ -11,6 +11,9 @@ import (
 // ErrScanInProgress is returned when a scan is already running for an instance.
 var ErrScanInProgress = errors.New("scan already in progress for this instance")
 
+// ErrDeletionInProgress is returned by ChangeSSH while an orphan scan deletes on the instance.
+var ErrDeletionInProgress = errors.New("orphan scan deletion in progress for this instance")
+
 // ErrInvalidRunStatus is returned when an operation is attempted on a run with an incompatible status.
 var ErrInvalidRunStatus = errors.New("invalid run status for this operation")
 

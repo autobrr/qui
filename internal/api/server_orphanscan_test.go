@@ -49,13 +49,15 @@ func TestServerSSHRoutesWaitForAnOrphanDeletion(t *testing.T) {
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
 
-	body := `{"host":"box.example","port":22,"username":"qui","privateKey":"x"}`
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/instances/"+strconv.Itoa(instance.ID)+"/ssh-credentials", strings.NewReader(body))
-	req.RemoteAddr = "127.0.0.1:1234"
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-	router.ServeHTTP(res, req)
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		body := `{"host":"box.example","port":22,"username":"qui","privateKey":"x"}`
+		req := httptest.NewRequestWithContext(t.Context(), method, "/api/instances/"+strconv.Itoa(instance.ID)+"/ssh-credentials", strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, req)
 
-	require.Equal(t, http.StatusConflict, res.Code, res.Body.String())
-	require.Contains(t, res.Body.String(), "orphan scan is deleting")
+		require.Equal(t, http.StatusConflict, res.Code, "%s: %s", method, res.Body.String())
+		require.Contains(t, res.Body.String(), "orphan scan is deleting")
+	}
 }

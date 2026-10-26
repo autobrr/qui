@@ -1253,7 +1253,11 @@ paths:
       tags:
         - Instances
       summary: Clear SSH credentials
-      description: Remove the stored SSH username and private key. The host-key pin is kept, since it belongs to the host rather than to the credentials.
+      description: |
+        Remove the stored SSH username and private key. The host-key pin is kept,
+        since it belongs to the host rather than to the credentials. Clearing
+        fails the instance's remote orphan scan previews, and is refused while
+        an orphan scan deletion runs on the instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -1263,8 +1267,10 @@ paths:
           description: Invalid instance ID
         '404':
           description: Instance not found
+        '409':
+          description: An orphan scan deletion is running on the instance
         '500':
-          description: Failed to clear SSH credentials
+          description: Failed to clear SSH credentials, or to check for a running orphan scan deletion
 
   /api/instances/{instanceID}/ssh-test:
     post:

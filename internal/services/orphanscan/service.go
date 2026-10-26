@@ -87,7 +87,9 @@ type Service struct {
 	instanceMu map[int]*sync.Mutex
 	// Per-instance mutex around run creation only, never held during a scan
 	triggerMu map[int]*sync.Mutex
-	mu        sync.Mutex // protects instanceMu and triggerMu maps
+	// Per-instance mutex around an SSH change and the start of a deletion
+	sshMu map[int]*sync.Mutex
+	mu    sync.Mutex // protects instanceMu, triggerMu and sshMu maps
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
@@ -117,6 +119,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		activityPublisher: activity.NopPublisher{},
 		instanceMu:        make(map[int]*sync.Mutex),
 		triggerMu:         make(map[int]*sync.Mutex),
+		sshMu:             make(map[int]*sync.Mutex),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
 }
@@ -607,11 +610,37 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	return nil
 }
 
-// FailRemotePreviews fails the instance's remote previews after its SSH
-// settings are saved or its host key is replaced. Confirm refuses those whose
-// user, host, port or pin changed, but a save that keeps them, such as a new
-// private key, is caught only here.
-func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error {
+// ChangeSSH runs change, which stores new SSH settings for the instance, and
+// then fails the instance's remote previews. A running deletion redials with
+// the stored settings, so it returns ErrDeletionInProgress without running
+// change while a deletion runs. A deletion starts under the same lock, so a
+// change either fails the preview before the run starts or sees it deleting.
+// A failure to fail the previews is logged, since the change is stored.
+func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
+	mu := s.getInstanceMutex(s.sshMu, instanceID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	deleting, err := s.store.HasDeletingRun(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("check for a running orphan scan deletion: %w", err)
+	}
+	if deleting {
+		return ErrDeletionInProgress
+	}
+	if err := change(); err != nil {
+		return err
+	}
+	if err := s.failRemotePreviews(ctx, instanceID); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to fail remote previews after an SSH change")
+	}
+	return nil
+}
+
+// failRemotePreviews fails the instance's remote previews. Confirm refuses
+// those whose user, host, port or pin changed, but a save that keeps them,
+// such as a new private key, is caught only here.
+func (s *Service) failRemotePreviews(ctx context.Context, instanceID int) error {
 	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("list remote previews of instance %d: %w", instanceID, err)
@@ -626,13 +655,6 @@ func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error 
 		}
 	}
 	return nil
-}
-
-// DeletionInProgress reports whether an orphan scan is deleting on the
-// instance. A deletion interrupted by a restart is failed at startup, so the
-// status is current.
-func (s *Service) DeletionInProgress(ctx context.Context, instanceID int) (bool, error) {
-	return s.store.HasDeletingRun(ctx, instanceID)
 }
 
 // failChangedPreview fails a preview walked through access the instance no
@@ -1247,8 +1269,13 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int64) {
 	log.Info().Int("instance", instanceID).Int64("run", runID).Msg("orphanscan: starting deletion")
 
-	// Conditional on preview_ready, so a run a concurrent confirm just failed cannot go on to delete.
+	// Conditional on preview_ready, so a run a concurrent confirm or SSH change
+	// just failed cannot go on to delete. Under the SSH lock, so ChangeSSH
+	// cannot store a change between its check and this start.
+	mu := s.getInstanceMutex(s.sshMu, instanceID)
+	mu.Lock()
 	started, err := s.store.StartRunDeletion(ctx, runID)
+	mu.Unlock()
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
 		return
@@ -1362,10 +1389,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var bytesReclaimed int64
 
 	// The remote backend redials with the instance's current row, so an SSH
-	// change mid-run would send the remaining deletes to another server. The
-	// SSH routes refuse a change while a deletion runs, and this catches one
-	// that raced that check. The run's endpoint holds a digest of the pin it
-	// was walked with, so this is one database read per entry.
+	// change mid-run would send the remaining deletes to another server.
+	// ChangeSSH refuses a change while a deletion runs, and this catches one
+	// made around it, such as a direct database edit. The run's endpoint holds
+	// a digest of the pin it was walked with, so this is one database read per
+	// entry.
 	var sshChanged bool
 	checkSSH := func() bool {
 		if mode != models.FilesystemModeRemote {

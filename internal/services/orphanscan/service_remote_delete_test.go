@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -404,7 +405,7 @@ func (p *recordingPublisher) Publish(ev activity.Event) {
 // A host key replaced at the same address leaves the endpoint as it was, so
 // the SSH change fails the remote preview itself. A local preview of the same
 // instance walked no SSH server and keeps its review.
-func TestFailRemotePreviews_FailsOnlyRemotePreviews(t *testing.T) {
+func TestChangeSSH_FailsOnlyRemotePreviews(t *testing.T) {
 	t.Parallel()
 
 	f := newModeFixture(t, "orphanscan-fail-remote-previews", models.FilesystemModeRemote, nil)
@@ -417,7 +418,7 @@ func TestFailRemotePreviews_FailsOnlyRemotePreviews(t *testing.T) {
 	publisher := &recordingPublisher{}
 	f.svc.SetActivityPublisher(publisher)
 
-	require.NoError(t, f.svc.FailRemotePreviews(t.Context(), 1))
+	require.NoError(t, f.svc.ChangeSSH(t.Context(), 1, func() error { return nil }))
 
 	failed := f.run(t, run.ID)
 	require.Equal(t, "failed", failed.Status)
@@ -425,6 +426,68 @@ func TestFailRemotePreviews_FailsOnlyRemotePreviews(t *testing.T) {
 	require.Equal(t, "preview_ready", f.run(t, localID).Status)
 	require.Equal(t, []activity.Event{{Kind: activity.KindOrphanScanRun, InstanceID: 1, ResourceID: strconv.FormatInt(run.ID, 10)}}, publisher.events)
 	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), ErrInvalidRunStatus)
+	f.requireNothingDeleted(t)
+}
+
+// pausingRemoveBackend holds its first Remove until resume closes, so an SSH
+// change can land between a deletion's per-entry check and its delete.
+type pausingRemoveBackend struct {
+	fsops.Backend
+	once     *sync.Once
+	removing chan struct{}
+	resume   <-chan struct{}
+}
+
+func (b pausingRemoveBackend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
+	b.once.Do(func() {
+		close(b.removing)
+		<-b.resume
+	})
+	return b.Backend.Remove(ctx, path, opts)
+}
+
+// An SSH change that passed its deletion check before the deletion started
+// is stored and fails the preview before the run can start, so nothing is
+// deleted through the new pin.
+func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
+	t.Parallel()
+
+	once := &sync.Once{}
+	removing := make(chan struct{})
+	stored := make(chan struct{})
+	var f *modeFixture
+	f = newModeFixture(t, "orphanscan-ssh-change-vs-delete-start", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return pausingRemoveBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, once: once, removing: removing, resume: stored}
+	})
+	f.setTier(models.SSHTierExec)
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+
+	checked := make(chan struct{})
+	changed := make(chan error, 1)
+	go func() {
+		changed <- f.svc.ChangeSSH(t.Context(), 1, func() error {
+			close(checked)
+			// A deletion that could start would reach its first delete well
+			// within this wait.
+			select {
+			case <-removing:
+			case <-time.After(500 * time.Millisecond):
+			}
+			f.instance.mu.Lock()
+			f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
+			f.instance.mu.Unlock()
+			close(stored)
+			return nil
+		})
+	}()
+	<-checked
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	require.NoError(t, <-changed)
+	failed := f.run(t, run.ID)
+	require.Equal(t, "failed", failed.Status)
+	require.Equal(t, FilesystemModeChangedMessage, failed.ErrorMessage)
 	f.requireNothingDeleted(t)
 }
 
@@ -522,7 +585,7 @@ func TestExecuteScan_RemoteIgnoredTorrentDirWalk(t *testing.T) {
 }
 
 // changeAfterRemoveBackend changes the instance after its first Remove, as an
-// SSH change that raced the routes' check would.
+// SSH change made around ChangeSSH would.
 type changeAfterRemoveBackend struct {
 	fsops.Backend
 	once   *sync.Once
@@ -603,13 +666,14 @@ func TestExecuteDeletion_RemoteSSHChangeStopsTheLoop(t *testing.T) {
 	}
 }
 
-// replacePin stores a new pin at the same user, host and port, as the replace
-// route does, and then runs the route's FailRemotePreviews.
+// replacePin stores a new pin at the same user, host and port and fails the
+// remote previews as ChangeSSH does, but without its deletion check, as a
+// change made around it would.
 func replacePin(t *testing.T, f *modeFixture) {
 	f.instance.mu.Lock()
 	f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
 	f.instance.mu.Unlock()
-	if err := f.svc.FailRemotePreviews(t.Context(), 1); err != nil {
+	if err := f.svc.failRemotePreviews(t.Context(), 1); err != nil {
 		t.Error(err)
 	}
 }
@@ -627,7 +691,7 @@ func replacePinOnFileMap(t *testing.T, f *modeFixture) {
 }
 
 // A pin replaced while a remote scan runs leaves the mode and the address as
-// they were, and FailRemotePreviews finds no preview yet. The scan compares
+// they were, and failing the previews finds none yet. The scan compares
 // the pin at its end, so a preview walked on the old server never becomes one
 // a confirm or automatic cleanup could delete on the new one.
 func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
@@ -644,10 +708,9 @@ func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// The replace route's 409 check can pass just before a deletion marks its run
-// deleting, and the route's FailRemotePreviews then finds no preview to fail.
-// The deletion compares the pin the run was walked with, so a pin stored after
-// the run went deleting still stops it before any delete.
+// ChangeSSH refuses a pin once the run is deleting, but one stored around it
+// finds no preview to fail. The deletion compares the pin the run was walked
+// with, so such a pin still stops it before any delete.
 func TestExecuteDeletion_RemotePinReplacedAfterTheStartDeletesNothing(t *testing.T) {
 	t.Parallel()
 
