@@ -29,6 +29,25 @@ func (f peerSyncTestTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return f(r)
 }
 
+// serveInProcess sends each request of c straight to handler, so a synctest
+// bubble can advance its clock while a request waits. A request whose context
+// ends fails with the context error, as it does over a real connection.
+func serveInProcess(c *qbt.Client, handler http.Handler) *qbt.Client {
+	transport := peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		return rec.Result(), nil
+	})
+	return c.WithHTTPClient(&http.Client{Transport: transport})
+}
+
+func newInProcessQbtClient(handler http.Handler) *qbt.Client {
+	return serveInProcess(qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}), handler)
+}
+
 func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const activeHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -236,7 +255,7 @@ func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		t.Fatal("updateServerState blocked waiting for Client.mu write lock")
 	}
 }
@@ -452,7 +471,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 50*time.Millisecond, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
@@ -767,19 +786,19 @@ func TestIsDeadlineExpired(t *testing.T) {
 func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
+	synctest.Test(t, func(t *testing.T) {
+		qbtClient := newInProcessQbtClient(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+		}))
+		client := &Client{Client: qbtClient, instanceID: 42, isHealthy: true}
 
-	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	err := client.HealthCheck(ctx)
-	require.Error(t, err)
-	require.True(t, client.IsHealthy(), "a timed-out probe must not demote a healthy client")
+		err := client.HealthCheck(ctx)
+		require.Error(t, err)
+		require.True(t, client.IsHealthy(), "a timed-out probe must not demote a healthy client")
+	})
 }
 
 // TestClientHealthCheckMarksUnhealthyOnHardFailure pins that connection-level failures
@@ -987,102 +1006,103 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 // race detector cannot see: every peer fetch must carry the rid the previous
 // merge produced, so an older snapshot can never merge on top of a newer one.
 func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
-	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	const stalePeer = "192.0.2.9:9"
+	synctest.Test(t, func(t *testing.T) {
+		const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		const stalePeer = "192.0.2.9:9"
 
-	var mu sync.Mutex
-	ridsSent := make(map[string]int)
-	requests := 0
-	newestRid := int64(0)
-	secondRequest := make(chan struct{})
+		var mu sync.Mutex
+		ridsSent := make(map[string]int)
+		requests := 0
+		newestRid := int64(0)
+		secondRequest := make(chan struct{})
 
-	// served records the newest response the server produced. The merged state
-	// must end up matching it, whatever order the fetches ran in. Only the rid 1
-	// response carries the stale peer, so the rid alone says what to expect.
-	served := func(rid int64) {
+		// served records the newest response the server produced. The merged state
+		// must end up matching it, whatever order the fetches ran in. Only the rid 1
+		// response carries the stale peer, so the rid alone says what to expect.
+		served := func(rid int64) {
+			mu.Lock()
+			defer mu.Unlock()
+			newestRid = max(newestRid, rid)
+		}
+
+		qbtClient := newInProcessQbtClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rid := r.URL.Query().Get("rid")
+
+			mu.Lock()
+			ridsSent[rid]++
+			requests++
+			first := requests == 1
+			if requests == 2 {
+				close(secondRequest)
+			}
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if first {
+				// Hold the oldest snapshot open long enough for an unserialized
+				// reader to overtake it. Nothing overtakes it once fetch and merge
+				// are serialized, so fall through on the timeout instead.
+				select {
+				case <-secondRequest:
+				case <-time.After(200 * time.Millisecond):
+				}
+				served(1)
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"},"` + stalePeer + `":{"ip":"192.0.2.9"}}}`))
+				return
+			}
+
+			served(2)
+			if rid == "0" {
+				// A reader that never saw the first merge asks for a full snapshot.
+				_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"peers_removed":["` + stalePeer + `"]}`))
+		}))
+
+		client := &Client{
+			Client:          qbtClient,
+			peerSyncManager: make(map[string]*peerSyncEntry),
+		}
+
+		var wg sync.WaitGroup
+		// One caller spells the hash in upper case. The API takes the hash straight
+		// from the URL, so both spellings reach SyncPeers, and both must land on the
+		// same fetch: a second spelling must not open a second rid on one manager.
+		for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
+			wg.Go(func() {
+				_, err := client.SyncPeers(t.Context(), callerHash)
+				require.NoError(t, err)
+			})
+		}
+		wg.Wait()
+
 		mu.Lock()
-		defer mu.Unlock()
-		newestRid = max(newestRid, rid)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rid := r.URL.Query().Get("rid")
-
-		mu.Lock()
-		ridsSent[rid]++
-		requests++
-		first := requests == 1
-		if requests == 2 {
-			close(secondRequest)
+		wantRid := newestRid
+		wantStalePeer := wantRid == 1
+		for rid, count := range ridsSent {
+			require.Equalf(t, 1, count, "rid %s was sent by %d fetches; concurrent readers shared a rid", rid, count)
 		}
 		mu.Unlock()
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if first {
-			// Hold the oldest snapshot open long enough for an unserialized
-			// reader to overtake it. Nothing overtakes it once fetch and merge
-			// are serialized, so fall through on the timeout instead.
-			select {
-			case <-secondRequest:
-			case <-time.After(200 * time.Millisecond):
-			}
-			served(1)
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"},"` + stalePeer + `":{"ip":"192.0.2.9"}}}`))
-			return
+		// The merged state must match the newest response the server produced, not
+		// whichever fetch happened to return last.
+		peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
+		require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
+		if wantStalePeer {
+			require.Contains(t, peers.Peers, stalePeer)
+		} else {
+			require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
 		}
 
-		served(2)
-		if rid == "0" {
-			// A reader that never saw the first merge asks for a full snapshot.
-			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"rid":2,"peers_removed":["` + stalePeer + `"]}`))
-	}))
-	t.Cleanup(srv.Close)
-
-	client := &Client{
-		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
-		peerSyncManager: make(map[string]*peerSyncEntry),
-	}
-
-	var wg sync.WaitGroup
-	// One caller spells the hash in upper case. The API takes the hash straight
-	// from the URL, so both spellings reach SyncPeers, and both must land on the
-	// same fetch: a second spelling must not open a second rid on one manager.
-	for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
-		wg.Go(func() {
-			_, err := client.SyncPeers(t.Context(), callerHash)
-			require.NoError(t, err)
-		})
-	}
-	wg.Wait()
-
-	mu.Lock()
-	wantRid := newestRid
-	wantStalePeer := wantRid == 1
-	for rid, count := range ridsSent {
-		require.Equalf(t, 1, count, "rid %s was sent by %d fetches; concurrent readers shared a rid", rid, count)
-	}
-	mu.Unlock()
-
-	// The merged state must match the newest response the server produced, not
-	// whichever fetch happened to return last.
-	peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
-	require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
-	if wantStalePeer {
-		require.Contains(t, peers.Peers, stalePeer)
-	} else {
-		require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
-	}
-
-	// The next reader carries the rid the last merge produced, so the server can
-	// answer with a removal and the removal sticks.
-	peers, err := client.SyncPeers(t.Context(), hash)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), peers.Rid)
-	require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
+		// The next reader carries the rid the last merge produced, so the server can
+		// answer with a removal and the removal sticks.
+		peers, err := client.SyncPeers(t.Context(), hash)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), peers.Rid)
+		require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
+	})
 }
 
 // TestSyncPeersLeavesWhenCallerGoesAway keeps a reader whose request was

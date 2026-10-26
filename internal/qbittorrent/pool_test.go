@@ -172,7 +172,10 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 // interrupted by caller cancellation (client disconnect / shutdown) does NOT record a
 // failure or back off the instance, so a healthy instance is not stranded (review of #2096).
 func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -188,7 +191,7 @@ func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-arrived
 		cancel()
 	}()
 
