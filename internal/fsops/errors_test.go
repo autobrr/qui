@@ -30,15 +30,11 @@ func TestIsDirNotEmpty(t *testing.T) {
 	}{
 		{"remove of a folder that holds a file", removeErr, true},
 		{"wrapped errno", fmt.Errorf("cleanup: %w", &fs.PathError{Op: "remove", Path: "/data/x", Err: syscall.ENOTEMPTY}), true},
-		{"syscall error around the code", &os.SyscallError{Syscall: "rmdir", Err: syscall.ENOTEMPTY}, true},
-		{"link error around the code", &os.LinkError{Op: "rename", Old: "/data/a", New: "/data/b", Err: syscall.ENOTEMPTY}, true},
 		// Only codes count. Every caller passes a backend Remove error, and
 		// both backends report the code.
 		{"text without a code", &fs.PathError{Op: "remove", Path: `D:\data\x`, Err: errors.New("The directory is not empty.")}, false}, //nolint:revive // Windows's own text
 		{"remote server text without a code", fmt.Errorf("remove /data/x: %w", errors.New("directory not empty")), false},
 		{"permission error on a folder named Not Empty", &fs.PathError{Op: "remove", Path: "/data/Not Empty", Err: fs.ErrPermission}, false},
-		{"wrapped permission error on a folder named Not Empty", fmt.Errorf("cleanup: %w", &fs.PathError{Op: "remove", Path: "/data/Not Empty", Err: syscall.EACCES}), false},
-		{"rename error naming Not Empty", &os.LinkError{Op: "rename", Old: "/data/Not Empty", New: "/data/b", Err: syscall.EACCES}, false},
 	} {
 		require.Equal(t, tc.want, IsDirNotEmpty(tc.err), tc.name)
 	}

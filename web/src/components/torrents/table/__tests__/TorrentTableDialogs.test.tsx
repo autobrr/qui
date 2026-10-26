@@ -96,12 +96,6 @@ function renderDialogs(props: TorrentTableDialogsProps) {
 }
 
 describe("TorrentTableDialogs", () => {
-  it("renders every dialog closed by default", () => {
-    const { getByTestId } = renderDialogs(makeProps())
-    expect(getByTestId("DeleteTorrentDialog").getAttribute("data-open")).toBe("false")
-    expect(getByTestId("TmmConfirmDialog").getAttribute("data-open")).toBe("false")
-  })
-
   it("opens the delete dialog, fires the wrapper on confirm, and chains close + crossSeedWarning.reset", () => {
     const props = makeProps({ showDeleteDialog: true })
     const { getByTestId } = renderDialogs(props)

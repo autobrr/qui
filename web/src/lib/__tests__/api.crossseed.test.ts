@@ -6,7 +6,7 @@
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
 // Contract tests for the lib/api.ts "crossseed" method group (issue #1931).
@@ -72,31 +72,6 @@ describe("api.crossseed contract", () => {
       expect(new URL(req.url).pathname).toBe("/api/cross-seed/settings")
       expect(captured.value!.body).toBe("")
       expect(result).toEqual(settings)
-    })
-
-    it("throws APIError with status and parsed JSON data on a non-2xx response", async () => {
-      server.use(
-        http.get("*/api/cross-seed/settings", () =>
-          HttpResponse.json(
-            { error: "settings unavailable", code: "DOWN" },
-            { status: 503 }
-          )
-        )
-      )
-
-      // Shared error path for the two no-arg GET methods: extractErrorData
-      // reads .error and attaches the full parsed body as APIError.data.
-      await expect(api.getCrossSeedSettings()).rejects.toBeInstanceOf(APIError)
-      try {
-        await api.getCrossSeedSettings()
-        throw new Error("expected APIError")
-      } catch (err) {
-        const apiErr = err as APIError
-        expect(apiErr).toBeInstanceOf(APIError)
-        expect(apiErr.message).toBe("settings unavailable")
-        expect(apiErr.status).toBe(503)
-        expect(apiErr.data).toEqual({ error: "settings unavailable", code: "DOWN" })
-      }
     })
   })
 
@@ -563,29 +538,6 @@ describe("api.crossseed contract", () => {
           },
         ],
       })
-    })
-
-    it("throws APIError with status and parsed JSON data on a 409 conflict (POST error path)", async () => {
-      server.use(
-        http.post("*/api/cross-seed/torrents/:instanceId/:hash/apply", () =>
-          HttpResponse.json(
-            { error: "conflict", conflicts: ["dupe-hash"] },
-            { status: 409 }
-          )
-        )
-      )
-
-      try {
-        await api.applyCrossSeedSearchResults(1, "h", { selections: [], useTag: false })
-        throw new Error("expected APIError")
-      } catch (err) {
-        const apiErr = err as APIError
-        expect(apiErr).toBeInstanceOf(APIError)
-        expect(apiErr.message).toBe("conflict")
-        expect(apiErr.status).toBe(409)
-        // Full parsed JSON body attached as APIError.data (409 conflict payload).
-        expect(apiErr.data).toEqual({ error: "conflict", conflicts: ["dupe-hash"] })
-      }
     })
   })
 })

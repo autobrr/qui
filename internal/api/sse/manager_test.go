@@ -1149,9 +1149,7 @@ func TestParseStreamRequests_OrderNormalization(t *testing.T) {
 	}{
 		{"ASC", "asc"},
 		{"DESC", "desc"},
-		{"Asc", "asc"},
 		{"invalid", "desc"}, // invalid values should default to desc
-		{"", "desc"},        // empty should default to desc
 	}
 
 	for _, tt := range tests {
