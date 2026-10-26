@@ -436,7 +436,9 @@ func TestExecuteBackupConcurrentFailsFastOnExportError(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := svc.executeBackup(context.Background(), job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
+		// t.Context ends when the test does, so a run that ignores the
+		// first error does not keep its workers blocked after a failure.
+		_, err := svc.executeBackup(t.Context(), job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
 		done <- err
 	}()
 	var err error

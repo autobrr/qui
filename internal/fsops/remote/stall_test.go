@@ -53,12 +53,14 @@ func TestReadDirHonoursContextOnAStalledServer(t *testing.T) {
 	t.Parallel()
 
 	backend, server := newStallBackend(t)
-	// The stall ends on its own after a few seconds, so a call that ignores
-	// its context fails instead of hanging.
 	ctx := cancelOnStall(t, server)
 
+	start := time.Now()
 	_, err := backend.ReadDir(ctx, "/")
-	require.ErrorIs(t, err, context.Canceled, "ReadDir must return on its cancel")
+	require.ErrorIs(t, err, context.Canceled)
+	// The stall ends on its own after stallTimeout, and pkg/sftp then returns
+	// the same error, so only the time tells a ReadDir that ignored its cancel.
+	assert.Less(t, time.Since(start), 2*time.Second, "ReadDir must return on its cancel")
 
 	// The server answers requests in order, so the stall has to end before
 	// anything else can be answered on the session.

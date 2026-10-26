@@ -107,39 +107,31 @@ func TestPoolBacksOffAfterDialFailure(t *testing.T) {
 
 // A caller queued behind another caller's dial is bounded by its own ctx, not
 // by that dial: every operation on the pool is cancellable, waiting included.
+// The test holds the entry, as a dial in progress does, so the bubble can see
+// the waiter queue on it before the cancel.
 func TestPoolWaiterHonoursContext(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	listener := sshtest.NewHangingListener(t)
-	inst := pinnedInstanceAt(t, listener.Addr)
-	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
-	// Bounds the first dial, so a waiter that does not honour its ctx fails
-	// the test instead of hanging it.
-	pool.dialer.timeout = 2 * time.Second
+	addr := sshtest.DeadAddr(t)
+	synctest.Test(t, func(t *testing.T) {
+		inst := pinnedInstanceAt(t, addr)
+		pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+		entry := newEntry()
+		pool.conns[inst.ID] = entry
+		require.NoError(t, entry.lock(t.Context()))
+		defer entry.unlock()
 
-	firstCtx, cancelFirst := context.WithCancel(t.Context())
-	defer cancelFirst()
-	first := make(chan error, 1)
-	go func() {
-		_, err := pool.SFTP(firstCtx, inst)
-		first <- err
-	}()
-	// The first caller holds the entry while it waits in the handshake.
-	<-listener.Accepted
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	_, err := pool.SFTP(ctx, inst)
-	require.ErrorIs(t, err, context.Canceled)
-	select {
-	case err := <-first:
-		t.Fatalf("the first dial ended before the waiter gave up: %v", err)
-	default:
-	}
-
-	cancelFirst()
-	require.ErrorIs(t, <-first, context.Canceled)
+		ctx, cancel := context.WithCancel(t.Context())
+		waiter := make(chan error, 1)
+		go func() {
+			_, err := pool.SFTP(ctx, inst)
+			waiter <- err
+		}()
+		synctest.Wait()
+		cancel()
+		require.ErrorIs(t, <-waiter, context.Canceled)
+	})
 }
 
 // A caller that was already waiting on the entry when Close ran must not dial
