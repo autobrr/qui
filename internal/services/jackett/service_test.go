@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -3482,12 +3483,16 @@ func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
 		t.Fatal("expected search to schedule latency cleanup")
 	}
 
-	service.maybeScheduleLatencyCleanup()
-	select {
-	case <-cleanupCalls:
-		t.Fatal("expected latency cleanup to be interval-gated")
-	case <-time.After(50 * time.Millisecond):
-	}
+	synctest.Test(t, func(t *testing.T) {
+		calls := make(chan time.Duration, 2)
+		gated := &Service{indexerStore: &mockTorznabIndexerStore{latencyCleanupCalls: calls}}
+		gated.maybeScheduleLatencyCleanup()
+		gated.maybeScheduleLatencyCleanup()
+		synctest.Wait()
+		if got := len(calls); got != 1 {
+			t.Fatalf("CleanupOldLatency() calls = %d, want 1: expected latency cleanup to be interval-gated", got)
+		}
+	})
 }
 
 func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
