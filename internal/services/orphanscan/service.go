@@ -1449,8 +1449,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// change mid-run would send the remaining deletes to another server.
 	// ChangeSSH refuses a change while a deletion runs, and this catches one
 	// made around it, such as a direct database edit. The run's endpoint holds
-	// a digest of the pin it was walked with, so this is one database read per
-	// entry.
+	// digests of the pin and the key it was walked with, so this is one
+	// database read per entry.
 	var sshChanged bool
 	checkSSH := func() bool {
 		if mode != models.FilesystemModeRemote {
