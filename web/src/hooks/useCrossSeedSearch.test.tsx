@@ -324,6 +324,37 @@ describe("useCrossSeedSearch", () => {
     expect(selected.size).toBe(2)
   })
 
+  it("keeps the search results when the opening analysis answers after the search", async () => {
+    let resolveAnalyze!: (info: CrossSeedTorrentSearchResponse["sourceTorrent"]) => void
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(
+      new Promise(resolve => {
+        resolveAnalyze = resolve
+      }) as never
+    )
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult({ guid: "guid-early" })] })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-late-analyze" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolveAnalyze({ name: "test-torrent", hash: "hash-late-analyze" })
+      await Promise.resolve()
+    })
+
+    const results = dialogProps(result).results as CrossSeedTorrentSearchResponse["results"]
+    expect(results.map(r => r.guid)).toEqual(["guid-early"])
+  })
+
   it("forwards the partial flag from the search response to the dialog", async () => {
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
       makeSearchResponse({ results: [makeResult()], partial: true })

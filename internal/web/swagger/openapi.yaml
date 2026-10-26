@@ -9154,7 +9154,7 @@ components:
             - arr_no_ids
         gazelle_timed_out:
           type: boolean
-          description: Set when RED/OPS did not answer in time. The results hold only the Torznab matches.
+          description: Set when a RED/OPS lookup did not answer in time. The results hold the Torznab matches and the matches of each RED/OPS site that answered.
         torznab_failed:
           type: boolean
           description: Set when the Torznab search failed and the results come only from RED/OPS.

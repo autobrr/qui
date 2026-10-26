@@ -306,8 +306,9 @@ type TorrentSearchResponse struct {
 	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
 	// and the Torznab search fell back to a title-only text query.
 	QueryDegraded string `json:"query_degraded,omitempty"`
-	// GazelleTimedOut is set when RED/OPS did not answer within
-	// gazelleSearchTimeout. The results hold only the Torznab matches.
+	// GazelleTimedOut is set when a RED/OPS lookup did not answer within
+	// gazelleSearchTimeout. The results hold the Torznab matches and the matches
+	// of each RED/OPS site that answered.
 	GazelleTimedOut bool `json:"gazelle_timed_out,omitzero"`
 	// TorznabFailed is set when the Torznab search failed and the results come
 	// only from RED/OPS.

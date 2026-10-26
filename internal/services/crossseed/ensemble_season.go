@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -234,7 +233,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 			return false, ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, fmt.Sprintf("search timed out after %s", timeouts.DefaultSearchTimeout))
+			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, "search timed out")
 			return true, nil
 		}
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))

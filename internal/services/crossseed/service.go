@@ -50,7 +50,6 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -7490,6 +7489,9 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 			Str("reason", scope.skipReason).
 			Msg("[CROSSSEED-SEARCH] Search scope asks no Torznab indexer")
 		gazelle := waitGazelle()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, gazelle.lookupCompleted, gazelle.remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+		}
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelle.results)
 		return &TorrentSearchResponse{
 			SourceTorrent:   sourceInfo,
@@ -7902,6 +7904,9 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 
 	if len(scored) == 0 {
 		gazelle := waitGazelle()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+		}
 		combined := mergeTorrentSearchResults(gazelle.results, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
@@ -7927,6 +7932,9 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	gazelle := waitGazelle()
 	if err != nil {
 		return nil, gazelle.lookupCompleted, remoteRequestsMade, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
 	}
 	if duplicateFilteredCount > 0 {
 		log.Debug().
@@ -9693,8 +9701,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	// Stale indexers the per-torrent filter ruled out count as covered: they
 	// were considered and deliberately excluded, and leaving them unstamped
 	// would keep the candidate nominally eligible on every run.
+	// A failed indexer listing excluded nothing: qui did not ask those indexers.
 	var staleExcludedIndexerIDs []int
-	if hasStaleWork {
+	if hasStaleWork && scope.torznabErr == nil {
 		staleExcludedIndexerIDs = subtractInts(staleWork.indexerIDs, scope.torznabIndexerIDs)
 	}
 
@@ -9763,7 +9772,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Status:       models.CrossSeedSearchResultStatusSkipped,
-				Message:      fmt.Sprintf("search timed out after %s", timeouts.DefaultSearchTimeout),
+				Message:      "search timed out",
 				ProcessedAt:  processedAt,
 			})
 			s.finishSearchCandidate(state, 0, false)

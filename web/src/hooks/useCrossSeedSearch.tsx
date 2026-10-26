@@ -281,10 +281,8 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
         .then(torrentInfo => {
-          setCrossSeedSearchResponse({
-            sourceTorrent: torrentInfo,
-            results: [],
-          })
+          // A search that answered first already holds the source torrent.
+          setCrossSeedSearchResponse(prev => prev ?? { sourceTorrent: torrentInfo, results: [] })
         })
         .catch((error: unknown) => {
           let message = error instanceof Error ? error.message : t("hooks.search.analyzeFailed")

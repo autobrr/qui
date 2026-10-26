@@ -268,3 +268,54 @@ func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testi
 	require.Empty(t, resp.Results)
 	require.False(t, gazelleLookupCompleted)
 }
+
+// A caller that cancels while RED/OPS still waits gets the cancellation, not a
+// completed search, also after Torznab answered.
+func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.T) {
+	const emptyFeed = `<rss version="2.0"><channel><title>Generic</title></channel></rss>`
+	const matchFeed = `<rss version="2.0"><channel><title>Generic</title><item><title>During - LMK (2024 WF)</title><guid>torznab-guid</guid><size>123</size><enclosure url="https://example.invalid/candidate.torrent" length="123" type="application/x-bittorrent" /></item></channel></rss>`
+	tests := []struct {
+		name        string
+		feed        string
+		gazelleOnly bool
+	}{
+		{name: "no torznab indexer", gazelleOnly: true},
+		{name: "torznab returns nothing", feed: emptyFeed},
+		{name: "torznab returns a match", feed: matchFeed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torznabAnswered := make(chan struct{})
+			var answerOnce sync.Once
+			tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/rss+xml")
+				_, _ = fmt.Fprint(w, tt.feed)
+				answerOnce.Do(func() { close(torznabAnswered) })
+			}))
+			t.Cleanup(tracker.Close)
+
+			svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-cancel-gazelle-wait", tracker.URL)
+			clients, started, _ := slowGazelleClients(t)
+			scope := torznabGazelleScope
+			if tt.gazelleOnly {
+				scope = searchScope{gazelleHosts: []string{"orpheus.network"}}
+				answerOnce.Do(func() { close(torznabAnswered) })
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			go func() {
+				<-started
+				<-torznabAnswered
+				// Let the Torznab results reach the wait for RED/OPS.
+				time.Sleep(200 * time.Millisecond)
+				cancel()
+			}()
+
+			resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, scope, clients)
+
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, resp)
+		})
+	}
+}
