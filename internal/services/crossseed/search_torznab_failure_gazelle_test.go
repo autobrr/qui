@@ -296,6 +296,8 @@ func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.
 
 			svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-cancel-gazelle-wait", tracker.URL)
 			clients, started, _ := slowGazelleClients(t)
+			// Only the cancel can end the RED/OPS wait.
+			gazelleSearchTimeout = time.Minute
 			scope := torznabGazelleScope
 			if tt.gazelleOnly {
 				scope = searchScope{gazelleHosts: []string{"orpheus.network"}}
@@ -307,8 +309,6 @@ func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.
 			go func() {
 				<-started
 				<-torznabAnswered
-				// Let the Torznab results reach the wait for RED/OPS.
-				time.Sleep(200 * time.Millisecond)
 				cancel()
 			}()
 

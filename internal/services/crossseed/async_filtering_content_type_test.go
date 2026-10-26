@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -144,22 +145,26 @@ func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 	}
 	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	filterCache.Set(asyncFilteringCacheKey(cachedFilteringInstanceID, cachedFilteringSourceHash), running, ttlcache.DefaultTTL)
+	// The indexer server stays outside the bubble: its accept loop would stop
+	// the fake clock.
 	service, searchRequests := newCachedFilteringSearchService(t, filterCache)
 
-	go func() {
-		time.Sleep(200 * time.Millisecond)
-		running.Lock()
-		running.FilteredIndexers = []int{}
-		running.ExcludedIndexers = map[int]string{cachedFilteringIndexerID: "already seeded from Movie Indexer"}
-		running.ContentCompleted = true
-		running.Unlock()
-	}()
+	synctest.Test(t, func(t *testing.T) {
+		go func() {
+			time.Sleep(time.Second)
+			running.Lock()
+			running.FilteredIndexers = []int{}
+			running.ExcludedIndexers = map[int]string{cachedFilteringIndexerID: "already seeded from Movie Indexer"}
+			running.ContentCompleted = true
+			running.Unlock()
+		}()
 
-	resp, err := service.SearchTorrentMatches(t.Context(), cachedFilteringInstanceID, cachedFilteringSourceHash, TorrentSearchOptions{})
-	require.NoError(t, err)
-	require.Empty(t, resp.Results)
-	require.Zero(t, searchRequests.Load(), "the dialog must not ask an indexer that the content filter removes")
-	require.Contains(t, resp.SourceTorrent.ExcludedIndexers, cachedFilteringIndexerID)
+		resp, err := service.SearchTorrentMatches(t.Context(), cachedFilteringInstanceID, cachedFilteringSourceHash, TorrentSearchOptions{})
+		require.NoError(t, err)
+		require.Empty(t, resp.Results)
+		require.Zero(t, searchRequests.Load(), "the dialog must not ask an indexer that the content filter removes")
+		require.Contains(t, resp.SourceTorrent.ExcludedIndexers, cachedFilteringIndexerID)
+	})
 }
 
 // A background worker whose cache entry was replaced by a newer run must not
