@@ -608,8 +608,9 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 }
 
 // FailRemotePreviews fails the instance's remote previews after its SSH
-// settings are saved or its host key is replaced. Confirm refuses them anyway,
-// since the run records the pin it walked with, but this frees them at once.
+// settings are saved or its host key is replaced. Confirm refuses those whose
+// user, host, port or pin changed, but a save that keeps them, such as a new
+// private key, is caught only here.
 func (s *Service) FailRemotePreviews(ctx context.Context, instanceID int) error {
 	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
 	if err != nil {
@@ -961,8 +962,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
 		return
 	}
-	if current := models.FilesystemAccessMode(reloaded); current != mode || walkedEndpoint(reloaded) != walkedEndpoint(instance) {
-		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).
+	if current, endpointChanged := models.FilesystemAccessMode(reloaded), walkedEndpoint(reloaded) != walkedEndpoint(instance); current != mode || endpointChanged {
+		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).Bool("endpointChanged", endpointChanged).
 			Msg("orphanscan: failing scan, filesystem access changed while it ran")
 		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
 		return
