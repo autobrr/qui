@@ -131,7 +131,6 @@
       "check": "Prüfen"
     },
     "searching": "Auf Cross-Seeds wird geprüft",
-    "searchingProgress": "Auf Cross-Seeds wird geprüft ({{checked}}/{{total}})",
     "error": "Prüfung auf Cross-Seeds fehlgeschlagen",
     "retry": "Erneut versuchen",
     "noCrossSeeds": "Keine Cross-Seeds gefunden",

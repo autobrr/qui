@@ -54,7 +54,6 @@ export interface CrossSeedTorrent extends Torrent {
 }
 
 export interface LocalMatchTypeInfo {
-  deleteRelevant: boolean
   independentlyUsable: boolean
   breaksWhenSourceDeleted: boolean
 }
@@ -65,21 +64,18 @@ export function getLocalMatchTypeInfo(
   switch (matchType) {
     case "content_path":
       return {
-        deleteRelevant: true,
         independentlyUsable: false,
         breaksWhenSourceDeleted: true,
       }
     case "hardlink":
     case "reflink":
       return {
-        deleteRelevant: true,
         independentlyUsable: true,
         breaksWhenSourceDeleted: false,
       }
     case "name":
     case "release":
       return {
-        deleteRelevant: false,
         independentlyUsable: false,
         breaksWhenSourceDeleted: false,
       }

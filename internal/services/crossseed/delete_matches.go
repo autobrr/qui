@@ -1,0 +1,126 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"fmt"
+	"slices"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+)
+
+// FindDeleteMatches returns the torrents on the instance, other than the
+// selected torrents, that a delete of the selected torrents with their files
+// affects: the torrents that share a file path with a selected torrent and the
+// linked copies of its files. It selects the candidates as BuildCrossMatchSets
+// does, so one call covers a selection of any size, and it does not apply the
+// title rescue. Only trusted identity counts for a link, because the delete
+// dialog can add the matches to the delete. A file list or a link check that
+// cannot be read fails the call, so the dialog does not report "no
+// cross-seeds" in error.
+func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]LocalMatch, error) {
+	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get torrents of instance %d: %w", instanceID, err)
+	}
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	instance := instanceByID(instances, instanceID)
+	if instance == nil {
+		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrInvalidRequest)
+	}
+
+	selected := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		selected[normalizeHash(hash)] = struct{}{}
+	}
+	isSelected := func(hash string) bool {
+		_, ok := selected[normalizeHash(hash)]
+		return ok
+	}
+
+	reads := s.readLocalTorrents(ctx, instanceID, viewTorrents(torrents))
+	idx := s.buildIndexFromViews(torrents, false, reads)
+	if idx == nil {
+		return nil, nil
+	}
+	picks := make([][]*candidatePick, len(torrents))
+	for i := range torrents {
+		if source := torrents[i].Torrent; isSelected(source.Hash) {
+			picks[i] = s.selectCandidates(source, reads.read(s.matcher(), instanceID, source), idx, true)
+		}
+	}
+	pathGroups := slices.DeleteFunc(sharedPathGroups(torrents), func(group []int) bool {
+		return !slices.ContainsFunc(group, func(i int) bool { return isSelected(torrents[i].Hash) })
+	})
+
+	files := &batchFiles{
+		svc:                 s,
+		instances:           instances,
+		byKey:               make(map[string]*batchFileData),
+		fetched:             make(map[string]qbt.TorrentFiles),
+		links:               make(map[string]*localMatchContext),
+		linkTiers:           make(map[[2]string]localLinkResult),
+		trustedIdentityOnly: true,
+	}
+	files.prefetch(ctx, instanceID, torrents, pathGroups, picks)
+	files.addSharedPathPicks(ctx, instanceID, torrents, pathGroups, picks, CrossMatchNeeds{})
+
+	var matches []LocalMatch
+	matched := make(map[string]struct{})
+	for i := range torrents {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		source := torrents[i].Torrent
+		// A magnet without metadata has no files.
+		if !isSelected(source.Hash) || len(picks[i]) == 0 || source.ContentPath == "" {
+			continue
+		}
+		sourceData, ok := files.get(ctx, instanceID, source.Hash, source.SavePath)
+		if !ok {
+			return nil, fmt.Errorf("read the file list of torrent %s", normalizeHash(source.Hash))
+		}
+		for _, p := range picks[i] {
+			c := p.entry
+			if _, done := matched[c.hash]; done || isSelected(c.hash) || c.view.ContentPath == "" {
+				continue
+			}
+			tier, err := files.deleteTier(ctx, source, instanceID, sourceData, p)
+			if err != nil {
+				return nil, err
+			}
+			if tier != matchTypeContentPath && tier != matchTypeHardlink && tier != matchTypeReflink {
+				continue
+			}
+			matched[c.hash] = struct{}{}
+			matches = append(matches, newLocalMatch(instance, c.view, tier))
+		}
+	}
+	return matches, nil
+}
+
+// deleteTier returns the tier of a candidate of a selected torrent on the same
+// instance. Unlike classifyCandidates, it checks the link also when the sizes
+// pair: a linked copy survives the delete, and the dialog says so.
+func (b *batchFiles) deleteTier(ctx context.Context, source *qbt.Torrent, instanceID int, sourceData batchFileData, p *candidatePick) (string, error) {
+	c := p.entry
+	candidateData, ok := b.get(ctx, instanceID, c.hash, c.savePath)
+	if !ok {
+		return "", fmt.Errorf("read the file list of torrent %s", c.hash)
+	}
+	var linkUnread bool
+	tier := localMatchTier(true, p.nameOrRelease, sourceData.data, candidateData.data, func() string {
+		linked := b.linkedTier(ctx, source, instanceID, c)
+		linkUnread = linked.unread
+		return linked.tier
+	})
+	if linkUnread {
+		return "", fmt.Errorf("check the links of torrent %s", c.hash)
+	}
+	return tier, nil
+}

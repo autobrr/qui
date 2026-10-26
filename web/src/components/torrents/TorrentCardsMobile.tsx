@@ -32,7 +32,6 @@ import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActio
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -855,10 +854,6 @@ export function TorrentCardsMobile({
   // are ever added to this view, ensure the combined filters (including expr)
   // are passed into these bulk action payloads similar to the desktop table.
 
-  // Get instance info for cross-seed warning
-  const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
-
   const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
@@ -1048,10 +1043,15 @@ export function TorrentCardsMobile({
   }, [isAllSelected, isCrossInstanceEndpoint, excludedTargets])
 
   // Cross-seed warning for delete dialog
+  // The same select-all scope as handleDeleteWrapper sends.
+  const crossSeedSelectAll = useMemo(
+    () => (!torrentToDelete && isAllSelected? { filters, search: effectiveSearch, excludeHashes: excludeHashesForRequest, excludeTargets: excludedTargets, instanceIds }: undefined),
+    [torrentToDelete, isAllSelected, filters, effectiveSearch, excludeHashesForRequest, excludedTargets, instanceIds]
+  )
   const crossSeedWarning = useCrossSeedWarning({
     instanceId,
-    instanceName: instance?.name ?? "",
     torrents: deleteTorrents,
+    selectAll: crossSeedSelectAll,
   })
 
   const hasCrossSeedTag = useMemo(

@@ -353,14 +353,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     },
   })
 
-  // Cross-seed warning for delete dialog
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
-    instanceId,
-    instanceName: instance?.name ?? "",
-    contextTorrents,
-    blockCrossSeeds,
-  })
-
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
     fallbackDelayMs: 1500,
@@ -769,6 +761,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isCrossInstanceEndpoint,
     instanceId,
     contextTorrents,
+  })
+
+  // Cross-seed warning for delete dialog, over the select-all scope that the delete sends
+  const crossSeedSelectAll = useMemo(
+    () => (isAllSelected? {
+      filters: selectAllFilters,
+      search: effectiveSearch,
+      excludeHashes: selectAllExcludeHashes,
+      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+      instanceIds,
+    }: undefined),
+    [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds]
+  )
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
+    instanceId,
+    contextTorrents,
+    selectAll: crossSeedSelectAll,
+    blockCrossSeeds,
   })
   const queryClient = useQueryClient()
 
