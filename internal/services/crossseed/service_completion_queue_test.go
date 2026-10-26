@@ -293,7 +293,7 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 	select {
 	case <-secondStarted:
 		t.Fatal("second completion search started before first released")
-	default:
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(releaseFirst)
@@ -402,7 +402,7 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 	select {
 	case <-secondStarted:
 		t.Fatal("second completion search started before first released")
-	default:
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(releaseFirst)
