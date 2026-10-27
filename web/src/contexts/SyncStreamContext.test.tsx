@@ -2032,4 +2032,29 @@ describe("subscription changes on an open stream", () => {
     expect(MockEventSource.instances).toHaveLength(2)
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("bbb"))].sort())
   })
+
+  it("does not hold changes on a new stream behind a stuck request of the old one", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockReturnValueOnce(new Promise(() => {}))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+
+    act(() => source.emitError())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    const next = MockEventSource.instances[1]
+    act(() => {
+      next.emitOpen()
+      next.emit("connection", { type: "connection", connectionId: "qui-conn-9" })
+    })
+    change.mockResolvedValue(undefined)
+    select("bbb")
+    await settle()
+    expect(change).toHaveBeenLastCalledWith(
+      "qui-conn-9",
+      [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
+      [createStreamKey(details("aaa"))]
+    )
+  })
 })

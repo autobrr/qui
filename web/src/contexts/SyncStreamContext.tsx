@@ -434,6 +434,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.signature = undefined
       connection.connectionId = undefined
       connection.streams = undefined
+      // A change request of the old source can stay open forever. The next
+      // source must not wait for it.
+      connection.changes = undefined
 
       if (!preserveRetry) {
         clearConnectionRetryState()
