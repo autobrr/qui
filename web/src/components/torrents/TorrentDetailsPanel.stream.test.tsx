@@ -8,6 +8,7 @@ import { act, cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { StreamState } from "@/contexts/SyncStreamContext"
+import { STREAM_ERROR_DISCONNECTED } from "@/lib/sync-stream-state"
 import type { Torrent, TorrentStreamPayload } from "@/types"
 import { makeTorrent } from "@/test/mockTorrent"
 import { TorrentDetailsPanel } from "./TorrentDetailsPanel"
@@ -95,6 +96,35 @@ describe("TorrentDetailsPanel fallback", () => {
     expect(mocks.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ limit: 1 }))
     expect(mocks.renders).not.toContain(0.5)
     client.clear()
+  })
+
+  it.each([
+    ["a stalled view", { dataStalled: true }, 1, 2],
+    ["a server stream-error", { connected: false, error: "instance unreachable: connection refused" }, 1, 1],
+    ["a client-side connection error", { connected: false, error: STREAM_ERROR_DISCONNECTED }, 5, 16],
+  ] as const)("polls the row at the stream fallback interval for %s", async (_name, state, callsAt9s, callsAt30s) => {
+    vi.useFakeTimers()
+    try {
+      mocks.state = { connected: true, initialized: true, dataStalled: false, error: null, retrying: false, retryAttempt: 0, ...state }
+      const torrent = makeTorrent({ hash: "a" })
+      mocks.getTorrents.mockResolvedValue({ torrents: [torrent] })
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={client}>
+          <TorrentDetailsPanel instanceId={1} torrent={torrent} layout="horizontal" onClose={vi.fn()} />
+        </QueryClientProvider>
+      )
+      // The panel turns ready after 150 ms; the render commits when act ends.
+      await act(async () => { await vi.advanceTimersByTimeAsync(200) })
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+      expect(mocks.getTorrents).toHaveBeenCalledTimes(callsAt9s)
+      await act(async () => { await vi.advanceTimersByTimeAsync(21000) })
+      expect(mocks.getTorrents).toHaveBeenCalledTimes(callsAt30s)
+      client.clear()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("does not reuse a snapshot for the same hash on another instance", async () => {

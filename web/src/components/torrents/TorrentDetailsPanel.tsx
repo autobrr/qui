@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -267,7 +267,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
     enabled: shouldUseFallbackPolling && !!hashFilter,
     staleTime: 1000,
-    refetchInterval: shouldUseFallbackPolling ? 2000 : false,
+    refetchInterval: shouldUseFallbackPolling ? streamFallbackPollInterval(streamState, 2000) : false,
   })
 
   // Merge live data with prop, preferring live values for frequently-changing fields

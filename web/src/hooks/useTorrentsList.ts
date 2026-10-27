@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
@@ -576,13 +576,15 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // SSE owns only page zero. Healthy streams let later pages refresh more
-    // slowly; cross-instance fallback also retains its ten-second cadence.
-    refetchInterval:
-      pollingEnabled && (currentPage > 0 || !shouldDisablePolling)
-        ? (shouldDisablePolling || useCrossInstanceEndpoint
-          ? LOADED_WINDOW_POLL_INTERVAL_MS
-          : TORRENT_STREAM_POLL_INTERVAL_MS)
-        : false,
+    // slowly. A stream that is not usable sets the poll for every page.
+    refetchInterval: !pollingEnabled
+      ? false
+      : shouldDisablePolling
+        ? (currentPage > 0 ? LOADED_WINDOW_POLL_INTERVAL_MS : false)
+        : streamFallbackPollInterval(
+          streamState,
+          useCrossInstanceEndpoint ? LOADED_WINDOW_POLL_INTERVAL_MS : TORRENT_STREAM_POLL_INTERVAL_MS
+        ),
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: pollingEnabled,
     enabled: queryEnabled,

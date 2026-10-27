@@ -23,6 +23,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
+- **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
 ## Tracker health
 

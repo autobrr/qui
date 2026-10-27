@@ -6,6 +6,7 @@
 import { api } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
 import { applyStreamDelta, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
+import { isClientConnectionErrorCode, STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, STREAM_ERROR_UNSUPPORTED } from "@/lib/sync-stream-state"
 import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentResponse, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
@@ -15,30 +16,6 @@ const RETRY_MAX_DELAY_MS = 30000
 const MAX_RETRY_ATTEMPTS = 6
 const HANDOFF_GRACE_PERIOD_MS = 1200
 const ENTRY_TEARDOWN_DELAY_MS = 200
-
-// Client-side connection-state error codes. These are stable machine identifiers,
-// not human-readable prose: the UI maps them to localized streamStatus.* copy so
-// non-English locales never see English text. entry.error stays truthy for these
-// so the existing polling-fallback gates keep treating the stream as unhealthy.
-// Genuine backend payload errors (stream-error events) are stored verbatim because
-// they are dynamic server text that cannot be translated client-side.
-export const STREAM_ERROR_UNSUPPORTED = "client:eventsource-unsupported"
-export const STREAM_ERROR_DISCONNECTED = "client:disconnected"
-export const STREAM_ERROR_RETRY_EXHAUSTED = "client:retry-exhausted"
-
-const CLIENT_CONNECTION_ERROR_CODES: ReadonlySet<string> = new Set([
-  STREAM_ERROR_UNSUPPORTED,
-  STREAM_ERROR_DISCONNECTED,
-  STREAM_ERROR_RETRY_EXHAUSTED,
-])
-
-// isClientConnectionErrorCode reports whether a StreamState.error value is one of
-// the client-side connection-state codes above (as opposed to backend payload
-// error text). Components use it to decide whether to render the localized
-// connection-status message or the raw backend error.
-export function isClientConnectionErrorCode(error: string | null | undefined): boolean {
-  return error != null && CLIENT_CONNECTION_ERROR_CODES.has(error)
-}
 
 // The backend emits a heartbeat every 5s. Once any event has arrived, if none
 // follows within this window the connection is considered dead even when the
@@ -595,9 +572,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         Object.values(streamsRef.current).forEach(entry => {
           clearHandoffState(entry)
-          if (!entry.error) {
-            entry.error = STREAM_ERROR_DISCONNECTED
-          }
+          // Replace a server error too: it stops the fallback poll, and a dropped
+          // connection must poll until the stream is back.
+          entry.error = STREAM_ERROR_DISCONNECTED
           entry.connected = false
           entry.initialized = false
           entry.dataStalled = false
@@ -954,6 +931,10 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entry.connected = false
         entry.initialized = false
         entry.version = undefined
+        // A server error stops the fallback poll, and the closed source cannot clear it.
+        if (entry.error && !isClientConnectionErrorCode(entry.error)) {
+          entry.error = STREAM_ERROR_DISCONNECTED
+        }
         clearHandoffState(entry)
       })
       notifyAllStateSubscribers()
