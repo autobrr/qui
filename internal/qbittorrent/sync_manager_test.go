@@ -2191,7 +2191,8 @@ func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial
 	callCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancel()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
 	require.NotNil(t, resp)
@@ -2234,7 +2235,8 @@ func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
 		cancel()
 	}()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
 	assert.Nil(t, resp)
@@ -2272,7 +2274,8 @@ func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *
 		cancel()
 	}()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
 	assert.Nil(t, resp)
