@@ -81,14 +81,16 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
 }
 
 // mergeLiveRow puts the values of the live row over the properties that load
-// one time. The other fields (comment, creator, save path, piece counts) keep
-// the loaded value.
+// one time. The other fields (comment, creator, save path) keep the loaded
+// value. The piece counts come from the row only on qBittorrent 5.2 and later,
+// where pieces_num is set.
 function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): TorrentProperties {
   if (!row) {
     return properties
   }
   return {
     ...properties,
+    ...(row.pieces_num ? { pieces_have: row.pieces_have ?? 0, pieces_num: row.pieces_num } : {}),
     dl_speed: row.dlspeed,
     up_speed: row.upspeed,
     seeds: row.num_seeds,

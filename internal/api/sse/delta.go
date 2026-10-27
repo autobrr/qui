@@ -309,13 +309,14 @@ func (b *fpBuf) bit(v bool) {
 // torrent appends every change-relevant torrent field. The per-second counters and
 // swarm/peer-count jitter that move on an otherwise-idle torrent every tick
 // (Reannounce, TimeActive, SeedingTime, ETA, LastActivity, SeenComplete, Popularity,
-// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds) are deliberately
-// left out: on a mostly-idle instance they are the sole fields that change each tick,
-// so including them would flag nearly every row as changed and make each "delta"
-// almost as large as a full snapshot (the root cause of the stream saturating an
-// HTTP/2 connection). The excluded fields still ride along with their current value
-// whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row (oneRowFingerprint adds some of them back). MagnetURI and
+// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds, ConnectionsCount)
+// are deliberately left out: on a mostly-idle instance they are the sole fields that
+// change each tick, so including them would flag nearly every row as changed and make
+// each "delta" almost as large as a full snapshot (the root cause of the stream
+// saturating an HTTP/2 connection). PiecesHave is left out because Progress already
+// resends the row during a download. The excluded fields still ride along with their
+// current value whenever a row is sent for a real change; they are just not on their
+// own a reason to resend a row (oneRowFingerprint adds some of them back). MagnetURI and
 // HasMetadata are also left out, for a different reason: TorrentView shadows
 // them out of the serialized payload entirely, so
 // changes to them have nothing to update and must not resend a row (issue #2328).
@@ -332,7 +333,9 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.str(t.Comment)
 	b.i64(t.Completed)
 	b.i64(t.CompletionOn)
+	b.i64(t.ConnectionsLimit)
 	b.str(t.CreatedBy)
+	b.i64(t.CreationDate)
 	b.str(t.ContentPath)
 	b.i64(t.DlLimit)
 	b.i64(t.DlSpeed)
@@ -349,6 +352,8 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.i64(t.MaxSeedingTime)
 	b.i64(t.MaxInactiveSeedingTime)
 	b.str(t.Name)
+	b.i64(t.PieceSize)
+	b.i64(t.PiecesNum)
 	b.i64(t.Priority)
 	b.f64(t.Progress)
 	b.f64(t.Ratio)
@@ -364,6 +369,7 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.bit(t.SuperSeeding)
 	b.str(t.Tags)
 	b.i64(t.TotalSize)
+	b.i64(t.TotalWasted)
 	b.str(t.Tracker)
 	b.i64(t.TrackersCount)
 	b.i64(t.UpLimit)
@@ -413,6 +419,8 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 		b.i64(t.NumLeechs)
 		b.i64(t.NumComplete)
 		b.i64(t.NumIncomplete)
+		b.i64(t.ConnectionsCount)
+		b.i64(t.PiecesHave)
 	}
 	return b.sum()
 }

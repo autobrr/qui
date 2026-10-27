@@ -128,6 +128,26 @@ describe("useTorrentDetailTab general", () => {
     expect(result.current.data?.row?.dlspeed).toBe(500)
   })
 
+  it("shows live piece counts from a qBittorrent 5.2 row", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    sendRow({ state: "downloading", pieces_have: 60, pieces_num: 100 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([60, 100])
+
+    sendRow({ state: "downloading", pieces_have: 75, pieces_num: 100 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([75, 100])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the loaded piece counts with a row from before qBittorrent 5.2", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    // qui sends 0 for both fields when qBittorrent does not send them.
+    sendRow({ state: "downloading", pieces_have: 0, pieces_num: 0 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([40, 100])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
+  })
+
   it("shows live time active, seeds, and peers on a seeding torrent without a new fetch", async () => {
     const { result } = renderTab("general")
     await waitFor(() => expect(result.current.data?.properties).toBeDefined())
