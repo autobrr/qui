@@ -54,7 +54,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	if isCross {
 		order, changedIdx, newFP = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, g.baselineFP)
 	} else {
-		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, g.baselineFP)
+		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), g.baselineFP)
 	}
 
 	forceFull := g.baselineSnapshot == nil
@@ -219,7 +219,7 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	if opts.isMultiInstance() {
 		order, _, fp = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, nil)
 	} else {
-		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, nil)
+		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), nil)
 	}
 
 	g.baselineFP = fp
@@ -315,8 +315,9 @@ func (b *fpBuf) bit(v bool) {
 // almost as large as a full snapshot (the root cause of the stream saturating an
 // HTTP/2 connection). The excluded fields still ride along with their current value
 // whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row. MagnetURI and HasMetadata are also left out, for a different
-// reason: TorrentView shadows them out of the serialized payload entirely, so
+// to resend a row (oneRowFingerprint adds some of them back). MagnetURI and
+// HasMetadata are also left out, for a different reason: TorrentView shadows
+// them out of the serialized payload entirely, so
 // changes to them have nothing to update and must not resend a row (issue #2328).
 // TestTorrentFingerprintCoversEveryField pins this partition, so a
 // go-qbittorrent bump that adds a field fails until the field is categorized here.
@@ -396,6 +397,31 @@ func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
 	return b.sum()
+}
+
+// oneRowFingerprint is singleRowFingerprint for a one-row view, the details row.
+// It also hashes the counters that the General tab shows live. One row costs
+// little to resend, so the reason to leave them out of a list does not apply.
+func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
+	*b = (*b)[:0]
+	b.torrent(tv.Torrent)
+	b.str(string(tv.TrackerHealth))
+	if t := tv.Torrent; t != nil {
+		b.i64(t.TimeActive)
+		b.i64(t.SeedingTime)
+		b.i64(t.NumSeeds)
+		b.i64(t.NumLeechs)
+		b.i64(t.NumComplete)
+		b.i64(t.NumIncomplete)
+	}
+	return b.sum()
+}
+
+func singleRowFingerprintFor(opts StreamOptions) func(*fpBuf, qbittorrent.TorrentView) uint64 {
+	if opts.Limit == 1 {
+		return oneRowFingerprint
+	}
+	return singleRowFingerprint
 }
 
 // crossRowFingerprint hashes a cross-instance row's change-relevant content,

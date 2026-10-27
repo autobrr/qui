@@ -34,7 +34,7 @@ Frontend rules for work under `web/`. i18n and translation rules live in `web/sr
 
 ## Torrent Details Note
 
-`web/src/components/torrents/TorrentDetailsPanel.tsx` live row state is stream-backed via `useSyncStream`; polling is fallback while stream unavailable. Content/files and Peers tabs still poll on interval, but polling is tab-scoped and visibility-gated.
+`useTorrentDetailTab` (`web/src/hooks/useTorrentDetailTab.ts`) owns when the General, Peers, and HTTP Sources tabs of `TorrentDetailsPanel.tsx` fetch; a new fetch rule for these tabs goes in the hook. General merges the live stream row over the properties that load one time, and polls the row only while the stream is not usable. Content and Trackers still fetch in the panel.
 
 `useSyncStream` listeners receive raw frames. A delta for unchanged rows carries an empty `torrents` list and the previous `total`, so a handler clears its row only on `total === 0` and keeps the previous row on an empty list.
 
