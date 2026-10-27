@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { SortedPeer, Torrent, TorrentProperties, WebSeed } from "@/types"
+import type { SortedPeer, Torrent, TorrentProperties, TorrentTracker, WebSeed } from "@/types"
 import { makeTorrent } from "@/test/mockTorrent"
 import { TorrentDetailsPanel } from "./TorrentDetailsPanel"
 
@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
       isLoading: false,
       error: null,
     },
+    trackers: { data: [{ url: "https://tracker.example.invalid/announce" }] as TorrentTracker[], isLoading: false, error: null },
     peers: {
       data: { peers: {}, sorted_peers: [{ key: "1" }, { key: "2" }, { key: "3" }] as SortedPeer[] },
       isLoading: false,
@@ -38,7 +39,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/hooks/useTorrentDetailTab", () => ({
   useTorrentDetailTab: (_instanceId: number, hash: string | null, tab: string, liveHash?: string | null) => {
-    if (tab === "general") {
+    if (tab === "general" || tab === "trackers") {
       mocks.liveHashes.push(liveHash ?? null)
     }
     return hash === null ? mocks.noHash : mocks.tabs[tab]
@@ -52,7 +53,6 @@ vi.mock("@/lib/cross-seed-utils", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     getInstances: async () => [],
-    getTorrentTrackers: async () => [],
   },
 }))
 vi.mock("./details", () => ({
@@ -63,7 +63,7 @@ vi.mock("./details", () => ({
   PeersTable: ({ peers }: { peers?: SortedPeer[] }) => <div data-testid="peers">{peers?.length}</div>,
   TorrentFileTable: () => null,
   TrackerContextMenu: () => null,
-  TrackersTable: () => null,
+  TrackersTable: ({ trackers }: { trackers?: TorrentTracker[] }) => <div data-testid="trackers">{trackers?.map(tracker => tracker.url).join(",")}</div>,
   WebSeedsTable: ({ webseeds }: { webseeds?: WebSeed[] }) => <div data-testid="webseeds">{webseeds?.map(seed => seed.url).join(",")}</div>,
 }))
 
@@ -100,6 +100,11 @@ describe("TorrentDetailsPanel tabs", () => {
     const { findByText } = renderPanel({ initialTab: "general" })
     expect((await findByText("37")).textContent).toBe("37 / 91")
     expect((await findByText("12")).textContent).toBe("12 / 48")
+  })
+
+  it("shows the trackers from the hook", async () => {
+    const { findByTestId } = renderPanel({ initialTab: "trackers", layout: "horizontal" })
+    expect((await findByTestId("trackers")).textContent).toBe("https://tracker.example.invalid/announce")
   })
 
   it("shows the peers from the hook", async () => {

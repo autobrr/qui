@@ -7,9 +7,9 @@ import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { resolveStreamRow } from "@/lib/torrent-utils"
-import type { SortedPeersResponse, Torrent, TorrentProperties, TorrentStreamPayload, WebSeed } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { useCallback, useMemo, useState } from "react"
+import type { SortedPeersResponse, Torrent, TorrentProperties, TorrentStreamPayload, TorrentTracker, WebSeed } from "@/types"
+import { focusManager, useQuery, useQueryClient, type Query } from "@tanstack/react-query"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 export interface GeneralTabData {
   // The live row from the stream, or from the fallback poll. Null until one arrives.
@@ -19,6 +19,7 @@ export interface GeneralTabData {
 
 interface TabData {
   general: GeneralTabData
+  trackers: TorrentTracker[]
   peers: SortedPeersResponse
   webseeds: WebSeed[]
 }
@@ -36,15 +37,16 @@ export interface TorrentDetailTabResult<T extends TorrentDetailTab> {
 // while the page is hidden (refetchIntervalInBackground is off).
 const TAB_QUERIES = {
   general: { key: "torrent-properties", staleTime: 30000, refetchInterval: false, fetch: (instanceId: number, hash: string) => api.getTorrentProperties(instanceId, hash) },
+  trackers: { key: "torrent-trackers", staleTime: 30000, refetchInterval: false, fetch: (instanceId: number, hash: string) => api.getTorrentTrackers(instanceId, hash) },
   peers: { key: "torrent-peers", staleTime: 0, refetchInterval: 2000, fetch: (instanceId: number, hash: string) => api.getTorrentPeers(instanceId, hash) },
   webseeds: { key: "torrent-webseeds", staleTime: 30000, refetchInterval: false, fetch: (instanceId: number, hash: string) => api.getTorrentWebSeeds(instanceId, hash) },
 } as const
 
 // useTorrentDetailTab owns when a details tab fetches. A null hash fetches
 // nothing: the panel passes null before it is ready, and for a tab that must
-// not fetch while it is closed. The live row of General follows liveHash,
-// which the panel passes before it is ready, so a switch between two torrents
-// moves the stream subscription in one change.
+// not fetch while it is closed. The live row of General and Trackers follows
+// liveHash, which the panel passes before it is ready, so a switch between two
+// torrents moves the stream subscription in one change.
 export function useTorrentDetailTab<T extends TorrentDetailTab>(
   instanceId: number,
   hash: string | null,
@@ -52,7 +54,7 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   liveHash: string | null = hash
 ): TorrentDetailTabResult<T> {
   const tabQuery = TAB_QUERIES[tab]
-  const row = useLiveRow(instanceId, tab === "general" ? liveHash : null, hash !== null)
+  const row = useLiveRow(instanceId, tab === "general" || tab === "trackers" ? liveHash : null, hash !== null)
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
     queryFn: () => tabQuery.fetch(instanceId, hash!),
@@ -60,7 +62,10 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
     staleTime: tabQuery.staleTime,
     gcTime: 5 * 60 * 1000,
     refetchInterval: tabQuery.refetchInterval,
+    // A Trackers reload that came while the page was hidden runs when the page shows again.
+    refetchOnWindowFocus: tab === "trackers" ? (q: Query) => q.state.isInvalidated : false,
   })
+  useTrackersReload(instanceId, tab === "trackers" ? hash : null, row)
 
   const properties = query.data as TorrentProperties | undefined
   const general = useMemo<GeneralTabData>(
@@ -96,6 +101,31 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
     time_elapsed: row.time_active,
     seeding_time: row.seeding_time,
   }
+}
+
+// useTrackersReload reloads the Trackers tab when the tracker count or the
+// Tracker health verdict of the live row changes. The qBittorrent 5.2 tracker
+// flags are not in the row, so a change that is only a warning does not reload
+// the tab. While the page is hidden, it only marks the list stale.
+function useTrackersReload(instanceId: number, hash: string | null, row: Torrent | null) {
+  const queryClient = useQueryClient()
+  const torrentKey = `${instanceId}|${hash}`
+  const trackerState = hash !== null && row?.hash === hash ? `${row.trackers_count}|${row.tracker_health ?? ""}` : null
+  const seen = useRef<{ torrentKey: string; trackerState: string } | null>(null)
+  useEffect(() => {
+    if (trackerState === null) {
+      return
+    }
+    const last = seen.current
+    seen.current = { torrentKey, trackerState }
+    if (last?.torrentKey !== torrentKey || last.trackerState === trackerState) {
+      return
+    }
+    void queryClient.invalidateQueries({
+      queryKey: [TAB_QUERIES.trackers.key, instanceId, hash],
+      refetchType: focusManager.isFocused() ? "active" : "none",
+    })
+  }, [hash, instanceId, queryClient, torrentKey, trackerState])
 }
 
 // useLiveRow follows the one-row stream view of the torrent. While the stream
