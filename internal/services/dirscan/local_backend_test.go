@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
 // These tests turn local access off between the snapshot a scan or an
@@ -75,7 +76,7 @@ func TestInjectRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 			fx.instance.UseHardlinks = test.useHardlinks
 			pool, spy := remotePool()
 			adder := &failingTorrentAdder{err: errors.New("add failed")}
-			injector := NewInjector(nil, adder, testAdder(adder, nil, nil), nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
+			injector := NewInjector(nil, crossseed.NewAligner(adder), testAdder(adder, nil, nil), nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
 
 			_, err := inject(t.Context(), t, injector, fx.req)
 

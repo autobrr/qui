@@ -699,6 +699,43 @@ func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {
 	assert.NotContains(t, byRel, path.Join("link", "inside.txt"), "a symlinked dir must not be descended")
 }
 
+func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
+	t.Parallel()
+
+	for name, newTier := range map[string]func(*testing.T) (*Backend, *sshtest.Server){"sftp": newBackend, "exec": newExecBackend} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			b, _ := newTier(t)
+			dir := t.TempDir()
+			writeFile(t, remotePath(dir, "target", "sub", "inside.txt"), "i")
+			if err := os.Symlink(remotePath(dir, "target"), remotePath(dir, "link")); err != nil {
+				t.Skipf("symlinks unsupported: %v", err)
+			}
+			link := remotePath(dir, "link")
+
+			for _, follow := range []bool{false, true} {
+				ch, err := b.WalkDir(t.Context(), link, fsops.WalkOptions{FollowRoot: follow, WantFileID: true})
+				require.NoError(t, err)
+				var paths []string
+				for entry := range ch {
+					require.NoError(t, entry.Err)
+					paths = append(paths, entry.Path)
+					// Only the exec tier has identities, so this fails if find -H fell back to sftp.
+					if name == "exec" && entry.Mode.IsRegular() {
+						require.False(t, entry.FileID.IsZero(), entry.Path)
+					}
+				}
+				want := []string{link}
+				if follow {
+					want = append(want, path.Join(link, "sub"), path.Join(link, "sub", "inside.txt"))
+				}
+				require.Equal(t, want, paths, "FollowRoot %v", follow)
+			}
+		})
+	}
+}
+
 func TestWalkDir_UnreadableSubdirEmitsEntryErrAndContinues(t *testing.T) {
 	t.Parallel()
 

@@ -23,7 +23,7 @@ import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
   instanceId: number
-  /** The instance is remote, where deletion and auto-cleanup do not run yet. */
+  /** The instance is remote, where deletion and auto-cleanup need file identity. */
   isRemote?: boolean
   /** The instance reads file identity. */
   hasIdentity?: boolean

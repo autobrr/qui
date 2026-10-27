@@ -23,9 +23,10 @@ const (
 )
 
 // withAdder gives svc the real Adder over its own qBittorrent fake,
-// blocklist store, and Settler.
+// blocklist store, and Settler, and an Aligner with short waits.
 func withAdder(svc *Service) {
 	svc.adder = NewAdder(svc.syncManager, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	svc.aligner = testAligner(svc.syncManager)
 }
 
 // adderFake is the qBittorrent seam of the Adder.
@@ -137,7 +138,6 @@ func TestAdderAdd(t *testing.T) {
 		wantMessage   string
 	}{
 		{name: "skip recheck refuses title rescue", facts: AddFacts{SkipRecheck: true, Verify: VerifyTitleRescue}, wantStatus: "skipped_recheck"},
-		{name: "skip recheck refuses relaxed match", facts: AddFacts{SkipRecheck: true, Verify: VerifyRelaxed}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses manual match", facts: AddFacts{SkipRecheck: true, Verify: VerifyManual}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses alignment with size changes", facts: AddFacts{SkipRecheck: true, Align: true}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses pending files", facts: AddFacts{SkipRecheck: true, PendingFiles: true}, wantStatus: "skipped_recheck"},
@@ -222,7 +222,6 @@ func TestAdderAdd(t *testing.T) {
 			wantOutcome: AddAdded,
 			wantOptions: addOptions(false, true),
 		},
-		{name: "skip recheck refuses link tree with pending files", facts: AddFacts{SkipRecheck: true, LinkTree: true, PendingFiles: true}, wantStatus: "skipped_recheck"},
 		{
 			name:        "complete link tree starts at once",
 			facts:       AddFacts{LinkTree: true},

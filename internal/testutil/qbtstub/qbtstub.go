@@ -587,5 +587,5 @@ func (s *Server) webAPIAtLeast(version string) bool {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) //nolint:errchkjson // test stub: a failed write means the client went away, and the client side of the test reports a bad body
 }

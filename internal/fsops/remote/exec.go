@@ -331,9 +331,14 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: walking over sftp")
 		return false
 	}
+	// -H follows only the root.
+	option := "-P"
+	if opts.FollowRoot {
+		option = "-H"
+	}
 	entries, err := find(ctx, conn, sshpool.Command{
 		Name:       "find",
-		Options:    []string{"-P"},
+		Options:    []string{option},
 		Paths:      []string{root},
 		Expression: []string{"-mindepth", "1", "-printf", findFormat},
 	}, findEntryLimit, findByteLimit)

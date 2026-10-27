@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
+import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
 import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
@@ -351,14 +351,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         clearSelection()
       }
     },
-  })
-
-  // Cross-seed warning for delete dialog
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
-    instanceId,
-    instanceName: instance?.name ?? "",
-    contextTorrents,
-    blockCrossSeeds,
   })
 
   // Fetch metadata using shared hook
@@ -769,6 +761,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isCrossInstanceEndpoint,
     instanceId,
     contextTorrents,
+  })
+
+  // Cross-seed warning for delete dialog, over the select-all scope that the delete sends
+  const crossSeedSelectAll = useMemo(
+    () => (isAllSelected? {
+      filters: selectAllFilters,
+      search: effectiveSearch,
+      excludeHashes: selectAllExcludeHashes,
+      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+      instanceIds,
+    }: undefined),
+    [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds]
+  )
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
+    instanceId,
+    contextTorrents,
+    selectAll: crossSeedSelectAll,
+    blockCrossSeeds,
   })
   const queryClient = useQueryClient()
 

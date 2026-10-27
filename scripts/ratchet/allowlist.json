@@ -23,7 +23,6 @@
     "internal/services/automations/service.go": 5,
     "internal/services/crossseed/ensemble_season.go": 5,
     "internal/services/crossseed/service.go": 20,
-    "internal/services/dirscan/inject.go": 1,
     "internal/services/dirscan/service.go": 22,
     "internal/services/externalprograms/service.go": 2,
     "internal/services/jackett/client.go": 5,
@@ -40,9 +39,7 @@
   "errchkjson": {
     "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
-    "internal/services/automations/service.go": 17,
-    "internal/testutil/qbtstub/qbtstub.go": 1,
-    "internal/web/swagger/swagger.go": 1
+    "internal/services/automations/service.go": 16
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
@@ -54,7 +51,7 @@
     "internal/api/handlers/oidc.go": 1,
     "internal/api/handlers/orphan_scan.go": 1,
     "internal/api/handlers/rss.go": 1,
-    "internal/api/handlers/torrents.go": 3,
+    "internal/api/handlers/torrents.go": 2,
     "internal/api/sse/manager.go": 1,
     "internal/backups/restore_execute.go": 2,
     "internal/backups/service.go": 3,
@@ -80,10 +77,10 @@
     "internal/services/automations/evaluator.go": 2,
     "internal/services/automations/grouping.go": 1,
     "internal/services/automations/hardlink_index.go": 1,
-    "internal/services/automations/processor.go": 6,
-    "internal/services/automations/service.go": 9,
+    "internal/services/automations/processor.go": 5,
+    "internal/services/automations/service.go": 7,
     "internal/services/automations/validate.go": 1,
-    "internal/services/crossseed/align.go": 4,
+    "internal/services/crossseed/align.go": 3,
     "internal/services/crossseed/batch_matching.go": 3,
     "internal/services/crossseed/ensemble_season.go": 2,
     "internal/services/crossseed/gazellemusic/match.go": 2,

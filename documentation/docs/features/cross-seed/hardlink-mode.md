@@ -125,7 +125,7 @@ Because hardlinked copies keep their own links to the data, deleting the origina
 Detection requires:
 
 - **Local filesystem access** enabled on the instances. qui must run in an environment where qBittorrent save paths are valid, identical to the requirements above. Without local access, qui detects only same-path cross-seeds.
-- The copy torrent name must match the original by name or release metadata. qui does not detect copies renamed beyond recognition.
+- The copy torrent must have the same name as the original, or the same release title and metadata. qui does not detect a copy with a different title.
 
 If qui cannot verify a copy (for example when its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
 

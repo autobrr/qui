@@ -34,7 +34,7 @@ In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writ
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.** External PRs are reviewed by a human, not triaged.
+**PRs as a request surface: no.** PRs from people who are not collaborators are paused. When qui accepts them again, a human reviews them, and triage does not.
 
 ## When a skill says "publish to the issue tracker"
 

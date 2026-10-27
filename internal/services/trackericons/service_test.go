@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"code.dny.dev/ssrf"
@@ -77,24 +78,24 @@ func (waitForContextDoneTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestService_GetIcon_RecordsFailureWhenContextExpiresDuringFetch(t *testing.T) {
-	dataDir := t.TempDir()
-	svc, err := NewService(dataDir, "qui-test")
-	require.NoError(t, err)
+	synctest.Test(t, func(t *testing.T) {
+		dataDir := t.TempDir()
+		svc, err := NewService(dataDir, "qui-test")
+		require.NoError(t, err)
 
-	svc.client.Transport = waitForContextDoneTransport{}
+		svc.client.Transport = waitForContextDoneTransport{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	host := "tracker.example.org"
-	_, _ = svc.GetIcon(ctx, host, "")
+		host := "tracker.example.org"
+		_, _ = svc.GetIcon(ctx, host, "")
 
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for svc.canAttempt(host) && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+		// GetIcon can return before the fetch goroutine records the failure.
+		synctest.Wait()
 
-	require.False(t, svc.canAttempt(host))
+		require.False(t, svc.canAttempt(host))
+	})
 }
 
 // pngTransport serves a valid PNG for every request and counts them.

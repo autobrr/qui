@@ -29,7 +29,7 @@ beforeEach(() => {
 
 function render(contextTorrents: Torrent[], blockCrossSeeds: boolean) {
   return renderHook(() =>
-    useCrossSeedOrchestration({ instanceId: 1, instanceName: "inst", contextTorrents, blockCrossSeeds })
+    useCrossSeedOrchestration({ instanceId: 1, contextTorrents, blockCrossSeeds })
   )
 }
 

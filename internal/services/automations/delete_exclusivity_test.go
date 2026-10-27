@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -251,4 +253,41 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			require.Empty(t, stub.writtenHashes())
 		})
 	}
+}
+
+// deadlineReader records whether each file read carries a deadline.
+type deadlineReader struct {
+	filesReader
+
+	mu        sync.Mutex
+	reads     int
+	unbounded int
+}
+
+func (r *deadlineReader) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	r.mu.Lock()
+	r.reads++
+	if _, ok := ctx.Deadline(); !ok {
+		r.unbounded++
+	}
+	r.mu.Unlock()
+	return r.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
+}
+
+// The file reads of the overlap check in a live run stop at the apply timeout.
+func TestApplyRules_OverlapCheckReadsStopAtTheApplyTimeout(t *testing.T) {
+	const name = "Example.Show.S01E01.1080p.WEB-DL-GRP"
+	svc, instanceID, stub := newWriteStubService(t, []stubTorrent{
+		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name, "mv", ""},
+		{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", name, "mv", ""},
+	})
+	// A content path that is the save path makes the group ambiguous, so the plan reads file lists.
+	stub.torrents = strings.ReplaceAll(stub.torrents, `"content_path":"/data/old/`+name+`.mkv"`, `"content_path":"/data/old"`)
+	reader := &deadlineReader{filesReader: svc.filesReader}
+	svc.filesReader = reader
+
+	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{moveRule(GroupCrossSeedContentPath)}, false)
+	require.NoError(t, err)
+	require.Positive(t, reader.reads)
+	require.Zero(t, reader.unbounded)
 }

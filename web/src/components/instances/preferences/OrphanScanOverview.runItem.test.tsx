@@ -41,6 +41,7 @@ function makeRun(overrides: Partial<OrphanScanRun> = {}): OrphanScanRun {
     startedAt: "2026-01-01T00:00:00Z",
     completedAt: "2026-01-01T00:00:00Z",
     filesystemMode: "local",
+    identityComplete: true,
     ...overrides,
   }
 }

@@ -62,7 +62,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `hardlink_error` | Failed | You enabled hardlink mode, but qui failed to create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
 | `reflink_error` | Failed | You enabled reflink mode, but qui failed to create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
 | `no_save_path` | Failed | qui did not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Check the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
-| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add, a required file or folder rename failed, or qui failed to pause a misaligned torrent after an alignment failure. | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
+| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add (`error`), a required file or folder rename failed or qui could not confirm it in qBittorrent (`alignment_failed`), or qui failed to pause a misaligned torrent after an alignment failure (`pause_failed`). | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
 
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
@@ -120,6 +120,8 @@ For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entrie
 Two of these reasons show that the candidate belongs to different content. `title mismatch` indicates a different show. `episode not in pack` indicates an episode that this pack does not contain. Because these two reasons apply to most of a library, qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
 
 For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
+
+For the **autobrr webhook check**, look for `Webhook check: rejected near miss` entries. qui writes one entry for each rejected torrent that has the same release group as the announce. For a fansub release, such as `[SubsPlease] Show - 01`, the tag in brackets counts as the group. Each entry names the announced release (`incomingName`), the torrent in qBittorrent (`existingName`), and the reason (`rejectReason`). qui does not log the rejected torrents of other groups, because most torrents in a library have no relation to the announce.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 

@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/sshpool"
 )
@@ -35,6 +36,37 @@ type InstancesHandler struct {
 	// sshPool is told when what a connection depends on changes; sshDialer
 	// stays separate so ssh-test never consults the pool's memo.
 	sshPool *sshpool.Pool
+	// orphanScan keeps orphan scan runs bound to the SSH server they walked.
+	// Nil in tests that do not need it.
+	orphanScan orphanScanGuard
+}
+
+type orphanScanGuard interface {
+	ChangeSSH(ctx context.Context, instanceID int, change func() error) error
+}
+
+// SetOrphanScan wires the orphan scan service in. A server built without one
+// leaves the guard off.
+func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
+	if s != nil {
+		h.orphanScan = s
+	}
+}
+
+// sshChangeDuringDeletionMessage is the 409 body for an SSH change refused
+// with orphanscan.ErrDeletionInProgress.
+const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
+
+// changeSSH runs change, which stores new SSH settings and invalidates the
+// pooled connection, through the orphan scan service: it refuses the change
+// while a deletion runs, since the deletion redials with the stored settings,
+// and fails the instance's remote previews after it. The invalidation belongs
+// inside change, since a scan reads the instance under the same lock.
+func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
+	if h.orphanScan == nil {
+		return change()
+	}
+	return h.orphanScan.ChangeSSH(ctx, instanceID, change)
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
