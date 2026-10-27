@@ -223,6 +223,11 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", Condition: tagsContain("del")}}},
 	}
 
+	tagCrossSeedsRule := &models.Automation{
+		ID: 2, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 2,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", IncludeCrossSeeds: true, Condition: tagsContain("del")}}},
+	}
+
 	tests := []struct {
 		name     string
 		torrents []stubTorrent
@@ -259,6 +264,12 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			torrents: crossSeeds("del,mv"),
 			rules:    []*models.Automation{deleteRule(DeleteModeKeepFiles, tagsContain("del")), categoryRule(false, GroupCrossSeedContentSavePath)},
 			want:     map[string][]string{"category": {y}, "delete": {x}},
+		},
+		{
+			name:     "a deleted torrent does not pass its tag to its cross-seed",
+			torrents: crossSeeds("del"),
+			rules:    []*models.Automation{deleteRule(DeleteModeKeepFiles, tagsContain("del")), tagCrossSeedsRule},
+			want:     map[string][]string{"delete": {x}},
 		},
 		{
 			name:     "a cross-seed pulled into the delete gets none of its own actions",
