@@ -247,22 +247,26 @@ describe("useTorrentDetailTab content and piece bar", () => {
     ["20,000", 20000, 20000],
   ] as const)("reloads Content with %s files on a progress change after the minimum gap", async (_name, count, gap) => {
     mocks.getTorrentFiles.mockResolvedValue(makeFiles(count))
-    await openDownloading("content")
+    const { result } = await openDownloading("content")
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1)
 
+    const reloaded = makeFiles(count + 1)
+    mocks.getTorrentFiles.mockResolvedValue(reloaded)
     sendRow({ progress: 0.2, state: "downloading" })
     await advance(gap - 100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1)
     await advance(100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
     expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+    // React Query hands the result to the hook on the next timer.
+    await advance(1)
+    expect(result.current.data).toEqual(reloaded)
 
     // The next change waits a full gap after the reload.
     sendRow({ progress: 0.3, state: "downloading" })
     await advance(gap - 100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
     await advance(100)
-    console.log("CALLS", JSON.stringify(mocks.getTorrentFiles.mock.calls))
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(3)
   })
 
@@ -363,13 +367,18 @@ describe("useTorrentDetailTab content and piece bar", () => {
   })
 
   it("reloads the piece bar on a progress change after 5 s", async () => {
-    await openDownloading("pieces")
+    const { result } = await openDownloading("pieces")
+    const reloaded = new Array(20000).fill(2)
+    mocks.getTorrentPieceStates.mockResolvedValue(reloaded)
     sendRow({ progress: 0.2, state: "downloading" })
     await advance(4900)
     expect(mocks.getTorrentPieceStates).toHaveBeenCalledTimes(1)
     await advance(100)
     expect(mocks.getTorrentPieceStates).toHaveBeenCalledTimes(2)
     expect(mocks.getTorrentPieceStates).toHaveBeenLastCalledWith(1, "a")
+    // React Query hands the result to the hook on the next timer.
+    await advance(1)
+    expect(result.current.data).toEqual(reloaded)
   })
 
   it("does not reload Content on a torrent that only seeds", async () => {
