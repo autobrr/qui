@@ -293,6 +293,31 @@ describe("useTorrentDetailTab content and piece bar", () => {
     expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(2, "a", { refresh: true })
   })
 
+  it("tries Content again after the first fetch fails", async () => {
+    vi.useFakeTimers()
+    mocks.getTorrentFiles.mockRejectedValueOnce(new Error("bad gateway"))
+    renderTab("content")
+    await advance(0)
+    sendRow({ progress: 1, state: "stalledUP" })
+    await advance(6000)
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+  })
+
+  it("reloads Content when the row changes while the first fetch runs", async () => {
+    vi.useFakeTimers()
+    let resolve!: (files: unknown) => void
+    mocks.getTorrentFiles.mockReturnValueOnce(new Promise(r => { resolve = r }))
+    renderTab("content")
+    await advance(0)
+    sendRow({ progress: 0.99, state: "downloading" })
+    sendRow({ progress: 1, state: "stalledUP" })
+    await act(async () => resolve(makeFiles(500)))
+    await advance(6000)
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+  })
+
   it("reloads Content past the file cache when the stream comes back after a change", async () => {
     vi.useFakeTimers()
     mocks.state = { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }

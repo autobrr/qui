@@ -88,23 +88,26 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   // interval, and Content bypasses the file cache.
   const checking = CHECKING_STATES.has(row?.state ?? "")
   const rowKey = tabQuery.reloadGap && row ? reloadKey(row) : null
-  // fetchedKey holds the row of the last fetch that bypassed the cache and
-  // succeeded, and fetchedTorrent the torrent of the last fetch that succeeded.
-  // The first fetch of each torrent, and a fetch for a row that changed while
-  // the stream is usable, bypass the cache. A retry or a refetch from elsewhere
-  // then bypasses it too.
-  const fetchedKey = useRef<string | null>(null)
-  const fetchedTorrent = useRef<string | null>(null)
+  // fetched tracks the open torrent: ok is true after a fetch succeeds, and key
+  // holds the row of the last fetch that bypassed the cache and succeeded, or
+  // the first row that arrived. The first fetch of each torrent, and a fetch for
+  // a row that changed while the stream is usable, bypass the cache. A retry or
+  // a refetch from elsewhere then bypasses it too.
+  const torrent = `${instanceId}|${hash}`
+  const fetched = useRef({ torrent, ok: false, key: null as string | null })
+  if (fetched.current.torrent !== torrent) {
+    fetched.current = { torrent, ok: false, key: null }
+  }
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
     queryFn: async () => {
       const key = rowKey
-      const torrent = `${instanceId}|${hash}`
-      const refresh = checking || fetchedTorrent.current !== torrent || (streamUsable && key !== fetchedKey.current)
+      const last = fetched.current
+      const refresh = checking || !last.ok || (streamUsable && key !== last.key)
       const data = await tabQuery.fetch(instanceId, hash!, refresh)
-      fetchedTorrent.current = torrent
-      if (refresh) {
-        fetchedKey.current = key
+      last.ok = true
+      if (refresh && key !== null) {
+        last.key = key
       }
       return data
     },
@@ -131,11 +134,12 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
       return
     }
     // A fetch before the first row cannot tell a change, so it takes this row.
-    if (fetchedKey.current === null) {
-      fetchedKey.current = rowKey
-      return
+    const last = fetched.current
+    if (last.key === null) {
+      last.key = rowKey
     }
-    if (!streamUsable || checking || !visible || isFetching || rowKey === fetchedKey.current) {
+    // Until a fetch succeeds, the tab tries again after each gap.
+    if (!streamUsable || checking || !visible || isFetching || (last.ok && rowKey === last.key)) {
       return
     }
     const timer = setTimeout(() => void refetch(), Math.max(0, lastFetch + gap - Date.now()))
