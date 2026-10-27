@@ -895,3 +895,36 @@ func TestProcessAndExpand_Tag_OtherRuleNoOpDecisionWins(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessAndExpand_Tag_OtherFullRuleNonMatchWins(t *testing.T) {
+	// A full-mode rule decides about every torrent it checks: a copy that
+	// does not match it must not have the tag. Another rule's expansion must
+	// not add the tag there, or the full rule removes it on the next run.
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	addRule := tagExpansionRule(&models.TagAction{
+		Enabled:           true,
+		Tags:              []string{"managed"},
+		Mode:              models.TagModeAdd,
+		IncludeCrossSeeds: true,
+		Condition:         &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "Matching"},
+	})
+	fullRule := tagExpansionRule(&models.TagAction{
+		Enabled:   true,
+		Tags:      []string{"managed"},
+		Mode:      models.TagModeFull,
+		Condition: &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "Other"},
+	})
+	fullRule.ID = 2
+	// The full rule runs first, so the add rule wins on the trigger.
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Name: "Matching", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
+		{Hash: "sibling", Name: "Copy", SavePath: "/data", ContentPath: "/data/show"},
+	}
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+
+	states := processTorrents(torrents, []*models.Automation{fullRule, addRule}, evalCtx, sm, nil, nil, nil)
+	require.Contains(t, states["trigger"].tagExpandByTag, "managed", "precondition: the trigger expands the tag")
+	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: addRule, 2: fullRule}, crossSeedGroupsForTest(torrents))
+
+	assert.NotContains(t, buildTagChangesForTest(states), "sibling", "the full rule's non-match keeps the tag off the copy")
+}
