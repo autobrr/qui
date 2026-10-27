@@ -32,9 +32,10 @@ import (
 
 func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 	type recording struct {
-		Args   []string
-		PID    int
-		Parent int
+		Args    []string
+		PID     int
+		Parent  int
+		Console bool
 	}
 	// The detached child reports its actual argv; cmd.Args alone cannot prove it.
 	if os.Getenv("QUI_TEST_WINDOWS_ARGV_CHILD") == "1" {
@@ -42,7 +43,13 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		require.NoError(t, conn.SetWriteDeadline(time.Now().Add(5*time.Second)))
-		data, err := json.Marshal(recording{Args: flag.Args(), PID: os.Getpid(), Parent: os.Getppid()})
+		console := true
+		for _, std := range []uint32{windows.STD_INPUT_HANDLE, windows.STD_OUTPUT_HANDLE, windows.STD_ERROR_HANDLE} {
+			var mode uint32
+			handle, _ := windows.GetStdHandle(std)
+			console = console && windows.GetConsoleMode(handle, &mode) == nil
+		}
+		data, err := json.Marshal(recording{Args: flag.Args(), PID: os.Getpid(), Parent: os.Getppid(), Console: console})
 		require.NoError(t, err)
 		_, err = conn.Write(append(data, '\n'))
 		require.NoError(t, err)
@@ -105,6 +112,9 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		name string
 		args []string
 		gui  bool
+		// viaCmd is what the recorder reads after cmd.exe doubles each quote. Go reads a doubled
+		// quote as a quote that ends the quoted part, so the value splits, but no command runs.
+		viaCmd []string
 	}{
 		{name: "plain control", args: []string{"literal", "hash123"}},
 		{name: "spaces", args: []string{"value with spaces"}},
@@ -115,8 +125,8 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		{name: "percent expansion", args: []string{"%QUI_TEST_WINDOWS_ARGV_SENTINEL%"}},
 		{name: "delayed expansion", args: []string{"!QUI_TEST_WINDOWS_ARGV_SENTINEL!"}},
 		{name: "quote", args: []string{`a"b`}},
-		{name: "quote breakout", args: []string{`x" & rem "`, "after"}},
-		{name: "backslash quote breakout", args: []string{`x\" & rem \"`, "after"}},
+		{name: "quote breakout", args: []string{`x" & rem "`, "after"}, viaCmd: []string{`x"`, "&", "rem", `"`, "after"}},
+		{name: "backslash quote breakout", args: []string{`x\" & rem \"`, "after"}, viaCmd: []string{`x\"`, "&", "rem", `\"`, "after"}},
 		{name: "empty argument", args: []string{""}},
 		{name: "unicode", args: []string{"媒体 library"}},
 		{name: "trailing backslash", args: []string{`C:\Media Library\`}},
@@ -175,7 +185,14 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 				err = cmd.Wait()
 				waited = true
 				require.NoError(t, err)
-				assert.Equal(t, tc.args, received.Args, "substituted metadata must reach the child literally")
+				want := tc.args
+				if tc.viaCmd != nil && launch != "direct" {
+					want = tc.viaCmd
+				}
+				assert.Equal(t, want, received.Args, "substituted metadata must reach the child literally")
+				if launch == "terminal" {
+					assert.True(t, received.Console, "a terminal program must read and write its console window")
+				}
 			})
 		}
 	}
