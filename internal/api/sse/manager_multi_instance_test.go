@@ -198,5 +198,6 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
+	require.True(t, provider.crossSkipFresh, "a stream read must not start a sync")
 	require.Zero(t, provider.torrentsCalls)
 }
