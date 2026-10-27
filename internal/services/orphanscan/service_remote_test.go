@@ -164,6 +164,10 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
+	// Registered after the database, so it runs first: a run goroutine still
+	// holds the database after the test saw its status, and Windows cannot
+	// remove an open file.
+	t.Cleanup(svc.runs.Wait)
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,

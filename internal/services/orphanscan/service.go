@@ -103,6 +103,11 @@ type Service struct {
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
+
+	// runs counts the scan and deletion goroutines. A scan goroutine goes on
+	// after its run reaches a status, for example to start an auto-cleanup, so
+	// tests wait for it before they close the database.
+	runs sync.WaitGroup
 }
 
 // NewService creates a new orphan scan service.
@@ -499,14 +504,14 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	// Run created (pending) - notify clients so they begin tracking it.
 	s.emitRun(instanceID, runID)
 
-	go func() {
+	s.runs.Go(func() {
 		defer func() {
 			s.cancelMu.Lock()
 			delete(s.cancelFuncs, runID)
 			s.cancelMu.Unlock()
 		}()
 		s.executeScan(runCtx, instanceID, runID)
-	}()
+	})
 
 	return runID, nil
 }
@@ -607,7 +612,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
 
-	go func() {
+	s.runs.Go(func() {
 		defer mu.Unlock()
 		defer func() {
 			s.cancelMu.Lock()
@@ -615,7 +620,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 			s.cancelMu.Unlock()
 		}()
 		s.executeDeletion(runCtx, instanceID, runID)
-	}()
+	})
 
 	return nil
 }
