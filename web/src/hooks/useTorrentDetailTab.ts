@@ -88,17 +88,23 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   // interval, and Content bypasses the file cache.
   const checking = CHECKING_STATES.has(row?.state ?? "")
   const rowKey = tabQuery.reloadGap && row ? reloadKey(row) : null
-  // The queryFn records the row each fetch saw, and takes the cache bypass
-  // that a reload asks for.
+  // fetchedKey holds the row of the last fetch that bypassed the cache and
+  // succeeded. The first fetch, and a fetch for a row that changed while the
+  // stream is usable, bypass the cache. A retry or a refetch from elsewhere then
+  // bypasses it too.
   const fetchedKey = useRef<string | null>(null)
-  const bypassCache = useRef(false)
+  const fetched = useRef(false)
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
-    queryFn: () => {
-      fetchedKey.current = rowKey
-      const refresh = bypassCache.current || checking
-      bypassCache.current = false
-      return tabQuery.fetch(instanceId, hash!, refresh)
+    queryFn: async () => {
+      const key = rowKey
+      const refresh = checking || !fetched.current || (streamUsable && key !== fetchedKey.current)
+      const data = await tabQuery.fetch(instanceId, hash!, refresh)
+      fetched.current = true
+      if (refresh) {
+        fetchedKey.current = key
+      }
+      return data
     },
     enabled: hash !== null,
     staleTime: tabQuery.staleTime,
@@ -107,8 +113,10 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
       : !streamUsable ? streamFallbackPollInterval(streamState, tabQuery.refetchInterval || 0)
         : checking ? tabQuery.refetchInterval : false,
     // A Trackers reload that came while the page was hidden runs when the page
-    // shows again. Content and the piece bar reload only on a row change.
+    // shows again. Content and the piece bar reload only on a row change, also
+    // after the network comes back.
     refetchOnWindowFocus: tab === "trackers" ? (q: Query) => q.state.isInvalidated : false,
+    refetchOnReconnect: !tabQuery.reloadGap,
   })
   useTrackersReload(instanceId, tab === "trackers" ? hash : null, row)
 
@@ -128,10 +136,7 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
     if (!streamUsable || checking || !visible || isFetching || rowKey === fetchedKey.current) {
       return
     }
-    const timer = setTimeout(() => {
-      bypassCache.current = true
-      void refetch()
-    }, Math.max(0, lastFetch + gap - Date.now()))
+    const timer = setTimeout(() => void refetch(), Math.max(0, lastFetch + gap - Date.now()))
     return () => clearTimeout(timer)
   }, [checking, gap, hash, isFetching, lastFetch, refetch, rowKey, streamUsable, visible])
 

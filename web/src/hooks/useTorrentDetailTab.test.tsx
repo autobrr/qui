@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -249,7 +249,6 @@ describe("useTorrentDetailTab content and piece bar", () => {
     mocks.getTorrentFiles.mockResolvedValue(makeFiles(count))
     await openDownloading("content")
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1)
-    expect(mocks.getTorrentFiles).toHaveBeenCalledWith(1, "a", { refresh: false })
 
     sendRow({ progress: 0.2, state: "downloading" })
     await advance(gap - 100)
@@ -263,7 +262,61 @@ describe("useTorrentDetailTab content and piece bar", () => {
     await advance(gap - 100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
     await advance(100)
+    console.log("CALLS", JSON.stringify(mocks.getTorrentFiles.mock.calls))
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(3)
+  })
+
+  it("reads past the file cache on the first Content fetch", async () => {
+    await openDownloading("content")
+    expect(mocks.getTorrentFiles).toHaveBeenCalledWith(1, "a", { refresh: true })
+  })
+
+  it("reads past the file cache on the first Content fetch of the next torrent", async () => {
+    vi.useFakeTimers()
+    const view = renderTab("content")
+    await advance(0)
+    sendRow({ progress: 1, state: "stalledUP" })
+    view.rerender({ instanceId: 2, hash: "a" })
+    act(() => mocks.onMessage?.({ type: "update", data: { torrents: [makeTorrent({ hash: "a", progress: 1, state: "stalledUP" })], total: 1 } }))
+    await advance(0)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(2, "a", { refresh: true })
+  })
+
+  it("reloads Content past the file cache when the stream comes back after a change", async () => {
+    vi.useFakeTimers()
+    mocks.state = { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }
+    mocks.getTorrents.mockResolvedValue({ torrents: [makeTorrent({ hash: "a", progress: 0.5, state: "downloading" })] })
+    const view = renderTab("content")
+    await advance(0)
+    mocks.getTorrents.mockResolvedValue({ torrents: [makeTorrent({ hash: "a", progress: 1, state: "stalledUP" })] })
+    await advance(6000)
+    mocks.state = usableStream
+    view.rerender({ instanceId: 1, hash: "a" })
+    sendRow({ progress: 1, state: "stalledUP" })
+    await advance(5000)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+  })
+
+  it("keeps the cache bypass when a Content reload fails", async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: 1, retryDelay: 0 } } })
+    await openDownloading("content")
+    mocks.getTorrentFiles.mockRejectedValueOnce(new Error("bad gateway"))
+    sendRow({ progress: 1, state: "stalledUP" })
+    // React Query retries the failed reload one time.
+    await advance(6000)
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(3)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+  })
+
+  it("reads past the file cache on another fetch while a reload waits", async () => {
+    await openDownloading("content")
+    sendRow({ progress: 1, state: "stalledUP" })
+    await advance(100)
+    await act(() => client.invalidateQueries({ queryKey: ["torrent-files"] }))
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
+    await advance(5000)
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
   })
 
   it("reloads Content on a state change", async () => {
@@ -363,8 +416,7 @@ describe("useTorrentDetailTab content and piece bar", () => {
     await advance(0)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1)
     await advance(9000)
-    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1 + pollsIn9s)
-    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: false })
+    expect(mocks.getTorrentFiles.mock.calls.slice(1)).toEqual(new Array(pollsIn9s).fill([1, "a", { refresh: false }]))
   })
 })
 
@@ -500,6 +552,19 @@ describe("useTorrentDetailTab peers and HTTP sources", () => {
 })
 
 describe("useTorrentDetailTab hidden page", () => {
+  it("does not reload Content on a reconnect while the page is hidden", async () => {
+    vi.useFakeTimers()
+    renderTab("content")
+    await advance(0)
+    sendRow({ progress: 0.1, state: "downloading" })
+    setPageHidden(true)
+    await advance(10000)
+    act(() => onlineManager.setOnline(false))
+    act(() => onlineManager.setOnline(true))
+    await advance(0)
+    expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ["peers", () => mocks.getTorrentPeers, usableStream],
     ["general", () => mocks.getTorrents, { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }],
