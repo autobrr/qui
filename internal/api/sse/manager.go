@@ -1883,14 +1883,12 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 // currentRetrySeconds reports the instance's current sync interval (in seconds)
 // so error events can advertise when the next refresh attempt is expected.
 func (m *StreamManager) currentRetrySeconds(instanceID int) int {
-	m.mu.RLock()
-	state, ok := m.syncBackoff[instanceID]
-	m.mu.RUnlock()
-
 	interval := defaultSyncInterval
-	if ok && state.interval > 0 {
+	m.mu.RLock()
+	if state, ok := m.syncBackoff[instanceID]; ok && state.interval > 0 {
 		interval = state.interval
 	}
+	m.mu.RUnlock()
 
 	seconds := int(interval.Round(time.Second) / time.Second)
 	if seconds <= 0 {
