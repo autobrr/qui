@@ -2068,7 +2068,7 @@ describe("subscription changes on an open stream", () => {
       act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
     }
     // Heartbeats keep the stream alive, so only the stuck request can reopen it.
-    for (let elapsed = 0; elapsed <= STALE; elapsed += 5000) {
+    for (let elapsed = 0; elapsed <= INITIAL_GRACE; elapsed += 5000) {
       act(() => source.emit("heartbeat"))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000)
@@ -2076,6 +2076,26 @@ describe("subscription changes on an open stream", () => {
     }
     expect(source.closed).toBe(true)
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
+  })
+
+  it("keeps the stream while the server holds a change until the first inits are sent", async () => {
+    // The server answers a change only after it sent the inits of the connection.
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
+      new Promise((resolve, reject) => {
+        window.setTimeout(resolve, STALE + 5000)
+        signal?.addEventListener("abort", () => reject(signal.reason))
+      }))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    for (let elapsed = 0; elapsed <= STALE + 5000; elapsed += 5000) {
+      act(() => source.emit("heartbeat"))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+    }
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(source.closed).toBe(false)
+    expect(MockEventSource.instances).toEqual([source])
   })
 
   it("does not hold changes on a new stream behind a stuck request of the old one", async () => {

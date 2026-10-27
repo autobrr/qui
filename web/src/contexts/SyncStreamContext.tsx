@@ -527,10 +527,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (connectionRef.current.source !== source) {
             return
           }
-          // Changes run one at a time. A request with no answer fails after the
-          // stale timeout, and the catch reopens the stream.
+          // Changes run one at a time. The server answers a change only after
+          // it sent the first inits, so a request gets the init grace. After
+          // that, the request fails and the catch reopens the stream.
           const abort = new AbortController()
-          const timer = window.setTimeout(() => abort.abort(), STREAM_STALE_TIMEOUT_MS)
+          const timer = window.setTimeout(() => abort.abort(), STREAM_INITIAL_TIMEOUT_MS)
           try {
             await api.changeStreamSubscriptions(connectionId, add, remove, abort.signal)
           } catch (err) {
