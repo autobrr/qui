@@ -364,7 +364,7 @@ function InstanceOrphanScanItem({
                 ): t("preferences.orphanScanOverview.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                {instance.filesystemMode === "remote"? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
+                {instance.filesystemMode === "remote" && !instance.capabilities.identity? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
                 {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
                   <>{t("preferences.orphanScanOverview.pathsIgnored", { count: settings.ignorePaths.length })}</>
                 )}

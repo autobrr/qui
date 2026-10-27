@@ -70,6 +70,8 @@ export interface OrphanScanRun {
   completedAt?: string | null
   // The mode the run scanned under, which can differ from the instance's current one.
   filesystemMode: FilesystemMode
+  // A remote run deletes only when its scan read every file's identity.
+  identityComplete: boolean
 }
 
 export interface OrphanScanFile {
