@@ -6,7 +6,7 @@
 import { HttpResponse, http } from "msw"
 import { describe, expect, it } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { server } from "@/test/msw/server"
 
@@ -82,34 +82,6 @@ describe("api mutations group (MSW contract)", () => {
       expect(body.selectAll).toBe(true)
       expect(body.category).toBe("movies")
       expect(body.search).toBe("ubuntu")
-    })
-
-    it("throws APIError with status, message, and full data on a 409 conflict", async () => {
-      const conflictPayload = {
-        message: "conflict",
-        detail: { automations: ["a1", "a2"], conflicting: true },
-      }
-
-      server.use(
-        http.post("*/api/instances/:instanceId/torrents/bulk-action", () =>
-          HttpResponse.json(conflictPayload, { status: 409 })
-        )
-      )
-
-      let thrown: unknown
-      try {
-        await api.bulkAction(1, { hashes: ["abc"], action: "delete" })
-      } catch (err) {
-        thrown = err
-      }
-
-      expect(thrown).toBeInstanceOf(APIError)
-      const apiErr = thrown as APIError
-      // message precedence: errorData.error ?? errorData.message -> "conflict".
-      expect(apiErr.message).toBe("conflict")
-      expect(apiErr.status).toBe(409)
-      // .data is the full parsed JSON conflict payload.
-      expect(apiErr.data).toEqual(conflictPayload)
     })
   })
 

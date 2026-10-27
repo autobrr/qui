@@ -78,6 +78,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	g.baselineOrder = order
 	g.baselineSnapshot = &snapshot
 	g.rebuildFailed = false
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	if forceFull {
@@ -128,7 +129,8 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 }
 
 // buildServerStatePayload sends a new server state with the rows and counts of the
-// last frame, as a delta with no changed rows. It returns nil when the view must
+// last frame, as a delta with no changed rows. A nil serverState keeps the server
+// state of the last frame, for an idle tick. It returns nil when the view must
 // be rebuilt: the group has no baseline yet, the last rebuild failed, or the
 // subcategory mode changed, which changes the category counts.
 func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
@@ -139,7 +141,9 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	if prev == nil || g.rebuildFailed {
 		return nil
 	}
-	if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+	if serverState == nil {
+		serverState = prev.ServerState
+	} else if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
 		return nil
 	}
 
@@ -149,7 +153,27 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	snapshot.ActiveTaskCount = activeTaskCount
 	// The tick comes from a successful sync, so the rows are fresh again.
 	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
+	return g.resendBaselineLocked(snapshot, meta)
+}
+
+// buildIdlePayload sends the last frame of a cross-instance view again, as a delta
+// with no changed rows. It returns nil when the view must be rebuilt: the group
+// has no baseline yet, or the last rebuild failed.
+func (g *subscriptionGroup) buildIdlePayload(meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	if g.baselineSnapshot == nil || g.rebuildFailed {
+		return nil
+	}
+	return g.resendBaselineLocked(*g.baselineSnapshot, meta)
+}
+
+// resendBaselineLocked keeps snapshot as the baseline and returns it as a delta
+// with no changed rows. The caller holds baselineMu.
+func (g *subscriptionGroup) resendBaselineLocked(snapshot qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
 	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
 	baseVersion := g.version
 	g.version.Minor++
 
@@ -203,6 +227,7 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	snapshot := *resp
 	detachSnapshotRows(&snapshot)
 	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	return &StreamPayload{

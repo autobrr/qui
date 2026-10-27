@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -61,23 +62,25 @@ func TestLoggerLevelBySeverity(t *testing.T) {
 			slowRequestThreshold = tt.threshold
 			t.Cleanup(func() { slowRequestThreshold = original })
 
-			var buf bytes.Buffer
-			logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
-			handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				time.Sleep(tt.delay)
-				w.WriteHeader(tt.status)
-			}))
+			synctest.Test(t, func(t *testing.T) {
+				var buf bytes.Buffer
+				logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
+				handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					time.Sleep(tt.delay)
+					w.WriteHeader(tt.status)
+				}))
 
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
-			handler.ServeHTTP(httptest.NewRecorder(), req)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
+				handler.ServeHTTP(httptest.NewRecorder(), req)
 
-			logLine := strings.TrimSpace(buf.String())
-			if !tt.wantLine {
-				require.Empty(t, logLine)
-				return
-			}
-			require.Contains(t, logLine, `"level":"debug"`)
-			require.Contains(t, logLine, `"message":"incoming_request"`)
+				logLine := strings.TrimSpace(buf.String())
+				if !tt.wantLine {
+					require.Empty(t, logLine)
+					return
+				}
+				require.Contains(t, logLine, `"level":"debug"`)
+				require.Contains(t, logLine, `"message":"incoming_request"`)
+			})
 		})
 	}
 }

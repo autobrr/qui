@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -217,6 +216,8 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, err)
 	store := models.NewOrphanScanStore(db)
 	service := orphanscan.NewService(orphanscan.DefaultConfig(), instances, store, nil, nil, nil)
+	hub, events := newActivityHub(t)
+	service.SetActivityPublisher(hub)
 	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
 
 	previewWithFiles := func(instanceID int, mode models.FilesystemMode) int64 {
@@ -249,7 +250,7 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, json.Unmarshal(accepted.Body.Bytes(), &body))
 	require.Equal(t, "canceled", status(oldRemote))
 	// The service has no backend pool, so the new run fails fast. Wait for it before the database closes.
-	require.Eventually(t, func() bool { return status(body.RunID) == "failed" }, 5*time.Second, 10*time.Millisecond)
+	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 
 	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
 	oldLocal := previewWithFiles(local.ID, models.FilesystemModeLocal)

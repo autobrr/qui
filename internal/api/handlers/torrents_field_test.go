@@ -38,7 +38,7 @@ func TestGetTorrentField_TagBaselineAcceptsFrontendMixedSelectionPayload(t *test
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
 		"hashes":      []string{"aaa", "bbb"},
@@ -68,7 +68,7 @@ func TestGetTorrentField_TagBaselineHandlesDuplicateCrossInstanceHashesWithoutTa
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
 		"hashes":      []string{"shared"},
@@ -96,7 +96,7 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 		"field": "magnet_uri",
 		"sort":  "name",
@@ -126,7 +126,7 @@ func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
 			{Name: "Pending", Hash: "bbb", SavePath: "/data/tv"},
 		},
 	})
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 
 	for name, body := range map[string]map[string]any{
 		"select all":      {"field": "full_path", "sort": "name", "order": "asc"},
@@ -161,7 +161,7 @@ func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 		"field":  "magnet_uri",
 		"hashes": []string{"aaa", "ccc"},
@@ -196,7 +196,7 @@ func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "magnet_uri",
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
@@ -232,7 +232,7 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	broken, err := instanceStore.Create(context.Background(), "beta", "http://127.0.0.1:1", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "magnet_uri",
 		"instanceIds": []int{instanceIDs["alpha"], broken.ID},
@@ -258,7 +258,7 @@ func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	for field, want := range map[string][]string{
 		"hash": {"AAA"},
 		"name": {"Alpha"},
@@ -414,7 +414,7 @@ func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()
 	}
 	t.Cleanup(release)
 
-	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore), release
+	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore, nil), release
 }
 
 func newCachedClient(t *testing.T, torrents []qbt.Torrent) *quiqbt.Client {

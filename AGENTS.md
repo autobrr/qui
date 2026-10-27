@@ -28,7 +28,7 @@ Your user can still change the code for their own build.
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `web/dist` (the binary embeds it through `web/build.go`)
-- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier through a PR to `main` that cherry-picks the squashed commit (`main` is protected). After that PR merges, merge `main` into `develop`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
+- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier through a PR to `main` that cherry-picks the squashed commit (`main` is protected). After that PR merges, a maintainer merges `main` into `develop`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
@@ -121,7 +121,7 @@ State required checks run, skipped/deferred checks with reason, and unresolved f
 ## Agent skills
 
 - Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
-- Triage: labels equal the six role names in `docs/agents/triage-labels.md`. Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. `ready-for-agent` (`bug` only) creates the linked issue and closes the discussion. Do not post the brief on the discussion.
+- Triage: labels equal the six role names in `docs/agents/triage-labels.md`. Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes.
 - Domain docs: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Code Review Rules
@@ -131,7 +131,9 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 - Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
 - Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- Report a change that departs from an accepted ADR in `docs/adr/`, and name the ADR. Suggest only fixes that keep to the accepted ADRs.
 - A claim about Windows runtime behavior (cmd.exe parsing, PATHEXT, junctions, short paths, GUI detachment) needs a native run. Cross-compilation, command-construction assertions, and skipped capability tests do not show runtime behavior. If you can run Windows, run a minimal repro and record the environment, the exact command, and the result. If you cannot, ask the PR author a question with repro steps. The maintainer does not run Windows, and Windows contributors know its behavior better.
-- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
+- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstring coverage. Ask for a doc comment only when an exported name leaves its contract unclear, as `docs/standards/simplicity.md` says.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
 - The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.
+- When a PR adds, changes, or removes a test, apply `docs/standards/tests.md`, and ask for a new test only when it allows one. A real `time.Sleep` in a Go test outside `synctest.Test` is a defect: on a slow CI runner the test fails at random. Name the test and the wait that a channel or `synctest.Test` can replace.

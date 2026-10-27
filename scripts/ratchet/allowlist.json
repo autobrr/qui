@@ -40,7 +40,6 @@
     "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
     "internal/services/automations/service.go": 16,
-    "internal/testutil/qbtstub/qbtstub.go": 1,
     "internal/web/swagger/swagger.go": 1
   },
   "gocognit": {
@@ -53,7 +52,7 @@
     "internal/api/handlers/oidc.go": 1,
     "internal/api/handlers/orphan_scan.go": 1,
     "internal/api/handlers/rss.go": 1,
-    "internal/api/handlers/torrents.go": 3,
+    "internal/api/handlers/torrents.go": 2,
     "internal/api/sse/manager.go": 1,
     "internal/backups/restore_execute.go": 2,
     "internal/backups/service.go": 3,

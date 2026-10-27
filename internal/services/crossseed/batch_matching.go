@@ -272,6 +272,9 @@ type batchFiles struct {
 	// linkTiers holds the link check result per pair of torrents. A link
 	// goes both ways, so the pair is checked once.
 	linkTiers map[[2]string]localLinkResult
+	// trustedIdentityOnly limits links to instances with TrustedIdentity, as
+	// localMatchContext does.
+	trustedIdentityOnly bool
 }
 
 type localLinkResult struct {
@@ -544,10 +547,14 @@ func (b *batchFiles) addSharedPathPicks(
 // them. A failed verification keeps the result unknown.
 func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, c candidateEntry) localLinkResult {
 	candidateInstance := instanceByID(b.instances, c.instanceID)
+	identity := models.CapabilityIdentity
+	if b.trustedIdentityOnly {
+		identity = models.CapabilityTrustedIdentity
+	}
 	// Check the cheap gates here, so that a source without file identity
 	// never builds a context.
-	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
-		!instanceHas(b.instances, sourceInstanceID, models.CapabilityIdentity) {
+	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Has(identity) ||
+		!instanceHas(b.instances, sourceInstanceID, identity) {
 		return localLinkResult{}
 	}
 	key := cacheKeyForTorrentFiles(sourceInstanceID, source.Hash)
@@ -570,6 +577,7 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 			sourceContentPath:     source.ContentPath,
 			sourceHasFileIdentity: true,
 			sourceLocal:           instanceIsLocal(b.instances, sourceInstanceID),
+			trustedIdentityOnly:   b.trustedIdentityOnly,
 		}
 		b.links[key] = matchCtx
 	}

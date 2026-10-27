@@ -2808,6 +2808,93 @@ paths:
                               type: string
                               description: Canonical peer address.
 
+  /api/instances/{instanceID}/torrents/delete-cross-seeds:
+    post:
+      tags:
+        - Torrents
+      summary: Find the cross-seeds that a delete affects
+      description: Returns the torrents that share files with the selected torrents and that a delete with files affects, on the instance of each selected torrent. The selected torrents are not in the result. The request takes the selection of a bulk action, so a selectAll request checks every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific torrent hashes to check. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: Check all torrents that match the filters, search, and exclusions.
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instances of the unified scope.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                search:
+                  type: string
+                  description: Search query used when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
+                excludeTargets:
+                  type: array
+                  description: Instance and hash pairs to exclude when selectAll is true.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+      responses:
+        '200':
+          description: The affected torrents. matchType is content_path, hardlink, or reflink.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
+        '400':
+          description: Invalid selection
+        '409':
+          description: Instance is disabled
+        '500':
+          description: A file list or a link check could not be read
+        '503':
+          description: Not all instances of the unified scope could be read
   /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:
@@ -5393,27 +5480,6 @@ paths:
           description: Invalid parameters
         '500':
           description: Failed to analyze torrent
-
-  /api/cross-seed/torrents/{instanceID}/{hash}/async-status:
-    get:
-      tags:
-        - Cross-Seed
-      summary: Get async filtering status
-      description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
-      parameters:
-        - $ref: '#/components/parameters/instanceID'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Current async filtering state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AsyncIndexerFilteringState'
-        '400':
-          description: Invalid parameters
-        '500':
-          description: Failed to get filtering status
 
   /api/cross-seed/torrents/{instanceID}/{hash}/search:
     post:
@@ -9086,41 +9152,12 @@ components:
           type: array
           items:
             type: string
-        content_filtering_completed:
-          type: boolean
-          nullable: true
         disc_layout:
           type: boolean
           description: True if this torrent contains disc-based media (Blu-ray/DVD)
         disc_marker:
           type: string
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
-
-    AsyncIndexerFilteringState:
-      type: object
-      properties:
-        capabilities_completed:
-          type: boolean
-        content_completed:
-          type: boolean
-        capability_indexers:
-          type: array
-          items:
-            type: integer
-        filtered_indexers:
-          type: array
-          items:
-            type: integer
-        excluded_indexers:
-          type: object
-          additionalProperties:
-            type: string
-        content_matches:
-          type: array
-          items:
-            type: string
-        error:
-          type: string
 
     CrossSeedTorrentSearchRequest:
       type: object
@@ -9214,6 +9251,12 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        gazelle_timed_out:
+          type: boolean
+          description: Set when a RED/OPS lookup did not answer in time. The results hold the Torznab matches and the matches of each RED/OPS site that answered.
+        torznab_failed:
+          type: boolean
+          description: Set when the Torznab search failed and the results come only from RED/OPS.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 

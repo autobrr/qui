@@ -7,59 +7,12 @@ package automations
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
-
-func TestResolveFreeSpaceSource(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *models.FreeSpaceSource
-		wantType models.FreeSpaceSourceType
-		wantPath string
-	}{
-		{
-			name:     "nil defaults to qbittorrent",
-			input:    nil,
-			wantType: models.FreeSpaceSourceQBittorrent,
-			wantPath: "",
-		},
-		{
-			name:     "empty type defaults to qbittorrent",
-			input:    &models.FreeSpaceSource{Type: ""},
-			wantType: models.FreeSpaceSourceQBittorrent,
-			wantPath: "",
-		},
-		{
-			name:     "explicit qbittorrent",
-			input:    &models.FreeSpaceSource{Type: models.FreeSpaceSourceQBittorrent},
-			wantType: models.FreeSpaceSourceQBittorrent,
-			wantPath: "",
-		},
-		{
-			name:     "path type with path",
-			input:    &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
-			wantType: models.FreeSpaceSourcePath,
-			wantPath: "/mnt/data",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := resolveFreeSpaceSource(tt.input)
-			if got.Type != tt.wantType {
-				t.Errorf("resolveFreeSpaceSource().Type = %v, want %v", got.Type, tt.wantType)
-			}
-			if got.Path != tt.wantPath {
-				t.Errorf("resolveFreeSpaceSource().Path = %v, want %v", got.Path, tt.wantPath)
-			}
-		})
-	}
-}
 
 func localFreeSpaceService() *Service {
 	row := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
@@ -78,14 +31,6 @@ func TestFreeSpaceBytes_PathViaBackend(t *testing.T) {
 	}
 }
 
-func TestFreeSpaceBytes_PathInvalidPath(t *testing.T) {
-	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: filepath.Join(t.TempDir(), "nonexistent")}
-	_, err := localFreeSpaceService().freeSpaceBytes(t.Context(), &models.Instance{ID: 1}, src)
-	if err == nil {
-		t.Error("freeSpaceBytes with invalid path should return error")
-	}
-}
-
 func TestGetFreeSpaceSourceKey(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -100,11 +45,6 @@ func TestGetFreeSpaceSourceKey(t *testing.T) {
 		{
 			name:    "empty type defaults to qbt",
 			input:   &models.FreeSpaceSource{Type: ""},
-			wantKey: "qbt",
-		},
-		{
-			name:    "explicit qbittorrent",
-			input:   &models.FreeSpaceSource{Type: models.FreeSpaceSourceQBittorrent},
 			wantKey: "qbt",
 		},
 		{

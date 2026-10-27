@@ -42,6 +42,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
+	subscribed := watchSubscriptions(manager)
 	srv := startStreamServer(t, manager)
 
 	reader, resp := connectStreamGzip(t, srv, streamPayload(instanceID, "stream-gzip-flush"))
@@ -52,9 +53,9 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	initPayload := decodeStreamPayloadData(t, initEvent.data)
 	require.Equal(t, streamEventInit, initPayload.Type)
 
-	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
-	})
+	receive(t, subscribed, "the session to subscribe")
+	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
+	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
 	require.Equal(t, canned.Total, updatePayload.Data.Total)

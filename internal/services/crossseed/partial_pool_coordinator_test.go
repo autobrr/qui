@@ -753,7 +753,26 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	require.Equal(t, []string{"recheck:candidate-alpha", "recheck:candidate-beta"}, sync.bulkActions)
 }
 
+// startPartialPoolCoordinator runs the coordinator until the test ends, and
+// waits for it to stop before a cleanup restores a timer that it reads.
+func startPartialPoolCoordinator(t *testing.T, service *Service) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() {
+		service.RunPartialPoolCoordinator(ctx)
+		close(stopped)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-stopped
+	})
+}
+
 func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
+	prevPoll := partialPoolRecheckPollInterval
+	partialPoolRecheckPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { partialPoolRecheckPollInterval = prevPoll })
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	rootPath := t.TempDir()
 	registration := partialPoolFilesystemRegistration(
@@ -795,9 +814,7 @@ func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
-	go service.RunPartialPoolCoordinator(ctx)
+	startPartialPoolCoordinator(t, service)
 
 	require.Eventually(t, func() bool {
 		reloaded, loadErr := store.GetPartialPool(t.Context(), pool.ID)
@@ -876,6 +893,9 @@ func TestPartialPoolDisabledCoordinatorObservesRequestedRecheck(t *testing.T) {
 }
 
 func TestPartialPoolCoordinatorUsesPersistedAdmissionDeadline(t *testing.T) {
+	prevHold := partialPoolAdmissionHold
+	partialPoolAdmissionHold = 200 * time.Millisecond
+	t.Cleanup(func() { partialPoolAdmissionHold = prevHold })
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	rootPath := t.TempDir()
 	registration := partialPoolFilesystemRegistration(
@@ -914,9 +934,7 @@ func TestPartialPoolCoordinatorUsesPersistedAdmissionDeadline(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
-	go service.RunPartialPoolCoordinator(ctx)
+	startPartialPoolCoordinator(t, service)
 
 	require.Eventually(t, func() bool {
 		return syncManager.actionCount("recheck:"+member.TorrentKey) == 1
