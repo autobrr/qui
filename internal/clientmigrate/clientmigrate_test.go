@@ -234,6 +234,69 @@ func TestTransmissionFilePriorities(t *testing.T) {
 	assert.Equal(t, []int{1, 1, 1}, transmissionFilePriorities(&resume, 3))
 }
 
+func TestTransmissionRenames(t *testing.T) {
+	t.Parallel()
+
+	info := testInfo()
+	single := metainfo.Info{Name: "Test.Torrent.2024.1080p.WEB-TEST.mkv", PieceLength: 16384, Length: 1000}
+
+	tests := []struct {
+		name       string
+		info       *metainfo.Info
+		resume     TransmissionResumeFile
+		wantName   string
+		wantMapped []string
+	}{
+		{
+			name:   "no files key",
+			info:   &info,
+			resume: TransmissionResumeFile{Name: info.Name},
+		},
+		{
+			name:   "4.x paths unchanged",
+			info:   &info,
+			resume: TransmissionResumeFile{Name: info.Name, Files: []string{info.Name + "/a.mkv", info.Name + "/b.mkv"}},
+		},
+		{
+			name: "4.x root folder renamed",
+			info: &info,
+			resume: TransmissionResumeFile{
+				Name:  "Test Torrent (2024)",
+				Files: []string{"Test Torrent (2024)/a.mkv", "Test Torrent (2024)/b.mkv"},
+			},
+			wantName:   "Test Torrent (2024)",
+			wantMapped: []string{"Test Torrent (2024)/a.mkv", "Test Torrent (2024)/b.mkv"},
+		},
+		{
+			name:       "2.9x one file renamed",
+			info:       &info,
+			resume:     TransmissionResumeFile{Name: info.Name, Files: []string{"", info.Name + "/c.mkv"}},
+			wantMapped: []string{"", info.Name + "/c.mkv"},
+		},
+		{
+			name:       "single file renamed",
+			info:       &single,
+			resume:     TransmissionResumeFile{Name: "renamed.mkv", Files: []string{"renamed.mkv"}},
+			wantName:   "renamed.mkv",
+			wantMapped: []string{"renamed.mkv"},
+		},
+		{
+			name:     "file count mismatch",
+			info:     &info,
+			resume:   TransmissionResumeFile{Name: "Test Torrent (2024)", Files: []string{"Test Torrent (2024)/a.mkv"}},
+			wantName: "Test Torrent (2024)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.wantName, transmissionName(&tt.resume, tt.info))
+			assert.Equal(t, tt.wantMapped, transmissionMappedFiles(&tt.resume, tt.info))
+		})
+	}
+}
+
 func TestRTorrentFilePriorities(t *testing.T) {
 	t.Parallel()
 
