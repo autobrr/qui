@@ -119,6 +119,14 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
 	}
+	// A torrent that the run deletes passes no tag to its cross-seeds, as for category.
+	// Injected sibling states go through the same delete skips below.
+	for hash, state := range states {
+		if _, deleting := deletions.byHash[hash]; deleting || deletions.isClaimed(hash) {
+			state.tagExpandByTag = nil
+		}
+	}
+	expandTagStatesForCrossSeeds(states, in.ruleByID, in.crossSeeds)
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {

@@ -963,13 +963,14 @@ type DeleteAction struct {
 
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
-	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
-	Tags             []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
-	Mode             string         `json:"mode" doc:"'full' adds the tags to matching torrents and removes them from the others. 'add' only adds. 'remove' only removes them from matching torrents."`
-	DeleteFromClient bool           `json:"deleteFromClient,omitempty" doc:"Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags."`
-	UseTrackerAsTag  bool           `json:"useTrackerAsTag,omitempty" doc:"Use the tracker domain of each torrent as its tag."`
-	UseDisplayName   bool           `json:"useDisplayName,omitempty" doc:"With 'useTrackerAsTag': use the tracker display name in place of the domain."`
-	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
+	Enabled           bool           `json:"enabled" doc:"Whether the action runs."`
+	Tags              []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
+	Mode              string         `json:"mode" doc:"'full' adds the tags to matching torrents and removes them from the others. 'add' only adds. 'remove' only removes them from matching torrents."`
+	DeleteFromClient  bool           `json:"deleteFromClient,omitempty" doc:"Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags."`
+	UseTrackerAsTag   bool           `json:"useTrackerAsTag,omitempty" doc:"Use the tracker domain of each torrent as its tag."`
+	UseDisplayName    bool           `json:"useDisplayName,omitempty" doc:"With 'useTrackerAsTag': use the tracker display name in place of the domain."`
+	IncludeCrossSeeds bool           `json:"includeCrossSeeds,omitempty" doc:"Also apply the tag changes to the cross-seeds of each matching torrent. Ignored with 'useTrackerAsTag'."`
+	Condition         *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // CategoryAction configures category assignment with optional conditions.
