@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -27,7 +27,7 @@ func parsedTorrentRelease(t qbt.Torrent, ctx *EvalContext) *rls.Release {
 func torrentContentType(t qbt.Torrent, ctx *EvalContext) string {
 	r := parsedTorrentRelease(t, ctx)
 	info := releases.DetermineContentType(r)
-	return info.ContentType
+	return string(info.ContentType)
 }
 
 // torrentEffectiveName returns a stable-ish "item" identifier derived from the parsed title
@@ -46,7 +46,7 @@ func torrentEffectiveName(t qbt.Torrent, ctx *EvalContext) string {
 		base = strings.ToLower(title)
 	}
 
-	// Episode == 0 means "season pack" in moistari/rls conventions.
+	// Episode == 0 means "season pack" in rls conventions.
 	if r.Series > 0 {
 		if r.Episode > 0 {
 			return fmt.Sprintf("%s|s%02de%02d", base, r.Series, r.Episode)

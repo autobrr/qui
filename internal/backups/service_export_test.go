@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -127,38 +128,41 @@ func TestIsExportMetadataUnavailable(t *testing.T) {
 func TestAdaptiveExportDelayCapsSlowExports(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	start := time.Now()
-	// A 10s stall must not be mirrored back as a 10s sleep.
-	require.NoError(t, adaptiveExportDelay(ctx, 20*time.Millisecond, 10*time.Second))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, maxAdaptiveExportDelay)
-	require.Less(t, elapsed, 2*time.Second)
+		start := time.Now()
+		// A 10s stall must not be mirrored back as a 10s sleep.
+		require.NoError(t, adaptiveExportDelay(ctx, 20*time.Millisecond, 10*time.Second))
+		require.Equal(t, maxAdaptiveExportDelay, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayHonorsConfiguredMinAboveCap(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	minDelay := maxAdaptiveExportDelay + 200*time.Millisecond
-	start := time.Now()
-	require.NoError(t, adaptiveExportDelay(ctx, minDelay, 10*time.Second))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, minDelay)
+		minDelay := maxAdaptiveExportDelay + 200*time.Millisecond
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, minDelay, 10*time.Second))
+		require.Equal(t, minDelay, time.Since(start))
+	})
 }
 
 // concurrentExportStub is a thread-safe backupReader for exercising the
-// concurrent export path with per-hash latency, payload, and error behavior.
+// concurrent export path with per-hash gates, payload, and error behavior.
 type concurrentExportStub struct {
 	torrents []qbt.Torrent
-	latency  map[string]time.Duration
-	errs     map[string]error
+	// gates holds an export until its gate closes or its ctx ends. A hash
+	// without a gate exports at once.
+	gates map[string]chan struct{}
+	errs  map[string]error
+	// exported, if set, runs when an export passes its gate.
+	exported func(hash string)
 
 	mu          sync.Mutex
 	calls       int
@@ -189,7 +193,7 @@ func (s *concurrentExportStub) ExportTorrent(ctx context.Context, _ int, hash st
 	if s.inflight > s.maxInflight {
 		s.maxInflight = s.inflight
 	}
-	delay := s.latency[hash]
+	gate := s.gates[hash]
 	s.mu.Unlock()
 
 	defer func() {
@@ -198,12 +202,15 @@ func (s *concurrentExportStub) ExportTorrent(ctx context.Context, _ int, hash st
 		s.mu.Unlock()
 	}()
 
-	if delay > 0 {
+	if gate != nil {
 		select {
 		case <-ctx.Done():
 			return nil, "", "", ctx.Err()
-		case <-time.After(delay):
+		case <-gate:
 		}
+	}
+	if s.exported != nil {
+		s.exported(hash)
 	}
 
 	if err := s.errs[hash]; err != nil {
@@ -244,7 +251,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 	const torrentCount = 24
 
 	torrents := make([]qbt.Torrent, 0, torrentCount)
-	latency := make(map[string]time.Duration, torrentCount)
 	errs := map[string]error{}
 	for i := range torrentCount {
 		hash := fmt.Sprintf("hash-%02d", i)
@@ -263,9 +269,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 			Tags:      "tag1, tag2",
 			TotalSize: int64(1000 + i),
 		})
-		// Deterministic but varied latencies so completion order differs
-		// from input order.
-		latency[hash] = time.Duration((i*13)%40) * time.Millisecond
 	}
 	// Metadata-unavailable exports must be skipped without failing the run.
 	errs["hash-05"] = errors.New("could not get export; status code: 409: unexpected status code")
@@ -293,11 +296,40 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 		expectedBytes += int64(len("payload-" + torrent.Hash))
 	}
 
-	stub := &concurrentExportStub{torrents: torrents, latency: latency, errs: errs}
+	// The exports finish in an order other than the input order: within each
+	// window of exportWorkers inputs, which the workers hold at once, the last
+	// one finishes first. The end of each export opens the gate of the export
+	// released after it.
+	var release []string
+	for start := 0; start < torrentCount; start += exportWorkers {
+		for i := min(start+exportWorkers, torrentCount) - 1; i >= start; i-- {
+			release = append(release, torrents[i].Hash)
+		}
+	}
+	next := make(map[string]string, torrentCount)
+	for i := 1; i < len(release); i++ {
+		next[release[i-1]] = release[i]
+	}
+	stub := &concurrentExportStub{torrents: torrents, errs: errs}
+	stub.exported = func(hash string) {
+		if following, ok := next[hash]; ok {
+			close(stub.gates[following])
+		}
+	}
 	svc, instanceID := newExportTestService(t, stub)
 
 	for runID := int64(1); runID <= 2; runID++ {
-		result, err := svc.executeBackup(context.Background(), job{runID: runID, instanceID: instanceID, kind: models.BackupRunKindManual})
+		stub.gates = make(map[string]chan struct{}, torrentCount)
+		for _, torrent := range torrents {
+			stub.gates[torrent.Hash] = make(chan struct{})
+		}
+		close(stub.gates[release[0]])
+
+		// A gate chain out of step with the workers ends on this timeout
+		// instead of hanging the test.
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		result, err := svc.executeBackup(ctx, job{runID: runID, instanceID: instanceID, kind: models.BackupRunKindManual})
+		cancel()
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -382,30 +414,41 @@ func TestExecuteBackupRunsExportsConcurrently(t *testing.T) {
 func TestExecuteBackupConcurrentFailsFastOnExportError(t *testing.T) {
 	t.Parallel()
 
-	// The first torrent fails instantly while every other export is slow but
-	// honors ctx.Done; if the error did not cancel outstanding work, all 12
-	// torrents would be exported and the run would take many seconds.
+	// The first torrent fails at once while every other export waits on its
+	// ctx; if the error did not cancel outstanding work, the run would never
+	// end.
 	errBoom := errors.New("boom")
 	torrents := make([]qbt.Torrent, 0, 12)
-	latency := make(map[string]time.Duration, 12)
+	gates := make(map[string]chan struct{}, 12)
 	for i := range 12 {
 		hash := fmt.Sprintf("hash-%02d", i)
 		torrents = append(torrents, qbt.Torrent{Hash: hash, Name: fmt.Sprintf("Torrent %02d", i)})
-		latency[hash] = 5 * time.Second
+		if i > 0 {
+			gates[hash] = make(chan struct{})
+		}
 	}
-	latency["hash-00"] = 0
 	stub := &concurrentExportStub{
 		torrents: torrents,
-		latency:  latency,
+		gates:    gates,
 		errs:     map[string]error{"hash-00": errBoom},
 	}
 	svc, instanceID := newExportTestService(t, stub)
 
-	start := time.Now()
-	_, err := svc.executeBackup(context.Background(), job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
+	done := make(chan error, 1)
+	go func() {
+		// t.Context ends when the test does, so a run that ignores the
+		// first error does not keep its workers blocked after a failure.
+		_, err := svc.executeBackup(t.Context(), job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
+		done <- err
+	}()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first error must cancel outstanding exports")
+	}
 	require.ErrorIs(t, err, errBoom)
 	require.Contains(t, err.Error(), "export torrent hash-00")
-	require.Less(t, time.Since(start), 3*time.Second, "first error must cancel outstanding exports")
 
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
@@ -416,24 +459,20 @@ func TestExecuteBackupConcurrentStopsOnContextCancel(t *testing.T) {
 	t.Parallel()
 
 	torrents := make([]qbt.Torrent, 0, 40)
-	latency := make(map[string]time.Duration, 40)
 	for i := range 40 {
 		hash := fmt.Sprintf("hash-%02d", i)
 		torrents = append(torrents, qbt.Torrent{Hash: hash, Name: fmt.Sprintf("Torrent %02d", i)})
-		latency[hash] = 200 * time.Millisecond
 	}
-	stub := &concurrentExportStub{torrents: torrents, latency: latency}
-	svc, instanceID := newExportTestService(t, stub)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
+	// The first export cancels the run.
+	stub := &concurrentExportStub{torrents: torrents, exported: func(string) { cancel() }}
+	svc, instanceID := newExportTestService(t, stub)
 
-	start := time.Now()
 	_, err := svc.executeBackup(ctx, job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
 	require.ErrorIs(t, err, context.Canceled)
-	require.Less(t, time.Since(start), 3*time.Second, "cancellation must stop workers promptly")
+
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	require.Less(t, stub.calls, len(torrents), "cancellation must stop the feed before all torrents export")
 }

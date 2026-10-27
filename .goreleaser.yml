@@ -39,11 +39,34 @@ builds:
         goarch: arm64
     main: ./cmd/qui
     binary: qui
+  # qui-tray.exe: the GUI-subsystem build that serves with the Tray. See
+  # docs/adr/0012-the-tray-lives-in-the-served-child-of-a-second-windows-binary.md.
+  - id: qui-tray
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -H windowsgui
+      - -X github.com/autobrr/qui/internal/buildinfo.Version={{.Version}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Date={{.Date}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Commit={{.Commit}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Tray=true
+    goos:
+      - windows
+    goarch:
+      - amd64
+    main: ./cmd/qui
+    binary: qui-tray
 
 archives:
   - id: qui-archive
     ids:
       - qui
+      - qui-tray
+    # Only the Windows zip holds qui-tray.exe. A Self-update takes both exes
+    # from that one zip, so the archives stay combined.
+    allow_different_binary_count: true
     format_overrides:
       - goos: windows
         formats: ['zip']
@@ -56,6 +79,10 @@ archives:
 
 release:
   prerelease: auto
+  # The Release job adds the Highlights and then publishes the draft.
+  draft: true
+  # A re-run of a failed tag build replaces the draft that it left.
+  replace_existing_draft: true
   footer: |
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui/compare/{{ .PreviousTag }}...{{ .Tag }}
 
@@ -77,6 +104,7 @@ checksum:
 changelog:
   sort: asc
   use: github
+  format: "{{ .Message }}{{ if .Logins }} ({{ .Logins | englishJoin }}){{ end }}"
   filters:
     exclude:
       - Merge pull request
@@ -84,12 +112,15 @@ changelog:
       - Merge branch
       - go mod tidy
   groups:
+    - title: "Breaking Changes"
+      regexp: "^\\w+(\\([^)]*\\))?!:.*$"
+      order: 0
     - title: "New Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
-      order: 0
+      order: 10
     - title: "Bug Fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
-      order: 10
+      order: 20
     - title: "Other Changes"
       regexp: "^.*(chore|docs|style|refactor|test|perf|security|build|ci)[(\\w)]*:+.*$"
-      order: 20
+      order: 30

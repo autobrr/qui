@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Vlákna",
     "refreshAll": "Obnovit vše",
-    "addFolder": "Přidat složku",
-    "addFeed": "Přidat vlákno",
     "articles": "Články",
     "unread": "{{count}} nepřečteno",
     "markAllAsRead": "Označit vše jako přečteno",
@@ -48,7 +46,6 @@
     "toggleDetails": "Přepnout detaily"
   },
   "rules": {
-    "title": "Pravidla",
     "reprocess": "Znovu zpracovat",
     "reprocessTooltip": "Zkontrolujte všechny nepřečtené články podle pravidel",
     "addRule": "Přidat pravidlo",
@@ -144,14 +141,10 @@
     "saveChanges": "Uložit změny"
   },
   "settingsPopover": {
-    "title": "Nastavení RSS",
     "refreshInterval": "Interval obnovení",
-    "min": "min",
     "maxArticles": "Maximální počet článků na vlákno",
     "autoDownload": "Automatické stahování",
-    "downloadRepack": "Stáhnout REPACK/PROPER",
-    "saving": "Ukládání...",
-    "save": "Uložit"
+    "downloadRepack": "Stáhnout REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE Živé",
@@ -197,8 +190,6 @@
     "ruleCreated": "Pravidlo vytvořeno úspěšně",
     "failedToCreateRule": "Nepodařilo se vytvořit pravidlo",
     "ruleUpdated": "Pravidlo aktualizováno úspěšně",
-    "failedToUpdateRuleEdit": "Nepodařilo se aktualizovat pravidlo",
-    "rssSettingsSaved": "Nastavení RSS uložena úspěšně",
-    "failedToSaveRssSettings": "Nepodařilo se uložit nastavení RSS"
+    "failedToUpdateRuleEdit": "Nepodařilo se aktualizovat pravidlo"
   }
 }

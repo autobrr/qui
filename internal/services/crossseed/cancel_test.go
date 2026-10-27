@@ -66,11 +66,8 @@ func TestShouldSkipErroredTorrent(t *testing.T) {
 		{"error state, recovery disabled", qbt.TorrentStateError, false, true},
 		{"missingFiles state, recovery disabled", qbt.TorrentStateMissingFiles, false, true},
 		{"completed state, recovery disabled", qbt.TorrentStatePausedUp, false, false},
-		{"seeding state, recovery disabled", qbt.TorrentStateUploading, false, false},
-		{"downloading state, recovery disabled", qbt.TorrentStateDownloading, false, false},
 		{"error state, recovery enabled", qbt.TorrentStateError, true, false},
 		{"missingFiles state, recovery enabled", qbt.TorrentStateMissingFiles, true, false},
-		{"completed state, recovery enabled", qbt.TorrentStatePausedUp, true, false},
 	}
 
 	for _, tt := range tests {
@@ -85,24 +82,5 @@ func TestShouldSkipErroredTorrent(t *testing.T) {
 					tt.state, tt.recoverEnabled, got, tt.shouldSkip)
 			}
 		})
-	}
-}
-
-// TestRecoverErroredTorrentsEnabled_DefaultDisabled verifies that the default
-// (zero value) for recoverErroredTorrentsEnabled is false, meaning errored
-// torrents are filtered out by default.
-func TestRecoverErroredTorrentsEnabled_DefaultDisabled(t *testing.T) {
-	s := &Service{} // Zero value - recoverErroredTorrentsEnabled defaults to false
-
-	if s.recoverErroredTorrentsEnabled {
-		t.Error("expected default recoverErroredTorrentsEnabled to be false")
-	}
-
-	// With default (false), errored torrents should be skipped
-	if !s.shouldSkipErroredTorrent(qbt.TorrentStateError) {
-		t.Error("expected errored torrents to be skipped when recovery is disabled")
-	}
-	if !s.shouldSkipErroredTorrent(qbt.TorrentStateMissingFiles) {
-		t.Error("expected missingFiles torrents to be skipped when recovery is disabled")
 	}
 }

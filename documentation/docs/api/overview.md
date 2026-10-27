@@ -24,9 +24,15 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
   http://localhost:7476/api/instances
 ```
 
+## Session cookies
+
+The session cookie is for the qui web UI. Use an API key for scripts. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
+
 ## Torrent updates
 
 `GET /api/stream` sends torrent updates through Server-Sent Events. See `/api/docs` for subscription parameters and event examples.
+
+The first event of a stream is `connection`. To add or remove subscriptions without a reconnect, send its `connectionId` to `POST /api/stream/subscriptions`. Each new subscription gets an `init` event before its other events, and the other subscriptions get no new `init`.
 
 Keep the version from each accepted snapshot or delta. Apply a delta only when its `baseVersion` matches that version and its `minor` increases by one within the same `major`. If the versions do not match, reconnect for a full snapshot and use REST polling until it arrives.
 

@@ -25,6 +25,7 @@ type InstanceCapabilitiesResponse struct {
 	SubcategoriesAlwaysEnabled  bool   `json:"subcategoriesAlwaysEnabled"`
 	SupportsTorrentTmpPath      bool   `json:"supportsTorrentTmpPath"`
 	SupportsPathAutocomplete    bool   `json:"supportsPathAutocomplete"`
+	SupportsTestEmail           bool   `json:"supportsTestEmail"`
 	SupportsFreeSpacePathSource bool   `json:"supportsFreeSpacePathSource"`
 	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
 	SupportsShareLimitsAction   bool   `json:"supportsShareLimitsAction"`
@@ -49,7 +50,8 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SubcategoriesAlwaysEnabled:  client.SubcategoriesAlwaysEnabled(),
 		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
-		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,
+		SupportsTestEmail:           client.SupportsTestEmail(),
+		SupportsFreeSpacePathSource: runtime.GOOS != "windows",
 		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
 		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
 		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),

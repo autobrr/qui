@@ -3,164 +3,97 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery } from "@tanstack/react-query"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { api } from "@/lib/api"
-import { getLocalMatchTypeInfo, toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
-import { isAllInstancesScope } from "@/lib/instances"
-import type { CrossInstanceTorrent, Torrent } from "@/types"
+import { toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import type { Torrent, TorrentFilters } from "@/types"
+
+/** The select-all scope of a delete, as the bulk action sends it. */
+export interface CrossSeedSelectAllScope {
+  filters?: TorrentFilters
+  search?: string
+  excludeHashes?: string[]
+  excludeTargets?: TorrentActionTarget[]
+  instanceIds?: number[]
+}
 
 interface UseCrossSeedWarningOptions {
   instanceId: number
-  instanceName: string
   torrents: Torrent[]
+  /** Set in Select all mode: the check then covers every selected torrent, not only `torrents`. */
+  selectAll?: CrossSeedSelectAllScope
 }
 
 export type CrossSeedSearchState = "idle" | "searching" | "complete" | "error"
 
 export interface CrossSeedWarningResult {
-  /** Cross-seed torrents on this instance that share files with torrents being deleted */
+  /** Cross-seed torrents that share files with torrents being deleted */
   affectedTorrents: CrossSeedTorrent[]
   /** Current search state */
   searchState: CrossSeedSearchState
   /** Whether there are cross-seeds that would be affected */
   hasWarning: boolean
-  /** Number of torrents being checked */
-  totalToCheck: number
-  /** Number of torrents checked so far */
-  checkedCount: number
   /** Trigger the cross-seed search */
   search: () => void
-  /** Reset the search state */
+  /** Reset the search state and stop a running search */
   reset: () => void
-}
-
-function isCrossInstanceTorrent(t: Torrent): t is CrossInstanceTorrent {
-  return "instanceId" in t && typeof (t as CrossInstanceTorrent).instanceId === "number"
 }
 
 /**
  * Hook to detect cross-seeded torrents that would be affected when deleting files.
  *
- * Search is opt-in - call `search()` to check for cross-seeds.
- * Checks ALL selected torrents, not just the first one.
- *
- * In unified (all-instances) view, resolves each torrent's instance from its
- * own instanceId field (CrossInstanceTorrent) and checks per-instance.
+ * Search is opt-in - call `search()` to check for cross-seeds. One request
+ * checks every selected torrent; the backend leaves the selected torrents out
+ * of the result. `reset()` and unmount stop a running search.
  */
 export function useCrossSeedWarning({
   instanceId,
-  instanceName,
   torrents,
+  selectAll,
 }: UseCrossSeedWarningOptions): CrossSeedWarningResult {
   const [searchState, setSearchState] = useState<CrossSeedSearchState>("idle")
   const [affectedTorrents, setAffectedTorrents] = useState<CrossSeedTorrent[]>([])
-  const [checkedCount, setCheckedCount] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
 
-  const isUnified = isAllInstancesScope(instanceId)
-
-  const hashesBeingDeleted = useMemo(
-    () => new Set(torrents.map(t => t.hash)),
-    [torrents]
-  )
-
-  // Fetch instance info (always enabled so it's ready when user clicks search)
-  const { data: instances } = useQuery({
-    queryKey: ["instances"],
-    queryFn: api.getInstances,
-    staleTime: 60000,
-  })
-
-  const instance = useMemo(
-    () => instances?.find(i => i.id === instanceId),
-    [instances, instanceId]
-  )
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const search = useCallback(async () => {
-    if (torrents.length === 0) return
+    abortRef.current?.abort()
+    if (!selectAll && torrents.length === 0) return
 
-    // In single-instance view, we need the instance to exist.
-    // In unified view, we resolve per torrent.
-    if (!isUnified && !instance) return
+    const controller = new AbortController()
+    abortRef.current = controller
 
     setSearchState("searching")
-    setCheckedCount(0)
     setAffectedTorrents([])
 
-    const allMatches: CrossSeedTorrent[] = []
-    const seenKeys = new Set<string>()
-
-    // Build a lookup for instance names when in unified view
-    const instanceNameLookup = new Map<number, string>()
-    if (isUnified && instances) {
-      for (const inst of instances) {
-        instanceNameLookup.set(inst.id, inst.name)
-      }
-    }
-
     try {
-      for (let i = 0; i < torrents.length; i++) {
-        const torrent = torrents[i]
-
-        // Resolve the instance ID and name for this specific torrent
-        let torrentInstanceId: number
-        let torrentInstanceName: string
-
-        if (isUnified && isCrossInstanceTorrent(torrent)) {
-          torrentInstanceId = torrent.instanceId
-          torrentInstanceName = instanceNameLookup.get(torrent.instanceId)
-            ?? torrent.instanceName
-            ?? `Instance ${torrent.instanceId}`
-        } else {
-          torrentInstanceId = instanceId
-          torrentInstanceName = instanceName
-        }
-
-        const matches = await api.getLocalCrossSeedMatches(torrentInstanceId, torrent.hash, true)
-
-        for (const match of matches) {
-          // Skip if not on the same instance as the torrent being deleted
-          if (match.instanceId !== torrentInstanceId) continue
-          // Skip torrents being deleted
-          if (hashesBeingDeleted.has(match.hash)) continue
-          // Include shared-path matches and independently usable linked copies
-          // verified through hardlink identity or current ReFS extent sharing.
-          if (!getLocalMatchTypeInfo(match.matchType).deleteRelevant) continue
-          // Skip duplicates (instance-aware to handle same hash on multiple instances)
-          const dedupeKey = isUnified ? `${match.instanceId}:${match.hash}` : match.hash
-          if (seenKeys.has(dedupeKey)) continue
-
-          seenKeys.add(dedupeKey)
-          allMatches.push({
-            ...toCompatibleMatch(match),
-            instanceName: torrentInstanceName,
-          })
-        }
-
-        setCheckedCount(i + 1)
-      }
-
-      setAffectedTorrents(allMatches)
+      const selection = selectAll ? { selectAll: true, ...selectAll } : { targets: buildTorrentActionTargets(torrents, instanceId) }
+      const matches = await api.getDeleteCrossSeeds(instanceId, selection, controller.signal)
+      // The body can finish reading after the abort.
+      if (controller.signal.aborted) return
+      setAffectedTorrents(matches.map(toCompatibleMatch))
       setSearchState("complete")
     } catch (error) {
+      if (controller.signal.aborted) return
       console.error("[CrossSeedWarning] Search failed:", error)
       setSearchState("error")
     }
-  }, [instance, instances, isUnified, torrents, instanceId, instanceName, hashesBeingDeleted])
+  }, [instanceId, torrents, selectAll])
 
   const reset = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
     setSearchState("idle")
     setAffectedTorrents([])
-    setCheckedCount(0)
   }, [])
 
   return {
     affectedTorrents,
     searchState,
     hasWarning: affectedTorrents.length > 0,
-    totalToCheck: torrents.length,
-    checkedCount,
     search,
     reset,
   }

@@ -73,13 +73,9 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.False(t, defaults.RescueTitleMismatches)
 	assert.False(t, defaults.PooledPartialCompletionEnabled)
 
-	category := "TV"
-
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		Enabled:                        true,
 		RunIntervalMinutes:             30,
-		StartPaused:                    false,
-		Category:                       &category,
 		RSSAutomationTags:              []string{"cross-seed", "automation"},
 		SeededSearchTags:               []string{"seeded"},
 		CompletionSearchTags:           []string{"completion"},
@@ -94,9 +90,6 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 
 	assert.True(t, updated.Enabled)
 	assert.Equal(t, 30, updated.RunIntervalMinutes)
-	assert.False(t, updated.StartPaused)
-	require.NotNil(t, updated.Category)
-	assert.Equal(t, "TV", *updated.Category)
 	assert.ElementsMatch(t, []string{"cross-seed", "automation"}, updated.RSSAutomationTags)
 	assert.ElementsMatch(t, []string{"seeded"}, updated.SeededSearchTags)
 	assert.ElementsMatch(t, []string{"completion"}, updated.CompletionSearchTags)

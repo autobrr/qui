@@ -22,7 +22,7 @@ import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { DEFAULT_REANNOUNCE_SETTINGS } from "@/lib/instance-validation"
@@ -126,18 +126,16 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = Object.keys(trackersQuery.data)
     const processed: Option[] = []
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
 
     for (const tracker of trackers) {
-      const lowerTracker = tracker.toLowerCase()
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      if (seenGroups.has(groupKey)) continue
+      seenGroups.add(groupKey)
 
-      const customization = domainToCustomization.get(lowerTracker)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        const displayKey = customization.displayName.toLowerCase()
-        if (seenDisplayNames.has(displayKey)) continue
-        seenDisplayNames.add(displayKey)
-
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
           label: customization.displayName,
@@ -145,9 +143,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
         })
       } else {
-        if (seenDisplayNames.has(lowerTracker)) continue
-        seenDisplayNames.add(lowerTracker)
-
         processed.push({
           label: tracker,
           value: tracker,

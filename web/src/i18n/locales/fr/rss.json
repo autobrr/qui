@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Flux",
     "refreshAll": "Tout rafraîchir",
-    "addFolder": "Ajouter un dossier",
-    "addFeed": "Ajouter un flux",
     "articles": "Articles",
     "unread": "{{count}} non lu(s)",
     "markAllAsRead": "Tout marquer comme lu",
@@ -48,7 +46,6 @@
     "toggleDetails": "Basculer les détails"
   },
   "rules": {
-    "title": "Règles",
     "reprocess": "Retraiter",
     "reprocessTooltip": "Revérifier tous les articles non lus par rapport aux règles",
     "addRule": "Ajouter une règle",
@@ -144,14 +141,10 @@
     "saveChanges": "Sauvegarder les modifications"
   },
   "settingsPopover": {
-    "title": "Paramètres RSS",
     "refreshInterval": "Intervalle de rafraîchissement",
-    "min": "min",
     "maxArticles": "Max articles par flux",
     "autoDownload": "Téléchargement automatique",
-    "downloadRepack": "Télécharger REPACK/PROPER",
-    "saving": "Sauvegarde...",
-    "save": "Sauvegarder"
+    "downloadRepack": "Télécharger REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE En direct",
@@ -197,8 +190,6 @@
     "ruleCreated": "Règle créée avec succès",
     "failedToCreateRule": "Échec de la création de la règle",
     "ruleUpdated": "Règle mise à jour avec succès",
-    "failedToUpdateRuleEdit": "Échec de la mise à jour de la règle",
-    "rssSettingsSaved": "Paramètres RSS sauvegardés",
-    "failedToSaveRssSettings": "Échec de la sauvegarde des paramètres RSS"
+    "failedToUpdateRuleEdit": "Échec de la mise à jour de la règle"
   }
 }

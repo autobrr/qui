@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -24,7 +24,7 @@ const (
 	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
 
 	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
-	// cannot hold them forever; writerMu is not context-aware while blocked.
+	// cannot hold them forever.
 	cacheWriteTimeout = 5 * time.Second
 
 	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)
@@ -181,7 +181,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
 	}
 	if err != nil || cacheEntry == nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
 	if cacheEntry.IsNegative {
 		log.Debug().

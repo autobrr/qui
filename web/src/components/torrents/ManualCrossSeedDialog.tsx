@@ -412,7 +412,7 @@ export function ManualCrossSeedDialog({
                   <p className="text-muted-foreground">{t("manualCrossSeed.pack.recheck")}</p>
                   {preview.reason && <p className="text-destructive">{assemblyReason(preview.reason)}</p>}
                   {preview.reason === "unsafe_piece_boundary" && (
-                    <Link to="/cross-seed" search={{ tab: "rules" }} onClick={() => handleOpenChange(false)} className="inline-block text-primary underline underline-offset-4">
+                    <Link to="/cross-seed" search={{ tab: "matching" }} onClick={() => handleOpenChange(false)} className="inline-block text-primary underline underline-offset-4">
                       {t("manualCrossSeed.pack.reviewRules")}
                     </Link>
                   )}

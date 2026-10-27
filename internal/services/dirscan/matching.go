@@ -353,6 +353,7 @@ func CalculateTotalSize(searchee *Searchee) int64 {
 type ParsedTorrent struct {
 	Name        string
 	InfoHash    string
+	InfoHashV2  string // empty for a v1-only torrent
 	Files       []TorrentFile
 	TotalSize   int64
 	PieceLength int64
@@ -378,6 +379,9 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		InfoHash:    mi.HashInfoBytes().HexString(),
 		PieceLength: info.PieceLength,
 		PieceCount:  info.NumPieces(),
+	}
+	if info.HasV2() {
+		parsed.InfoHashV2 = metainfo.HashV2Bytes(mi.InfoBytes).HexString()
 	}
 
 	// Build file list with byte offsets

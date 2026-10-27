@@ -11,6 +11,7 @@ const (
 	skipTrackerHydrationKey    contextKey = "qui_skip_tracker_hydration"
 	cachedCountsWithSkippedKey contextKey = "qui_cached_counts_with_skipped_tracker_hydration"
 	skipFreshDataKey           contextKey = "qui_skip_fresh_data"
+	summaryKey                 contextKey = "qui_summary"
 )
 
 // WithSkipTrackerHydration marks the context so tracker enrichment/hydration is skipped.
@@ -81,4 +82,16 @@ func shouldSkipFreshData(ctx context.Context) bool {
 // over request-triggered fresh sync work.
 func SkipFreshDataRequested(ctx context.Context) bool {
 	return shouldSkipFreshData(ctx)
+}
+
+// WithSummary marks the context so a list request returns the totals of the
+// view without its rows. The request does not sort.
+func WithSummary(ctx context.Context) context.Context {
+	return context.WithValue(ctx, summaryKey, true)
+}
+
+// SummaryRequested reports whether ctx asks for a summary.
+func SummaryRequested(ctx context.Context) bool {
+	v, _ := ctx.Value(summaryKey).(bool)
+	return v
 }

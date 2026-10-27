@@ -32,6 +32,7 @@ type wantRequest struct {
 	year        int
 	indexerIDs  []int
 	skipHistory bool
+	season      *int
 }
 
 // TestGatherSearchResults drives the retry ladder with a recording fake: which
@@ -49,11 +50,13 @@ func TestGatherSearchResults(t *testing.T) {
 		req           jackett.TorznabSearchRequest
 		tagSourcedIDs bool
 		altTitle      string
+		altSeason     *int
 		idCap         []int
 		replies       map[string]fakeReply
 		cancelParent  bool
 		wantRequests  []wantRequest
 		wantCovered   []int
+		wantAnswered  bool
 		wantTitles    []string
 		wantPartial   bool
 		wantErr       error
@@ -70,8 +73,9 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Movie", year: 2020, indexerIDs: []int{1, 2}},
 				{query: "Movie", year: 0, indexerIDs: []int{1, 2}},
 			},
-			wantCovered: []int{2},
-			wantTitles:  []string{junk, junk},
+			wantCovered:  []int{2},
+			wantAnswered: true,
+			wantTitles:   []string{junk, junk},
 		},
 		{
 			name: "year set with one usable hit skips the yearless retry",
@@ -81,6 +85,7 @@ func TestGatherSearchResults(t *testing.T) {
 			},
 			wantRequests: []wantRequest{{query: "Movie", year: 2020, indexerIDs: []int{1, 2}}},
 			wantCovered:  []int{1, 2},
+			wantAnswered: true,
 			wantTitles:   []string{match},
 		},
 		{
@@ -98,8 +103,26 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Show", indexerIDs: []int{1, 2}},
 				{query: "Alias", indexerIDs: []int{2}, skipHistory: true},
 			},
-			wantCovered: []int{1, 2},
-			wantTitles:  []string{match, junk, match},
+			wantCovered:  []int{1, 2},
+			wantAnswered: true,
+			wantTitles:   []string{match, junk, match},
+		},
+		{
+			name:      "alternate title pass of a numeral pack searches its season",
+			req:       jackett.TorznabSearchRequest{Query: "Kaiju Squad 100 II", IndexerIDs: []int{1, 2}},
+			altTitle:  "Kaiju Squad 100",
+			altSeason: new(2),
+			replies: map[string]fakeReply{
+				replyKey("Kaiju Squad 100 II", 0, []int{1, 2}): {results: []jackett.SearchResult{hit(1, match)}, covered: []int{1, 2}},
+				replyKey("Kaiju Squad 100", 0, []int{2}):       {results: []jackett.SearchResult{hit(2, match)}, covered: []int{2}},
+			},
+			wantRequests: []wantRequest{
+				{query: "Kaiju Squad 100 II", indexerIDs: []int{1, 2}},
+				{query: "Kaiju Squad 100", indexerIDs: []int{2}, skipHistory: true, season: new(2)},
+			},
+			wantCovered:  []int{1, 2},
+			wantAnswered: true,
+			wantTitles:   []string{match, match},
 		},
 		{
 			name:     "failed alternate title pass drops its targets from covered and keeps results",
@@ -113,8 +136,9 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Show", indexerIDs: []int{1, 2}},
 				{query: "Alias", indexerIDs: []int{2}, skipHistory: true},
 			},
-			wantCovered: []int{1},
-			wantTitles:  []string{match},
+			wantCovered:  []int{1},
+			wantAnswered: true,
+			wantTitles:   []string{match},
 		},
 		{
 			name:     "failed pass with the parent context cancelled returns the context error",
@@ -145,8 +169,9 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Show", indexerIDs: []int{2}, skipHistory: true},
 			},
 			// The rescue answered nothing for indexer 2, so it is uncovered.
-			wantCovered: []int{1, 3},
-			wantTitles:  []string{match},
+			wantCovered:  []int{1, 3},
+			wantAnswered: true,
+			wantTitles:   []string{match},
 		},
 		{
 			name: "connector pass after the yearless retry searches without the year",
@@ -161,10 +186,50 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Law and Order", year: 0, indexerIDs: []int{1}},
 				{query: "Law & Order", year: 0, indexerIDs: []int{1}, skipHistory: true},
 			},
-			wantCovered: []int{1},
-			wantTitles:  []string{match},
+			wantCovered:  []int{1},
+			wantAnswered: true,
+			wantTitles:   []string{match},
 			// A partial retry pass makes the whole search partial.
 			wantPartial: true,
+		},
+		{
+			name: "failed yearless retry uncovers every indexer but the primary still answered",
+			req:  jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1}},
+			replies: map[string]fakeReply{
+				replyKey("Movie", 2020, []int{1}): {covered: []int{1}},
+				replyKey("Movie", 0, []int{1}):    {err: errPass},
+			},
+			wantRequests: []wantRequest{
+				{query: "Movie", year: 2020, indexerIDs: []int{1}},
+				{query: "Movie", year: 0, indexerIDs: []int{1}},
+			},
+			wantAnswered: true,
+			wantTitles:   []string{},
+			wantPartial:  true,
+		},
+		{
+			name:     "a retry answering after a primary nobody answered is an answer",
+			req:      jackett.TorznabSearchRequest{Query: "Show", IndexerIDs: []int{1}},
+			altTitle: "Alias",
+			replies: map[string]fakeReply{
+				replyKey("Show", 0, []int{1}):  {partial: true},
+				replyKey("Alias", 0, []int{1}): {covered: []int{1}},
+			},
+			wantRequests: []wantRequest{
+				{query: "Show", indexerIDs: []int{1}},
+				{query: "Alias", indexerIDs: []int{1}, skipHistory: true},
+			},
+			wantAnswered: true,
+			wantTitles:   []string{},
+			wantPartial:  true,
+		},
+		{
+			name:         "no indexer answering the primary is not an answer",
+			req:          jackett.TorznabSearchRequest{Query: "Show", IndexerIDs: []int{1}},
+			replies:      map[string]fakeReply{replyKey("Show", 0, []int{1}): {partial: true}},
+			wantRequests: []wantRequest{{query: "Show", indexerIDs: []int{1}}},
+			wantTitles:   []string{},
+			wantPartial:  true,
 		},
 		{
 			name:         "primary error comes back as is",
@@ -205,7 +270,7 @@ func TestGatherSearchResults(t *testing.T) {
 				cancel()
 			}
 			req := tt.req
-			resp, covered, err := g.gather(ctx, t.Context(), gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle})
+			resp, covered, answered, err := g.gather(ctx, t.Context(), gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle, altTitleSeason: tt.altSeason})
 
 			require.Len(t, got, len(tt.wantRequests))
 			for i, want := range tt.wantRequests {
@@ -213,6 +278,7 @@ func TestGatherSearchResults(t *testing.T) {
 				require.Equal(t, want.year, got[i].Year, "pass %d year", i)
 				require.Equal(t, want.indexerIDs, got[i].IndexerIDs, "pass %d indexers", i)
 				require.Equal(t, want.skipHistory, got[i].SkipHistory, "pass %d skipHistory", i)
+				require.Equal(t, want.season, got[i].Season, "pass %d season", i)
 				if want.skipHistory {
 					require.Empty(t, got[i].IMDbID, "pass %d keeps IDs", i)
 					require.False(t, got[i].OmitQueryForIDs, "pass %d omits the query", i)
@@ -232,6 +298,7 @@ func TestGatherSearchResults(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.wantCovered, covered)
+			require.Equal(t, tt.wantAnswered, answered)
 			titles := make([]string, 0, len(resp.Results))
 			for _, r := range resp.Results {
 				titles = append(titles, r.Title)

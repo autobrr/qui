@@ -25,6 +25,7 @@ import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   WRAPPING_BETWEEN_FIELDS,
@@ -33,6 +34,8 @@ import {
   getTranslatedOperatorsForField,
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
+  getTranslatedContentTypes,
+  getTranslatedSeasonPackStatuses,
   getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
@@ -56,17 +59,16 @@ function detectDurationUnit(secs: number): number {
   return 60;
 }
 
-const SPEED_INPUT_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
-];
+// The value is the byte multiplier and stays numeric; only the label is localized, and it is
+// built on call so it follows a language switch.
+const SPEED_INPUT_LADDER = ["B", "KiB", "MiB"] as const;
+const BYTES_INPUT_LADDER = ["MiB", "GiB", "TiB"] as const;
 
-const BYTES_INPUT_UNITS = [
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
-];
+const getSpeedInputUnits = () =>
+  SPEED_INPUT_LADDER.map((unit) => ({ value: BYTES_PER_UNIT[unit], label: unitLabel(unit, true) }));
+
+const getBytesInputUnits = () =>
+  BYTES_INPUT_LADDER.map((unit) => ({ value: BYTES_PER_UNIT[unit], label: unitLabel(unit) }));
 
 // Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
 const MiB = 1024 * 1024;
@@ -193,8 +195,7 @@ export function LeafCondition({
 
   const handleFieldChange = (field: string) => {
     const newFieldType = getFieldType(field);
-    const newOperators = getOperatorsForField(field);
-    const defaultOperator = newOperators[0]?.value ?? "EQUAL";
+    const defaultOperator = getOperatorsForField(field)[0] ?? "EQUAL";
 
     // Determine default value based on field type
     let defaultValue = "";
@@ -202,12 +203,14 @@ export function LeafCondition({
       defaultValue = "true";
     } else if (newFieldType === "hardlinkScope") {
       defaultValue = "outside_qbittorrent";
+    } else if (newFieldType === "seasonPackStatus") {
+      defaultValue = "packed";
     }
 
     onChange({
       ...condition,
       field: field as ConditionField,
-      operator: defaultOperator as ConditionOperator,
+      operator: defaultOperator,
       groupId: isGroupingConditionField(field as ConditionField) ? (condition.groupId || DEFAULT_GROUP_ID) : undefined,
       value: defaultValue,
       minValue: undefined,
@@ -251,6 +254,20 @@ export function LeafCondition({
       condition.field === "CATEGORY" && value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value;
     onChange({ ...condition, value: actualValue });
   };
+
+  // A CONTENT_TYPE condition saved with regex on holds a pattern, not a type, so it keeps the free-text input.
+  const isContentTypeEqualityOperator =
+    condition.field === "CONTENT_TYPE" &&
+    (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL") &&
+    !condition.regex;
+
+  const contentTypeOptions = isContentTypeEqualityOperator ? getTranslatedContentTypes(t) : [];
+  // The evaluator ignores case, so a saved "TV" selects "tv". Any other saved value stays
+  // selected as a flagged option, because rewriting it would change what the rule matches.
+  const savedContentType = condition.value ?? "";
+  const knownContentType = contentTypeOptions.find((option) => option.value === savedContentType.toLowerCase());
+  const contentTypeValue = knownContentType?.value ?? savedContentType;
+  const isCustomContentType = contentTypeValue !== "" && !knownContentType;
 
   const getCategoryDisplayValue = (): string => {
     if (condition.field === "CATEGORY" && !condition.value) {
@@ -609,7 +626,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {BYTES_INPUT_UNITS.map((u) => (
+                {getBytesInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -719,6 +736,39 @@ export function LeafCondition({
               ))}
             </SelectContent>
           </Select>
+        ) : isContentTypeEqualityOperator ? (
+          <Select value={contentTypeValue} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue placeholder={t("queryBuilder.selectContentType")} />
+            </SelectTrigger>
+            <SelectContent>
+              {contentTypeOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              {isCustomContentType && (
+                <SelectItem value={contentTypeValue}>
+                  <span className="italic text-muted-foreground">
+                    {t("queryBuilder.customContentType", { value: contentTypeValue })}
+                  </span>
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        ) : fieldType === "seasonPackStatus" ? (
+          <Select value={condition.value ?? "packed"} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {getTranslatedSeasonPackStatuses(t).map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : fieldType === "boolean" ? (
           <Select value={condition.value ?? "true"} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[100px]">
@@ -771,7 +821,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SPEED_INPUT_UNITS.map((u) => (
+                {getSpeedInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -796,7 +846,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {BYTES_INPUT_UNITS.map((u) => (
+                {getBytesInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>

@@ -10,41 +10,33 @@
     "linkSuffix": "per afegir-ne o activar-ne un."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automatització d'RSS",
-      "description": "Consulta automàtica dels canals RSS dels trackers amb les teves regles.",
-      "nextRun": "Execució següent",
-      "manualTrigger": "Activació manual",
-      "lastRun": "Última execució",
-      "cooldown": "Temps d'espera {{display}}",
-      "ready": "A punt",
-      "disabled": "Desactivada",
-      "noRunsYet": "Encara no hi ha cap execució",
-      "disabledUpper": "DESACTIVADA"
-    },
     "seededSearch": {
-      "title": "Cerca de torrents sembrats",
-      "description": "Explora a fons els torrents que ja sembres per omplir els buits.",
-      "instance": "Instància",
-      "recentRuns": "Execucions recents",
-      "now": "Ara",
-      "running": "S'està executant...",
-      "idle": "Inactiva",
       "gazelleFullDescription": "Gazelle comprova RED/OPS per a cada torrent d'origen. Torznab consulta els indexadors seleccionats que no siguin OPS/RED.",
       "gazellePartialDescription": "Gazelle comprova els llocs configurats per a cada torrent d'origen. Torznab consulta els indexadors seleccionats.",
       "noGazelleDescription": "Sense Gazelle, totes les coincidències depenen dels indexadors de Torznab."
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Exploració",
-    "dirScan": "Directoris",
-    "rules": "Regles",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "completion": "Finalització",
+    "library": "Biblioteca",
+    "directories": "Directoris",
+    "season-packs": "Packs de temporada",
+    "matching": "Regles de coincidència",
+    "categories": "Categories i etiquetes",
+    "after-injection": "Després de la injecció",
     "blocklist": "Llista de bloqueig"
+  },
+  "nav": {
+    "sources": "Fonts",
+    "matching": "Coincidència",
+    "injection": "Injecció"
   },
   "automation": {
     "title": "Automatització d'RSS",
     "description": "Consulta els canals RSS dels trackers a intervals fixos i afegeix automàticament els cross-seed coincidents.",
+    "nextRun": "Execució següent: {{date}}",
     "enableSwitch": "Activa l'automatització d'RSS",
     "intervalLabel": "Interval d'execució de l'RSS (minuts)",
     "intervalTooltip": "A cada execució, l'automatització processa el canal sencer de cada indexador de Torznab activat. L'interval mínim és de {{min}} minuts per no castigar els indexadors.",
@@ -90,22 +82,27 @@
     "cancel": "Cancel·la",
     "runNow": "Executa ara",
     "saveSettings": "Desa la configuració de l'automatització d'RSS",
-    "reset": "Restableix",
     "requiresTorznabIndexer": "Les execucions de l'automatització d'RSS necessiten com a mínim un indexador de Torznab.",
     "items": "{{count}} elements",
     "failedCount": "{{count}} fallits",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} execucions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execucions • +{{added}} • {{failed}} fallits",
-    "scheduledUpper": "PROGRAMADA",
-    "runDisabledAlreadyRunning": "Ja hi ha una execució de l'automatització en curs.",
     "runDisabledCooldown": "Les execucions manuals estan limitades a un interval de {{minutes}} minuts. Torna-ho a provar d'aquí a {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtra quins torrents locals es tenen en compte quan autobrr crida el punt final /apply del webhook.",
-    "emptyFiltersNote": "Si els filtres són buits, es comproven tots els torrents. Si configures filtres de categoria i d'etiqueta alhora, els torrents han de coincidir amb tots dos.",
-    "saveFilters": "Desa els filtres del webhook"
+    "emptyFiltersNote": "Si els filtres són buits, es comproven tots els torrents. Si configures filtres de categoria i d'etiqueta alhora, els torrents han de coincidir amb tots dos."
+  },
+  "completion": {
+    "title": "En completar",
+    "description": "Etiquetes i represa automàtica per als cross-seeds que afegeix la cerca després d'una baixada completada. Activeu la cerca per instància a sota."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Etiquetes de cross-seed",
+    "autoResume": "Represa automàtica després de la injecció",
+    "autoResumeHelp": "Si està desactivat, els torrents afegits queden en pausa per revisar-los."
   },
   "scan": {
     "title": "Exploració de la biblioteca",
@@ -165,19 +162,16 @@
     "runSummary": "{{runs}} execucions • +{{added}} cross-seed",
     "runSummaryWithFailures": "{{runs}} execucions • +{{added}} cross-seed • {{failed}} fallits",
     "searchNeedsTorznabUnlessGazelle": "La cerca de torrents sembrats necessita indexadors de Torznab (llevat que només exploris OPS/RED mitjançant Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} explorats",
     "torrentsCount": "{{count}} candidats",
     "failedCount": "{{count}} fallits",
     "runError": "Error: {{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "Torznab omès (selecció només de Gazelle)",
       "placeholderTorznabDisabledGazelleOnly": "Torznab desactivat (només Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab desactivat (activa Gazelle)",
       "placeholderAllEnabledNonOpsRed": "Tots els indexadors activats que no siguin OPS/RED (deixa-ho buit per a tots)",
       "placeholderAllEnabled": "Tots els indexadors activats (deixa-ho buit per a tots)",
       "placeholderOnlyOpsRedEnabled": "Només hi ha OPS/RED activats (Gazelle)",
       "placeholderNoTorznabConfigured": "No hi ha cap indexador de Torznab configurat",
-      "helpTorznabSkippedGazelleOnly": "Els indexadors de Torznab seleccionats són només de Gazelle (OPS/RED). Aquesta execució serà només de Gazelle.",
       "helpTorznabDisabledGazelleCheck": "Torznab està desactivat. Gazelle comprovarà RED/OPS per a cada torrent d'origen.",
       "helpTorznabDisabledEnableGazelle": "Torznab està desactivat. Activa Gazelle (OPS/RED) per executar la cerca de torrents sembrats en mode només Gazelle.",
       "helpOnlyOpsRedEnabled": "Només hi ha activats indexadors de Torznab d'OPS/RED. Aquí Torznab no hi aporta res; Gazelle sí que comprova RED/OPS.",
@@ -191,20 +185,19 @@
       "helpSelectedQueried_other": "Només es consultaran {{count}} indexadors seleccionats."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: s'està carregant",
       "disabled": "Gazelle: desactivat",
       "enabledOpsRed": "Gazelle: activat (claus d'OPS i RED definides)",
       "enabledOpsMissingRed": "Gazelle: activat (clau d'OPS definida, falta la de RED)",
       "enabledRedMissingOps": "Gazelle: activat (clau de RED definida, falta la d'OPS)",
       "enabledKeysMissing": "Gazelle: activat (falten les claus)"
     },
-    "noInstanceSelected": "No hi ha cap instància seleccionada",
-    "instanceFallback": "Instància {{id}}",
-    "noMessageProvided": "No s'ha proporcionat cap missatge"
+    "noMessageProvided": "No s'ha proporcionat cap missatge",
+    "cancelDialog": {
+      "title": "Vols cancel·lar l'exploració de la biblioteca?",
+      "description": "Això atura l'exploració actual de la biblioteca. Els cross-seeds ja afegits es mantenen, però no se cerquen més torrents."
+    }
   },
   "rules": {
-    "title": "Regles de cross-seed",
-    "description": "Configuració que s'aplica a totes les operacions de cross-seed.",
     "hardlinkReflink": "Mode hardlink / reflink",
     "noActiveInstances": "No hi ha cap instància activa. Primer afegeix-ne una.",
     "hardlinkDescription": "Crea arbres de fitxers amb hardlinks o reflinks (còpia en escriure) per als cross-seed. Cada instància es pot configurar de manera independent. El directori base ha de ser al mateix sistema de fitxers que els camins de baixada de la instància.",
@@ -219,7 +212,7 @@
     "reflinkDescription": "Crea clons amb reflinks. Més segur amb fitxers de més o que falten, i és el que millor mitiga la corrupció.",
     "baseDirectories": "Directoris base",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Camins separats per comes. Es farà servir el primer directori que sigui al mateix sistema de fitxers que l'origen.",
+    "baseDirectoriesDescription": "Camins separats per comes. qui fa servir un directori que sigui al mateix sistema de fitxers que l'origen i prova primer el que comparteix amb l'origen el prefix de camí més llarg. Després d'un error d'enllaç entre dispositius, prova el següent.",
     "directoryOrganization": "Organització dels directoris",
     "flat": "Plana (tot al directori base)",
     "byTracker": "Per tracker",
@@ -228,11 +221,6 @@
     "fallbackDescription": "Si el mode {{mode}} falla (per exemple, per sistemes de fitxers diferents), recorre al mode normal fent servir els fitxers existents.",
     "saveChanges": "Desa els canvis",
     "noLocalAccess": "Sense accés local",
-    "sections": {
-      "matching": "Coincidències",
-      "organization": "Organització",
-      "afterInjection": "Després de la injecció"
-    },
     "seasonPack": {
       "title": "Packs de temporada",
       "description": "Quan autobrr captura un pack de temporada, qui comprova si ja tens prou dades locals per injectar-lo i, després, deixa que qBittorrent baixi tot el que hi falti.",
@@ -278,19 +266,6 @@
         }
       }
     },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Activa la coincidència directa per API contra Orpheus i Redacted. Funciona en paral·lel amb Torznab; els indexadors de Torznab d'OPS/RED s'ignoren.",
-      "enableMatching": "Activa la coincidència amb Gazelle",
-      "enableDescription": "S'aplica a tots els torrents d'origen. Si és possible, qui també comprova RED/OPS mitjançant Gazelle.",
-      "redactedApiKey": "Clau API de Redacted",
-      "orpheusApiKey": "Clau API d'Orpheus",
-      "pasteRedKey": "Enganxa la clau API de RED",
-      "pasteOpsKey": "Enganxa la clau API d'OPS",
-      "enableToConfigure": "Activa-ho per configurar-ho",
-      "redDescription": "Es fa servir per a les consultes a redacted.sh. Enganxa-hi un valor per substituir-la; buida-la per eliminar-la.",
-      "opsDescription": "Es fa servir per a les consultes a orpheus.network. Enganxa-hi un valor per substituir-la; buida-la per eliminar-la."
-    },
     "matching": {
       "title": "Episodis",
       "description": "Els teus packs de temporada locals poden coincidir amb torrents d'episodis solts dels indexadors, de manera que pots sembrar tots dos formats.",
@@ -310,7 +285,7 @@
       "rescueTitleMismatches": "Rescata les discrepàncies de títol",
       "rescueTitleMismatchesDescription": "Prova fins a tres resultats de mida exacta per cerca d'origen, en total entre tots els indexadors. qui comprova totes les dades abans d'iniciar el torrent. Un rescat fallit compta igualment com una baixada al teu tracker. Si omets la recomprovació, això es desactiva.",
       "skipRecheck": "Omet les coincidències que necessiten recomprovació",
-      "skipRecheckDescription": "Omet les coincidències que necessiten una recomprovació per camins reanomenats, fitxers de més o que falten, recurs a un altre mode d'enllaç o estructures de disc (BDMV/VIDEO_TS). També omet les coincidències de mida exacta que depenen de detalls diferents de temporada, episodi o grup de release. Quan aquesta opció està desactivada, qui afegeix aquestes coincidències aturades i les recomprova.",
+      "skipRecheckDescription": "Omet les coincidències que necessiten una recomprovació per camins reanomenats, fitxers de més o que falten, recurs a un altre mode d'enllaç o estructures de disc (BDMV/VIDEO_TS). També omet les coincidències de mida exacta que depenen de detalls diferents de temporada, episodi o grup de release. Una coincidència completa (cada fitxer té un fitxer de la mateixa mida, no hi ha fitxers de més i com a molt canvien els camins) s'afegeix igualment sense recomprovació. Un episodi d'un paquet de temporada, una estructura de disc, una coincidència de mida exacta amb detalls diferents, fitxers de la mateixa mida amb noms ambigus i un fitxer .nfo o de subtítols reanomenat mai no són coincidències completes. Quan aquesta opció està desactivada, qui afegeix aquestes coincidències aturades i les recomprova.",
       "pieceBoundaryDisabled": "La comprovació de seguretat dels límits de peces està desactivada",
       "pieceBoundaryEnabled": "La comprovació de seguretat dels límits de peces està activada",
       "pieceBoundaryDisabledDescription": "Permet les coincidències encara que els fitxers de més comparteixin peces amb el contingut. Pot corrompre fitxers que ja sembres si el contingut difereix. Val més que et plantegis el mode reflink.",
@@ -338,16 +313,12 @@
     "tagging": {
       "title": "Etiquetatge",
       "description": "Configura les etiquetes que s'apliquen als torrents de cross-seed segons com s'han descobert.",
-      "rssAutomationTags": "Etiquetes de l'automatització d'RSS",
       "selectRssTags": "Selecciona les etiquetes de l'automatització d'RSS",
       "rssTagsDescription": "Etiquetes que s'apliquen als torrents afegits per l'automatització de canals RSS.",
-      "seededSearchTags": "Etiquetes de la cerca de sembrats",
       "selectSeededTags": "Selecciona les etiquetes de la cerca de sembrats",
       "seededTagsDescription": "Etiquetes que s'apliquen als torrents afegits per la cerca de torrents sembrats.",
-      "completionSearchTags": "Etiquetes de la cerca en completar",
       "selectCompletionTags": "Selecciona les etiquetes de la cerca en completar",
       "completionTagsDescription": "Etiquetes que s'apliquen als torrents afegits per una cerca activada en completar-se una baixada.",
-      "webhookTags": "Etiquetes del webhook",
       "selectWebhookTags": "Selecciona les etiquetes del webhook/apply",
       "webhookTagsDescription": "Etiquetes que s'apliquen als torrents afegits pel webhook /apply (per exemple, autobrr).",
       "inheritSourceTags": "Hereta les etiquetes del torrent d'origen",
@@ -358,19 +329,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Etiquetes dels packs de temporada",
       "selectSeasonPackTags": "Selecciona les etiquetes...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Comportament posterior a la injecció",
       "description": "Controla què passa després d'injectar correctament els torrents de cross-seed.",
-      "autoResumeNote": "Reprèn automàticament després de la injecció (si està desactivat, els torrents es mantenen aturats per revisar-los)",
-      "rss": "RSS",
-      "seededSearch": "Cerca de sembrats",
       "seededSearchDescription": "Reprèn automàticament els torrents de la cerca de sembrats i els injectats des del diàleg",
-      "completion": "En completar",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Reprèn automàticament els torrents del webhook /apply",
       "pooledPartialCompletion": "Agrupa automàticament els torrents amb dades de més",
       "pooledPartialCompletionDescription": "Fa servir el valor màxim d'inici automàtic de baixada que ja hi ha, i coordina un únic baixador per cada grup de cross-seed relacionat per gestionar els fitxers de més dels cross-seed.",
@@ -392,7 +357,13 @@
       "cachedSearches": "{{count}} cerques a la memòria cau",
       "lastUsed": "Últim ús: {{timestamp}}"
     },
-    "saveGlobalSettings": "Desa la configuració global de cross-seed"
+    "tabDescriptions": {
+      "matching": "Regles que decideixen quins candidats afegeix qui, per a totes les fonts.",
+      "categories": "La categoria i les etiquetes que qui assigna a cada nou cross-seed."
+    }
+  },
+  "run": {
+    "starting": "L'execució s'està iniciant."
   },
   "seasonPackRuns": {
     "title": "Execucions recents de packs de temporada",
@@ -437,6 +408,7 @@
   },
   "toast": {
     "settingsUpdated": "S'ha actualitzat la configuració",
+    "settingsSavedKeyUnchecked": "S'ha desat la configuració, però qui no ha pogut comprovar la nova clau API",
     "searchRunStarted": "S'ha iniciat l'execució de cerca",
     "searchRunCanceled": "S'ha cancel·lat l'execució de cerca",
     "automationRunStarted": "S'ha iniciat l'execució de l'automatització",
@@ -553,20 +525,14 @@
     "added": "{{count}} afegits",
     "noTorrentsAddedOrFailed": "En aquesta execució no s'ha afegit ni ha fallat cap torrent.",
     "addedOrFailed": "Afegits / fallits",
-    "runHistory": "Historial d'execucions",
     "recentScanRuns": "Exploracions recents",
     "recentScanRunsDescription": "D'aquest directori se'n conserven les últimes 10 execucions.",
-    "noRunsRecorded": "No s'ha registrat cap execució d'aquest directori.",
     "noScanRunsYet": "Encara no hi ha cap exploració.",
     "showError": "Mostra l'error",
     "unknown": "Desconegut",
     "tagsDescription": "S'afegeixen a sobre de les etiquetes globals de l'exploració de directoris. Suggerides: <dirscan>dirscan</dirscan>, <needsReview>needs-review</needsReview>.",
     "orphanWarning": "En mode normal, els torrents apunten als teus fitxers originals. Això fa que l'explorador d'orfes tracti aquest directori com una arrel d'exploració. <strong>Qualsevol fitxer que no coincideixi amb cap torrent es marcarà com a orfe</strong> i es podria eliminar si la neteja automàtica està activada.",
-    "resetFiles": "Restableix els fitxers",
     "resetScanProgress": "Restableix el progrés de l'exploració",
-    "resetFilesDescription": "Marca tots els fitxers com a no vistos, de manera que la propera exploració els tornarà a avaluar. Els cross-seed existents es mantenen; els duplicats s'ometen automàticament.",
-    "resetFilesConfirm": "Vols restablir tots els fitxers?",
-    "resetFilesConfirmDescription": "Això marca tots els fitxers com a no vistos. La propera exploració ho tornarà a avaluar tot. Els cross-seed existents no corren perill; els duplicats s'ometen automàticament.",
     "resetFilesButton": "Restableix els fitxers",
     "resetScanProgressTitle": "Vols restablir el progrés de l'exploració?",
     "resetScanProgressDescription": "Això elimina el progrés registrat de l'exploració de directoris d'aquest directori. La propera exploració tornarà a comprovar el directori i reintentarà tots els elements, fins i tot els que ja estaven acabats.",
@@ -594,6 +560,7 @@
       "requeueFailed": "No s'han pogut reintentar els fitxers sense coincidència: {{error}}",
       "resetFailed": "No s'han pogut restablir els fitxers: {{error}}"
     },
+    "webhookScanStatus": "Exploració per webhook · {{status}}",
     "statusLabels": {
       "queued": "En cua",
       "scanning": "Explorant",
@@ -602,22 +569,7 @@
       "success": "Correcte",
       "failed": "Fallit",
       "added": "Afegit",
-      "canceled": "Cancel·lat",
-      "running": "En execució",
-      "partial": "Parcial",
-      "pending": "Pendent"
-    },
-    "contentTypeLabels": {
-      "movie": "Pel·lícula",
-      "tv": "TV",
-      "music": "Música",
-      "audiobook": "Audiollibre",
-      "book": "Llibre",
-      "comic": "Còmic",
-      "game": "Joc",
-      "app": "Aplicació",
-      "adult": "Adults",
-      "unknown": "Desconegut"
+      "canceled": "Cancel·lat"
     },
     "linkModeLabels": {
       "regular": "Normal",
@@ -645,10 +597,6 @@
       "matchModeStrict": "Estricte (nom + mida)",
       "matchModeFlexible": "Flexible (només la mida)",
       "matchModeHelp": "El mode estricte fa coincidir els fitxers pel nom i la mida. El mode flexible només els fa coincidir per la mida.",
-      "defaultInstance": "Instància predeterminada",
-      "selectDefaultInstance": "Selecciona la instància predeterminada",
-      "defaultIntervalLabel": "Interval d'exploració predeterminat (minuts)",
-      "defaultToleranceLabel": "Tolerància de mida predeterminada (%)",
       "sizeToleranceLabel": "Tolerància de mida (%)",
       "sizeToleranceHelp": "Permet petites diferències de mida en comparar fitxers (útil per a repacks menors). Mantén-la baixa per obtenir la màxima precisió.",
       "minPieceRatioLabel": "Ràtio mínima de peces (%)",
@@ -697,16 +645,6 @@
       "intervalHelp": "Mínim: 60 minuts (1 hora). Predeterminat: 1440 minuts (24 hores).",
       "skipIndividualEpisodesLabel": "Omet els episodis individuals",
       "skipIndividualEpisodesHelp": "L'exploració no cerca episodis de TV solts. En comptes d'això, cerca el pack de temporada que formen, i omet els episodis que no en poden formar cap.",
-      "toleranceLabel": "Tolerància de mida (%)",
-      "categoryLabel": "Categoria",
-      "categoryPlaceholder": "Substitució opcional de la categoria",
-      "tagsLabel": "Etiquetes",
-      "selectTags": "Selecciona les etiquetes",
-      "matchModeLabel": "Mode de coincidència",
-      "matchModeSearch": "Cerca (Torznab)",
-      "matchModeSearchDescription": "Cerca als indexadors amb Torznab per a cada fitxer apte.",
-      "matchModeLink": "Arbre d'enllaços",
-      "matchModeLinkDescription": "Omet Torznab. Construeix l'arbre de fitxers a partir de les dades locals i l'injecta directament. Ideal per reimportar contingut conegut.",
       "categoryOverrideLabel": "Substitució de la categoria",
       "useGlobalCategory": "Fes servir la categoria predeterminada global",
       "typeToAddCategory": "Escriu per afegir una categoria",
@@ -731,19 +669,6 @@
       "description": "Això suprimirà el directori d'exploració i el seu historial d'execucions. Els torrents que ja s'hagin afegit no es veuran afectats.",
       "cancel": "Cancel·la",
       "delete": "Elimina"
-    },
-    "statusLabelsUpper": {
-      "queued": "EN CUA",
-      "scanning": "EXPLORANT",
-      "searching": "CERCANT",
-      "injecting": "INJECTANT",
-      "success": "CORRECTE",
-      "failed": "FALLIT",
-      "added": "AFEGIT",
-      "canceled": "CANCEL·LAT",
-      "running": "EN EXECUCIÓ",
-      "partial": "PARCIAL",
-      "pending": "PENDENT"
     }
   }
 }

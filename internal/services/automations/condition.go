@@ -123,6 +123,10 @@ const (
 	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 	FieldCrossSeedTags          = models.FieldCrossSeedTags
 
+	// Season pack fields
+	FieldSeasonPackStatus            = models.FieldSeasonPackStatus
+	FieldSeasonPackStatusAnyInstance = models.FieldSeasonPackStatusAnyInstance
+
 	// Enum-like fields
 	FieldHardlinkScope      = models.FieldHardlinkScope
 	FieldHardlinkScopeCross = models.FieldHardlinkScopeCross
@@ -133,6 +137,11 @@ const (
 	HardlinkScopeOutsideQBitTorrent = models.HardlinkScopeOutsideQBitTorrent
 	HardlinkScopeBoth               = models.HardlinkScopeBoth
 	HardlinkScopeInsideQBitTorrent  = models.HardlinkScopeInsideQBitTorrent
+
+	// Season pack status values
+	SeasonPackStatusPack     = models.SeasonPackStatusPack
+	SeasonPackStatusPacked   = models.SeasonPackStatusPacked
+	SeasonPackStatusUnpacked = models.SeasonPackStatusUnpacked
 
 	// Delete modes
 	DeleteModeNone                        = models.DeleteModeNone

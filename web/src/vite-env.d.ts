@@ -10,6 +10,10 @@ declare global {
   interface Window {
     __QUI_VERSION__?: string
   }
+
+  interface ImportMetaEnv {
+    readonly VITE_DEMO?: string
+  }
 }
 
 export {}

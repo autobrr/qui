@@ -5,6 +5,7 @@
 
 import type { Automation } from "@/types"
 import { getTrackerTokens } from "@/lib/workflow-utils"
+import { BYTE_LADDER, formatValueWithUnit, scaleToUnit } from "@/lib/unit-format"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -13,11 +14,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B"
-  const k = 1024
-  const sizes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+  if (bytes === 0) return formatValueWithUnit(0, "B")
+  const scaled = scaleToUnit(bytes, BYTE_LADDER, 1024)
+  return formatValueWithUnit(scaled.value, scaled.unit)
 }
 
 export function formatBytesOrFallback(bytes: number, fallback: string): string {
@@ -68,18 +67,6 @@ export function formatDurationCompact(seconds: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
   return `${Math.floor(seconds / 86400)}d`
-}
-
-export function formatErrorMessage(error: string | undefined): string {
-  if (!error) return "Unknown error"
-
-  const normalized = error.trim()
-  if (!normalized) return "Unknown error"
-
-  const cleaned = normalized.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
-  if (!cleaned) return "Unknown error"
-
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
 
 export async function copyTextToClipboard(text: string): Promise<void> {
@@ -177,12 +164,7 @@ export function formatErrorReason(reason: string): string {
   return reason
 }
 
-/**
- * Parse tracker domains from an Automation.
- * Returns trackerDomains array if present, otherwise parses trackerPattern.
- * @param rule - The automation to parse domains from
- * @returns Array of tracker domain strings
- */
+/** Tracker domains from an Automation's trackerPattern, with the "!" exclude prefix removed. */
 export function parseTrackerDomains(rule: Automation): string[] {
   return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }

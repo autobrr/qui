@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -288,7 +288,7 @@ func TestReleasesMatch_CodecAliasing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {
@@ -395,7 +395,7 @@ func TestReleasesMatch_AudioRelaxed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {

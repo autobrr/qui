@@ -356,24 +356,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Msg("successfully processed OIDC claims")
 
 	// Create new session
-	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msgf("Auth: Failed to renew session token for username: [%s] ip: %s", username, r.RemoteAddr)
 		RespondError(w, http.StatusInternalServerError, "could not renew session token")
 		return
-	}
-
-	// Set cookie options
-	h.sessionManager.Cookie.HttpOnly = true
-	h.sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	h.sessionManager.Cookie.Path = h.config.BaseURL
-	if h.sessionManager.Cookie.Path == "" {
-		h.sessionManager.Cookie.Path = "/"
-	}
-
-	// If forwarded protocol is https then set cookie secure.
-	// Keep SameSite=Lax so the session survives the IdP -> callback cross-site redirect.
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		h.sessionManager.Cookie.Secure = true
 	}
 
 	// Set session values using sessionManager

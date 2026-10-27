@@ -5,7 +5,6 @@ package database
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,11 +29,7 @@ const (
 func TestInstanceSSHStatementsSQLite(t *testing.T) {
 	t.Parallel()
 
-	db, err := New(filepath.Join(t.TempDir(), "ssh.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-
-	runInstanceSSHLifecycle(t.Context(), t, db)
+	runInstanceSSHLifecycle(t.Context(), t, openTestDatabase(t))
 }
 
 func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Querier) {

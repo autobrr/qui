@@ -16,6 +16,11 @@
     "security": "Sécurité",
     "logs": "Logs"
   },
+  "nav": {
+    "general": "Général",
+    "connections": "Connexions",
+    "access": "Accès"
+  },
   "language": {
     "cardTitle": "Langue",
     "cardDescription": "Choisissez votre langue d'affichage préférée"
@@ -421,10 +426,6 @@
       "loadingDescription": "Chargement des thèmes disponibles...",
       "description": "Choisissez parmi les thèmes. Les thèmes premium nécessitent une licence valide.",
       "verificationUnavailable": "Vérification de licence indisponible. Le changement de thème premium est désactivé.",
-      "freeBadge": "Gratuit",
-      "freeThemes": "Thèmes Gratuits",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Thèmes Premium",
       "notLoaded": "Thèmes premium non chargés",
       "notLoadedDescription": "Configurer",
       "notLoadedAnd": "et exécutez",
@@ -444,7 +445,7 @@
       "managementTitle": "Gestion de Licence",
       "managementDescription": "Gérez votre licence et l'accès premium",
       "providers": {
-        "dodoPortal": "Portail Dodo"
+        "licensePortal": "portail des licences"
       },
       "status": {
         "unlockTitle": "Débloquer les Thèmes Premium",
@@ -452,7 +453,9 @@
         "activeTitle": "Accès Premium Actif",
         "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
-        "activationRequiredDescription": "Votre licence doit être activée sur cette machine"
+        "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
+        "offlineTitle": "Service de licences injoignable",
+        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes premium sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
       },
       "portalHelp": {
         "prefix": "Achetez sur DodoPayments, puis saisissez votre clé ici. Si vous la perdez, récupérez-la via",
@@ -474,10 +477,31 @@
       },
       "details": {
         "productAdded": "{{productName}} • Ajouté le {{date}}",
-        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
+        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}",
+        "statusLabels": {
+          "invalid": "Non valide",
+          "offline": "Hors ligne",
+          "unknown": "Inconnu"
+        }
       },
       "invalid": {
-        "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, désactivez-la d'abord sur la machine actuellement active."
+        "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, allez sur <portal>licenses.getqui.com</portal>, inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence, puis désactivez une machine que vous n'utilisez plus dans Machine Instances."
+      },
+      "errors": {
+        "expired": "Votre clé de licence a expiré.",
+        "notActive": "Cette clé de licence n'est plus active.",
+        "invalid": "Cette clé de licence n'est pas valide.",
+        "notFound": "La clé de licence saisie n'est pas valide.",
+        "databaseCopied": "Cette licence a été activée sur une autre machine. La base de données semble avoir été copiée.",
+        "conditionsMismatch": "La clé de licence ne remplit pas les conditions requises.",
+        "activationLimit": "La limite d'activations de la licence est atteinte. Allez sur <portal>licenses.getqui.com</portal> et inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence. Ouvrez Machine Instances, désactivez une machine que vous n'utilisez plus, puis réessayez.",
+        "limitReached": "La limite d'activations de la licence est atteinte.",
+        "usageLimit": "Limite d'utilisation de la licence dépassée.",
+        "unreachable": "Impossible de joindre le service de licences. Réessayez dans quelques instants.",
+        "tooManyAttempts": "Trop de tentatives. Patientez un moment puis réessayez.",
+        "rateLimited": "Patientez avant de réessayer.",
+        "generic": "Impossible de valider la clé de licence. Réessayez.",
+        "deleteFailed": "Impossible de supprimer la licence. Réessayez."
       },
       "actions": {
         "addLicense": "Ajouter la licence",
@@ -490,7 +514,7 @@
         "activate": "Activer la licence",
         "validating": "Validation...",
         "openDodoCheckout": "Ouvrir la page de paiement DodoPayments",
-        "openDodoPortal": "Ouvrir le portail Dodo"
+        "openLicensePortal": "Ouvrir le portail des licences"
       },
       "deleteDialog": {
         "title": "Retirer la licence ?",
@@ -530,7 +554,7 @@
           },
           "findLicenseKey": {
             "title": "Trouvez votre clé de licence",
-            "description": "La clé s'affiche après paiement. Vous pouvez aussi la retrouver sur le portail Dodo."
+            "description": "La clé s'affiche après paiement. Vous pouvez aussi la retrouver sur le portail des licences."
           },
           "activateLicense": {
             "title": "Activer votre licence",
@@ -541,16 +565,13 @@
       "copiedVerify": "Commande de vérification copiée",
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
-        "activationSuccess": "Licence activée avec succès !",
         "activationSuccessPremium": "Accès Premium activé ! Merci !",
         "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence premium pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
         "keyCopied": "Clé copiée dans le presse-papiers",
         "copyFailed": "Échec de la copie de la clé",
-        "removedFromMachine": "Licence retirée de cette machine",
-        "refreshedAll": "Licences rafraîchies avec succès",
-        "refreshFailed": "Échec du rafraîchissement des licences"
+        "removedFromMachine": "Licence retirée de cette machine"
       }
     },
     "custom": {
@@ -559,12 +580,22 @@
       "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
       "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
       "unlockCta": "Débloquer le premium",
-      "directoryLabel": "Dossier des thèmes",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
       "noneFound": "Aucun thème personnalisé trouvé. Déposez un fichier .css dans le dossier des thèmes puis cliquez sur Actualiser.",
       "loadError": "Impossible de charger les thèmes personnalisés. Vérifiez les journaux du serveur et les permissions du dossier des thèmes."
+    },
+    "layout": {
+      "mobileSplit": "Thème distinct pour la disposition mobile",
+      "mobileSplitHelp": "La disposition mobile (une fenêtre de moins de 768 px de large) et la disposition bureau gardent chacune leur thème, leur mode et leur variante. Ce paramètre s'applique à tous les navigateurs.",
+      "localOnly": "Garder le thème de ce navigateur en local",
+      "localOnlyHelp": "Ce navigateur ne récupère pas le thème depuis le serveur et n'envoie pas ses changements de thème au serveur. Ce paramètre s'applique uniquement à ce navigateur.",
+      "changesMobile": "Modifie le thème mobile",
+      "changesDesktop": "Modifie le thème bureau",
+      "changesLocal": "Modifie uniquement le thème de ce navigateur. Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
+      "saveError": "Impossible d'enregistrer le paramètre de thème",
+      "mobileSplitOffWarning": "La désactivation supprime le thème mobile."
     }
   },
   "arrInstances": {
@@ -662,10 +693,6 @@
   },
   "indexers": {
     "title": "Indexeurs Torznab",
-    "addIndexer": "Ajouter un indexeur",
-    "autodiscoverProwlarr": "Autodécouverte depuis Prowlarr",
-    "noIndexers": "Aucun indexeur configuré pour le moment.",
-    "noIndexersDescription": "Ajoutez un indexeur compatible Torznab pour activer les recherches cross-seed automatisées.",
     "deleteIndexer": "Supprimer l'indexeur",
     "deleteIndexerDescription": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
     "deleteAllIndexers": "Supprimer tous les indexeurs",
@@ -674,8 +701,6 @@
       "loadFailed": "Échec du chargement des indexeurs",
       "deletedSuccess": "Indexeur supprimé",
       "deleteFailed": "Échec de la suppression de l'indexeur",
-      "allDeletedSuccess": "Tous les indexeurs ont été supprimés",
-      "allDeletedFailed": "Échec de la suppression de tous les indexeurs",
       "deleteAllSuccess": "Les {{count}} indexeurs ont été supprimés",
       "deleteAllPartial": "{{success}} indexeurs supprimés, {{failed}} échecs : {{names}}",
       "testSuccess": "Test de connexion réussi",
@@ -821,7 +846,6 @@
         "importSuccess": "Succès : {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} avec avertissements)",
         "moreWarnings": "...et {{count}} avertissements supplémentaires",
-        "importErrors": "{{details}}",
         "moreErrors": "...et {{count}} erreurs supplémentaires",
         "created": "{{count}} créés",
         "updated": "{{count}} mis à jour",
@@ -882,10 +906,6 @@
     },
     "activity": {
       "title": "Activité du planificateur",
-      "idle": "Inactif",
-      "queueLength": "File d'attente",
-      "workers": "Travailleurs",
-      "cooldown": "Temps d'attente",
       "running": "En cours",
       "queued": "En attente",
       "rateLimited": "Limité en taux",
@@ -927,6 +947,20 @@
         "episode": "Épisode"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Activer la correspondance API directe avec Orpheus et Redacted. Fonctionne en parallèle avec Torznab ; les indexeurs Torznab OPS/RED sont ignorés.",
+    "enableMatching": "Activer la correspondance Gazelle",
+    "enableDescription": "S'applique à tous les torrents sources. Si possible, qui vérifie également RED/OPS via Gazelle.",
+    "redactedApiKey": "Clé API Redacted",
+    "orpheusApiKey": "Clé API Orpheus",
+    "pasteRedKey": "Coller la clé API RED",
+    "pasteOpsKey": "Coller la clé API OPS",
+    "enableToConfigure": "Activer pour configurer",
+    "redDescription": "Utilisé pour les recherches sur redacted.sh. Coller pour remplacer ; effacer pour supprimer.",
+    "opsDescription": "Utilisé pour les recherches sur orpheus.network. Coller pour remplacer ; effacer pour supprimer.",
+    "save": "Enregistrer"
   },
   "searchCache": {
     "title": "Cache de recherche",
@@ -983,6 +1017,68 @@
         "upToDateDetail": "Utilise la dernière version",
         "notCheckedYet": "Pas encore vérifié",
         "lastChecked": "Dernière vérification {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Redémarrer",
+      "confirmTitle": "Redémarrer qui ?",
+      "confirmDescription": "qui s'arrête comme lors d'un arrêt normal, puis redémarre. Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent. La page se recharge quand qui est de retour.",
+      "confirm": "Redémarrer",
+      "overlay": {
+        "restartingTitle": "Redémarrage de qui…",
+        "restartingDetail": "La page se recharge quand qui répond de nouveau.",
+        "slowTitle": "qui n'a pas encore répondu",
+        "slowDetail": "qui est peut-être encore en train de démarrer, et cette page continue d'attendre. Consultez les journaux de qui. Si vous avez changé le port ou l'URL de base, ouvrez qui à la nouvelle adresse."
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "Vérification de la compatibilité",
+        "checkingDescription": "Vérification de la possibilité pour qui d’installer cette mise à jour.",
+        "failedTitle": "Impossible de vérifier la compatibilité de la mise à jour",
+        "failedDescription": "Impossible de vérifier si la mise à jour automatique est disponible.",
+        "retryDescription": "Réessayez la vérification avant d’installer la mise à jour.",
+        "retry": "Réessayer"
+      },
+      "unavailable": {
+        "description": "L’installation automatique n’est pas disponible pour cette configuration.",
+        "nextStep": "Comment mettre à jour",
+        "guide": "Guide de mise à jour",
+        "container": {
+          "reason": "qui fonctionne dans un conteneur. Les mises à jour proviennent de l’image du conteneur.",
+          "step": "Récupérez la nouvelle image qui, puis recréez le conteneur avec votre configuration et vos volumes de données existants."
+        },
+        "disabled": {
+          "reason": "La mise à jour automatique est désactivée dans la configuration de qui.",
+          "step": "Mettez qui à jour avec le gestionnaire de paquets ou la méthode utilisée pour l’installer."
+        },
+        "development": {
+          "reason": "Cette compilation de qui n’est pas une version publiée. L’installation automatique nécessite une version publiée.",
+          "step": "Arrêtez qui, remplacez le binaire par une version officielle ou une nouvelle compilation, puis redémarrez qui."
+        },
+        "directory": {
+          "reason": "qui ne peut pas accéder au répertoire de son binaire ou y écrire.",
+          "step": "Arrêtez qui, remplacez le binaire par la nouvelle version avec un compte disposant des droits d’écriture, puis redémarrez qui."
+        }
+      },
+      "button": "Installer la mise à jour",
+      "confirmTitle": "Installer la mise à jour ?",
+      "confirmDescription": "qui télécharge la nouvelle version, vérifie sa signature et garde le binaire actuel en sauvegarde. Puis qui redémarre. La page se recharge quand qui est de retour.",
+      "runningWork": "Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent.",
+      "currentVersion": "Version actuelle",
+      "targetVersion": "Nouvelle version",
+      "releaseNotes": "Notes de version",
+      "confirm": "Installer la mise à jour",
+      "overlay": {
+        "notAppliedTitle": "La mise à jour ne s'est pas appliquée",
+        "notAppliedDetail": "qui est de retour, mais avec une autre version. Consultez les journaux de qui.",
+        "installedTitle": "qui a été mis à jour",
+        "installedDetail": "Rechargez la page pour ouvrir la nouvelle version.",
+        "reload": "Recharger la page",
+        "noBackup": "qui a été mis à jour, mais n'a gardé aucune sauvegarde : {{error}}. Pour revenir en arrière, téléchargez l'ancienne version manuellement.",
+        "rollbackIntro": "Si la nouvelle version ne démarre pas, exécutez cette commande, puis redémarrez qui :",
+        "rollbackLabel": "Commande de retour en arrière",
+        "rollbackDocs": "Étapes du retour en arrière"
       }
     },
     "runtime": {

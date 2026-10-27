@@ -898,12 +898,13 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 				matches bool
 			}{
 				{name: "nil context"},
-				{name: "nil maps", ctx: &EvalContext{InstanceHasLocalAccess: true}},
+				{name: "nil maps", ctx: &EvalContext{InstanceCanRead: true, InstanceHasTrustedIdentity: true}},
 				{name: "missing hash", ctx: &EvalContext{
-					InstanceHasLocalAccess:   true,
-					HardlinkScopeByHash:      map[string]string{"other": HardlinkScopeNone},
-					HardlinkCrossScopeByHash: map[string]string{"other": HardlinkScopeNone},
-					HasMissingFilesByHash:    map[string]bool{"other": false},
+					InstanceCanRead:            true,
+					InstanceHasTrustedIdentity: true,
+					HardlinkScopeByHash:        map[string]string{"other": HardlinkScopeNone},
+					HardlinkCrossScopeByHash:   map[string]string{"other": HardlinkScopeNone},
+					HasMissingFilesByHash:      map[string]bool{"other": false},
 				}},
 				{name: "no local access", ctx: &EvalContext{
 					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
@@ -911,22 +912,25 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known none", known: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:   true,
-					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
-					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
-					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+					InstanceCanRead:            true,
+					InstanceHasTrustedIdentity: true,
+					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeNone},
+					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeNone},
+					HasMissingFilesByHash:      map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known torrents only", known: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:   true,
-					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
-					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
-					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+					InstanceCanRead:            true,
+					InstanceHasTrustedIdentity: true,
+					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HasMissingFilesByHash:      map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known match", known: true, matches: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:   true,
-					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
-					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
-					HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
+					InstanceCanRead:            true,
+					InstanceHasTrustedIdentity: true,
+					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HasMissingFilesByHash:      map[string]bool{torrent.Hash: true},
 				}},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
@@ -940,6 +944,75 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// Read without trusted identity is a remote instance: the missing-files field
+// is known, the hardlink fields stay unknown.
+func TestEvaluateCondition_ReadWithoutIdentityLeavesHardlinkFieldsUnknown(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "abc"}
+	ctx := &EvalContext{
+		InstanceCanRead:          true,
+		HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+		HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+		HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
+	}
+
+	missing := &RuleCondition{Field: FieldHasMissingFiles, Operator: OperatorEqual, Value: "true"}
+	if !EvaluateConditionWithContext(missing, torrent, ctx, 0) {
+		t.Fatal("missing-files condition: got no match, want match")
+	}
+	for _, field := range []ConditionField{FieldHardlinkScope, FieldHardlinkScopeCross} {
+		for _, negate := range []bool{false, true} {
+			cond := &RuleCondition{Field: field, Operator: OperatorEqual, Value: HardlinkScopeNone, Negate: negate}
+			if EvaluateConditionWithContext(cond, torrent, ctx, 0) {
+				t.Errorf("%s negate=%v: got match, want unknown", field, negate)
+			}
+		}
+	}
+}
+
+// A remote instance's row gives it Read only, so the context built from it
+// leaves the hardlink fields unknown even when the index maps are filled.
+func TestEvalContextFromRemoteInstanceLeavesHardlinkFieldsUnknown(t *testing.T) {
+	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	torrent := qbt.Torrent{Hash: "abc"}
+	ctx := &EvalContext{
+		HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+		HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+		HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
+	}
+	ctx.setFilesystemAccess(remote)
+
+	cond := &RuleCondition{Operator: OperatorAnd, Conditions: []*RuleCondition{
+		{Field: FieldHasMissingFiles, Operator: OperatorEqual, Value: "true"},
+		{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeNone},
+	}}
+	for _, field := range []ConditionField{FieldHardlinkScope, FieldHardlinkScopeCross} {
+		if conditionDataKnown(field, torrent.Hash, ctx) {
+			t.Errorf("%s: got known, want unknown", field)
+		}
+	}
+	if EvaluateConditionWithContext(cond, torrent, ctx, 0) {
+		t.Error("rule with missing-files and hardlink scope conditions: got match, want no match")
+	}
+
+	ctx.setFilesystemAccess(&models.Instance{HasLocalFilesystemAccess: true})
+	if !EvaluateConditionWithContext(cond, torrent, ctx, 0) {
+		t.Error("local instance: got no match, want match")
+	}
+}
+
+// The switch in conditionDataKnown must list every conditionFieldData row with
+// a known func, or the row is skipped and its field always reads as known.
+func TestConditionDataKnown_SwitchCoversTable(t *testing.T) {
+	for field, data := range conditionFieldData {
+		if data.known == nil {
+			continue
+		}
+		if conditionDataKnown(field, "hash", nil) {
+			t.Errorf("%s: known with no context, want unknown; add it to the switch in conditionDataKnown", field)
+		}
 	}
 }
 
@@ -968,7 +1041,7 @@ func TestEvaluateCondition_NegateUnknownGroups(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cond := &RuleCondition{Operator: tc.operator, Conditions: tc.children, Negate: tc.negate}
-			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceHasLocalAccess: true}, 0); got != tc.want {
+			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceCanRead: true}, 0); got != tc.want {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
@@ -2268,8 +2341,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeNone},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeNone},
 			},
 			expected: true,
 		},
@@ -2281,8 +2354,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: false,
 		},
@@ -2294,8 +2367,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeTorrentsOnly,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: true,
 		},
@@ -2307,8 +2380,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: true,
 		},
@@ -2320,8 +2393,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeBoth},
 			},
 			expected: true,
 		},
@@ -2333,8 +2406,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeInsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeBoth},
 			},
 			expected: true,
 		},
@@ -2346,8 +2419,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeInsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: true,
 		},
@@ -2359,8 +2432,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeInsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: false,
 		},
@@ -2372,8 +2445,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeInsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeNone},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeNone},
 			},
 			expected: false,
 		},
@@ -2385,8 +2458,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeBoth},
 			},
 			expected: false,
 		},
@@ -2398,8 +2471,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeBoth,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeBoth},
 			},
 			expected: true,
 		},
@@ -2411,8 +2484,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeNone},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeNone},
 			},
 			expected: true,
 		},
@@ -2424,8 +2497,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: true,
 		},
@@ -2437,8 +2510,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: false,
 		},
@@ -2450,8 +2523,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{}, // torrent not in map
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{}, // torrent not in map
 			},
 			expected: false, // Unknown scope should not match any condition
 		},
@@ -2463,8 +2536,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{}, // torrent not in map
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{}, // torrent not in map
 			},
 			expected: false, // Unknown scope should not match any condition
 		},
@@ -2486,8 +2559,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: false,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeNone},
+				InstanceHasTrustedIdentity: false,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeNone},
 			},
 			expected: false,
 		},
@@ -2499,8 +2572,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    nil,
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        nil,
 			},
 			expected: false,
 		},
@@ -2512,8 +2585,8 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				Value:    "OUTSIDE_QBITTORRENT", // uppercase
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess: true,
-				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+				InstanceHasTrustedIdentity: true,
+				HardlinkScopeByHash:        map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: true,
 		},
@@ -2549,8 +2622,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeTorrentsOnly,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   true,
-				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkCrossScopeByHash:   map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: true,
 		},
@@ -2562,8 +2635,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   true,
-				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+				InstanceHasTrustedIdentity: true,
+				HardlinkCrossScopeByHash:   map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: true,
 		},
@@ -2575,8 +2648,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeOutsideQBitTorrent,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   true,
-				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+				InstanceHasTrustedIdentity: true,
+				HardlinkCrossScopeByHash:   map[string]string{"abc123": HardlinkScopeTorrentsOnly},
 			},
 			expected: true,
 		},
@@ -2588,8 +2661,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   true,
-				HardlinkCrossScopeByHash: nil,
+				InstanceHasTrustedIdentity: true,
+				HardlinkCrossScopeByHash:   nil,
 			},
 			expected: false,
 		},
@@ -2601,8 +2674,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   false,
-				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeNone},
+				InstanceHasTrustedIdentity: false,
+				HardlinkCrossScopeByHash:   map[string]string{"abc123": HardlinkScopeNone},
 			},
 			expected: false,
 		},
@@ -2614,8 +2687,8 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 				Value:    HardlinkScopeNone,
 			},
 			evalCtx: &EvalContext{
-				InstanceHasLocalAccess:   true,
-				HardlinkCrossScopeByHash: map[string]string{},
+				InstanceHasTrustedIdentity: true,
+				HardlinkCrossScopeByHash:   map[string]string{},
 			},
 			expected: false,
 		},
@@ -3591,6 +3664,34 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			name: "exists on same instance - equals false does not match after a file read error",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+				SameInstanceCrossSeedUnknown: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - equals false does not match after a file read error",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{},
+				CrossInstanceUnknown: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
 		// SEEDING_ON_SAME_INSTANCE
 		{
 			name: "seeding on same instance - cross-seed seeding",
@@ -3942,6 +4043,43 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_SeasonPackStatus(t *testing.T) {
+	parser := releases.NewDefaultParser()
+	pack := "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"
+	episode := qbt.Torrent{Hash: "ep", Name: "Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"}
+	movie := qbt.Torrent{Hash: "movie", Name: "Some.Movie.2021.1080p.BluRay.x264-GRP"}
+	sameCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
+	anyCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: map[string]struct{}{}, SeasonPackSetAnyInstance: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
+	unbuiltCtx := &EvalContext{ReleaseParser: parser}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{"same instance packed", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed"}, episode, sameCtx, true},
+		{"same instance not unpacked", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "unpacked"}, episode, sameCtx, true},
+		{"pack is pack", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "pack"}, qbt.Torrent{Hash: "pack", Name: pack}, sameCtx, true},
+		{"movie has empty status", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "unpacked"}, movie, sameCtx, false},
+		{"movie is not packed", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "packed"}, movie, sameCtx, true},
+		{"any instance packed while same instance has no pack", &RuleCondition{Field: FieldSeasonPackStatusAnyInstance, Operator: OperatorEqual, Value: "packed"}, episode, anyCtx, true},
+		{"same instance unpacked while any instance has the pack", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "unpacked"}, episode, anyCtx, true},
+		{"unbuilt set never matches", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "packed"}, episode, unbuiltCtx, false},
+		{"unbuilt set never matches through NOT", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed", Negate: true}, episode, unbuiltCtx, false},
+		{"unbuilt any-instance set never matches", &RuleCondition{Field: FieldSeasonPackStatusAnyInstance, Operator: OperatorEqual, Value: "pack"}, qbt.Torrent{Hash: "pack", Name: pack}, sameCtx, false},
+		{"nil ctx never matches", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed"}, episode, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0); got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 	memberCtx := &EvalContext{
 		SameInstanceCrossSeedTagsByHash: map[string][]string{
@@ -3957,11 +4095,11 @@ func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "self-only fallback with nil ctx",
+			name:     "nil ctx leaves the field unknown",
 			cond:     &RuleCondition{Field: FieldCrossSeedTags, Operator: OperatorEqual, Value: "noHL"},
 			torrent:  qbt.Torrent{Hash: "abc123", Tags: "cross-seed, noHL"},
 			ctx:      nil,
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "self-only fallback with empty ctx",

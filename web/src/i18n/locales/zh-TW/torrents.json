@@ -15,7 +15,7 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "已選擇 {{count}} 個種子 - 可進行批次操作",
+    "ariaLabel_other": "已選擇 {{count}} 個種子 - 可進行批次操作",
     "resume": "繼續",
     "pause": "暫停",
     "forceRecheck": "強制重新檢查",
@@ -102,7 +102,12 @@
     "totalSize": "總大小：{{size}}",
     "blockCrossSeeds": "封鎖輔種雜湊值（防止重新新增）",
     "cancel": "取消",
-    "delete": "刪除"
+    "delete": "刪除",
+    "titleSelectAll_other": "刪除符合篩選條件的 {{count}} 個種子？",
+    "selectAllNotice": "已開啟全選。此操作會刪除符合目前篩選條件的已選種子。",
+    "notLoaded_other": "其中 {{count}} 個未在表格中載入。",
+    "andMore": "以及另外 {{more}} 個",
+    "deleteCount_other": "刪除 {{count}} 個種子"
   },
   "deleteFilesPreference": {
     "label": "同時從磁碟刪除檔案",
@@ -122,7 +127,6 @@
       "check": "檢查"
     },
     "searching": "正在檢查輔種",
-    "searchingProgress": "正在檢查輔種（{{checked}}/{{total}}）",
     "error": "檢查輔種失敗",
     "retry": "重試",
     "noCrossSeeds": "未找到輔種",
@@ -380,6 +384,9 @@
       "description": "以 KB/s 為單位設定上傳和下載速度限制。停用則使用全侷限制。",
       "uploadLimit": "設定上傳限制（KB/s）",
       "downloadLimit": "設定下載限制（KB/s）",
+      "selectValue": "選擇一個值",
+      "wasMixed": "（原為混合）",
+      "unresolvedMixed": "請在應用之前為所有混合欄位選擇值",
       "cancel": "取消",
       "setting": "正在設定...",
       "confirm": "應用限制"
@@ -484,7 +491,6 @@
     "renameFolder": "重新命名資料夾",
     "download": "下載",
     "mediaInfo": "媒體資訊",
-    "toggle": "切換",
     "selectFileForDownload": "選擇檔案以下載",
     "skipFileDownload": "跳過檔案下載",
     "selectAllFilesIn": "選擇 {{name}} 中的所有檔案",
@@ -632,22 +638,22 @@
     "deleteEmptyCategories": {
       "title": "移除空分類",
       "noEmpty": "沒有可移除的空分類。",
-      "confirm": "確定要移除 {{count}} 個空分類嗎？此操作無法復原。",
+      "confirm_other": "確定要移除 {{count}} 個空分類嗎？此操作無法復原。",
       "cancel": "取消",
-      "remove": "移除 {{count}} 個分類",
+      "remove_other": "移除 {{count}} 個分類",
       "toast": {
-        "success": "已移除 {{count}} 個空分類",
+        "success_other": "已移除 {{count}} 個空分類",
         "error": "移除空分類失敗"
       }
     },
     "deleteUnusedTags": {
       "title": "刪除未使用的標籤",
       "noUnused": "沒有可刪除的未使用標籤。",
-      "confirm": "確定要刪除 {{count}} 個未使用的標籤嗎？此操作無法復原。",
+      "confirm_other": "確定要刪除 {{count}} 個未使用的標籤嗎？此操作無法復原。",
       "cancel": "取消",
-      "delete": "刪除 {{count}} 個標籤",
+      "delete_other": "刪除 {{count}} 個標籤",
       "toast": {
-        "success": "已刪除 {{count}} 個未使用的標籤",
+        "success_other": "已刪除 {{count}} 個未使用的標籤",
         "error": "刪除未使用的標籤失敗"
       }
     }
@@ -665,18 +671,17 @@
     "partialResults": "部分結果：部分索引器未回應",
     "arrLookupFailed": "中繼資料 ID 查詢失敗：僅按標題搜尋，結果可能不完整",
     "arrNoIds": "未找到該資源的中繼資料 ID：僅按標題搜尋",
+    "gazelleTimedOut": "RED/OPS 未及時回應",
+    "torznabFailed": "Torznab 搜尋失敗：僅顯示 RED/OPS 結果",
     "searchScope": "搜尋範圍",
     "noIndexers": "沒有可用的 Torznab 索引器",
     "noIndexersHelp": "在設定中新增或啟用 Torznab 索引器以搜尋輔種。",
+    "gazelleOnlySearch": "搜尋只查詢已設定 API 金鑰的 RED/OPS 站台。",
     "capabilityNote": "功能說明",
     "capabilityDescription": "這些索引器缺少此種子所需的功能/分類，伺服器將跳過它們：",
-    "contentFilteringInProgress": "內容篩選進行中",
-    "analyzingContent": "正在分析現有內容...",
     "smartFilteringActive": "智慧篩選已啟用",
-    "indexersFiltered": "{{count}} 個索引器已篩選",
-    "contentFilteringDescription": "正在檢查您現有的種子以查詢重複項並排除冗餘的 Tracker。這有助於避免多次下載相同內容。",
+    "indexersFiltered_other": "{{count}} 個索引器已篩選",
     "excludedDescription": "您已從這些 Tracker 做種此版本，因此它們已被排除在搜尋之外。",
-    "noContentDuplicates": "內容篩選完成。在您啟用的 Tracker 上未發現重複內容。",
     "searchingIndexers": "正在搜尋索引器...",
     "noMatchesFound": "搜尋中未找到匹配項。",
     "selectReleasesToAdd": "選擇要新增的釋出",
@@ -725,7 +730,6 @@
       "selectAllIndexers": "全選",
       "clearSelection": "清除選擇",
       "search": "搜尋",
-      "filtering": "正在篩選...",
       "searching": "正在搜尋",
       "noneSelected": "未選擇",
       "enabledIndexers": "{{count}} 個已啟用{{suffix}}",
@@ -765,6 +769,26 @@
     "setConditions": "設定條件以篩選此列",
     "operation": "操作",
     "selectOperation": "選擇操作",
+    "operations": {
+      "equalTo": "等於",
+      "notEqualTo": "不等於",
+      "greaterThan": "大於",
+      "greaterThanOrEqual": "大於或等於",
+      "lessThan": "小於",
+      "lessThanOrEqual": "小於或等於",
+      "between": "介於",
+      "equals": "等於",
+      "notEquals": "不等於",
+      "contains": "包含",
+      "doesNotContain": "不包含",
+      "startsWith": "開頭為",
+      "endsWith": "結尾為",
+      "on": "當天",
+      "after": "晚於",
+      "before": "早於",
+      "is": "是",
+      "isNot": "不是"
+    },
     "value": "值",
     "from": "從",
     "to": "到",
@@ -804,6 +828,11 @@
       "checking": "檢查中",
       "moving": "移動中"
     }
+  },
+  "emptyState": {
+    "noTorrents": "未找到種子",
+    "noFilterMatches": "沒有符合目前篩選器的種子",
+    "noSearchMatches": "沒有符合目前搜尋的種子"
   },
   "filterSidebar": {
     "views": {
@@ -856,18 +885,15 @@
     "uncategorized": "未分類",
     "tags": "標籤",
     "trackers": "Tracker",
-    "customExpression": "自訂表示式",
     "untagged": "無標籤",
     "noTracker": "無 Tracker",
     "hideEmpty": "隱藏空項",
     "showEmpty": "顯示空項",
-    "showHidden": "顯示 {{count}} 個隱藏項",
     "searchCategories": "搜尋分類",
     "searchTags": "搜尋標籤",
     "searchTrackers": "搜尋 Tracker",
     "noCategoriesFound": "未找到匹配「{{query}}」的分類",
     "noTagsFound": "未找到匹配「{{query}}」的標籤",
-    "hiddenMatchSearch": "{{count}} 個隱藏項匹配搜尋",
     "createTag": "建立標籤",
     "createCategory": "建立分類",
     "createSubcategory": "建立子分類",
@@ -1001,10 +1027,8 @@
       "trackerUpdated": "Tracker URL 更新成功",
       "trackerUpdateFailed": "更新 Tracker 失敗",
       "fileRenamed": "檔案重新命名成功",
-      "fileRenameFailed": "重新命名檔案失敗",
       "folderRenamed": "資料夾重新命名成功",
-      "folderRenameFailed": "重新命名資料夾失敗",
-      "deletedTorrents": "已刪除 {{count}} 個種子",
+      "deletedTorrents_other": "已刪除 {{count}} 個種子",
       "deletedTorrent": "已刪除種子：{{name}}",
       "deleteFailed": "刪除失敗：{{error}}"
     },
@@ -1013,10 +1037,6 @@
       "description": "輸入節點位址（IP:連接埠），每行一個或用逗號分隔",
       "label": "節點",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
-    },
-    "banPeer": {
-      "title": "封鎖節點",
-      "description": "確定要封鎖 {{address}} 嗎？"
     },
     "banPeerPermanent": {
       "title": "永久封鎖節點",
@@ -1141,24 +1161,17 @@
     "network": "網路",
     "seeds": "做種",
     "peers": "節點",
-    "downSpeed": "下載速度",
-    "upSpeed": "上傳速度",
     "downLimit": "下載限制",
     "upLimit": "上傳限制",
-    "connections": "連線數",
     "time": "時間",
     "addedOn": "新增時間",
     "completedOn": "完成時間",
-    "lastActivity": "最後活動",
-    "lastSeen": "最後出現",
-    "eta": "預計剩餘時間",
     "timeActive": "活躍時間",
     "seedingTime": "做種時間",
     "limits": "限制",
     "ratioLimit": "分享率限制",
     "seedingTimeLimit": "做種時間限制",
     "inactiveSeedingLimit": "不活躍做種限制",
-    "info": "資訊",
     "pieceSize": "分塊大小",
     "pieces": "分塊數",
     "createdOn": "建立時間",
@@ -1167,7 +1180,6 @@
   "trackersTable": {
     "status": "狀態",
     "tracker": "Tracker",
-    "tier": "層級",
     "seeds": "做種",
     "leeches": "下載",
     "downloaded": "已完成",
@@ -1186,7 +1198,6 @@
     "upSpeed": "上傳速度",
     "downloaded": "已下載",
     "uploaded": "已上傳",
-    "relevance": "相關性",
     "copyIpAddress": "複製位址",
     "banPeer": "封鎖節點",
     "noPeersConnected": "無已連線節點",
@@ -1208,7 +1219,7 @@
     "url": "URL",
     "noHttpSources": "無 HTTP 來源",
     "searchUrls": "搜尋 URL...",
-    "httpSources": "{{count}} 個 HTTP 來源",
+    "httpSources_other": "{{count}} 個 HTTP 來源",
     "filteredCount": "{{filtered}}/{{total}}",
     "copyUrl": "複製 URL",
     "toast": {
@@ -1227,7 +1238,7 @@
     "expandAll": "全部展開",
     "collapseAll": "全部摺疊",
     "searchFiles": "搜尋檔案...",
-    "fileCount": "{{count}} 個檔案",
+    "fileCount_other": "{{count}} 個檔案",
     "filteredCount": "{{filtered}}/{{total}}",
     "noFiles": "無檔案",
     "headers": {
@@ -1259,11 +1270,6 @@
     "matchCount_other": "{{count}} 個匹配",
     "deleteSelected": "刪除（{{count}}）",
     "deleteThis": "刪除此項",
-    "statusLabels": {
-      "trackerDown": "Tracker 離線",
-      "unregistered": "未註冊",
-      "trackerError": "Tracker 錯誤"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "內容",
@@ -1287,6 +1293,7 @@
       }
     },
     "noMatches": "未在其他實例上找到匹配的種子",
+    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。",
     "toast": {
       "savePathCopied": "儲存路徑已複製",
       "copyFailed": "複製失敗"
@@ -1435,25 +1442,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
-    "shareLimit": {
-      "title": "為 {{count}} 個種子設定分享限制",
-      "description": "配置做種限制。使用 -1 或停用以移除限制。",
-      "setRatioLimit": "設定分享率限制",
-      "setSeedingTimeLimit": "設定做種時間限制（分鐘）",
-      "setInactiveSeedingLimit": "設定不活躍做種限制（分鐘）",
-      "cancel": "取消",
-      "setting": "正在設定...",
-      "applyLimits": "應用限制"
-    },
-    "speedLimit": {
-      "title": "為 {{count}} 個種子設定速度限制",
-      "description": "以 KB/s 為單位設定上傳和下載速度限制。使用 -1 或停用以移除限制。",
-      "setUploadLimit": "設定上傳限制（KB/s）",
-      "setDownloadLimit": "設定下載限制（KB/s）",
-      "cancel": "取消",
-      "setting": "正在設定...",
-      "applyLimits": "應用限制"
-    },
     "ratio": "分享率："
   },
   "tableView": {
@@ -1483,7 +1471,6 @@
     "size": "大小",
     "totalSize": "總大小",
     "progress": "進度",
-    "state": "狀態",
     "seeds": "做種",
     "peers": "節點",
     "downSpeed": "下載速度",
@@ -1526,6 +1513,7 @@
   "stateLabels": {
     "downloading": "下載中",
     "metaDL": "獲取中繼資料中",
+    "forcedMetaDL": "(強制) 獲取中繼資料中",
     "allocating": "分配空間中",
     "stalledDL": "停滯",
     "queuedDL": "排隊中",
@@ -1543,12 +1531,23 @@
     "error": "錯誤",
     "missingFiles": "檔案丟失",
     "checkingResumeData": "檢查恢復資料中",
-    "moving": "移動中"
+    "moving": "移動中",
+    "unknown": "未知"
   },
+  "stateLabelFallback": "無法識別",
   "sort": {
     "label": "排序",
     "ascending": "升序",
-    "descending": "降序"
+    "descending": "降序",
+    "options": {
+      "addedOn": "最近新增",
+      "downloadLimit": "下載限制",
+      "uploadLimit": "上傳限制",
+      "sessionDownloaded": "已下載（本次工作階段）",
+      "sessionUploaded": "已上傳（本次工作階段）",
+      "lastSeenComplete": "最近完成",
+      "reannounceIn": "重新通報倒數計時"
+    }
   },
   "details": {
     "failedToUpdatePriorities": "更新檔案優先順序失敗",

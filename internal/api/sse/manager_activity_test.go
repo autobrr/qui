@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -46,6 +47,7 @@ func connectActivityStream(t *testing.T, srv string) (*sseReader, func()) {
 
 func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
 	manager := NewStreamManager(nil, &fakeSyncProvider{}, nil)
+	subscribed := watchSubscriptions(manager)
 	hub := activity.NewHub()
 	manager.SetActivityHub(hub)
 	t.Cleanup(func() {
@@ -57,22 +59,18 @@ func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
 	reader, cleanup := connectActivityStream(t, srv.URL)
 	t.Cleanup(cleanup)
 
-	// Wait until the activity-only session has registered its topic before publishing
-	// (an event published with no subscribers is dropped by design).
-	require.Eventually(t, func() bool {
-		return len(manager.snapshotActivityTopics()) == 1
-	}, 2*time.Second, 10*time.Millisecond)
+	// Serve registers the topic before it writes the keepalive that lets connect return.
+	require.Len(t, manager.snapshotActivityTopics(), 1)
 
 	// An activity-only connection must not start a per-instance sync loop.
 	stats := manager.Stats()
 	require.Equal(t, 0, stats.ActiveSyncLoops, "activity-only connection should not start a sync loop")
 	require.Equal(t, 0, stats.ActiveSubscriptions, "activity-only connection should register no torrent subscription")
 
-	// Retry the publish: the session may finish subscribing just after its activity
-	// topic is registered, and an event published before then is dropped by design.
-	ev := reader.waitForEventTriggered(t, streamEventActivity, 5*time.Second, func() {
-		hub.Publish(activity.Event{Kind: activity.KindBackupRun, InstanceID: 7, ResourceID: "42"})
-	})
+	// An event published before go-sse subscribes the session is dropped by design.
+	receive(t, subscribed, "the session to subscribe")
+	hub.Publish(activity.Event{Kind: activity.KindBackupRun, InstanceID: 7, ResourceID: "42"})
+	ev := reader.waitForEvent(t, streamEventActivity, 5*time.Second)
 
 	var payload ActivityPayload
 	require.NoError(t, json.Unmarshal([]byte(ev.data), &payload))
@@ -92,20 +90,23 @@ func TestActivityTopicReleasedOnDisconnect(t *testing.T) {
 		hub.Close()
 	})
 
-	srv := startStreamServer(t, manager)
+	served := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		manager.Serve(w, r)
+		close(served)
+	}))
+	t.Cleanup(srv.Close)
 	_, cleanup := connectActivityStream(t, srv.URL)
 
-	require.Eventually(t, func() bool {
-		return len(manager.snapshotActivityTopics()) == 1
-	}, 2*time.Second, 10*time.Millisecond)
+	// Serve registers the topic before it writes the keepalive that lets connect return.
+	require.Len(t, manager.snapshotActivityTopics(), 1)
 
 	// Closing the client must unregister the activity topic so events stop fanning
 	// out to a dead connection.
 	cleanup()
 
-	require.Eventually(t, func() bool {
-		return len(manager.snapshotActivityTopics()) == 0
-	}, 2*time.Second, 10*time.Millisecond)
+	receive(t, served, "Serve to return")
+	require.Empty(t, manager.snapshotActivityTopics())
 }
 
 func TestServeRejectsEmptyRequestWithoutActivity(t *testing.T) {

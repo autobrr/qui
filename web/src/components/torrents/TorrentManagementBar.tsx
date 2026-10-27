@@ -23,7 +23,7 @@ import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useInstances } from "@/hooks/useInstances"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
@@ -132,21 +132,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [selectedTorrents])
   const availableTags = metadata?.tags?.length ? metadata.tags : fallbackTags
   const availableCategories = Object.keys(metadata?.categories ?? {}).length > 0 ? (metadata?.categories ?? {}) : fallbackCategories
-  const preferences = metadata?.preferences
 
   const isLoadingTagsData = metadataInstanceId > 0 && isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = metadataInstanceId > 0 && isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories =
-    supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? false))
-
-  // Get instance name for cross-seed warning
-  const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === actionInstanceId), [instances, actionInstanceId])
+  const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities)
 
   // Use the shared torrent actions hook
   const {
@@ -211,10 +203,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   })
 
   // Cross-seed warning for delete dialog
+  const crossSeedSelectAll = useMemo(
+    () => (isAllSelected ? { filters, search, excludeHashes, excludeTargets, instanceIds } : undefined),
+    [isAllSelected, filters, search, excludeHashes, excludeTargets, instanceIds]
+  )
   const crossSeedWarning = useCrossSeedWarning({
     instanceId: actionInstanceId,
-    instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
+    selectAll: crossSeedSelectAll,
   })
   const crossSeedAffectedTorrents = useMemo(
     () => (supportsCrossSeedDeleteTools ? crossSeedWarning.affectedTorrents : []),
@@ -286,24 +282,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
-    // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = supportsCrossSeedDeleteTools && deleteCrossSeeds ? [...selectedHashes, ...crossSeedAffectedTorrents.map(t => t.hash)] : selectedHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = supportsCrossSeedDeleteTools && deleteCrossSeeds ? {
-      ...clientMeta,
-      clientHashes: hashesToDelete,
-      totalSelected: hashesToDelete.length,
-      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
-    } : clientMeta
-
     await handleDelete(
-      hashesToDelete,
+      selectedHashes,
       isAllSelected,
       filters,
       search,
       excludeHashes,
-      deleteClientMeta
+      {
+        ...clientMeta,
+        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : undefined,
+      }
     )
   }, [
     actionInstanceId,
@@ -467,7 +455,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <div
         className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
-        aria-label={t("managementBar.ariaLabel", { count: selectionCount, plural: selectionCount !== 1 ? "s" : "" })}
+        aria-label={t("managementBar.ariaLabel", { count: selectionCount })}
       >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
           <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
@@ -743,6 +731,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
         onConfirm={handleDeleteWrapper}
+        isAllSelected={isAllSelected}
+        previewTorrents={selectedTorrents}
       />
 
       <TagEditorDialog

@@ -15,7 +15,10 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "Вибрано торентів: {{count}}{{plural}} – доступні групові дії",
+    "ariaLabel_one": "Вибрано {{count}} торент – доступні групові дії",
+    "ariaLabel_few": "Вибрано {{count}} торенти – доступні групові дії",
+    "ariaLabel_many": "Вибрано {{count}} торентів – доступні групові дії",
+    "ariaLabel_other": "Вибрано торентів: {{count}} – доступні групові дії",
     "resume": "Відновити",
     "pause": "Пауза",
     "forceRecheck": "Примусова повторна перевірка",
@@ -102,7 +105,21 @@
     "totalSize": "Загальний розмір: {{size}}",
     "blockCrossSeeds": "Блокувати інфохеші крос-сідів (запобігти повторному додаванню)",
     "cancel": "Скасувати",
-    "delete": "Видалити"
+    "delete": "Видалити",
+    "titleSelectAll_one": "Видалити {{count}} торент, що відповідає фільтру?",
+    "titleSelectAll_few": "Видалити {{count}} торенти, що відповідають фільтру?",
+    "titleSelectAll_many": "Видалити {{count}} торентів, що відповідають фільтру?",
+    "titleSelectAll_other": "Видалити {{count}} торента, що відповідають фільтру?",
+    "selectAllNotice": "Вибір усіх увімкнено. Це видалить вибрані торенти, що відповідають поточному фільтру.",
+    "notLoaded_one": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_few": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_many": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_other": "{{count}} з них не завантажено в таблицю.",
+    "andMore": "і ще {{more}}",
+    "deleteCount_one": "Видалити {{count}} торент",
+    "deleteCount_few": "Видалити {{count}} торенти",
+    "deleteCount_many": "Видалити {{count}} торентів",
+    "deleteCount_other": "Видалити {{count}} торента"
   },
   "deleteFilesPreference": {
     "label": "Також видалити файли з диска",
@@ -122,7 +139,6 @@
       "check": "Перевірити"
     },
     "searching": "Перевірка на крос-сіди",
-    "searchingProgress": "Перевірка на крос-сіди ({{checked}}/{{total}})",
     "error": "Не вдалося перевірити наявність крос-сідів",
     "retry": "Повторити",
     "noCrossSeeds": "Крос-сідів не знайдено",
@@ -524,6 +540,9 @@
       "description": "Встановити обмеження швидкості завантаження та завантаження в KB/s. Вимкніть, щоб використовувати глобальні обмеження.",
       "uploadLimit": "Встановити ліміт вивантаження (KB/s)",
       "downloadLimit": "Встановити ліміт завантаження (KB/s)",
+      "selectValue": "Виберіть значення",
+      "wasMixed": "(був змішаний)",
+      "unresolvedMixed": "Виберіть значення для всіх змішаних полів перед застосуванням",
       "cancel": "Скасувати",
       "setting": "Налаштування...",
       "confirm": "Застосувати обмеження"
@@ -628,7 +647,6 @@
     "renameFolder": "Перейменувати папку",
     "download": "Завантажити",
     "mediaInfo": "MediaInfo",
-    "toggle": "Перемикач",
     "selectFileForDownload": "Виберіть файл для завантаження",
     "skipFileDownload": "Пропустити завантаження файлу",
     "selectAllFilesIn": "Виберіть усі файли в {{name}}",
@@ -776,22 +794,40 @@
     "deleteEmptyCategories": {
       "title": "Видалити порожні категорії",
       "noEmpty": "Немає порожніх категорій для видалення.",
-      "confirm": "Ви впевнені, що хочете видалити {{count}} пусту категорію{{plural}}? Цю дію не можна скасувати.",
+      "confirm_one": "Ви впевнені, що хочете видалити {{count}} порожню категорію? Цю дію не можна скасувати.",
+      "confirm_few": "Ви впевнені, що хочете видалити {{count}} порожні категорії? Цю дію не можна скасувати.",
+      "confirm_many": "Ви впевнені, що хочете видалити {{count}} порожніх категорій? Цю дію не можна скасувати.",
+      "confirm_other": "Ви впевнені, що хочете видалити {{count}} порожньої категорії? Цю дію не можна скасувати.",
       "cancel": "Скасувати",
-      "remove": "Видалити {{count}} категорі{{plural}}",
+      "remove_one": "Видалити {{count}} категорію",
+      "remove_few": "Видалити {{count}} категорії",
+      "remove_many": "Видалити {{count}} категорій",
+      "remove_other": "Видалити {{count}} категорії",
       "toast": {
-        "success": "Видалено {{count}} порожню категорію{{plural}}",
+        "success_one": "Видалено {{count}} порожню категорію",
+        "success_few": "Видалено {{count}} порожні категорії",
+        "success_many": "Видалено {{count}} порожніх категорій",
+        "success_other": "Видалено {{count}} порожньої категорії",
         "error": "Не вдалося видалити порожні категорії"
       }
     },
     "deleteUnusedTags": {
       "title": "Видалити невикористані теги",
       "noUnused": "Немає невикористаних тегів для видалення.",
-      "confirm": "Ви впевнені, що хочете видалити {{count}} невикористаний тег{{plural}}? Цю дію не можна скасувати.",
+      "confirm_one": "Ви впевнені, що хочете видалити {{count}} невикористаний тег? Цю дію не можна скасувати.",
+      "confirm_few": "Ви впевнені, що хочете видалити {{count}} невикористані теги? Цю дію не можна скасувати.",
+      "confirm_many": "Ви впевнені, що хочете видалити {{count}} невикористаних тегів? Цю дію не можна скасувати.",
+      "confirm_other": "Ви впевнені, що хочете видалити {{count}} невикористаного тегу? Цю дію не можна скасувати.",
       "cancel": "Скасувати",
-      "delete": "Видалити тег {{count}} {{plural}}",
+      "delete_one": "Видалити {{count}} тег",
+      "delete_few": "Видалити {{count}} теги",
+      "delete_many": "Видалити {{count}} тегів",
+      "delete_other": "Видалити {{count}} тегу",
       "toast": {
-        "success": "Видалено невикористаний тег {{count}} {{plural}}",
+        "success_one": "Видалено {{count}} невикористаний тег",
+        "success_few": "Видалено {{count}} невикористані теги",
+        "success_many": "Видалено {{count}} невикористаних тегів",
+        "success_other": "Видалено {{count}} невикористаного тегу",
         "error": "Не вдалося видалити невикористані теги"
       }
     }
@@ -809,18 +845,20 @@
     "partialResults": "Часткові результати - деякі індексатори не відповіли",
     "arrLookupFailed": "Не вдалося знайти ідентифікатори метаданих - пошук лише за назвою, результати можуть бути неповними",
     "arrNoIds": "Ідентифікатори метаданих для цього релізу не знайдено - пошук лише за назвою",
+    "gazelleTimedOut": "RED/OPS не відповів вчасно",
+    "torznabFailed": "Пошук Torznab не вдався - показано лише результати RED/OPS",
     "searchScope": "Область пошуку",
     "noIndexers": "Немає доступних індексаторів Torznab",
     "noIndexersHelp": "Додайте або ввімкніть індексатори Torznab у налаштуваннях для пошуку крос-сідів.",
+    "gazelleOnlySearch": "Пошук звертається лише до сайтів RED/OPS, для яких задано ключ API.",
     "capabilityNote": "Примітка про можливості",
     "capabilityDescription": "Цим індексаторам бракує потрібних можливостей/категорій для цього торента, тому сервер їх пропустить:",
-    "contentFilteringInProgress": "Виконується фільтрація вмісту",
-    "analyzingContent": "Аналіз наявного вмісту...",
     "smartFilteringActive": "Інтелектуальна фільтрація активна",
-    "indexersFiltered": "{{count}} індексатор{{plural}} відфільтровано",
-    "contentFilteringDescription": "Перевірка існуючих торентів на пошук дублікатів і виключення зайвих трекерів. Це допомагає уникнути завантаження того самого вмісту кілька разів.",
+    "indexersFiltered_one": "{{count}} індексатор відфільтровано",
+    "indexersFiltered_few": "{{count}} індексатори відфільтровано",
+    "indexersFiltered_many": "{{count}} індексаторів відфільтровано",
+    "indexersFiltered_other": "{{count}} індексатора відфільтровано",
     "excludedDescription": "Ви вже роздаєте цей реліз із цих трекерів, тому їх виключено з пошуку.",
-    "noContentDuplicates": "Фільтрування вмісту завершено. На ваших увімкнених трекерах не знайдено дубльованого вмісту.",
     "searchingIndexers": "Пошук індексаторів...",
     "noMatchesFound": "У вашому пошуку не знайдено збігів.",
     "selectReleasesToAdd": "Виберіть випуски, які ви хочете додати",
@@ -869,7 +907,6 @@
       "selectAllIndexers": "Вибрати все",
       "clearSelection": "Очистити вибір",
       "search": "Пошук",
-      "filtering": "Фільтрування...",
       "searching": "Пошук",
       "noneSelected": "Не вибрано",
       "enabledIndexers": "{{count}} увімкнено {{suffix}}",
@@ -909,6 +946,26 @@
     "setConditions": "Установіть умови для фільтрації цього стовпця",
     "operation": "Операція",
     "selectOperation": "Виберіть операцію",
+    "operations": {
+      "equalTo": "Дорівнює",
+      "notEqualTo": "Не дорівнює",
+      "greaterThan": "Більше ніж",
+      "greaterThanOrEqual": "Більше або дорівнює",
+      "lessThan": "Менше ніж",
+      "lessThanOrEqual": "Менше або дорівнює",
+      "between": "Між",
+      "equals": "Дорівнює",
+      "notEquals": "Не дорівнює",
+      "contains": "Містить",
+      "doesNotContain": "Не містить",
+      "startsWith": "Починається з",
+      "endsWith": "Закінчується на",
+      "on": "У день",
+      "after": "Після",
+      "before": "До",
+      "is": "Є",
+      "isNot": "Не є"
+    },
     "value": "Значення",
     "from": "Від",
     "to": "До",
@@ -948,6 +1005,11 @@
       "checking": "Перевірка",
       "moving": "Переміщення"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Торенти не знайдено",
+    "noFilterMatches": "Жоден торент не відповідає поточним фільтрам",
+    "noSearchMatches": "Жоден торент не відповідає поточному пошуку"
   },
   "filterSidebar": {
     "views": {
@@ -1000,18 +1062,15 @@
     "uncategorized": "Без категорії",
     "tags": "Теги",
     "trackers": "Трекери",
-    "customExpression": "Спеціальний вираз",
     "untagged": "Без тегів",
     "noTracker": "Немає трекера",
     "hideEmpty": "Сховати порожні",
     "showEmpty": "Показати порожні",
-    "showHidden": "Показати {{count}} прихованих",
     "searchCategories": "Пошук категорій",
     "searchTags": "Пошук тегів",
     "searchTrackers": "Пошук трекерів",
     "noCategoriesFound": "Не знайдено категорій, які б відповідали \"{{query}}\"",
     "noTagsFound": "Не знайдено тегів, що відповідають \"{{query}}\"",
-    "hiddenMatchSearch": "{{count}} прихованих відповідають пошуку",
     "createTag": "Створити тег",
     "createCategory": "Створити категорію",
     "createSubcategory": "Створити підкатегорію",
@@ -1154,10 +1213,11 @@
       "trackerUpdated": "URL трекера успішно оновлено",
       "trackerUpdateFailed": "Не вдалося оновити трекер",
       "fileRenamed": "Файл успішно перейменовано",
-      "fileRenameFailed": "Не вдалося перейменувати файл",
       "folderRenamed": "Папку успішно перейменовано",
-      "folderRenameFailed": "Не вдалося перейменувати папку",
-      "deletedTorrents": "Видалено {{count}} торент{{plural}}",
+      "deletedTorrents_one": "Видалено {{count}} торент",
+      "deletedTorrents_few": "Видалено {{count}} торенти",
+      "deletedTorrents_many": "Видалено {{count}} торентів",
+      "deletedTorrents_other": "Видалено {{count}} торента",
       "deletedTorrent": "Видалено торент: {{name}}",
       "deleteFailed": "Не вдалося видалити: {{error}}"
     },
@@ -1166,10 +1226,6 @@
       "description": "Введіть адреси пірів (IP:порт), по одній на рядок або через кому",
       "label": "Піри",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
-    },
-    "banPeer": {
-      "title": "Заблокувати піра",
-      "description": "Ви впевнені, що хочете заблокувати {{address}}?"
     },
     "banPeerPermanent": {
       "title": "Заблокувати піра назавжди",
@@ -1318,24 +1374,17 @@
     "network": "Мережа",
     "seeds": "Сіди",
     "peers": "Піри",
-    "downSpeed": "Швидкість завантаження",
-    "upSpeed": "Швидкість віддачі",
     "downLimit": "Ліміт завантаження",
     "upLimit": "Ліміт віддачі",
-    "connections": "Зв'язки",
     "time": "Час",
     "addedOn": "Додано",
     "completedOn": "Завершено",
-    "lastActivity": "Остання активність",
-    "lastSeen": "Останнє з'явлення",
-    "eta": "ETA",
     "timeActive": "Час активності",
     "seedingTime": "Час роздавання",
     "limits": "Обмеження",
     "ratioLimit": "Ліміт співвідношення",
     "seedingTimeLimit": "Обмеження часу роздавання",
     "inactiveSeedingLimit": "Ліміт неактивної роздачі",
-    "info": "Інформація",
     "pieceSize": "Розмір частини",
     "pieces": "Частини",
     "createdOn": "Дата створення",
@@ -1344,7 +1393,6 @@
   "trackersTable": {
     "status": "Стан",
     "tracker": "Трекер",
-    "tier": "Рівень",
     "seeds": "Сіди",
     "leeches": "Лічі",
     "downloaded": "DLs",
@@ -1363,7 +1411,6 @@
     "upSpeed": "Швидкість віддачі",
     "downloaded": "Завантажено",
     "uploaded": "Вивантажено",
-    "relevance": "Актуальність",
     "copyIpAddress": "Копіювати адресу",
     "banPeer": "Заблокувати піра",
     "noPeersConnected": "Немає підключених пірів",
@@ -1385,7 +1432,10 @@
     "url": "URL",
     "noHttpSources": "Немає джерел HTTP",
     "searchUrls": "Пошук URLs...",
-    "httpSources": "{{count}} HTTP джерело{{plural}}",
+    "httpSources_one": "{{count}} HTTP-джерело",
+    "httpSources_few": "{{count}} HTTP-джерела",
+    "httpSources_many": "{{count}} HTTP-джерел",
+    "httpSources_other": "{{count}} HTTP-джерела",
     "filteredCount": "{{filtered}} з {{total}}",
     "copyUrl": "Копіювати URL",
     "toast": {
@@ -1396,7 +1446,10 @@
     "expandAll": "Розгорнути все",
     "collapseAll": "Згорнути все",
     "searchFiles": "Пошук файлів...",
-    "fileCount": "{{count}} файл{{plural}}",
+    "fileCount_one": "{{count}} файл",
+    "fileCount_few": "{{count}} файли",
+    "fileCount_many": "{{count}} файлів",
+    "fileCount_other": "{{count}} файлу",
     "filteredCount": "{{filtered}} з {{total}}",
     "noFiles": "Немає файлів",
     "headers": {
@@ -1429,11 +1482,6 @@
     "matchCount_other": "{{count}} збігів",
     "deleteSelected": "Видалити ({{count}})",
     "deleteThis": "Видалити це",
-    "statusLabels": {
-      "trackerDown": "Трекер вимкнено",
-      "unregistered": "Незареєстрований",
-      "trackerError": "Помилка трекера"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Зміст",
@@ -1457,6 +1505,7 @@
       }
     },
     "noMatches": "В інших екземплярах відповідних торентів не знайдено",
+    "loadFailed": "Не вдалося перевірити збіги cross-seed. Перезавантажте сторінку, щоб спробувати ще раз.",
     "toast": {
       "savePathCopied": "Шлях збереження скопійовано",
       "copyFailed": "Не вдалося скопіювати"
@@ -1616,25 +1665,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Автоматичний пошук після введення"
     },
-    "shareLimit": {
-      "title": "Встановити ліміти роздачі для {{count}} торент(ів)",
-      "description": "Налаштуйте ліміти роздачі. Використовуйте -1 або вимкніть, щоб зняти обмеження.",
-      "setRatioLimit": "Встановити ліміт співвідношення",
-      "setSeedingTimeLimit": "Встановити ліміт часу роздавання (хвилини)",
-      "setInactiveSeedingLimit": "Встановити ліміт неактивної роздачі (хвилини)",
-      "cancel": "Скасувати",
-      "setting": "Налаштування...",
-      "applyLimits": "Застосувати обмеження"
-    },
-    "speedLimit": {
-      "title": "Встановити ліміти швидкості для {{count}} торент(ів)",
-      "description": "Встановіть ліміти швидкості вивантаження та завантаження в KB/s. Використовуйте -1 або вимкніть, щоб зняти обмеження.",
-      "setUploadLimit": "Встановити ліміт вивантаження (KB/s)",
-      "setDownloadLimit": "Встановити ліміт завантаження (KB/s)",
-      "cancel": "Скасувати",
-      "setting": "Налаштування...",
-      "applyLimits": "Застосувати обмеження"
-    },
     "ratio": "Співвідношення:"
   },
   "tableView": {
@@ -1653,7 +1683,16 @@
   "sort": {
     "label": "Сортувати",
     "ascending": "висхідний",
-    "descending": "спадання"
+    "descending": "спадання",
+    "options": {
+      "addedOn": "Нещодавно додані",
+      "downloadLimit": "Ліміт завантаження",
+      "uploadLimit": "Ліміт вивантаження",
+      "sessionDownloaded": "Завантажено (сесія)",
+      "sessionUploaded": "Вивантажено (сесія)",
+      "lastSeenComplete": "Востаннє бачено повним",
+      "reannounceIn": "Повторне оголошення через"
+    }
   },
   "tableColumns": {
     "selectAll": "Вибрати торент",
@@ -1669,7 +1708,6 @@
     "size": "Розмір",
     "totalSize": "Загальний розмір",
     "progress": "Прогрес",
-    "state": "Стан",
     "seeds": "Сіди",
     "peers": "Піри",
     "downSpeed": "Швидкість завантаження",
@@ -1694,7 +1732,7 @@
     "savePath": "Зберегти шлях",
     "completed": "Виконано",
     "ratioLimit": "Ліміт співвідношення",
-    "seenComplete": "Виконано",
+    "seenComplete": "Востаннє бачено повним",
     "lastActivity": "Остання активність",
     "availability": "Доступність",
     "infohashV1": "Хеш інформації v1",
@@ -1712,6 +1750,7 @@
   "stateLabels": {
     "downloading": "Завантаження",
     "metaDL": "Отримання метаданих",
+    "forcedMetaDL": "(F) Отримання метаданих",
     "allocating": "Виділення",
     "stalledDL": "Застопорилось",
     "queuedDL": "У черзі",
@@ -1729,8 +1768,10 @@
     "error": "Помилка",
     "missingFiles": "Відсутні файли",
     "checkingResumeData": "Перевірка даних відновлення",
-    "moving": "Переміщення"
+    "moving": "Переміщення",
+    "unknown": "Невідомо"
   },
+  "stateLabelFallback": "Нерозпізнано",
   "details": {
     "failedToUpdatePriorities": "Не вдалося оновити пріоритети файлів",
     "failedToRenameFile": "Не вдалося перейменувати файл",
