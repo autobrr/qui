@@ -180,12 +180,14 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 // General tab shows changes. The main list keeps the volatile-field rule.
 func TestOneRowViewResendsLiveCounters(t *testing.T) {
 	counters := map[string]func(*qbt.Torrent){
-		"TimeActive":    func(tr *qbt.Torrent) { tr.TimeActive++ },
-		"SeedingTime":   func(tr *qbt.Torrent) { tr.SeedingTime++ },
-		"NumSeeds":      func(tr *qbt.Torrent) { tr.NumSeeds++ },
-		"NumLeechs":     func(tr *qbt.Torrent) { tr.NumLeechs++ },
-		"NumComplete":   func(tr *qbt.Torrent) { tr.NumComplete++ },
-		"NumIncomplete": func(tr *qbt.Torrent) { tr.NumIncomplete++ },
+		"TimeActive":       func(tr *qbt.Torrent) { tr.TimeActive++ },
+		"SeedingTime":      func(tr *qbt.Torrent) { tr.SeedingTime++ },
+		"NumSeeds":         func(tr *qbt.Torrent) { tr.NumSeeds++ },
+		"NumLeechs":        func(tr *qbt.Torrent) { tr.NumLeechs++ },
+		"NumComplete":      func(tr *qbt.Torrent) { tr.NumComplete++ },
+		"NumIncomplete":    func(tr *qbt.Torrent) { tr.NumIncomplete++ },
+		"ConnectionsCount": func(tr *qbt.Torrent) { tr.ConnectionsCount++ },
+		"PiecesHave":       func(tr *qbt.Torrent) { tr.PiecesHave++ },
 	}
 	for name, tick := range counters {
 		for _, tc := range []struct {
