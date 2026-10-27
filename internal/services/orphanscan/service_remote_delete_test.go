@@ -430,21 +430,29 @@ func TestChangeSSH_FailsOnlyRemotePreviews(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// pausingRemoveBackend holds its first Remove until resume closes, so an SSH
-// change can land between a deletion's per-entry check and its delete.
+// pausingRemoveBackend holds its first Remove until resume closes, so the run
+// stays deleting while an SSH change checks it.
 type pausingRemoveBackend struct {
 	fsops.Backend
-	once     *sync.Once
-	removing chan struct{}
-	resume   <-chan struct{}
+	once   *sync.Once
+	resume <-chan struct{}
 }
 
 func (b pausingRemoveBackend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
-	b.once.Do(func() {
-		close(b.removing)
-		<-b.resume
-	})
+	b.once.Do(func() { <-b.resume })
 	return b.Backend.Remove(ctx, path, opts)
+}
+
+// sshLockHeld reports whether anyone holds the SSH lock of instance 1. A test
+// asks it at a moment when only the code under test can hold the lock, so a
+// lock that is missing shows at once, without a wait for a race to happen.
+func sshLockHeld(svc *Service) bool {
+	mu := svc.getInstanceMutex(svc.sshMu, 1)
+	if mu.TryLock() {
+		mu.Unlock()
+		return false
+	}
+	return true
 }
 
 // An SSH change that passed its deletion check before the deletion started
@@ -453,39 +461,42 @@ func (b pausingRemoveBackend) Remove(ctx context.Context, path string, opts fsop
 func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	t.Parallel()
 
-	once := &sync.Once{}
-	removing := make(chan struct{})
-	stored := make(chan struct{})
-	var f *modeFixture
-	f = newModeFixture(t, "orphanscan-ssh-change-vs-delete-start", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
-		return pausingRemoveBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, once: once, removing: removing, resume: stored}
-	})
+	f := newModeFixture(t, "orphanscan-ssh-change-vs-delete-start", models.FilesystemModeRemote, nil)
 	f.setTier(models.SSHTierExec)
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
-	checked := make(chan struct{})
-	changed := make(chan error, 1)
-	go func() {
-		changed <- f.svc.ChangeSSH(t.Context(), 1, func() error {
-			close(checked)
-			// A deletion that could start would reach its first delete well
-			// within this wait.
-			select {
-			case <-removing:
-			case <-time.After(500 * time.Millisecond):
-			}
-			f.instance.mu.Lock()
-			f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
-			f.instance.mu.Unlock()
-			close(stored)
-			return nil
-		})
-	}()
-	<-checked
-	f.svc.executeDeletion(t.Context(), 1, run.ID)
+	// The hook runs only once ChangeSSH has returned, so the change no longer
+	// holds the lock, and the lock is held only if the deletion took it.
+	changeReturned := make(chan struct{})
+	var heldAtStart bool
+	f.svc.beforeDeletionStart = func() {
+		<-changeReturned
+		heldAtStart = sshLockHeld(f.svc)
+	}
+	var heldInChange bool
+	deleted := make(chan struct{})
+	require.NoError(t, f.svc.ChangeSSH(t.Context(), 1, func() error {
+		heldInChange = sshLockHeld(f.svc)
+		// The deletion starts after the change passed its deletion check.
+		go func() {
+			f.svc.executeDeletion(t.Context(), 1, run.ID)
+			close(deleted)
+		}()
+		f.instance.mu.Lock()
+		f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
+		f.instance.mu.Unlock()
+		return nil
+	}))
+	close(changeReturned)
+	select {
+	case <-deleted:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the deletion did not finish")
+	}
 
-	require.NoError(t, <-changed)
+	require.True(t, heldInChange, "the change must run under the SSH lock")
+	require.True(t, heldAtStart, "the deletion must start under the SSH lock")
 	failed := f.run(t, run.ID)
 	require.Equal(t, "failed", failed.Status)
 	require.Equal(t, FilesystemModeChangedMessage, failed.ErrorMessage)
@@ -498,11 +509,10 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 	t.Parallel()
 
 	once := &sync.Once{}
-	removing := make(chan struct{})
 	resume := make(chan struct{})
 	var f *modeFixture
 	f = newModeFixture(t, "orphanscan-delete-start-vs-ssh-change", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
-		return pausingRemoveBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, once: once, removing: removing, resume: resume}
+		return pausingRemoveBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}, once: once, resume: resume}
 	})
 	f.setTier(models.SSHTierExec)
 	run := f.scan(t, "manual")
@@ -510,7 +520,11 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 
 	starting := make(chan struct{})
 	start := make(chan struct{})
+	var heldAtStart bool
 	f.svc.beforeDeletionStart = func() {
+		// Nothing else runs yet, so the lock is held only if the deletion
+		// took it.
+		heldAtStart = sshLockHeld(f.svc)
 		close(starting)
 		<-start
 	}
@@ -530,11 +544,11 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 			return nil
 		})
 	}()
-	// A change that did not wait for the lock finishes, or passes its
-	// deletion check, well within this wait.
-	time.Sleep(200 * time.Millisecond)
+	// The deletion holds the lock, so the change takes it only after the run
+	// is deleting, wherever it is when the deletion goes on.
 	close(start)
 
+	require.True(t, heldAtStart, "the deletion must start under the SSH lock")
 	require.ErrorIs(t, <-changed, ErrDeletionInProgress)
 	close(resume)
 	<-deleted
@@ -905,8 +919,22 @@ func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
 	runID, err := f.store.CreateRunIfNoActive(t.Context(), 1, "manual")
 	require.NoError(t, err)
 
+	// The scan reads the row first in Require. The hook goes on only once
+	// ChangeSSH has returned, so the change no longer holds the lock, and the
+	// lock is held only if the scan took it.
+	changeReturned := make(chan struct{})
+	var heldAtRead bool
+	var readOnce sync.Once
+	f.instance.onGet = func() {
+		readOnce.Do(func() {
+			<-changeReturned
+			heldAtRead = sshLockHeld(f.svc)
+		})
+	}
 	scanned := make(chan struct{})
+	var heldInChange bool
 	require.NoError(t, f.svc.ChangeSSH(t.Context(), 1, func() error {
+		heldInChange = sshLockHeld(f.svc)
 		f.instance.mu.Lock()
 		f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
 		f.instance.mu.Unlock()
@@ -914,18 +942,20 @@ func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
 			f.svc.executeScan(t.Context(), 1, runID)
 			close(scanned)
 		}()
-		// A scan that did not wait for the lock reaches its walk well within
-		// this wait.
-		select {
-		case <-walking:
-		case <-time.After(500 * time.Millisecond):
-		}
 		connected.Store("new")
 		return nil
 	}))
+	close(changeReturned)
+	select {
+	case <-walking:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the scan did not reach its walk")
+	}
 	close(resume)
 	<-scanned
 
+	require.True(t, heldInChange, "the change must run under the SSH lock")
+	require.True(t, heldAtRead, "the scan must read the instance under the SSH lock")
 	run := f.run(t, runID)
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	mu.Lock()
