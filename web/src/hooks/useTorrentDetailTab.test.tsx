@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   getTorrentWebSeeds: vi.fn(),
   getTorrentFiles: vi.fn(),
   getTorrentPieceStates: vi.fn(),
+  getTorrentTrackers: vi.fn(),
   getTorrents: vi.fn(),
   params: [] as unknown[],
 }))
@@ -44,6 +45,7 @@ vi.mock("@/lib/api", () => ({
     getTorrentWebSeeds: (...args: unknown[]) => mocks.getTorrentWebSeeds(...args),
     getTorrentFiles: (...args: unknown[]) => mocks.getTorrentFiles(...args),
     getTorrentPieceStates: (...args: unknown[]) => mocks.getTorrentPieceStates(...args),
+    getTorrentTrackers: (...args: unknown[]) => mocks.getTorrentTrackers(...args),
     getTorrents: (...args: unknown[]) => mocks.getTorrents(...args),
   },
 }))
@@ -93,10 +95,12 @@ beforeEach(() => {
   mocks.getTorrentProperties.mockResolvedValue(loadedProperties)
   mocks.getTorrentPeers.mockResolvedValue({ peers: {}, sorted_peers: [] })
   mocks.getTorrentWebSeeds.mockResolvedValue([{ url: "https://example.invalid/seed" }])
+  mocks.getTorrentTrackers.mockResolvedValue([{ url: "https://tracker.example.invalid/announce", status: 2 }])
   mocks.getTorrents.mockResolvedValue({ torrents: [] })
   mocks.getTorrentFiles.mockResolvedValue(makeFiles(500))
   mocks.getTorrentPieceStates.mockResolvedValue(new Array(20000).fill(1))
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The app turns off the refetch on focus; the hidden-page tests rely on that.
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
 })
 
 afterEach(() => {
@@ -132,6 +136,26 @@ describe("useTorrentDetailTab general", () => {
       seeding_time: 50,
     })
     expect(result.current.data?.row?.dlspeed).toBe(500)
+  })
+
+  it("shows live piece counts from a qBittorrent 5.2 row", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    sendRow({ state: "downloading", pieces_have: 60, pieces_num: 100 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([60, 100])
+
+    sendRow({ state: "downloading", pieces_have: 75, pieces_num: 100 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([75, 100])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the loaded piece counts with a row from before qBittorrent 5.2", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    // qui sends 0 for both fields when qBittorrent does not send them.
+    sendRow({ state: "downloading", pieces_have: 0, pieces_num: 0 })
+    expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([40, 100])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
   })
 
   it("shows live time active, seeds, and peers on a seeding torrent without a new fetch", async () => {
@@ -344,6 +368,98 @@ describe("useTorrentDetailTab content and piece bar", () => {
   })
 })
 
+describe("useTorrentDetailTab trackers", () => {
+  async function renderLoadedTrackers() {
+    const rendered = renderTab("trackers")
+    await waitFor(() => expect(rendered.result.current.data).toEqual([{ url: "https://tracker.example.invalid/announce", status: 2 }]))
+    sendRow({ trackers_count: 2 })
+    return rendered
+  }
+
+  it("reloads when the Tracker health of the row changes", async () => {
+    await renderLoadedTrackers()
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(1)
+
+    sendRow({ trackers_count: 2, tracker_health: "tracker_down" })
+    await waitFor(() => expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(2))
+    expect(mocks.getTorrentTrackers).toHaveBeenLastCalledWith(1, "a")
+  })
+
+  it("reloads when the tracker count of the row changes", async () => {
+    await renderLoadedTrackers()
+    sendRow({ trackers_count: 3 })
+    await waitFor(() => expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(2))
+  })
+
+  it("does not reload on other row changes", async () => {
+    vi.useFakeTimers()
+    renderTab("trackers")
+    await advance(0)
+    sendRow({ trackers_count: 2, dlspeed: 100, num_seeds: 3, time_active: 10, state: "downloading" })
+    sendRow({ trackers_count: 2, dlspeed: 900, num_seeds: 8, time_active: 20, state: "stalledDL" })
+    await advance(60000)
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not reload on a switch to another torrent", async () => {
+    vi.useFakeTimers()
+    const { rerender } = renderTab("trackers")
+    await advance(0)
+    sendRow({ trackers_count: 2 })
+    rerender({ instanceId: 1, hash: "b" })
+    await advance(0)
+    act(() => mocks.onMessage?.({ type: "update", data: { torrents: [makeTorrent({ hash: "b", trackers_count: 5 })], total: 1 } }))
+    await advance(60000)
+    expect(mocks.getTorrentTrackers.mock.calls).toEqual([[1, "a"], [1, "b"]])
+  })
+
+  it("reloads on a return to a torrent whose Tracker health changed while another torrent was open", async () => {
+    vi.useFakeTimers()
+    const { rerender } = renderTab("trackers")
+    await advance(0)
+    sendRow({ trackers_count: 2 })
+    rerender({ instanceId: 1, hash: "b" })
+    await advance(0)
+    act(() => mocks.onMessage?.({ type: "update", data: { torrents: [makeTorrent({ hash: "b", trackers_count: 5 })], total: 1 } }))
+    // The list of a is still fresh, so the return alone does not fetch it.
+    rerender({ instanceId: 1, hash: "a" })
+    await advance(0)
+    sendRow({ trackers_count: 2, tracker_health: "unregistered" })
+    await advance(0)
+    expect(mocks.getTorrentTrackers.mock.calls).toEqual([[1, "a"], [1, "b"], [1, "a"]])
+  })
+
+  it("does not fetch while the page is hidden, and reloads when it shows again", async () => {
+    vi.useFakeTimers()
+    renderTab("trackers")
+    await advance(0)
+    sendRow({ trackers_count: 2 })
+
+    setPageHidden(true)
+    sendRow({ trackers_count: 2, tracker_health: "unregistered" })
+    await advance(60000)
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(1)
+
+    setPageHidden(false)
+    await advance(0)
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(2)
+  })
+
+  it("reloads from the polled row when the stream is not usable", async () => {
+    vi.useFakeTimers()
+    mocks.state = { ...usableStream, dataStalled: true }
+    mocks.getTorrents.mockResolvedValue({ torrents: [makeTorrent({ hash: "a", trackers_count: 2 })] })
+    renderTab("trackers")
+    await advance(0)
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(1)
+
+    mocks.getTorrents.mockResolvedValue({ torrents: [makeTorrent({ hash: "a", trackers_count: 2, tracker_health: "tracker_error" })] })
+    await advance(31000)
+    expect(mocks.getTorrents).toHaveBeenCalledTimes(2)
+    expect(mocks.getTorrentTrackers).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe("useTorrentDetailTab peers and HTTP sources", () => {
   it("polls peers every 2 s", async () => {
     vi.useFakeTimers()
@@ -360,6 +476,17 @@ describe("useTorrentDetailTab peers and HTTP sources", () => {
     const { result } = renderTab("webseeds")
     await advance(60000)
     expect(result.current.data).toEqual([{ url: "https://example.invalid/seed" }])
+    expect(mocks.getTorrentWebSeeds).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not reload HTTP sources when the page shows again", async () => {
+    vi.useFakeTimers()
+    renderTab("webseeds")
+    await advance(0)
+    setPageHidden(true)
+    await advance(60000)
+    setPageHidden(false)
+    await advance(0)
     expect(mocks.getTorrentWebSeeds).toHaveBeenCalledTimes(1)
   })
 

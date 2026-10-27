@@ -183,14 +183,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     })
   }, [matchingTorrentsKeys])
 
-  // Fetch torrent trackers
-  const { data: trackers, isLoading: loadingTrackers } = useQuery({
-    queryKey: ["torrent-trackers", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentTrackers(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
-  })
+  const { data: trackers, isLoading: loadingTrackers } = useTorrentDetailTab(instanceId, readyHash, "trackers", torrent?.hash ?? null)
 
   const liveTorrent = general.data?.row ?? null
   const displayTorrent = useMemo(() => {
