@@ -6175,8 +6175,12 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 						Msg("automations: recheck on target failed")
 					reason := "Recheck on target failed: " + err.Error()
 
-					if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
-						log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+					// The recheck retry can run past the export deadline, so delete with a fresh context.
+					cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+					cleanupErr := s.syncManager.BulkAction(cleanupCtx, exec.action.TargetInstanceID, []string{exec.hash}, "delete")
+					cleanupCancel()
+					if cleanupErr != nil {
+						log.Warn().Err(cleanupErr).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
 							Msg("automations: failed to clean up torrent from target after recheck failure")
 					} else {
 						log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
