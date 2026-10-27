@@ -96,7 +96,7 @@ Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based
 | Labels | category | category (ruTorrent) | tags |
 | Paused state | 2.x only | ✓ | ✓ |
 | Deselected files | ✓ | ✓ | ✓ |
-| File renames | ✓ | — | — |
+| File renames | ✓ | — | ✓ |
 | Per-torrent ratio/speed limits | — | — | ✓ |
 
 The importer tags every imported torrent `migrated` so you can find them with one filter. Running torrents import as auto-managed, so qBittorrent applies its queueing and share limits. Torrents that you stopped stay stopped and stay out of auto-management.

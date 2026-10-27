@@ -180,7 +180,7 @@ func (i *TransmissionImport) Migrate() error {
 			QbtCategory:               "",
 			QbtContentLayout:          "Original",
 			QbtFirstLastPiecePriority: 0,
-			QbtName:                   "",
+			QbtName:                   transmissionName(resumeFile, &metaInfo),
 			QbtRatioLimit:             transmissionRatioLimit(resumeFile.RatioLimit),
 			QbtSavePath:               resumeFile.Destination,
 			QbtSeedStatus:             1,
@@ -211,6 +211,10 @@ func (i *TransmissionImport) Migrate() error {
 
 		// handle trackers
 		newFastResume.Trackers = file.UpvertedAnnounceList()
+
+		// renames live only in the resume file; the .torrent keeps the
+		// original names, so the data on disk needs mapped_files
+		newFastResume.MappedFiles = transmissionMappedFiles(resumeFile, &metaInfo)
 
 		newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
 
@@ -349,6 +353,46 @@ func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) [
 	}
 
 	return prios
+}
+
+// transmissionName returns the renamed torrent name, or "" when the torrent
+// keeps its metainfo name
+func transmissionName(resume *TransmissionResumeFile, info *metainfo.Info) string {
+	if resume.Name == info.BestName() {
+		return ""
+	}
+	return resume.Name
+}
+
+// transmissionMappedFiles maps the resume file's per-file paths to libtorrent
+// mapped_files, or nil when no file differs from the metainfo path.
+// Transmission <=3.x writes "" for files it did not rename, 4.x writes every
+// path; both are relative to the download dir and start with the torrent name
+// for multi-file torrents
+func transmissionMappedFiles(resume *TransmissionResumeFile, info *metainfo.Info) []string {
+	files := info.UpvertedFiles()
+	if len(resume.Files) != len(files) {
+		return nil
+	}
+
+	name := info.BestName()
+	mapped := make([]string, len(files))
+	renamed := false
+	for i, f := range files {
+		original := name
+		if info.IsDir() {
+			original = strings.Join(append([]string{name}, f.BestPath()...), "/")
+		}
+		if p := resume.Files[i]; p != "" && p != original {
+			mapped[i] = p
+			renamed = true
+		}
+	}
+
+	if !renamed {
+		return nil
+	}
+	return mapped
 }
 
 func boolToInt(b bool) int64 {
