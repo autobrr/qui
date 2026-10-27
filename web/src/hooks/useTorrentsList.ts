@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
@@ -444,6 +444,7 @@ export function useTorrentsList(
     isStreamUsable(streamState) &&
     hasBaselineForCurrentView
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling
+  const pollIntervalMs = useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS
   // Polls the scrolled-in window while a recheck/move is in progress anywhere
   // in it; stops on its own once every row settles. Not gated on the stream:
   // the stream only covers the first page.
@@ -537,9 +538,11 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Fallback refreshes the loaded window; healthy streams still need REST for transient later rows.
-    refetchInterval: pollingEnabled && (!shouldDisablePolling || (currentPage > 0 && hasTransientRows))
-      ? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS)
-      : false,
+    refetchInterval: !pollingEnabled
+      ? false
+      : currentPage > 0 && hasTransientRows
+        ? pollIntervalMs
+        : shouldDisablePolling ? false : streamFallbackPollInterval(streamState, pollIntervalMs),
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
     enabled: queryEnabled,

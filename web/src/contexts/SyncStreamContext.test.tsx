@@ -5,11 +5,9 @@
 
 import { api } from "@/lib/api"
 import { resolveStreamRow } from "@/lib/torrent-utils"
+import { isClientConnectionErrorCode, isStreamUsable, STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import {
   createStreamKey,
-  isClientConnectionErrorCode,
-  STREAM_ERROR_DISCONNECTED,
-  STREAM_ERROR_RETRY_EXHAUSTED,
   SyncStreamProvider,
   useActivityStream,
   useSyncStream,
@@ -18,7 +16,7 @@ import {
   type StreamState
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { act, cleanup, render } from "@testing-library/react"
 import { useEffect, useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -1737,5 +1735,55 @@ describe("isClientConnectionErrorCode", () => {
     expect(isClientConnectionErrorCode(null)).toBe(false)
     expect(isClientConnectionErrorCode(undefined)).toBe(false)
     expect(isClientConnectionErrorCode("")).toBe(false)
+  })
+})
+
+describe("stream fallback poll interval", () => {
+  it("slows a stalled view, stops on a server error, and polls again after a dropped connection", async () => {
+    const poll = vi.fn(async () => null)
+    function Poller() {
+      const state = useSyncStream(BASE_PARAMS, { enabled: true })
+      useQuery({
+        queryKey: ["fallback-poll"],
+        queryFn: poll,
+        enabled: !isStreamUsable(state),
+        refetchInterval: streamFallbackPollInterval(state, 3000),
+      })
+      return null
+    }
+    act(() => {
+      render(<Poller />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    const key = createStreamKey(BASE_PARAMS)
+    // Heartbeats every 10 s keep the connection open, so only the view stalls.
+    const countPolls = async (ms: number, heartbeats = true) => {
+      poll.mockClear()
+      for (let left = ms; left > 0; left -= 10_000) {
+        await act(() => vi.advanceTimersByTimeAsync(Math.min(left, 10_000)))
+        if (heartbeats) act(() => source.emit("heartbeat"))
+      }
+      return poll.mock.calls.length
+    }
+
+    act(() => {
+      source.emitOpen()
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: key }, data: { torrents: [], total: 0 },
+      })
+    })
+    await countPolls(120_000)
+    expect(await countPolls(29_000)).toBe(0)
+    expect(await countPolls(2_000)).toBe(1)
+
+    act(() => source.emit("stream-error", {
+      type: "stream-error", error: "Temporary sync failure", meta: { streamKey: key },
+    }))
+    expect(await countPolls(60_000)).toBe(0)
+
+    act(() => source.emitError())
+    expect(await countPolls(9_500, false)).toBe(3)
   })
 })

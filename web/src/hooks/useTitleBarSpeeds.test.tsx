@@ -8,6 +8,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import type { TorrentStreamPayload } from "@/types"
+import { STREAM_ERROR_DISCONNECTED } from "@/lib/sync-stream-state"
 import { changeLanguage, initI18n } from "@/i18n"
 
 const mocks = vi.hoisted(() => ({
@@ -215,4 +216,30 @@ it.each([
 
   unmount()
   client.clear()
+})
+
+it.each([
+  ["a stalled view", { dataStalled: true }, 1, 2],
+  ["a server stream-error", { connected: false, error: "instance unreachable: connection refused" }, 1, 1],
+  ["a client-side connection error", { connected: false, error: STREAM_ERROR_DISCONNECTED }, 4, 11],
+] as const)("polls the speeds at the stream fallback interval for %s", async (_name, state, callsAt9s, callsAt30s) => {
+  vi.useFakeTimers()
+  try {
+    Object.assign(mocks.streamState, state)
+    mocks.getTransferInfo.mockResolvedValue({ dl_info_speed: 1, up_info_speed: 2 })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { unmount } = renderHook(() => useTitleBarSpeeds({ mode: "instance", instanceId: 1, instanceName: "Example" }), { wrapper })
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(mocks.getTransferInfo).toHaveBeenCalledTimes(callsAt9s)
+    await act(async () => { await vi.advanceTimersByTimeAsync(21000) })
+    expect(mocks.getTransferInfo).toHaveBeenCalledTimes(callsAt30s)
+    unmount()
+    client.clear()
+  } finally {
+    vi.useRealTimers()
+  }
 })
