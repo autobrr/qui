@@ -136,14 +136,8 @@ func (provenance searchDecisionProvenance) admitted() bool {
 }
 
 func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
-	return decision.Class == searchCandidateClassTitleRescue || decision.boundNeedsVerification()
-}
-
-// boundNeedsVerification reports whether the add from the bound source must be
-// hashed before it seeds. A HYBRID tag can name another master with the same
-// file lengths, and the file comparison checks only names and lengths.
-func (provenance searchDecisionProvenance) boundNeedsVerification() bool {
-	return provenance.Class == searchCandidateClassHybridTolerance || provenance.Relaxed.needsVerification()
+	return decision.Class == searchCandidateClassTitleRescue ||
+		decision.Relaxed.needsVerification()
 }
 
 // Score bands mirror the explicit sorter: positive size evidence outranks the
@@ -481,7 +475,7 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	}
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
-		req.SearchDecision.boundNeedsVerification()
+		req.SearchDecision.Relaxed.needsVerification()
 }
 
 // crossFieldGroupSiteFallback reports whether a group mismatch carries the
