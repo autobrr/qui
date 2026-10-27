@@ -162,7 +162,7 @@ const (
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
 	reasonDedupNoRelabel    = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
 	reasonDedupNoExactSize  = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
-	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonRetitledSameSizes = "Local matches and the Batch matcher pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonDedupNoSizes      = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 )
@@ -649,9 +649,8 @@ var corpusRows = []corpusRow{
 		rescue:        true,
 		want:          corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathPrefilter:  allowedDifference(corpusNoMatch, reasonNoTitleRescue),
-			pathCrossMatch: allowedDifference(corpusNoMatch, reasonNoTitleRescue),
-			pathDedup:      allowedDifference(corpusNoMatch, reasonNoTitleRescue),
+			pathPrefilter: allowedDifference(corpusNoMatch, reasonNoTitleRescue),
+			pathDedup:     allowedDifference(corpusNoMatch, reasonNoTitleRescue),
 		},
 	},
 	{
@@ -665,6 +664,7 @@ var corpusRows = []corpusRow{
 		want:         corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
 			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+			pathCrossMatch:   allowedDifference(corpusMatch, reasonRetitledSameSizes),
 		},
 	},
 	{

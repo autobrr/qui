@@ -118,8 +118,10 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 
 // localMatchPolicy is the Match policy of the paths that compare two local
 // torrents and then pair their file sizes in localMatchTier. That file check
-// compares exact sizes, so the verdict skips its own size check.
-var localMatchPolicy = matchPolicy{SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
+// compares exact sizes, so the verdict skips its own size check. These paths
+// add nothing to qBittorrent, so equal file sizes or a link decide, and they
+// rescue a title at any title rescue setting of searches.
+var localMatchPolicy = matchPolicy{TitleRescue: true, SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
 
 // localMatchPrefilter selects the candidates whose file lists are worth a
 // fetch, from the cached torrent fields and the Read releases. nameOrRelease

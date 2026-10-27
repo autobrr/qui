@@ -17,8 +17,8 @@ import (
 // selected torrents, that a delete of the selected torrents with their files
 // affects: the torrents that share a file path with a selected torrent and the
 // linked copies of its files. It selects the candidates as BuildCrossMatchSets
-// does, so one call covers a selection of any size, and it does not apply the
-// title rescue. Only trusted identity counts for a link, because the delete
+// does, so one call covers a selection of any size, and it applies title
+// rescue. Only trusted identity counts for a link, because the delete
 // dialog can add the matches to the delete. A file list or a link check that
 // cannot be read fails the call, so the dialog does not report "no
 // cross-seeds" in error.
