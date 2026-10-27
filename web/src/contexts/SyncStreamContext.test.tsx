@@ -2098,6 +2098,27 @@ describe("subscription changes on an open stream", () => {
     expect(MockEventSource.instances).toEqual([source])
   })
 
+  it("gives the init of a view that joins the open stream its grace", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    // A large init that downloads slowly holds back every other frame.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STALE + 5000)
+    })
+    expect(source.closed).toBe(false)
+
+    act(() => source.emit("init", {
+      type: "init", version: { major: 2, minor: 1 },
+      meta: { streamKey: createStreamKey(details("aaa")) }, data: { torrents: [], total: 0 },
+    }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STALE + 1)
+    })
+    expect(source.closed).toBe(true)
+  })
+
   it("does not hold changes on a new stream behind a stuck request of the old one", async () => {
     const change = vi.spyOn(api, "changeStreamSubscriptions").mockReturnValueOnce(new Promise(() => {}))
     const { source, select } = renderTableWithDetails()

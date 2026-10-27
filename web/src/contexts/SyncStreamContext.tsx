@@ -151,6 +151,9 @@ interface StreamConnection {
   activity?: boolean
   // Change requests run one at a time, so the server applies them in order.
   changes?: Promise<void>
+  // The views that joined with a change and have no frame yet. Their init
+  // gets the initial grace, as it did when a view change reopened the stream.
+  joining?: Set<string>
   retryAttempt: number
   retryTimer?: number
   nextRetryAt?: number
@@ -437,6 +440,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // A change request of the old source can stay open forever. The next
       // source must not wait for it.
       connection.changes = undefined
+      connection.joining = undefined
 
       if (!preserveRetry) {
         clearConnectionRetryState()
@@ -523,6 +527,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (add.length === 0 && remove.length === 0) {
           return
         }
+        connection.joining = new Set([...(connection.joining ?? [])].filter(key => next.has(key)))
+        add.forEach(stream => connection.joining?.add(stream.key))
+        resetStaleTimerRef.current()
         connection.changes = (connection.changes ?? Promise.resolve()).then(async () => {
           if (connectionRef.current.source !== source) {
             return
@@ -681,7 +688,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (typeof document !== "undefined" && document.visibilityState !== "visible") {
           return
         }
-        const timeout = conn.firstEventSeen ? STREAM_STALE_TIMEOUT_MS : STREAM_INITIAL_TIMEOUT_MS
+        const timeout = conn.firstEventSeen && !conn.joining?.size ? STREAM_STALE_TIMEOUT_MS : STREAM_INITIAL_TIMEOUT_MS
         const schedule = typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         conn.staleTimer = schedule(() => {
           conn.staleTimer = undefined
@@ -712,6 +719,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         const streamKey = payload.meta?.streamKey
         if (!streamKey) {
           return
+        }
+        if (connectionRef.current.joining?.delete(streamKey)) {
+          resetStaleTimer()
         }
 
         const entry = streamsRef.current[streamKey]
