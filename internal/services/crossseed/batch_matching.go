@@ -88,6 +88,9 @@ type matchIndex struct {
 	// be looser than the matcher, never stricter: the matcher still decides
 	// each pair.
 	byTitleKey map[titleEpisodeKey][]*releaseCandidate
+	// bySize holds each torrent under its exact total size, so that a retitled
+	// copy or a copy that numbers its episodes in another way meets the source.
+	bySize map[int64][]*releaseCandidate
 }
 
 // titleEpisodeKey adds the episode and the air date to a Title key, so that
@@ -115,7 +118,7 @@ func releaseDate(r *rls.Release) int {
 
 // BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
 // same instance and/or other instances. It uses the same per-file rule as the
-// Cross-Seed tab (localMatchTier), without the retitled rescue. The cached
+// Cross-Seed tab (localMatchTier), and it always applies title rescue. The cached
 // torrent fields select the Name and Release candidates and the torrents that
 // can share a file path, and only their file lists are fetched, through the
 // files cache. The Hardlink and Reflink check runs only for a Name or Release
@@ -609,6 +612,7 @@ func newMatchIndex() *matchIndex {
 	return &matchIndex{
 		byName:     make(map[string][]candidateEntry),
 		byTitleKey: make(map[titleEpisodeKey][]*releaseCandidate),
+		bySize:     make(map[int64][]*releaseCandidate),
 	}
 }
 
@@ -668,6 +672,9 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 			idx.byTitleKey[key] = append(idx.byTitleKey[key], candidate)
 		}
 	}
+	if size := searchSourceSize(view.Torrent); size > 0 {
+		idx.bySize[size] = append(idx.bySize[size], candidate)
+	}
 }
 
 // indexMatch is the result of classifyCandidates for one source torrent.
@@ -693,8 +700,8 @@ type candidatePick struct {
 }
 
 // selectCandidates selects the Name and Release candidates of a source torrent
-// from the index with the same prefilter as the Cross-Seed tab. sameInstance
-// excludes the source itself.
+// from the index: its name group, its Title key and episode groups, and its
+// size group. sameInstance excludes the source itself.
 func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease, idx *matchIndex, sameInstance bool) []*candidatePick {
 	sourceHash := normalizeHash(source.Hash)
 
@@ -726,34 +733,38 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 	if sourceDate == 0 {
 		otherDate = anyDate
 	}
-	// A candidate under two shared Title keys meets the matcher once.
+	// A candidate that two groups select meets the matcher once.
 	evaluated := make(map[*releaseCandidate]struct{})
+	evaluate := func(c *releaseCandidate) {
+		if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
+			return
+		}
+		evaluated[c] = struct{}{}
+		verdict := s.matcher().matchVerdict(sourceRead, c.read,
+			matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy)
+		logReleaseMatchDecision(
+			source.Name,
+			c.read.rawName,
+			false,
+			sourceRead.release,
+			c.read.release,
+			verdict.Matched,
+			verdict.RejectReason,
+			"crossseed: release metadata candidate evaluated",
+		)
+		if verdict.Matched {
+			add(c.candidateEntry, matchTypeRelease)
+		}
+	}
 	for _, title := range s.matcher().titleKeys(sourceRead) {
 		for _, date := range [2]int{sourceDate, otherDate} {
 			for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, episode: sourceRead.release.Episode, date: date}] {
-				if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
-					continue
-				}
-				evaluated[c] = struct{}{}
-				// The pair shares a Title key and the episode number, so no title or
-				// episode relaxation reaches it.
-				verdict := s.matcher().matchVerdict(sourceRead, c.read,
-					matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy)
-				logReleaseMatchDecision(
-					source.Name,
-					c.read.rawName,
-					false,
-					sourceRead.release,
-					c.read.release,
-					verdict.Matched,
-					verdict.RejectReason,
-					"crossseed: release metadata candidate evaluated",
-				)
-				if verdict.Matched {
-					add(c.candidateEntry, matchTypeRelease)
-				}
+				evaluate(c)
 			}
 		}
+	}
+	for _, c := range idx.bySize[searchSourceSize(source)] {
+		evaluate(c)
 	}
 	return picks
 }

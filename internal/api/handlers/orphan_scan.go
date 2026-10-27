@@ -454,7 +454,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
-			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for remote instances. The preview is kept.")
+			RespondError(w, http.StatusConflict, orphanscan.RemoteNoIdentityMessage)
 			return
 		}
 		if errors.Is(err, orphanscan.ErrFilesystemModeChanged) {

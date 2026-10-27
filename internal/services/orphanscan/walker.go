@@ -175,6 +175,8 @@ type fileKeys struct {
 	// linked holds the hardlinked ones, checked only against inUse, so their sizes go unused.
 	linked map[fsops.FileKey]int
 	refs   []aliasRef
+	// incomplete is set once a regular file had no key, so a second path to it could go unmatched.
+	incomplete bool
 }
 
 type aliasRef struct {
@@ -205,8 +207,12 @@ func (k *fileKeys) addOther(key fsops.FileKey, path string, nlinks uint64) int {
 	return len(k.refs) - 1
 }
 
-func fileKey(entry fsops.WalkEntry, instance *models.Instance) (fsops.FileKey, bool) {
-	return fsops.FileKeyOf(entry.FileID, instance)
+func (k *fileKeys) of(entry fsops.WalkEntry, instance *models.Instance) (fsops.FileKey, bool) {
+	key, ok := fsops.FileKeyOf(entry.FileID, instance)
+	if !ok {
+		k.incomplete = true
+	}
+	return key, ok
 }
 
 // dropAliasOrphans runs once every root is walked, so walk and root order
@@ -461,7 +467,7 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 		if entry.FileIDErr != nil && (instance == nil || models.FilesystemCapabilitiesOf(instance).Identity) {
 			return fmt.Errorf("file identity %s: %w", entry.Path, entry.FileIDErr)
 		}
-		if key, ok := fileKey(entry, instance); ok {
+		if key, ok := keys.of(entry, instance); ok {
 			keys.inUse[key] = struct{}{}
 		}
 	}
@@ -559,7 +565,7 @@ func walkScanRootWithUnitFilter(
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
 			}
-			if key, ok := fileKey(entry, w.instance); ok {
+			if key, ok := w.keys.of(entry, w.instance); ok {
 				w.keys.inUse[key] = struct{}{}
 			}
 			continue
@@ -569,7 +575,7 @@ func walkScanRootWithUnitFilter(
 		}
 		// Recorded before the grace and name checks: a disc unit's delete removes those files too.
 		ref := -1
-		if key, ok := fileKey(entry, w.instance); ok {
+		if key, ok := w.keys.of(entry, w.instance); ok {
 			ref = w.keys.addOther(key, path, entry.Nlinks)
 		}
 

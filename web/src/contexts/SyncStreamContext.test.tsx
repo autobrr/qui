@@ -5,11 +5,9 @@
 
 import { api } from "@/lib/api"
 import { resolveStreamRow } from "@/lib/torrent-utils"
+import { isClientConnectionErrorCode, isStreamUsable, STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import {
   createStreamKey,
-  isClientConnectionErrorCode,
-  STREAM_ERROR_DISCONNECTED,
-  STREAM_ERROR_RETRY_EXHAUSTED,
   SyncStreamProvider,
   useActivityStream,
   useSyncStream,
@@ -18,9 +16,9 @@ import {
   type StreamState
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { act, cleanup, render } from "@testing-library/react"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // SyncStreamProvider now reads a QueryClient (to invalidate queries on activity
@@ -45,7 +43,7 @@ function TestProviders({ children }: { children: ReactNode }) {
 // instance and lets each test drive open / error / event emission by hand.
 // ---------------------------------------------------------------------------
 
-type SourceEventName = "init" | "update" | "delta" | "stream-error" | "heartbeat" | "activity"
+type SourceEventName = "connection" | "init" | "update" | "delta" | "stream-error" | "heartbeat" | "activity"
 
 class MockEventSource {
   static readonly CONNECTING = 0
@@ -570,6 +568,38 @@ describe("SyncStreamContext", () => {
       }))
       expect(stateB.initialized).toBe(true)
       expect(stateB.retryAttempt).toBe(0)
+    })
+
+    it("keeps a server-error subscription polling while shared recovery waits", () => {
+      const paramsB = makeParams({ instanceId: 2 })
+      let stateB = DEFAULT
+      function Subscribers() {
+        useSyncStream(BASE_PARAMS)
+        stateB = useSyncStream(paramsB)
+        return null
+      }
+      render(<TestProviders><Subscribers /></TestProviders>)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen()
+        source.emit("init", {
+          type: "init", version: { major: 1, minor: 1 },
+          meta: { streamKey: createStreamKey(BASE_PARAMS) }, data: { torrents: [] },
+        })
+        source.emit("stream-error", {
+          type: "stream-error", error: "instance unreachable",
+          meta: { streamKey: createStreamKey(paramsB) },
+        })
+      })
+      expect(streamFallbackPollInterval(stateB, 3000)).toBe(false)
+      act(() => source.emit("delta", {
+        type: "delta", version: { major: 1, minor: 3 },
+        delta: { baseVersion: { major: 1, minor: 2 } },
+        meta: { streamKey: createStreamKey(BASE_PARAMS) }, data: { torrents: [] },
+      }))
+      expect(source.closed).toBe(true)
+      expect(streamFallbackPollInterval(stateB, 3000)).toBe(3000)
     })
 
     it("resets recovery using only subscriptions sent to the source", () => {
@@ -1737,5 +1767,381 @@ describe("isClientConnectionErrorCode", () => {
     expect(isClientConnectionErrorCode(null)).toBe(false)
     expect(isClientConnectionErrorCode(undefined)).toBe(false)
     expect(isClientConnectionErrorCode("")).toBe(false)
+  })
+})
+
+describe("stream fallback poll interval", () => {
+  it("slows a stalled view, stops on a server error, and polls again after a dropped connection", async () => {
+    const poll = vi.fn(async () => null)
+    function Poller() {
+      const state = useSyncStream(BASE_PARAMS, { enabled: true })
+      useQuery({
+        queryKey: ["fallback-poll"],
+        queryFn: poll,
+        enabled: !isStreamUsable(state),
+        refetchInterval: streamFallbackPollInterval(state, 3000),
+      })
+      return null
+    }
+    act(() => {
+      render(<Poller />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    const key = createStreamKey(BASE_PARAMS)
+    // Heartbeats every 10 s keep the connection open, so only the view stalls.
+    const countPolls = async (ms: number, heartbeats = true) => {
+      poll.mockClear()
+      for (let left = ms; left > 0; left -= 10_000) {
+        await act(() => vi.advanceTimersByTimeAsync(Math.min(left, 10_000)))
+        if (heartbeats) act(() => source.emit("heartbeat"))
+      }
+      return poll.mock.calls.length
+    }
+
+    act(() => {
+      source.emitOpen()
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: key }, data: { torrents: [], total: 0 },
+      })
+    })
+    await countPolls(120_000)
+    expect(await countPolls(29_000)).toBe(0)
+    expect(await countPolls(2_000)).toBe(1)
+
+    act(() => source.emit("stream-error", {
+      type: "stream-error", error: "Temporary sync failure", meta: { streamKey: key },
+    }))
+    expect(await countPolls(60_000)).toBe(0)
+
+    act(() => source.emitError())
+    expect(await countPolls(9_500, false)).toBe(3)
+  })
+})
+
+describe("subscription changes on an open stream", () => {
+  const MAIN = makeParams({ page: 0, limit: 300 })
+  const SPEEDS = makeParams({ page: 0, limit: 1, summary: true })
+  const details = (hash: string) => makeParams({ page: 0, limit: 1, filters: { hashes: [hash] } as StreamParams["filters"] })
+
+  // Renders the main table plus a details row whose torrent can change, the
+  // way the torrent list and its details panel share the provider.
+  function renderTableWithDetails() {
+    let setHash: (hash: string | null) => void = () => {}
+    let remountExtra: () => void = () => {}
+    let showSpeeds: () => void = () => {}
+    function Extra() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    function Speeds() {
+      useSyncStream(SPEEDS, {})
+      return null
+    }
+    // One panel that changes its torrent, as the details panel does.
+    function Details({ hash }: { hash: string }) {
+      useSyncStream(useMemo(() => details(hash), [hash]), {})
+      return null
+    }
+    function Root() {
+      const [hash, updateHash] = useState<string | null>(null)
+      const [extra, updateExtra] = useState(0)
+      const [speeds, updateSpeeds] = useState(false)
+      setHash = updateHash
+      remountExtra = () => updateExtra(n => n + 1)
+      showSpeeds = () => updateSpeeds(true)
+      useSyncStream(MAIN, {})
+      return <>{hash ? <Details hash={hash} /> : null}{extra > 0 ? <Extra key={extra} /> : null}{speeds ? <Speeds /> : null}</>
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("connection", { type: "connection", connectionId: "qui-conn-7" })
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: createStreamKey(MAIN) }, data: { torrents: [], total: 0 },
+      })
+    })
+    return {
+      source,
+      select: (hash: string | null) => {
+        act(() => setHash(hash))
+        flushConnectionQueue()
+      },
+      // Another view mounts and asks the provider for an update.
+      remountMainView: () => {
+        act(() => remountExtra())
+        flushConnectionQueue()
+      },
+      // A view with its own key joins.
+      addSpeedsView: () => {
+        act(() => showSpeeds())
+        flushConnectionQueue()
+      },
+    }
+  }
+
+  const streamKeysOf = (url: string) => decodeStreamsParam(url).map(s => (s as { key?: string }).key).sort()
+
+  async function settle() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it("adds and removes a view with a change request and keeps the stream open", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+
+    select("aaa")
+    await settle()
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")), limit: 1 })], [], expect.any(AbortSignal))
+
+    select(null)
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [], [createStreamKey(details("aaa"))], expect.any(AbortSignal))
+
+    expect(MockEventSource.instances).toEqual([source])
+    expect(source.closed).toBe(false)
+  })
+
+  it.each([false, true])("switches from one torrent to another with one change request, gap=%s", async gap => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select, remountMainView, addSpeedsView } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    act(() => source.emit("init", {
+      type: "init", version: { major: 2, minor: 1 },
+      meta: { streamKey: createStreamKey(details("aaa")) }, data: { torrents: [], total: 0 },
+    }))
+    change.mockClear()
+
+    // The details panel shows no torrent for a moment between two torrents.
+    if (gap) {
+      select(null)
+      remountMainView()
+    }
+    select("bbb")
+    remountMainView()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith(
+      "qui-conn-7",
+      [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
+      [createStreamKey(details("aaa"))],
+      expect.any(AbortSignal)
+    )
+
+    // The old row still waits for its teardown and does not join again.
+    addSpeedsView()
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [], expect.any(AbortSignal))
+    expect(MockEventSource.instances).toEqual([source])
+  })
+
+  it("adds a view back when it mounts again after a change removed it", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { select, addSpeedsView } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    change.mockClear()
+
+    // The row waits for its teardown when another view joins, and it leaves.
+    select(null)
+    addSpeedsView()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [createStreamKey(details("aaa"))], expect.any(AbortSignal))
+
+    select("aaa")
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [], expect.any(AbortSignal))
+  })
+
+  it("reopens the stream when a change request fails, with the current views in the URL", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockRejectedValue(new Error("connection not found"))
+    const { source, select } = renderTableWithDetails()
+
+    select("aaa")
+    await settle()
+    expect(source.closed).toBe(true)
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
+  })
+
+  it("gives the first init its grace after the connection event", () => {
+    function Root() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("connection", { type: "connection", connectionId: "qui-conn-7" })
+    })
+    act(() => {
+      vi.advanceTimersByTime(INITIAL_GRACE - 1)
+    })
+    expect(source.closed).toBe(false)
+  })
+
+  it("gives the first init after a native retry its grace", () => {
+    function Root() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: createStreamKey(MAIN) }, data: { torrents: [], total: 0 },
+      })
+      source.emitTransientError()
+      source.emitOpen()
+    })
+    act(() => {
+      vi.advanceTimersByTime(INITIAL_GRACE - 1)
+    })
+    expect(source.closed).toBe(false)
+  })
+
+  it("sends the views that changed to the new server connection after a native retry", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    change.mockClear()
+
+    // The browser retried the same URL, which lists only the main view.
+    act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
+    await settle()
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-8", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [], expect.any(AbortSignal))
+    expect(MockEventSource.instances).toEqual([source])
+  })
+
+  it("lists the current views in the URL of the stream after a reconnect", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    select("bbb")
+    await settle()
+
+    act(() => source.emitError())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("bbb"))].sort())
+  })
+
+  it.each([false, true])("reopens the stream when a change request gets no answer, retry=%s", async retry => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
+      new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason))))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    if (retry) {
+      act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
+    }
+    // Heartbeats keep the stream alive, so only the stuck request can reopen it.
+    for (let elapsed = 0; elapsed <= INITIAL_GRACE; elapsed += 5000) {
+      act(() => source.emit("heartbeat"))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+    }
+    expect(source.closed).toBe(true)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
+  })
+
+  it("keeps the stream while the server holds a change until the first inits are sent", async () => {
+    // The server answers a change only after it sent the inits of the connection.
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
+      new Promise((resolve, reject) => {
+        window.setTimeout(resolve, STALE + 5000)
+        signal?.addEventListener("abort", () => reject(signal.reason))
+      }))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    for (let elapsed = 0; elapsed <= STALE + 5000; elapsed += 5000) {
+      act(() => source.emit("heartbeat"))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+    }
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(source.closed).toBe(false)
+    expect(MockEventSource.instances).toEqual([source])
+  })
+
+  it("gives the init of a view that joins the open stream its grace", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    // A large init that downloads slowly holds back every other frame.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STALE + 5000)
+    })
+    expect(source.closed).toBe(false)
+
+    act(() => source.emit("init", {
+      type: "init", version: { major: 2, minor: 1 },
+      meta: { streamKey: createStreamKey(details("aaa")) }, data: { torrents: [], total: 0 },
+    }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STALE + 1)
+    })
+    expect(source.closed).toBe(true)
+  })
+
+  it("does not hold changes on a new stream behind a stuck request of the old one", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockReturnValueOnce(new Promise(() => {}))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+
+    act(() => source.emitError())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    const next = MockEventSource.instances[1]
+    act(() => {
+      next.emitOpen()
+      next.emit("connection", { type: "connection", connectionId: "qui-conn-9" })
+    })
+    change.mockResolvedValue(undefined)
+    select("bbb")
+    await settle()
+    expect(change).toHaveBeenLastCalledWith(
+      "qui-conn-9",
+      [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
+      [createStreamKey(details("aaa"))],
+      expect.any(AbortSignal)
+    )
   })
 })

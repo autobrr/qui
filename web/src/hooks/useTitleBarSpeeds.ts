@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useRouteTitle } from "@/hooks/useRouteTitle"
@@ -26,14 +26,14 @@ interface UseTitleBarSpeedsOptions {
   backgroundSpeeds?: { dl: number; up: number }
 }
 
-function useServerStateSpeeds(instanceId?: number, enabled = true) {
+function useServerStateSpeeds(instanceId: number | undefined, enabled: boolean, refetchInterval: number | false) {
   const isEnabled = typeof instanceId === "number" && enabled
 
   const { data, dataUpdatedAt } = useQuery({
     queryKey: ["transfer-info", instanceId],
     queryFn: () => api.getTransferInfo(instanceId as number),
     enabled: isEnabled,
-    refetchInterval: 3000,
+    refetchInterval,
     refetchIntervalInBackground: true,
     staleTime: 0,
   })
@@ -123,7 +123,8 @@ export function useTitleBarSpeeds({
     !streamDataUsable
   const backgroundQuery = useServerStateSpeeds(
     instanceId,
-    shouldUseFallbackPolling
+    shouldUseFallbackPolling,
+    streamFallbackPollInterval(streamState, 3000)
   )
   if (!needsFreshBackground) {
     fallbackBaselineRef.current = null

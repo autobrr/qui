@@ -16,19 +16,20 @@ vi.mock("react-i18next", async (importOriginal) => ({
 
 // The mocks hand back the same objects every render, since a fresh one would loop the components' effects.
 const { instances, settingsQuery, runsQuery, mutation, useOrphanScanSettings } = vi.hoisted(() => {
-  const instance = (id: number, filesystemMode: FilesystemMode, read = filesystemMode !== "none") => ({
+  const instance = (id: number, filesystemMode: FilesystemMode, read = filesystemMode !== "none", identity = filesystemMode === "local") => ({
     id,
     name: `instance-${id}-${filesystemMode}`,
     isActive: true,
     hasLocalFilesystemAccess: filesystemMode === "local",
     filesystemMode,
-    capabilities: { read, identity: filesystemMode === "local", write: filesystemMode === "local", content: filesystemMode === "local" },
+    capabilities: { read, identity, write: filesystemMode === "local", content: filesystemMode === "local" },
   })
   const settingsQuery: { data?: { autoCleanupEnabled: boolean, autoCleanupMaxFiles: number } } = { data: undefined }
   return {
     settingsQuery,
     // Instance 4 pairs a remote mode with no Read, so the gate is shown to follow the capability rather than the mode.
-    instances: [instance(1, "local"), instance(2, "remote"), instance(3, "none"), instance(4, "remote", false)] as unknown as Instance[],
+    // Instance 5 is a remote instance that reads file identity, where auto-cleanup runs.
+    instances: [instance(1, "local"), instance(2, "remote"), instance(3, "none"), instance(4, "remote", false), instance(5, "remote", true, true)] as unknown as Instance[],
     runsQuery: { data: [], isLoading: false },
     mutation: { mutate: () => {}, isPending: false },
     useOrphanScanSettings: vi.fn(() => settingsQuery),
@@ -70,7 +71,7 @@ afterEach(() => {
 function renderOverview() {
   return render(
     <TooltipProvider>
-      <OrphanScanOverview expandedInstances={["1", "2", "3", "4"]} onExpandedInstancesChange={() => {}} />
+      <OrphanScanOverview expandedInstances={["1", "2", "3", "4", "5"]} onExpandedInstancesChange={() => {}} />
     </TooltipProvider>
   )
 }
@@ -90,15 +91,16 @@ it("tells a remote instance inline what does not run on it", () => {
   const { container } = renderOverview()
 
   const text = container.textContent ?? ""
-  expect(text.split("preferences.orphanScanOverview.remoteLimits").length - 1).toBe(1)
+  expect(text.split("preferences.orphanScanOverview.remoteLimits").length - 1).toBe(2)
+  expect(text.split("preferences.orphanScanOverview.remoteNoIdentity").length - 1).toBe(1)
 })
 
-it("says auto-cleanup does not run for a remote instance even when it is enabled", () => {
+it("says auto-cleanup does not run for a remote instance without file identity even when it is enabled", () => {
   settingsQuery.data = { autoCleanupEnabled: true, autoCleanupMaxFiles: 100 }
   const { container } = renderOverview()
 
-  // Only the local and remote instances render a summary. The one without access renders none.
+  // The local instance and both readable remote ones render a summary. The ones without Read render none.
   const text = container.textContent ?? ""
   expect(text.split("preferences.orphanScanOverview.autoCleanupRemote").length - 1).toBe(1)
-  expect(text.split("preferences.orphanScanOverview.autoCleanupEnabled").length - 1).toBe(1)
+  expect(text.split("preferences.orphanScanOverview.autoCleanupEnabled").length - 1).toBe(2)
 })

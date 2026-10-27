@@ -83,7 +83,7 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 // capability names what they need: reflink mode needs a cloning filesystem
 // (UpdateInstance, and reflinkAllowed in the settings panel), dirscan's link
 // trees still apply host filepath to backend paths (#2919), and the orphan-scan
-// confirm refuses a remote run until remote deletes land (#3236).
+// confirm also needs a remote run's walk to have read every file's identity.
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:

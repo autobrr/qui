@@ -39,8 +39,7 @@
   "errchkjson": {
     "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
-    "internal/services/automations/service.go": 16,
-    "internal/web/swagger/swagger.go": 1
+    "internal/services/automations/service.go": 16
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
