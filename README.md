@@ -43,7 +43,7 @@ docker run -d \
 - **Automations**: Rule-based torrent management with conditions and actions
 - **Backups & Restore**: Scheduled snapshots with multiple restore modes
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps
-- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese, with automatic browser-language detection
+- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan, with automatic browser-language detection
 
 ## Community
 
@@ -52,7 +52,7 @@ Join our community on [Discord](https://discord.autobrr.com/qui)!
 ## Support
 
 - [GitHub Discussions](https://github.com/autobrr/qui/discussions/new/choose) - Feature requests and bug reports
-- [GitHub Issues](https://github.com/autobrr/qui/issues) - Work in progress
+- [GitHub Issues](https://github.com/autobrr/qui/issues) - Confirmed bugs and planned work
 
 ## Support Development
 
@@ -102,11 +102,17 @@ Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) t
 
 For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
 
+[Macroscope](https://macroscope.com) supports code review for qui through its open source program.
+
+<p>
+  <a href="https://macroscope.com">
+    <img alt="Sponsored by Macroscope" src=".github/assets/macroscope-banner.png" width="400">
+  </a>
+</p>
+
 ## Contributing
 
-Contributions are welcome.
-
-See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the development and test workflow.
+[`CONTRIBUTING.md`](.github/CONTRIBUTING.md) tells who can contribute and how. It also gives the development and test workflow.
 
 ## Alternatives
 

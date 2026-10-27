@@ -41,6 +41,7 @@ export function nextSelection(selected: string[], item: string, single: boolean)
 }
 
 interface MultiSelectProps {
+  id?: string
   options: Option[]
   selected: string[]
   onChange: (selected: string[]) => void
@@ -62,6 +63,7 @@ interface MultiSelectProps {
 }
 
 export function MultiSelect({
+  id,
   options,
   selected,
   onChange,
@@ -105,6 +107,7 @@ export function MultiSelect({
 
   const triggerButton = (
     <Button
+      id={id}
       type="button"
       variant="outline"
       role="combobox"

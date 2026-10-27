@@ -23,7 +23,7 @@ func setupDirScanTestDB(t *testing.T) *database.DB {
 }
 
 func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db := setupDirScanTestDB(t)
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -49,10 +49,6 @@ func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, run)
 	require.Equal(t, models.DirScanRunStatusQueued, run.Status)
-
-	active, err := store.HasActiveRun(ctx, dir.ID)
-	require.NoError(t, err)
-	require.True(t, active)
 
 	activeRun, err := store.GetActiveRun(ctx, dir.ID)
 	require.NoError(t, err)
@@ -155,7 +151,7 @@ func TestDirScanStore_GetActiveRun_PrefersRunningOverQueued(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, store.UpdateRunStatus(ctx, runningID, models.DirScanRunStatusScanning))
 
-	queuedID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
+	_, err = store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
 	require.NoError(t, err)
 
 	activeRun, err := store.GetActiveRun(ctx, dir.ID)
@@ -163,15 +159,9 @@ func TestDirScanStore_GetActiveRun_PrefersRunningOverQueued(t *testing.T) {
 	require.NotNil(t, activeRun)
 	require.Equal(t, runningID, activeRun.ID)
 	require.Equal(t, models.DirScanRunStatusScanning, activeRun.Status)
-
-	queuedRun, err := store.GetQueuedRun(ctx, dir.ID)
-	require.NoError(t, err)
-	require.NotNil(t, queuedRun)
-	require.Equal(t, queuedID, queuedRun.ID)
-	require.Equal(t, models.DirScanRunStatusQueued, queuedRun.Status)
 }
 
-func TestDirScanStore_GetQueuedRun_PrefersNewestIDWhenStartedAtTies(t *testing.T) {
+func TestDirScanStore_GetActiveRun_PrefersNewestIDWhenStartedAtTies(t *testing.T) {
 	ctx := context.Background()
 	db := setupDirScanTestDB(t)
 
@@ -207,11 +197,6 @@ func TestDirScanStore_GetQueuedRun_PrefersNewestIDWhenStartedAtTies(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, activeRun)
 	require.Equal(t, secondID, activeRun.ID)
-
-	queuedRun, err := store.GetQueuedRun(ctx, dir.ID)
-	require.NoError(t, err)
-	require.NotNil(t, queuedRun)
-	require.Equal(t, secondID, queuedRun.ID)
 }
 
 func TestDirScanStore_PruneRunHistory_TrimsLegacyRows(t *testing.T) {
@@ -266,4 +251,87 @@ func TestDirScanStore_PruneRunHistory_TrimsLegacyRows(t *testing.T) {
 	runsB, err := store.ListRuns(ctx, dirB.ID, 100)
 	require.NoError(t, err)
 	require.Len(t, runsB, 4)
+}
+
+func createRunTestDirectory(t *testing.T) (*database.DB, *models.DirScanStore, *models.DirScanDirectory) {
+	t.Helper()
+
+	ctx := t.Context()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	return db, store, dir
+}
+
+func TestDirScanStore_CreateRunIfNoActive_IgnoresWebhookScans(t *testing.T) {
+	ctx := t.Context()
+	_, store, dir := createRunTestDirectory(t)
+
+	webhookID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, webhookID, models.DirScanRunStatusSearching))
+
+	fullID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
+	require.NoError(t, err, "a webhook scan in progress does not block a full scan")
+	require.NotEqual(t, webhookID, fullID)
+
+	_, err = store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
+	require.ErrorIs(t, err, models.ErrDirScanRunAlreadyActive, "a directory has at most one full scan")
+}
+
+func TestDirScanStore_CreateRun_TrimKeepsRunsInProgress(t *testing.T) {
+	ctx := t.Context()
+	_, store, dir := createRunTestDirectory(t)
+
+	fullID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, fullID, models.DirScanRunStatusSearching))
+
+	for range 12 {
+		runID, createErr := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+		require.NoError(t, createErr)
+		require.NoError(t, store.UpdateRunCompleted(ctx, runID, 0, 0))
+	}
+
+	full, err := store.GetRun(ctx, fullID)
+	require.NoError(t, err)
+	require.NotNil(t, full, "the trim keeps the full scan that is in progress")
+
+	runs, err := store.ListRuns(ctx, dir.ID, 100)
+	require.NoError(t, err)
+	require.Len(t, runs, 11, "the newest 10 runs plus the older run in progress")
+}
+
+func TestDirScanStore_ListActiveRuns(t *testing.T) {
+	ctx := t.Context()
+	_, store, dir := createRunTestDirectory(t)
+
+	doneID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunCompleted(ctx, doneID, 0, 0))
+
+	fullID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, fullID, models.DirScanRunStatusSearching))
+	webhookID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
+	require.NoError(t, err)
+
+	runs, err := store.ListActiveRuns(ctx, dir.ID)
+	require.NoError(t, err)
+	require.Len(t, runs, 2)
+	require.Equal(t, fullID, runs[0].ID)
+	require.Equal(t, webhookID, runs[1].ID)
 }

@@ -68,6 +68,8 @@ type Event struct {
 	DirScanMatchesFound      int
 	DirScanTorrentsAdded     int
 	OrphanScanRunID          int64
+	OrphanScanPartial        bool
+	OrphanScanFilesFound     int
 	OrphanScanFilesDeleted   int
 	OrphanScanFoldersDeleted int
 	ErrorMessage             string
@@ -116,12 +118,26 @@ func (s *Service) Start(ctx context.Context) {
 	})
 }
 
+// Listens reports whether an enabled target listens for the event type. On a
+// read error it reports true, so the event is queued and dispatch reads again.
+func (s *Service) Listens(ctx context.Context, eventType EventType) bool {
+	targets, err := s.store.ListEnabled(ctx)
+	return err != nil || slices.ContainsFunc(targets, func(target *models.NotificationTarget) bool {
+		return allowsEvent(target.EventTypes, eventType)
+	})
+}
+
 func (s *Service) Notify(ctx context.Context, event Event) {
 	if s == nil || s.store == nil {
 		return
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	// An event that no target listens for would only fill the queue.
+	if !s.Listens(ctx, event.Type) {
+		return
 	}
 
 	if s.queue == nil {
@@ -381,10 +397,19 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanCompleted:
 		title := "Orphan scan completed"
+		if event.OrphanScanPartial {
+			title = "Orphan scan partial"
+		}
 		lines := []string{
 			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
 			formatLine("Files deleted", strconv.Itoa(event.OrphanScanFilesDeleted)),
-			formatLine("Folders deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
+			formatLine("Directories deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
+		}
+		if event.OrphanScanPartial {
+			lines = append(lines, formatLine("Orphans found", strconv.Itoa(event.OrphanScanFilesFound)))
+		}
+		if event.ErrorMessage != "" {
+			lines = append(lines, formatLine("Warning", formatErrorMessage(event.ErrorMessage)))
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanFailed:
@@ -734,6 +759,7 @@ const (
 const (
 	discordColorInfo    = 0x58b9ff
 	discordColorSuccess = 0x57f287
+	discordColorWarning = 0xfee75c
 	discordColorError   = 0xed4245
 )
 
@@ -864,6 +890,9 @@ func buildDiscordPayload(config *shoutrrrdiscord.Config, event Event, title, mes
 		Color:       discordEventColor(event.Type),
 		Fields:      embedFields,
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	}
+	if event.Type == EventOrphanScanCompleted && event.OrphanScanPartial {
+		embed.Color = discordColorWarning
 	}
 
 	payload := discordWebhookPayload{

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react"
-import { getCurrentTheme, getCurrentThemeMode, getThemeVariation, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, setThemeVariation as setThemeVariationUtil, type ThemeMode } from "@/utils/theme"
+import { getCurrentTheme, getCurrentThemeMode, getThemeVariation, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, setThemeVariation as setThemeVariationUtil } from "@/utils/theme"
 
 export function useTheme() {
   const [theme, setThemeState] = useState(() => getCurrentTheme().id)
@@ -27,25 +27,13 @@ export function useTheme() {
     }
   }, [])
 
-  const setTheme = async (themeId: string) => {
-    await setThemeUtil(themeId)
-  }
-
-  const setThemeMode = async (newMode: ThemeMode) => {
-    await setThemeModeUtil(newMode)
-  }
-
-  const setVariation = async (newVariant: string) => {
-    await setThemeVariationUtil(newVariant)
-  }
-
   return {
     theme,
     mode,
     variation,
-    setTheme,
-    setThemeMode,
-    setVariation,
+    setTheme: setThemeUtil,
+    setThemeMode: setThemeModeUtil,
+    setVariation: setThemeVariationUtil,
     currentTheme: getCurrentTheme(),
   }
 }

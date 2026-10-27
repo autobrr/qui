@@ -9,7 +9,6 @@ import { useClientSetting } from "@/lib/client-settings"
 const NO_IDS: readonly number[] = []
 
 // An empty selection stores "" (the cleared sentinel); parse never sees it.
-const parseIds = (raw: string): readonly number[] => parseUnifiedInstanceIds(raw)
 const serializeIds = (ids: readonly number[]): string => encodeUnifiedInstanceIds(ids) ?? ""
 
 export function usePersistedUnifiedInstanceFilter(): [
@@ -18,7 +17,7 @@ export function usePersistedUnifiedInstanceFilter(): [
 ] {
   return useClientSetting<readonly number[]>("qui-unified-instance-filter", {
     defaultValue: NO_IDS,
-    parse: parseIds,
+    parse: parseUnifiedInstanceIds,
     serialize: serializeIds,
   })
 }

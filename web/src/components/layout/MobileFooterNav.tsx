@@ -25,7 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getThemeById, isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -34,9 +34,11 @@ import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
@@ -111,7 +113,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
-  const { isSelectionMode } = useTorrentSelection()
+  const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
@@ -135,6 +137,16 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+  const updateItemLabel = updateInfo && (
+    <>
+      <Download className="h-4 w-4" />
+      <div className="flex flex-col">
+        <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
+        <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
+      </div>
+    </>
+  )
 
   const activeInstances = useMemo(() => {
     if (!instances) {
@@ -236,7 +248,7 @@ export function MobileFooterNav() {
     >
       <div className="flex items-center justify-around h-16">
         {/* Dashboard */}
-        <Link
+        {!isDemo && <Link
           to="/dashboard"
           className={cn(
             "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
@@ -248,7 +260,7 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">{t("mobileNav.dashboard")}</span>
-        </Link>
+        </Link>}
 
         {/* Clients access */}
         {hasClientScopeEntry ? (
@@ -416,100 +428,94 @@ export function MobileFooterNav() {
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
-                  <a
-                    href={updateInfo.html_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
-                  >
-                    <Download className="h-4 w-4" />
-                    <div className="flex flex-col">
-                      <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
-                      <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
-                    </div>
-                  </a>
+                  {/* Settings holds the Install update button. */}
+                  <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem asChild>
-              <Link
-                to="/search"
-                className="flex items-center gap-2"
-              >
-                <SearchIcon className="h-4 w-4" />
-                {t("nav.search")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/cross-seed"
-                params={{}}
-                className="flex items-center gap-2"
-              >
-                <GitBranch className="h-4 w-4" />
-                {t("nav.crossSeed")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/automations"
-                className="flex items-center gap-2"
-              >
-                <Zap className="h-4 w-4" />
-                {t("nav.automations")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/backups"
-                className="flex items-center gap-2"
-              >
-                <Archive className="h-4 w-4" />
-                {t("nav.instanceBackups")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/rss"
-                className="flex items-center gap-2"
-              >
-                <Rss className="h-4 w-4" />
-                {t("nav.rss")}
-              </Link>
-            </DropdownMenuItem>
+            {!isDemo && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/search"
+                    className="flex items-center gap-2"
+                  >
+                    <SearchIcon className="h-4 w-4" />
+                    {t("nav.search")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/cross-seed"
+                    params={{}}
+                    className="flex items-center gap-2"
+                  >
+                    <GitBranch className="h-4 w-4" />
+                    {t("nav.crossSeed")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/automations"
+                    className="flex items-center gap-2"
+                  >
+                    <Zap className="h-4 w-4" />
+                    {t("nav.automations")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/backups"
+                    className="flex items-center gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    {t("nav.instanceBackups")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/rss"
+                    className="flex items-center gap-2"
+                  >
+                    <Rss className="h-4 w-4" />
+                    {t("nav.rss")}
+                  </Link>
+                </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                className="flex items-center gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                {t("nav.generalSettings")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                search={{ tab: "instances" }}
-                className="flex items-center gap-2"
-              >
-                <Server className="h-4 w-4" />
-                {t("nav.manageInstances")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                search={{ tab: "logs" }}
-                className="flex items-center gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                {t("nav.logs")}
-              </Link>
-            </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    className="flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    {t("nav.generalSettings")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    search={{ tab: "instances" }}
+                    className="flex items-center gap-2"
+                  >
+                    <Server className="h-4 w-4" />
+                    {t("nav.manageInstances")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    search={{ tab: "logs" }}
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {t("nav.logs")}
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}
@@ -554,14 +560,26 @@ export function MobileFooterNav() {
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => logout()}
-              className="text-destructive focus:text-destructive flex items-center gap-2"
-            >
-              <LogOut className="h-4 w-4 text-destructive" />
-              {t("mobileNav.logout")}
-            </DropdownMenuItem>
+            {isDemo && demoLinks.map((link) => (
+              <DropdownMenuItem asChild key={link.href}>
+                <a href={link.href} target="_top" className="flex items-center gap-2">
+                  <link.icon className="h-4 w-4" />
+                  {t(link.labelKey)}
+                </a>
+              </DropdownMenuItem>
+            ))}
+            {!isDemo && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => logout()}
+                  className="text-destructive focus:text-destructive flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4 text-destructive" />
+                  {t("mobileNav.logout")}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

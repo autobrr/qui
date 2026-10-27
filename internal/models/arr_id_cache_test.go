@@ -51,14 +51,12 @@ func TestArrIDCacheStore_GetReturnsLiveEntryInNonUTCTimezone(t *testing.T) {
 	require.False(t, entry.IsNegative)
 }
 
-// TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone confirms the same UTC
-// normalization holds for the expiry-counting and cleanup helpers: a live entry
-// counts as valid and survives cleanup, while an already-expired entry is excluded
-// and removed — regardless of the process timezone.
+// TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone covers expiry and cleanup
+// outside UTC. Get excludes expired entries, and cleanup removes only those entries.
 func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	forceNonUTCLocal(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "arr-id-cache-nonutc-expiry")
 	store := models.NewArrIDCacheStore(db)
 
@@ -69,17 +67,13 @@ func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	_, err := store.Get(ctx, "stale", "movie")
 	require.ErrorIs(t, err, sql.ErrNoRows)
 
-	valid, err := store.CountValid(ctx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), valid)
-
 	removed, err := store.CleanupExpired(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), removed)
 
-	total, err := store.Count(ctx)
+	removed, err = store.CleanupExpired(ctx)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
+	require.Zero(t, removed)
 
 	// The live entry is the survivor and is still retrievable.
 	entry, err := store.Get(ctx, "live", "tv")
@@ -153,8 +147,7 @@ func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, ids, false, -time.Minute))
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, nil, true, time.Hour))
 
-		// Get filters expired rows, so read the row state via CountValid semantics:
-		// the negative entry must be the live one.
+		// The negative entry must replace the expired positive entry.
 		entry, err := store.Get(ctx, "expired", "movie")
 		require.NoError(t, err)
 		require.True(t, entry.IsNegative)

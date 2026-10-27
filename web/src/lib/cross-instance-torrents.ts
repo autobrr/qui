@@ -131,6 +131,11 @@ export function applyStreamDelta(
 ): { data: TorrentResponse; changed: boolean } {
   const order = payload.delta?.order
   const frame = payload.data ?? ({} as TorrentResponse)
+  // Only counts use omission to mean "unchanged".
+  const snapshot = {
+    counts: prev.counts,
+    ...frame,
+  }
 
   if (isCrossInstance) {
     const prevRows = prev.crossInstanceTorrents ?? []
@@ -142,7 +147,7 @@ export function applyStreamDelta(
 
     return {
       data: {
-        ...frame,
+        ...snapshot,
         crossInstanceTorrents: rows,
         cross_instance_torrents: rows,
       },
@@ -156,7 +161,7 @@ export function applyStreamDelta(
 
   return {
     data: {
-      ...frame,
+      ...snapshot,
       torrents: rows,
     },
     changed,

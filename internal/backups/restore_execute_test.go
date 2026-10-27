@@ -59,7 +59,7 @@ func runRestoreAdd(t *testing.T, manifest ManifestItem) (map[string]string, []st
 	}
 
 	writer := &captureTorrentWriter{}
-	svc := NewService(nil, writer, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc := NewService(nil, writer, Config{WorkerCount: 1, DataDir: dataDir}, nil)
 	require.NotNil(t, svc.torrentWriter)
 
 	plan := &RestorePlan{

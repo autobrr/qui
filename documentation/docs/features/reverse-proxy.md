@@ -1,6 +1,7 @@
 ---
 sidebar_position: 7
-title: Reverse Proxy
+title: qBittorrent reverse proxy for Sonarr, Radarr, and autobrr
+sidebar_label: Reverse Proxy
 description: Let external apps access qBittorrent through qui without credentials.
 ---
 
@@ -78,6 +79,23 @@ If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-see
 
 The reverse proxy works with any application that supports qBittorrent's Web API.
 
+## Behind nginx or another proxy with basic auth
+
+If a reverse proxy in front of qui asks for basic auth, turn off basic auth for the `/proxy/` path. The proxy otherwise rejects requests from external applications before they reach qui.
+
+If you use nginx, add this location block. The example uses the base URL `/qui/` and the upstream name that swizzin creates. On swizzin, put the block in `/etc/nginx/apps/qui-proxy.conf` and replace `USERNAME` with your swizzin user.
+
+```nginx
+location /qui/proxy/ {
+    proxy_pass              http://USERNAME.qui;
+    proxy_set_header        Host $host;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    auth_basic off;
+}
+```
+
+On the server that runs nginx, run `nginx -t && systemctl reload nginx`.
+
 ## Security features
 
 - **API key authentication**: each client needs its own key.
@@ -118,9 +136,16 @@ These endpoints proxy to qBittorrent and update qui's local state:
 |----------|----------|
 | `/api/v2/auth/login` | If the instance is healthy, returns success as a no-op |
 | `/api/v2/torrents/reannounce` | If tracker monitoring is enabled, routes to qui's reannounce service |
-| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders |
 | `/api/v2/torrents/renameFile` | Forwards to qBittorrent, invalidates the file cache |
 | `/api/v2/torrents/renameFolder` | Forwards to qBittorrent, invalidates the file cache |
-| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders when files are deleted |
+| `/api/v2/torrents/setCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setAutoManagement` | Forwards to qBittorrent unchanged, removes leftover folders when it turns ATM on |
+| `/api/v2/torrents/editCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setSavePath` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setDownloadPath` | Forwards to qBittorrent unchanged, removes leftover folders |
+
+qui removes leftover folders only after qBittorrent answers with success, only on an instance with **Local Filesystem Access**, and only for a request sent as a URL-encoded form. See [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents).
 
 qui forwards all other endpoints unchanged to qBittorrent.

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 12
-title: Custom Themes
-description: Sideload your own theme CSS files from a directory on disk (premium).
+title: Custom CSS themes for the qBittorrent web UI
+sidebar_label: Custom Themes
+description: Sideload your own CSS theme from a directory on disk with a premium license, with a design token reference and a Refresh button that loads edited files without a restart.
 ---
 
 # Custom themes
@@ -23,6 +24,20 @@ If you do not have an active license, premium themes appear as locked cards that
 qui stores your theme selection in its database, so it [syncs across devices](./dashboard.md#interface-preferences-sync) like other interface preferences. The login page also paints a selected built-in theme. A custom theme paints on the login page only in a browser that applied it before. The browser cannot load custom theme files until you log in.
 
 If your premium license lapses, qui applies the default theme instead. If you use a built-in premium theme, qui preserves your stored selection and restores the theme when you renew the license.
+
+### A separate theme for the mobile layout
+
+qui shows the mobile layout when the window is less than 768 px wide. qui uses the window width, not the device type. A narrow desktop window also shows the mobile layout.
+
+To use a different theme on the mobile layout, turn on **Separate theme for mobile layout** below the theme grid. The mobile layout then starts with your current theme. After that, a theme change on the mobile layout changes only the mobile theme. A theme change on the desktop layout changes only the desktop theme. The theme, the light, dark, or auto mode, and the variation split together. A line under the theme grid tells you which theme the picker changes. qui stores this setting in its database, so it applies to every browser.
+
+To change the mobile theme, use a phone or a narrow window. When you turn the setting off, qui deletes the mobile theme, and every layout shows the desktop theme.
+
+### Keep the theme of one browser local
+
+To keep a theme on one browser only, for example on a shared computer, turn on **Keep this browser's theme local**. This browser then does not take the theme from the server and does not send its theme changes to the server. It keeps one theme for both layouts. The setting applies only to this browser. If this setting is on, you cannot change **Separate theme for mobile layout** in this browser.
+
+When you turn the setting off, the browser shows the theme from the server again. Your other devices do not change.
 
 ## Where to put theme files
 

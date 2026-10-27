@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { FilesystemMode } from "./instances"
+
 // Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"
@@ -30,6 +32,9 @@ export interface OrphanScanSettings {
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
+  scanDefaultSavePath: boolean
+  scanCategoryPaths: boolean
+  deleteAbandonedDirs: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -43,6 +48,9 @@ export interface OrphanScanSettingsUpdate {
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number
+  scanDefaultSavePath?: boolean
+  scanCategoryPaths?: boolean
+  deleteAbandonedDirs?: boolean
 }
 
 export interface OrphanScanRun {
@@ -56,9 +64,14 @@ export interface OrphanScanRun {
   foldersDeleted: number
   bytesReclaimed: number
   truncated: boolean
+  partial?: boolean
   errorMessage?: string | null
   startedAt: string
   completedAt?: string | null
+  // The mode the run scanned under, which can differ from the instance's current one.
+  filesystemMode: FilesystemMode
+  // A remote run deletes only when its scan read every file's identity.
+  identityComplete: boolean
 }
 
 export interface OrphanScanFile {
@@ -66,6 +79,7 @@ export interface OrphanScanFile {
   runId: number
   filePath: string
   fileSize: number
+  isAbandonedDir: boolean
   modifiedAt?: string | null
   status: OrphanScanFileStatus
   errorMessage?: string | null

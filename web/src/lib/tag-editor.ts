@@ -20,15 +20,11 @@ export interface TagUpdatePlan {
 
 const tagSortCollator = new Intl.Collator(undefined, { numeric: true, usage: "sort" })
 
-function normalizeTag(tag: string): string {
-  return tag.trim()
-}
-
 function buildTagSourceSet(availableTags: string[] | null | undefined, tagValues: string[]): Set<string> {
   const tags = new Set<string>()
 
   for (const tag of availableTags ?? []) {
-    const normalized = normalizeTag(tag)
+    const normalized = tag.trim()
     if (normalized) {
       tags.add(normalized)
     }

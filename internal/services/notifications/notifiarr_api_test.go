@@ -216,6 +216,49 @@ func TestBuildNotifiarrAPIDataIncludesZeroValueTorrentMetrics(t *testing.T) {
 	require.Equal(t, int64(0), *data.Torrent.NumLeechs)
 }
 
+func TestBuildNotifiarrTestPayload(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []EventType{EventTorrentAdded, EventTorrentCompleted} {
+		t.Run(string(eventType), func(t *testing.T) {
+			encoded, err := BuildNotifiarrTestPayload(Event{Type: eventType, InstanceID: 1})
+			require.NoError(t, err)
+
+			var payload notifiarrAPIPayload
+			require.NoError(t, json.Unmarshal(encoded, &payload))
+			require.Equal(t, string(eventType), payload.Event)
+			require.Equal(t, string(eventType), payload.Data.Event)
+			require.NotEmpty(t, payload.Data.Subject)
+			require.Contains(t, payload.Data.Message, "Progress: 0.0000")
+			require.Contains(t, payload.Data.Message, "Total size bytes: 0")
+			require.Contains(t, payload.Data.Fields, notifiarrField{Title: "Total size bytes", Text: "0", Inline: true})
+			require.Equal(t, new("Instance"), payload.Data.InstanceName)
+
+			torrent := payload.Data.Torrent
+			require.NotNil(t, torrent)
+			for _, metric := range []*int64{
+				torrent.EtaSeconds, torrent.TotalSizeBytes, torrent.DownloadedBytes,
+				torrent.AmountLeftBytes, torrent.DlSpeedBps, torrent.UpSpeedBps,
+				torrent.NumSeeds, torrent.NumLeechs,
+			} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			for _, metric := range []*float64{torrent.Progress, torrent.Ratio} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			require.Equal(t, &payload.Data.Timestamp, torrent.EstimatedCompletionAt)
+		})
+	}
+
+	t.Run("unknown event", func(t *testing.T) {
+		payload, err := BuildNotifiarrTestPayload(Event{Type: "unknown"})
+		require.NoError(t, err)
+		require.Nil(t, payload)
+	})
+}
+
 func TestSendTestNotifiarrAPIUsesConfiguredEventType(t *testing.T) {
 	t.Parallel()
 

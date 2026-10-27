@@ -1,7 +1,8 @@
 ---
 sidebar_position: 7
-title: Season Packs
-description: Assemble season packs from individual episodes, through autobrr webhooks or automatic cross-seed assembly.
+title: Cross-seed season packs from episodes
+sidebar_label: Season Packs
+description: Assemble a season pack torrent from episodes you already seed, from autobrr announces or automatic cross-seed searches.
 ---
 
 # Season Packs
@@ -26,11 +27,11 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
    - `404 Not Found`: local coverage is too low, the release is not a season pack, or the feature is disabled
 7. If qui returns `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`.
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file if its size or release details differ from the pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`.
-9. If episodes or extras are missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. qBittorrent then downloads the missing files. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. qui reports best-effort fallbacks by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
+9. If episodes or extras are missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. qBittorrent then downloads the missing files. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, qui also leaves the torrent paused when a linked file fails its recheck on a piece it does not share with a pending file, because a download into that file would change the local episode. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck). qui reports best-effort fallbacks by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Automatic Assembly
 
-qui also assembles season packs without autobrr webhooks. To turn this on, enable **Assemble season packs automatically** in **Cross-Seed > Rules > Season packs**. The switch is off by default and operates independently of the webhook feature.
+qui also assembles season packs without autobrr webhooks. To turn this on, enable **Assemble season packs automatically** in **Cross-Seed > Season packs**. The switch is off by default and operates independently of the webhook feature.
 
 If the switch is on, qui diverts a season pack into the assembly pipeline when all of these conditions are true:
 
@@ -79,13 +80,15 @@ For an episode to count toward coverage, it must:
 - Pass the same release-compatibility checks used by normal cross-seeding
 - Belong to the same episode in the season pack
 
+A plain `WEB` source matches both `WEB-DL` and `WEBRip`. If the check has the torrent data, a `WEB-DL` episode also matches a `WEBRip` pack, and the reverse, when the size of the episode torrent is within 5% of the episode file in the pack. Trackers often give the same web release a different label. At apply, qui compares the exact file sizes.
+
 Mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
-The default threshold is **75%**. Change it in **Cross-Seed > Rules > Season packs** in the qui UI.
+The default threshold is **75%**. Change it in **Cross-Seed > Season packs** in the qui UI.
 
 ## Matching settings
 
-These settings affect only season-pack checks and applies. They do not change normal cross-seed matching in the Rules tab.
+These settings affect only season-pack checks and applies. They do not change normal cross-seed matching in Matching rules.
 
 The defaults match common seasonpackarr expectations.
 
@@ -93,7 +96,7 @@ The defaults match common seasonpackarr expectations.
 | --- | --- | --- | --- |
 | Ignore REPACK/PROPER differences | On | Treat REPACK and PROPER episodes as compatible with the season pack. | `Show.S01E01.REPACK` matches `Show.S01E01.PROPER` |
 | Simplify HDR matching | Off | Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching. | `HDR10+` matches `HDR10` |
-| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
+| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. A WEB-DL episode then also matches a WEBRip pack at any size. | `WEB-DL` matches `WEBRip` |
 | Ignore year differences | Off | Allow matches when release dates differ or when one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
 ### Alternate titles
@@ -103,6 +106,10 @@ If Sonarr resolves the show, qui pulls its series-wide alternate titles and uses
 ### Anime absolute numbering
 
 If both sides use the same absolute numbering, qui matches absolute-numbered anime episodes (for example `Show - 1140`, with no season number) against a season pack. qui keys the local episode to the pack season and uses the absolute episode number to identify it.
+
+If a pack file has no season in its name, qui reads its number as an absolute episode, with one exception. If the pack is season 2 or later and the lowest episode number of these files is 1, the files use season numbering. For example, in a `Show S02` pack, the files `Show - 01` to `Show - 12` are `S02E01` to `S02E12`. In the same pack, the files `Show - 13` to `Show - 24` are absolute episodes 13 to 24.
+
+Some pack names have no season number, but the title ends with a Roman numeral from II to X, such as `Show II [Batch]`. qui reads the numeral as the season of the pack, so `Show II [Batch]` is season 2 of `Show`.
 
 Season-pack matching does not translate between numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation needs per-episode data for every file in the pack. Single episodes are different: with Sonarr linked, qui maps one episode between schemes. See [Manual Search](./overview.md#manual-search) in the overview.
 
@@ -118,21 +125,21 @@ When `/apply` runs, qui:
 - Leaves unmatched episodes and extras for qBittorrent to download
 - Adds the torrent paused if any files are missing
 - Attempts an automatic recheck so qBittorrent discovers the linked bytes
-- Queues automatic resume after the recheck. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes, which allows qBittorrent to download the remaining files or pieces. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review.
+- Queues automatic resume after the recheck. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes, which allows qBittorrent to download the remaining files or pieces. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file also leaves the torrent paused. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 If automatic recheck or resume queueing cannot start, qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`.
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
-In hardlink mode, qui can also apply piece-boundary protection to incomplete packs. If pending files share torrent pieces with linked episode files and the **Piece boundary safety check** in **Cross-Seed > Rules > Safety & validation** is enabled, qui blocks the apply. This check is off by default. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
+In hardlink mode, qui can also apply piece-boundary protection to incomplete packs. If pending files share torrent pieces with linked episode files and the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is enabled, qui blocks the apply. This check is off by default. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
 
 ## Prerequisites
 
-- You must enable **Local filesystem access** on the target instance
-- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees.
+- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
-During eligibility checks, qui skips instances that lack local filesystem access or a link mode.
+During eligibility checks, qui skips instances that lack filesystem access or a link mode.
 
 See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
@@ -140,11 +147,11 @@ See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
 ### 1. Enable season packs in qui
 
-- Go to **Cross-Seed > Rules > Season packs**
+- Go to **Cross-Seed > Season packs**
 - Enable the feature
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for better episode count accuracy. qui uses TVMaze as a free fallback without any configuration.
-- Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category. Then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule to the category that Sonarr monitors on its qBittorrent download client (for example, route `1080p` to `tv-hd` and `2160p` to `tv-uhd`). Sonarr picks up the assembled pack and imports it. If Sonarr uses hardlinks and the library sits on the same filesystem, the same on-disk bytes back both the library and every seeded episode. If a category does not exist yet, qui creates it on demand. qui leaves existing categories untouched. If no rule matches and you set no fallback, season packs use the global Category Mode configured under **Cross-Seed > Rules > Categories**.
+- Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category. Then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule to the category that Sonarr monitors on its qBittorrent download client (for example, route `1080p` to `tv-hd` and `2160p` to `tv-uhd`). Sonarr picks up the assembled pack and imports it. If Sonarr uses hardlinks and the library sits on the same filesystem, the same on-disk bytes back both the library and every seeded episode. If a category does not exist yet, qui creates it on demand. qui leaves existing categories untouched. If no rule matches and you set no fallback, season packs use the global Category Mode configured under **Cross-Seed > Categories and tags > Categories**.
 
 #### Category routing
 
@@ -288,26 +295,42 @@ The `/runs` endpoint accepts an optional `limit` query parameter (default 20, ma
 When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` that points to the linked tree
-- Applies the **Season pack tags** configured in **Cross-Seed > Rules > Tagging**
-- Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, the torrent remains paused for manual review.
+- Applies the **Cross-seed tags** configured in **Cross-Seed > Season packs**
+- Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, or a hardlinked file fails the recheck on a piece it does not share with a pending file, the torrent remains paused for manual review.
 - Resolves the category in this order:
-  - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
+  - The category from the matching **Category routing** rule under **Cross-Seed > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
   - The **Anything else** fallback category, if set.
   - The global cross-seed category rules (custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise the category of the matched episode).
 - Creates the resolved category on the target instance if the category does not exist.
+
+## Episode torrents after the pack
+
+qui does not remove or change the episode torrents when it adds a season pack. The pack has its own linked tree, so it does not use the paths of the episode torrents. If the tracker removes the episodes after the pack arrives, qBittorrent reports them as unregistered.
+
+To remove these episode torrents automatically, make an [automation](../automations.md) with these conditions and this action:
+
+- Condition: `Unregistered` is `true`. This condition needs qBittorrent 5.1 or newer.
+- Condition: `Season pack status` is `packed`. This matches only when a pack of the same release is in the client. See [Season pack status](../automations.md#season-pack-status).
+- Action: Remove with files (preserve cross-seeds).
+
+The action deletes only the files of the episode torrent. The pack keeps its data. qui makes the hardlinks or reflinks of the pack before it adds the pack, and a pack that you downloaded has its own copy. With hardlinks or reflinks, the rule frees little or no disk space.
+
+:::warning
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
+:::
 
 ## Instance selection
 
 If `instanceIds` is omitted or contains multiple instances:
 
-1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
+1. qui filters the list to instances with a link mode qui can use: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode
 2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID
 
 ## Activity
 
-Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Rules > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
 
 You can also query recent runs directly:
 
@@ -325,7 +348,7 @@ Start with autobrr:
 
 Then check qui:
 
-- Open **Cross-Seed > Rules > Season packs** and locate the row for the torrent name.
+- Open **Cross-Seed > Season packs** and locate the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
 - If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 
@@ -343,5 +366,6 @@ Look for log messages that contain the torrent name and these phrases:
 - `unsafe piece boundary with pending files`: Hardlink mode blocked an incomplete pack for safety.
 - `torrent added paused; recheck queued`: qui added the pack and queued automatic resume.
 - `Recheck completed below threshold, torrent left paused for manual review`: The recheck reported fewer bytes than qui linked, indicating bad links.
+- `Linked file <name> does not match the torrent, left paused to protect the source`: A hardlinked episode failed its recheck. qui did not resume the torrent, because the download would change that local file. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 qui logs field-level matching details at `DEBUG`, which is the default level. If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`. Then look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry names the release field that did not match.

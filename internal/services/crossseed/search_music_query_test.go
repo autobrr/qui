@@ -14,7 +14,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -142,7 +142,7 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 
 			// nil gazelle clients: this source is not a gazelle tracker, and a client set here
 			// would send the fixture out to the real RED/OPS hosts.
-			_, _, _, err = svc.searchTorrentMatches(ctx, instance.ID, musicQuerySourceHash, TorrentSearchOptions{IndexerIDs: []int{1}}, nil)
+			_, _, _, err = svc.searchTorrentMatches(ctx, instance.ID, musicQuerySourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1}}, nil)
 			require.NoError(t, err)
 
 			mu.Lock()

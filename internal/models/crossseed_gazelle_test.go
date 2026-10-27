@@ -106,3 +106,45 @@ func TestCrossSeedStore_GazelleKeys_DisabledGatesDecryption(t *testing.T) {
 	require.False(t, ok)
 	require.Empty(t, got)
 }
+
+func TestCrossSeedStore_SecretsRedactedOnlyWhenDecryptable(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	ctx := t.Context()
+
+	writeKey := make([]byte, 32)
+	writer, err := models.NewCrossSeedStore(db, writeKey)
+	require.NoError(t, err)
+	_, err = writer.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:       true,
+		RedactedAPIKey:       "red-key",
+		OrpheusAPIKey:        "ops-key",
+		SeasonPackTVDBAPIKey: "tvdb-key",
+		SeasonPackTVDBPIN:    "tvdb-pin",
+	})
+	require.NoError(t, err)
+
+	otherKey := make([]byte, 32)
+	otherKey[0] = 1
+
+	tests := []struct {
+		name string
+		key  []byte
+		want string
+	}{
+		{name: "same key", key: writeKey, want: domain.RedactedStr},
+		{name: "changed key", key: otherKey, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, err := models.NewCrossSeedStore(db, tt.key)
+			require.NoError(t, err)
+
+			settings, err := store.GetSettings(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, settings.RedactedAPIKey)
+			require.Equal(t, tt.want, settings.OrpheusAPIKey)
+			require.Equal(t, tt.want, settings.SeasonPackTVDBAPIKey)
+			require.Equal(t, tt.want, settings.SeasonPackTVDBPIN)
+		})
+	}
+}

@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { api } from "@/lib/api"
+import { api, type StreamSubscription } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
-import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
+import { applyStreamDelta, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
+import { isClientConnectionErrorCode, STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, STREAM_ERROR_UNSUPPORTED } from "@/lib/sync-stream-state"
+import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentResponse, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
@@ -15,34 +17,13 @@ const MAX_RETRY_ATTEMPTS = 6
 const HANDOFF_GRACE_PERIOD_MS = 1200
 const ENTRY_TEARDOWN_DELAY_MS = 200
 
-// Client-side connection-state error codes. These are stable machine identifiers,
-// not human-readable prose: the UI maps them to localized streamStatus.* copy so
-// non-English locales never see English text. entry.error stays truthy for these
-// so the existing polling-fallback gates keep treating the stream as unhealthy.
-// Genuine backend payload errors (stream-error events) are stored verbatim because
-// they are dynamic server text that cannot be translated client-side.
-export const STREAM_ERROR_UNSUPPORTED = "client:eventsource-unsupported"
-export const STREAM_ERROR_DISCONNECTED = "client:disconnected"
-export const STREAM_ERROR_RETRY_EXHAUSTED = "client:retry-exhausted"
-
-const CLIENT_CONNECTION_ERROR_CODES: ReadonlySet<string> = new Set([
-  STREAM_ERROR_UNSUPPORTED,
-  STREAM_ERROR_DISCONNECTED,
-  STREAM_ERROR_RETRY_EXHAUSTED,
-])
-
-// isClientConnectionErrorCode reports whether a StreamState.error value is one of
-// the client-side connection-state codes above (as opposed to backend payload
-// error text). Components use it to decide whether to render the localized
-// connection-status message or the raw backend error.
-export function isClientConnectionErrorCode(error: string | null | undefined): boolean {
-  return error != null && CLIENT_CONNECTION_ERROR_CODES.has(error)
-}
-
 // The backend emits a heartbeat every 5s. Once any event has arrived, if none
 // follows within this window the connection is considered dead even when the
 // browser still reports it open, so we force a reconnect.
 const STREAM_STALE_TIMEOUT_MS = 15000
+// Slow instances can legitimately take 60 seconds between accepted snapshots.
+// Allow two such intervals before adding REST fallback load.
+const STREAM_DATA_STALE_TIMEOUT_MS = 120000
 
 // Grace window applied until the FIRST event of a fresh connection arrives. The
 // init snapshot is a single large SSE event (hundreds of KB on big instances), and
@@ -67,6 +48,8 @@ export interface StreamParams {
   order: "asc" | "desc"
   search?: string
   filters?: TorrentFilters
+  // summary asks for the totals of the view without its rows.
+  summary?: boolean
 }
 
 // normalizeInstanceIds returns a sorted, de-duplicated, positive-only copy used for
@@ -79,10 +62,26 @@ function normalizeInstanceIds(instanceIds?: number[]): number[] | undefined {
   return normalized.length > 0 ? normalized : undefined
 }
 
+function isStreamVersion(value: TorrentStreamVersion | undefined): value is TorrentStreamVersion {
+  return Boolean(
+    value &&
+    Number.isSafeInteger(value.major) &&
+    value.major > 0 &&
+    Number.isSafeInteger(value.minor) &&
+    value.minor > 0
+  )
+}
+
+function sameStreamVersion(a: TorrentStreamVersion | undefined, b: TorrentStreamVersion | undefined) {
+  return Boolean(a && b && a.major === b.major && a.minor === b.minor)
+}
+
 type StreamListener = (payload: TorrentStreamPayload) => void
 
 export interface StreamState {
   connected: boolean
+  initialized: boolean
+  dataStalled: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
   retrying: boolean
@@ -113,8 +112,16 @@ interface StreamEntry {
   params: StreamParams
   listeners: Set<StreamListener>
   connected: boolean
+  initialized: boolean
+  dataStalled: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
+  version?: TorrentStreamVersion
+  snapshot?: TorrentResponse
+  dataDeadline?: number
+  dataTimer?: number
+  handoffGraceUsed?: boolean
+  sourceGeneration: number
   handoffTimer?: number
   handoffPending?: boolean
   // Set once the replacement connection's socket has demonstrably opened during a
@@ -126,14 +133,27 @@ interface StreamEntry {
 }
 
 interface StreamConnection {
+  recovering?: boolean
   source?: EventSource
   handlers?: {
     payload: (event: MessageEvent | Event) => void
     networkError: (event: Event) => void
     heartbeat: (event: MessageEvent | Event) => void
     activity: (event: MessageEvent | Event) => void
+    connection: (event: MessageEvent | Event) => void
   }
   signature?: string
+  // The server names the connection in its first event. With the id, a view
+  // joins or leaves the open source with a change request instead of a reopen.
+  connectionId?: string
+  // The subscriptions and the activity flag that the server holds for the source.
+  streams?: StreamSubscription[]
+  activity?: boolean
+  // Change requests run one at a time, so the server applies them in order.
+  changes?: Promise<void>
+  // The views that joined with a change and have no frame yet. Their init
+  // gets the initial grace, as it did when a view change reopened the stream.
+  joining?: Set<string>
   retryAttempt: number
   retryTimer?: number
   nextRetryAt?: number
@@ -149,12 +169,15 @@ interface PendingConnectionUpdate {
   timer?: number
   preserveState?: boolean
   resetRetry?: boolean
+  force?: boolean
 }
 
 const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
 
 const DEFAULT_STREAM_STATE: StreamState = {
   connected: false,
+  initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -166,6 +189,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
+  const ensureConnectionRef = useRef<(options?: { preserveState?: boolean; force?: boolean }) => void>(() => {})
+  const requestRecoveryRef = useRef<(key: string) => void>(() => {})
   // Re-armable handle to the live connection's stale watchdog. openConnection owns
   // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
   // the visibility effect can re-arm a FRESH timer on tab refocus without reaching
@@ -214,6 +239,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       return {
         connected: entry.connected,
+        initialized: entry.initialized,
+        dataStalled: entry.dataStalled,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -266,6 +293,73 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     []
   )
 
+  const clearDataWatchdog = useCallback((entry: StreamEntry) => {
+    if (entry.dataTimer === undefined) {
+      return
+    }
+    if (typeof window !== "undefined") {
+      window.clearTimeout(entry.dataTimer)
+    } else {
+      clearTimeout(entry.dataTimer)
+    }
+    entry.dataTimer = undefined
+  }, [])
+
+  const markDataStalled = useCallback(
+    (entry: StreamEntry) => {
+      if (
+        streamsRef.current[entry.key] !== entry ||
+        entry.dataStalled ||
+        !entry.initialized ||
+        entry.error
+      ) {
+        return
+      }
+
+      clearDataWatchdog(entry)
+      entry.dataStalled = true
+      notifyStateSubscribers(entry.key)
+    },
+    [clearDataWatchdog, notifyStateSubscribers]
+  )
+
+  const armDataWatchdog = useCallback(
+    (entry: StreamEntry) => {
+      clearDataWatchdog(entry)
+      if (
+        entry.dataDeadline === undefined ||
+        !entry.initialized ||
+        entry.error ||
+        entry.dataStalled
+      ) {
+        return
+      }
+
+      const generation = entry.sourceGeneration
+      const schedule = typeof window !== "undefined"
+        ? window.setTimeout
+        : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+      entry.dataTimer = schedule(() => {
+        entry.dataTimer = undefined
+        if (entry.sourceGeneration !== generation) {
+          return
+        }
+        markDataStalled(entry)
+      }, Math.max(0, entry.dataDeadline - Date.now()))
+    },
+    [clearDataWatchdog, markDataStalled]
+  )
+
+  const acceptStreamData = useCallback(
+    (entry: StreamEntry) => {
+      entry.dataDeadline = Date.now() + STREAM_DATA_STALE_TIMEOUT_MS
+      entry.handoffGraceUsed = false
+      entry.dataStalled = false
+      armDataWatchdog(entry)
+    },
+    [armDataWatchdog]
+  )
+
   const clearHandoffState = useCallback((entry: StreamEntry) => {
     if (entry.handoffTimer !== undefined) {
       if (typeof window !== "undefined") {
@@ -290,6 +384,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.retryTimer = undefined
     }
     connection.retryAttempt = 0
+    connection.recovering = false
     connection.nextRetryAt = undefined
   }, [])
 
@@ -330,6 +425,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         source.removeEventListener("stream-error", handlers.payload)
         source.removeEventListener("heartbeat", handlers.heartbeat)
         source.removeEventListener("activity", handlers.activity)
+        source.removeEventListener("connection", handlers.connection)
       }
 
       source.onopen = null
@@ -339,6 +435,12 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.source = undefined
       connection.handlers = undefined
       connection.signature = undefined
+      connection.connectionId = undefined
+      connection.streams = undefined
+      // A change request of the old source can stay open forever. The next
+      // source must not wait for it.
+      connection.changes = undefined
+      connection.joining = undefined
 
       if (!preserveRetry) {
         clearConnectionRetryState()
@@ -364,13 +466,14 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         order: entry.params.order,
         search: entry.params.search ?? "",
         filters: entry.params.filters ?? null,
+        summary: entry.params.summary ?? false,
       }))
       .sort((a, b) => a.key.localeCompare(b.key))
 
   const openConnection = useCallback(
     (
       entries: StreamEntry[],
-      options: { preserveState?: boolean; resetRetry?: boolean } = {}
+      options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}
     ) => {
       const normalized = buildStreamPayload(entries)
       const connection = connectionRef.current
@@ -384,6 +487,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (entry.connected) {
             entry.connected = false
           }
+          entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -393,7 +499,57 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       const signature = JSON.stringify({ streams: normalized, activity: wantActivity })
 
-      if (connection.signature === signature && connection.source) {
+      // The scheduled recovery owns the next connection attempt. It reads live
+      // subscriptions when it fires, so intervening mounts and view changes coalesce.
+      if (connection.recovering && connection.retryTimer !== undefined) {
+        return
+      }
+
+      if (!options.force && connection.signature === signature && connection.source) {
+        return
+      }
+
+      // The other views of an open source get no new init when a view joins or
+      // leaves it. A failed change reopens the source with every current view.
+      if (!options.force && connection.source && connection.connectionId && connection.activity === wantActivity) {
+        const { source, connectionId } = connection
+        const previous = new Set(connection.streams?.map(stream => stream.key))
+        // A view that waits for its teardown leaves with this change, so a
+        // switch between two views is one change.
+        const kept = normalized.filter(stream => streamsRef.current[stream.key]?.teardownTimer === undefined)
+        const next = new Set(kept.map(stream => stream.key))
+        const add = kept.filter(stream => !previous.has(stream.key))
+        const remove = [...previous].filter(key => !next.has(key))
+        // The signature names what the server holds, so a view that mounts
+        // again before its teardown joins again.
+        connection.streams = kept
+        connection.signature = JSON.stringify({ streams: kept, activity: wantActivity })
+        if (add.length === 0 && remove.length === 0) {
+          return
+        }
+        connection.joining = new Set([...(connection.joining ?? [])].filter(key => next.has(key)))
+        add.forEach(stream => connection.joining?.add(stream.key))
+        resetStaleTimerRef.current()
+        connection.changes = (connection.changes ?? Promise.resolve()).then(async () => {
+          if (connectionRef.current.source !== source) {
+            return
+          }
+          // Changes run one at a time. The server answers a change only after
+          // it sent the first inits, so a request gets the init grace. After
+          // that, the request fails and the catch reopens the stream.
+          const abort = new AbortController()
+          const timer = window.setTimeout(() => abort.abort(), STREAM_INITIAL_TIMEOUT_MS)
+          try {
+            await api.changeStreamSubscriptions(connectionId, add, remove, abort.signal)
+          } catch (err) {
+            if (connectionRef.current.source === source) {
+              console.warn("Stream subscription change failed, reopening the stream:", err)
+              ensureConnectionRef.current({ preserveState: true, force: true })
+            }
+          } finally {
+            window.clearTimeout(timer)
+          }
+        })
         return
       }
 
@@ -403,6 +559,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       if (typeof window === "undefined" || typeof EventSource === "undefined") {
         entries.forEach(entry => {
           entry.connected = false
+          entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           entry.error = STREAM_ERROR_UNSUPPORTED
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
@@ -451,6 +610,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             }
             entry.handoffPending = false
             entry.connected = false
+            entry.initialized = false
+            entry.dataStalled = false
+            clearDataWatchdog(entry)
             notifyStateSubscribers(entry.key)
           }, HANDOFF_GRACE_PERIOD_MS)
           entry.handoffTimer = timer
@@ -458,6 +620,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       } else {
         entries.forEach(entry => {
           entry.connected = false
+          entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -471,10 +636,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         Object.values(streamsRef.current).forEach(entry => {
           clearHandoffState(entry)
-          if (!entry.error) {
-            entry.error = STREAM_ERROR_DISCONNECTED
-          }
+          // Replace a server error too: it stops the fallback poll, and a dropped
+          // connection must poll until the stream is back.
+          entry.error = STREAM_ERROR_DISCONNECTED
           entry.connected = false
+          entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           notifyStateSubscribers(entry.key)
         })
 
@@ -520,7 +688,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (typeof document !== "undefined" && document.visibilityState !== "visible") {
           return
         }
-        const timeout = conn.firstEventSeen ? STREAM_STALE_TIMEOUT_MS : STREAM_INITIAL_TIMEOUT_MS
+        const timeout = conn.firstEventSeen && !conn.joining?.size ? STREAM_STALE_TIMEOUT_MS : STREAM_INITIAL_TIMEOUT_MS
         const schedule = typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         conn.staleTimer = schedule(() => {
           conn.staleTimer = undefined
@@ -552,6 +720,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (!streamKey) {
           return
         }
+        if (connectionRef.current.joining?.delete(streamKey)) {
+          resetStaleTimer()
+        }
 
         const entry = streamsRef.current[streamKey]
         if (!entry) {
@@ -563,9 +734,57 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (payload.type === "stream-error" && payload.error) {
           entry.error = payload.error
           entry.connected = false
-        } else {
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
+        } else if (payload.type === "init" || payload.type === "update" || payload.type === "delta") {
+          const nextVersion = payload.version
+          const baseVersion = payload.delta?.baseVersion
+          const validFullFrame =
+            payload.type !== "delta" &&
+            isStreamVersion(nextVersion)
+          const validDeltaFrame =
+            payload.type === "delta" &&
+            isStreamVersion(nextVersion) &&
+            isStreamVersion(baseVersion) &&
+            entry.initialized &&
+            sameStreamVersion(entry.version, baseVersion) &&
+            nextVersion.major === baseVersion.major &&
+            nextVersion.minor === baseVersion.minor + 1
+
+          if (!validFullFrame && !validDeltaFrame) {
+            entry.error = null
+            entry.connected = true
+            entry.initialized = false
+            entry.dataStalled = false
+            entry.version = undefined
+            clearDataWatchdog(entry)
+            clearHandoffState(entry)
+            notifyStateSubscribers(streamKey)
+            requestRecoveryRef.current(streamKey)
+            return
+          }
+
+          const restoreSnapshot = payload.type === "delta" && Boolean(entry.error)
           entry.error = null
           entry.connected = true
+          entry.initialized = true
+          entry.version = nextVersion
+          if (payload.data) {
+            entry.snapshot = payload.type === "delta" && entry.snapshot
+              ? applyStreamDelta(entry.snapshot, payload, Boolean(entry.params.instanceIds?.length)).data
+              : normalizeStreamedSnapshot(payload.data)
+          }
+          if (restoreSnapshot && entry.snapshot) {
+            // Some listeners discard their row baseline while fallback polling runs.
+            payload = { ...payload, type: "init", data: entry.snapshot, delta: undefined }
+          }
+          if (connection.recovering && (connection.streams ?? normalized).every(({ key }) => {
+            const candidate = streamsRef.current[key]
+            return !candidate || candidate.initialized
+          })) {
+            clearConnectionRetryState()
+          }
+          acceptStreamData(entry)
         }
 
         clearHandoffState(entry)
@@ -623,6 +842,45 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
 
+      // The connection event comes before the first init, so it keeps the init grace.
+      const connectionHandler = (event: MessageEvent | Event) => {
+        resetStaleTimer()
+        const rawData = "data" in event && typeof event.data === "string" ? event.data.trim() : ""
+        if (rawData.length === 0) {
+          return
+        }
+        try {
+          const payload = JSON.parse(rawData) as { connectionId?: string }
+          const conn = connectionRef.current
+          const retried = conn.connectionId !== undefined
+          conn.connectionId = payload.connectionId || undefined
+          if (retried) {
+            // A native retry gets a new server connection with the views in the
+            // URL, so send it the views that changed since the source opened.
+            conn.streams = normalized
+            conn.signature = signature
+            ensureConnectionRef.current({ preserveState: true })
+          }
+        } catch (parseErr) {
+          console.error("Failed to parse SSE connection payload JSON:", parseErr)
+        }
+      }
+
+      normalized.forEach(({ key }) => {
+        const entry = streamsRef.current[key]
+        if (!entry) {
+          return
+        }
+        entry.sourceGeneration += 1
+        clearDataWatchdog(entry)
+        // Only the first replacement after accepted data extends its baseline grace.
+        if (!entry.handoffGraceUsed) {
+          entry.dataDeadline = Date.now() + STREAM_DATA_STALE_TIMEOUT_MS
+          entry.handoffGraceUsed = true
+        }
+        armDataWatchdog(entry)
+      })
+
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
       source.addEventListener("update", payloadHandler)
@@ -630,15 +888,20 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       source.addEventListener("stream-error", payloadHandler)
       source.addEventListener("heartbeat", heartbeatHandler)
       source.addEventListener("activity", activityHandler)
+      source.addEventListener("connection", connectionHandler)
       source.onopen = () => {
         // A non-zero retryAttempt means this open followed one or more failed
         // attempts, so events could have been missed before we ever connected -
         // reconcile even on the first successful open, not just on later reconnects.
         const openedAfterFailures = connection.retryAttempt > 0
+        // A native retry sends a new init, which gets the same grace as the first.
+        connection.firstEventSeen = false
         resetStaleTimer()
-        clearConnectionRetryState()
-        connection.retryAttempt = 0
-        connection.nextRetryAt = undefined
+        // An open socket does not prove that rejected frames have recovered.
+        // Keep the retry budget until every subscription accepts a baseline.
+        if (!connection.recovering) {
+          clearConnectionRetryState()
+        }
         if (activityCountRef.current > 0) {
           if (activityReconnectArmedRef.current || openedAfterFailures) {
             // Reconnect (or a first open that followed failures): the previous
@@ -686,8 +949,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         networkError: handleNetworkError,
         heartbeat: heartbeatHandler,
         activity: activityHandler,
+        connection: connectionHandler,
       }
       connection.signature = signature
+      connection.streams = normalized
+      connection.activity = wantActivity
 
       // Arm the stale watchdog now, at connection creation - not only in onopen. A
       // connection whose server is unreachable from the start never fires onopen,
@@ -699,11 +965,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // fires if the connection produces nothing for STREAM_STALE_TIMEOUT_MS.
       resetStaleTimer()
     },
-    [clearConnectionRetryState, clearHandoffState, closeConnection, notifyStateSubscribers]
+    [acceptStreamData, armDataWatchdog, clearConnectionRetryState, clearDataWatchdog, clearHandoffState, closeConnection, notifyStateSubscribers]
   )
 
   const ensureConnection = useCallback(
-    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+    (options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}) => {
       const entries = Object.values(streamsRef.current)
       if (entries.length === 0 && activityCountRef.current === 0) {
         closeConnection()
@@ -716,27 +982,31 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     },
     [clearConnectionRetryState, closeConnection, notifyAllStateSubscribers, openConnection]
   )
+  ensureConnectionRef.current = ensureConnection
 
   const queueConnectionUpdate = useCallback(
-    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+    (options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}) => {
       const pending: PendingConnectionUpdate =
         pendingConnectionUpdateRef.current ?? {
           timer: undefined,
           preserveState: undefined,
           resetRetry: undefined,
+          force: undefined,
         }
       pending.preserveState = pending.preserveState || options.preserveState
       pending.resetRetry = pending.resetRetry || options.resetRetry
+      pending.force = pending.force || options.force
 
       if (pending.timer === undefined) {
         const schedule =
           typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         pending.timer = schedule(() => {
-          const { preserveState, resetRetry } = pendingConnectionUpdateRef.current ?? {}
+          const { preserveState, resetRetry, force } = pendingConnectionUpdateRef.current ?? {}
           pendingConnectionUpdateRef.current = null
           ensureConnection({
             preserveState,
             resetRetry,
+            force,
           })
         }, 0)
       }
@@ -745,6 +1015,32 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     },
     [ensureConnection]
   )
+
+  const requestRecovery = useCallback(
+    (key: string) => {
+      if (!streamsRef.current[key]) {
+        return
+      }
+      connectionRef.current.recovering = true
+      closeConnection({ preserveRetry: true })
+      // Recovery stops the shared source, so no subscription has a live
+      // baseline during backoff, including those that accepted their last frame.
+      Object.values(streamsRef.current).forEach(entry => {
+        entry.connected = false
+        entry.initialized = false
+        entry.version = undefined
+        // A server error stops the fallback poll, and the closed source cannot clear it.
+        if (entry.error && !isClientConnectionErrorCode(entry.error)) {
+          entry.error = STREAM_ERROR_DISCONNECTED
+        }
+        clearHandoffState(entry)
+      })
+      notifyAllStateSubscribers()
+      scheduleReconnectRef.current()
+    },
+    [clearHandoffState, closeConnection, notifyAllStateSubscribers]
+  )
+  requestRecoveryRef.current = requestRecovery
 
   const scheduleReconnect = useCallback(() => {
     const connection = connectionRef.current
@@ -798,13 +1094,20 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           params,
           listeners: new Set(),
           connected: options.preserveConnected ?? false,
+          initialized: false,
+          dataStalled: false,
           error: null,
+          sourceGeneration: 0,
         }
         streamsRef.current[key] = entry
         queueConnectionUpdate({ preserveState: true })
       } else if (!isSameParams(entry.params, params)) {
         entry.params = params
         entry.error = null
+        entry.initialized = false
+        entry.dataStalled = false
+        entry.version = undefined
+        clearDataWatchdog(entry)
         queueConnectionUpdate({ preserveState: true, resetRetry: true })
       } else {
         queueConnectionUpdate({ preserveState: true })
@@ -813,7 +1116,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       clearEntryTeardown(entry)
       return entry
     },
-    [clearEntryTeardown, queueConnectionUpdate]
+    [clearDataWatchdog, clearEntryTeardown, queueConnectionUpdate]
   )
 
   const scheduleEntryRemoval = useCallback(
@@ -827,13 +1130,17 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         delete streamsRef.current[entry.key]
         clearHandoffState(entry)
         entry.connected = false
+        entry.initialized = false
+        entry.dataStalled = false
+        entry.version = undefined
+        clearDataWatchdog(entry)
         entry.error = null
         notifyStateSubscribers(entry.key)
         queueConnectionUpdate({ preserveState: true })
       }, ENTRY_TEARDOWN_DELAY_MS)
       entry.teardownTimer = timer
     },
-    [clearEntryTeardown, clearHandoffState, notifyStateSubscribers, queueConnectionUpdate]
+    [clearDataWatchdog, clearEntryTeardown, clearHandoffState, notifyStateSubscribers, queueConnectionUpdate]
   )
 
   const connect = useCallback(
@@ -843,7 +1150,30 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       options: { preserveConnected?: boolean } = {}
     ) => {
       const entry = ensureStream(params, options)
+      const needsInit = entry.connected || entry.initialized
       entry.listeners.add(listener)
+      if (entry.initialized && entry.snapshot) {
+        // Let mount effects reset their local state before replaying the baseline.
+        queueMicrotask(() => {
+          if (!entry.listeners.has(listener) || !entry.initialized || !entry.snapshot || !entry.connected || entry.error) {
+            return
+          }
+          try {
+            listener({ type: "init", data: entry.snapshot, version: entry.version, meta: entry.lastMeta })
+          } catch (err) {
+            console.error("SyncStream snapshot listener failed", err)
+          }
+        })
+      } else if (needsInit) {
+        entry.initialized = false
+        entry.dataStalled = false
+        entry.version = undefined
+        clearDataWatchdog(entry)
+        // A view that the source does not hold yet gets its init when it joins.
+        // Only a view that the source already holds needs a reopen for an init.
+        const subscribed = connectionRef.current.streams?.some(stream => stream.key === entry.key) ?? false
+        queueConnectionUpdate({ preserveState: true, force: subscribed })
+      }
       notifyStateSubscribers(entry.key)
 
       return () => {
@@ -855,7 +1185,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
     },
-    [ensureStream, notifyStateSubscribers, scheduleEntryRemoval]
+    [clearDataWatchdog, ensureStream, notifyStateSubscribers, queueConnectionUpdate, scheduleEntryRemoval]
   )
 
   const getState = useCallback(
@@ -872,6 +1202,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const connection = connectionRef.current
       return {
         connected: entry.connected,
+        initialized: entry.initialized,
+        dataStalled: entry.dataStalled,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -956,6 +1288,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           }
           connection.staleTimer = undefined
         }
+        // Data deadlines remain active for subscriptions serving background title speeds.
         return
       }
 
@@ -970,7 +1303,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       if (isDisconnected) {
         // Dead/closed source: reset retry state and force an immediate reconnection.
-        clearConnectionRetryState()
         ensureConnection({ preserveState: false, resetRetry: true })
         return
       }
@@ -978,13 +1310,25 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // Source is OPEN and healthy: re-arm a FRESH stale timer so an overdue
       // throttled watchdog cannot immediately declare the live connection dead.
       resetStaleTimerRef.current()
+
+      const now = Date.now()
+      Object.values(streamsRef.current).forEach(entry => {
+        if (!entry.initialized || entry.error || entry.dataStalled || entry.dataDeadline === undefined) {
+          return
+        }
+        if (now >= entry.dataDeadline) {
+          markDataStalled(entry)
+        } else {
+          armDataWatchdog(entry)
+        }
+      })
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [clearConnectionRetryState, ensureConnection])
+  }, [armDataWatchdog, ensureConnection, markDataStalled])
 
   useEffect(() => {
     return () => {
@@ -999,12 +1343,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       pendingConnectionUpdateRef.current = null
       closeConnection()
       Object.values(streamsRef.current).forEach(entry => {
+        clearDataWatchdog(entry)
         clearEntryTeardown(entry)
         clearHandoffState(entry)
       })
       streamsRef.current = {}
     }
-  }, [clearEntryTeardown, clearHandoffState, closeConnection])
+  }, [clearDataWatchdog, clearEntryTeardown, clearHandoffState, closeConnection])
 
   return <SyncStreamContext.Provider value={contextValue}>{children}</SyncStreamContext.Provider>
 }
@@ -1064,6 +1409,7 @@ export function useSyncStream(
     const shouldPreserve =
       canPreserve &&
       lastStateRef.current.connected &&
+      !lastStateRef.current.dataStalled &&
       !lastStateRef.current.error
 
     const connectOptions = shouldPreserve ? { preserveConnected: true } : undefined
@@ -1139,6 +1485,7 @@ export function createStreamKey(params: StreamParams): string {
       order: params.order,
       search: params.search ?? "",
       filters: params.filters ?? null,
+      summary: params.summary ?? false,
     })
   } catch (err) {
     // Fallback for non-serializable filters - log for debugging

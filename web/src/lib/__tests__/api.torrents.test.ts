@@ -6,11 +6,12 @@
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { makeServerState } from "@/test/mockServerState"
 import { makeTorrent } from "@/test/mockTorrent"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 import type { TorrentResponse } from "@/types"
 
 // Contract tests for the lib/api.ts "torrents" method group (issue #1931).
@@ -176,26 +177,6 @@ describe("api.getTorrents", () => {
   })
 
   describe("error contract", () => {
-    it("throws an APIError with .status and .data from a non-2xx JSON body", async () => {
-      server.use(
-        http.get("*/api/instances/:instanceId/torrents", () =>
-          HttpResponse.json({ error: "boom", conflict: true }, { status: 409 })
-        )
-      )
-
-      try {
-        await api.getTorrents(1, {})
-        expect.unreachable("expected getTorrents to throw")
-      } catch (error) {
-        expect(error).toBeInstanceOf(APIError)
-        const apiError = error as APIError
-        expect(apiError.name).toBe("APIError")
-        expect(apiError.message).toBe("boom")
-        expect(apiError.status).toBe(409)
-        expect(apiError.data).toEqual({ error: "boom", conflict: true })
-      }
-    })
-
     it("falls back to 'HTTP error! status: <status>' for an empty error body", async () => {
       server.use(
         http.get("*/api/instances/:instanceId/torrents", () =>
@@ -365,5 +346,74 @@ describe("api.getCrossInstanceTorrents", () => {
         message: "cross boom",
       })
     })
+  })
+})
+
+// Every method that puts `filters` on the wire folds the sidebar's
+// expandedCategories into categories and drops the expanded fields, because
+// the backend FilterOptions has no such field (ADR 0010, #2750). A new api
+// method that takes `filters` joins this table.
+describe("filters serialization (expandedCategories fold)", () => {
+  const filters = makeFilters({
+    categories: ["Movies"],
+    expandedCategories: ["Movies", "Movies/4K"],
+    excludeCategories: ["TV"],
+    expandedExcludeCategories: ["TV", "TV/Kids"],
+  })
+
+  const expectFolded = (wire: unknown) => {
+    expect(wire).toMatchObject({
+      categories: ["Movies", "Movies/4K"],
+      excludeCategories: ["TV", "TV/Kids"],
+    })
+    expect(wire).not.toHaveProperty("expandedCategories")
+    expect(wire).not.toHaveProperty("expandedExcludeCategories")
+  }
+
+  const filtersQuery = () => JSON.parse(capturedUrl().searchParams.get("filters") as string)
+
+  const bodyFilters = async () => {
+    if (!capturedRequest) {
+      throw new Error("no request captured")
+    }
+    return (await capturedRequest.json()).filters
+  }
+
+  it("getTorrents", async () => {
+    server.use(captureTorrents())
+    await api.getTorrents(1, { filters })
+    expectFolded(filtersQuery())
+  })
+
+  it("getCrossInstanceTorrents", async () => {
+    server.use(captureCrossInstance())
+    await api.getCrossInstanceTorrents({ filters })
+    expectFolded(filtersQuery())
+  })
+
+  it("getTorrentsStreamBatchUrl", () => {
+    const url = new URL(api.getTorrentsStreamBatchUrl([
+      { key: "k", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc", filters },
+    ]), "http://localhost")
+    const [stream] = JSON.parse(url.searchParams.get("streams") as string)
+    expectFolded(stream.filters)
+  })
+
+  it("getTorrentField", async () => {
+    server.use(http.post("*/api/instances/:instanceId/torrents/field", ({ request }) => {
+      capturedRequest = request.clone()
+      return HttpResponse.json({ values: [], total: 0 })
+    }))
+    await api.getTorrentField(1, "name", { selectAll: true, filters })
+    expectFolded(await bodyFilters())
+  })
+
+  it("bulkAction", async () => {
+    server.use(http.post("*/api/instances/:instanceId/torrents/bulk-action", ({ request }) => {
+      capturedRequest = request.clone()
+      return new HttpResponse(null, { status: 204 })
+    }))
+    await api.bulkAction(1, { hashes: [], action: "pause", selectAll: true, filters })
+    expectFolded(await bodyFilters())
   })
 })

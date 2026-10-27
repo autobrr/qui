@@ -34,8 +34,7 @@ func connectStreamGzip(t *testing.T, srv *httptest.Server, payload []map[string]
 // failure is "the whole table stopped updating", not a decode error, so assert a
 // second event arrives on a still-open compressed stream.
 func TestGzipStreamFlushesEveryEvent(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
@@ -43,6 +42,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
+	subscribed := watchSubscriptions(manager)
 	srv := startStreamServer(t, manager)
 
 	reader, resp := connectStreamGzip(t, srv, streamPayload(instanceID, "stream-gzip-flush"))
@@ -53,9 +53,9 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	initPayload := decodeStreamPayloadData(t, initEvent.data)
 	require.Equal(t, streamEventInit, initPayload.Type)
 
-	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
-	})
+	receive(t, subscribed, "the session to subscribe")
+	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
+	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
 	require.Equal(t, canned.Total, updatePayload.Data.Total)
@@ -65,8 +65,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 // strips or refuses gzip must still get a readable stream, byte for byte what it
 // got before compression existed.
 func TestStreamStaysPlainWithoutGzip(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)
@@ -109,8 +108,7 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 // Go keeps repeated Accept-Encoding field lines separate, so Header.Get would read
 // only "br" here and the client would silently lose compression.
 func TestGzipNegotiationReadsRepeatedHeaderLines(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)

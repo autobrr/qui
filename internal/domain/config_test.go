@@ -162,3 +162,22 @@ func TestNormalizeCORSAllowedOrigins(t *testing.T) {
 		})
 	}
 }
+
+func TestSecureSessionCookie(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{name: "plain HTTP default", cfg: Config{}, want: false},
+		{name: "explicit setting", cfg: Config{SessionCookieSecure: true}, want: true},
+		{name: "HTTPS OIDC redirect", cfg: Config{OIDCRedirectURL: "https://qui.example.invalid/api/auth/oidc/callback"}, want: true},
+		{name: "HTTP OIDC redirect", cfg: Config{OIDCRedirectURL: "http://localhost:7476/api/auth/oidc/callback"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.cfg.SecureSessionCookie())
+		})
+	}
+}

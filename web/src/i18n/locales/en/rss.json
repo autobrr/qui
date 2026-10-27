@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Refresh All",
-    "addFolder": "Add Folder",
-    "addFeed": "Add Feed",
     "articles": "Articles",
     "unread": "{{count}} unread",
     "markAllAsRead": "Mark all as read",
@@ -48,7 +46,6 @@
     "toggleDetails": "Toggle details"
   },
   "rules": {
-    "title": "Rules",
     "reprocess": "Reprocess",
     "reprocessTooltip": "Re-check all unread articles against rules",
     "addRule": "Add Rule",
@@ -144,14 +141,10 @@
     "saveChanges": "Save Changes"
   },
   "settingsPopover": {
-    "title": "RSS Settings",
     "refreshInterval": "Refresh interval",
-    "min": "min",
     "maxArticles": "Max articles per feed",
     "autoDownload": "Auto-Download",
-    "downloadRepack": "Download REPACK/PROPER",
-    "saving": "Saving...",
-    "save": "Save"
+    "downloadRepack": "Download REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE Live",
@@ -197,8 +190,6 @@
     "ruleCreated": "Rule created successfully",
     "failedToCreateRule": "Failed to create rule",
     "ruleUpdated": "Rule updated successfully",
-    "failedToUpdateRuleEdit": "Failed to update rule",
-    "rssSettingsSaved": "RSS settings saved",
-    "failedToSaveRssSettings": "Failed to save RSS settings"
+    "failedToUpdateRuleEdit": "Failed to update rule"
   }
 }

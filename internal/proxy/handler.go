@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
@@ -122,8 +121,15 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
+	// Fallback when an instance has no client transport. Tuned from autobrr's sharedhttp.Transport.
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.MaxIdleConnsPerHost = 10
+	baseTransport.ResponseHeaderTimeout = 120 * time.Second
+	baseTransport.ReadBufferSize = 64 << 10
+	baseTransport.WriteBufferSize = 64 << 10
+
 	// Configure the reverse proxy with retry logic for transient network errors
-	retryTransport := NewRetryTransportWithSelector(sharedhttp.Transport, func(req *http.Request) http.RoundTripper {
+	retryTransport := NewRetryTransportWithSelector(baseTransport, func(req *http.Request) http.RoundTripper {
 		proxyCtx, ok := getProxyContext(req.Context())
 		if !ok || proxyCtx == nil || proxyCtx.httpClient == nil || proxyCtx.httpClient.Transport == nil {
 			return nil
@@ -407,7 +413,6 @@ func (h *Handler) Routes(r chi.Router) {
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
 		pr.Post("/api/v2/auth/login", h.handleAuthLogin)
 		pr.Get("/api/v2/sync/maindata", h.handleSyncMainData)
-		pr.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
 		pr.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
 		pr.Get("/api/v2/torrents/categories", h.handleCategories)
 		pr.Get("/api/v2/torrents/tags", h.handleTags)
@@ -422,6 +427,13 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+
+		// Intercepted only to clean up the folders a move leaves behind
+		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
+		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
+		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
+		pr.Post("/api/v2/torrents/setSavePath", h.handleSetSavePath)
+		pr.Post("/api/v2/torrents/setDownloadPath", h.handleSetDownloadPath)
 
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
@@ -667,7 +679,7 @@ func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.In
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have local filesystem access enabled"}
 	}
 
@@ -1534,81 +1546,6 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// handleTorrentPeers handles /api/v2/sync/torrentPeers requests
-func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Trace().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Proxying sync/torrentPeers request")
-
-	// Use a custom response writer to capture the response
-	buf := h.bufferPool.Get()
-	crwBody := buf[:0]
-	crw := &capturingResponseWriter{
-		ResponseWriter: w,
-		body:           crwBody,
-		statusCode:     http.StatusOK,
-	}
-	defer func() {
-		if buf != nil {
-			h.bufferPool.Put(buf[:cap(buf)])
-		}
-	}()
-
-	// Proxy the request
-	h.proxy.ServeHTTP(crw, r)
-
-	// Update local peer sync manager state for successful responses
-	if crw.statusCode == http.StatusOK && len(crw.body) > 0 {
-		var peersData qbt.TorrentPeersResponse
-		if err := json.Unmarshal(crw.body, &peersData); err != nil {
-			log.Error().
-				Err(err).
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Msg("Failed to parse sync/torrentPeers response")
-			return
-		}
-
-		// Check if this is a full update (FullUpdate field or rid == 0)
-		isFullUpdate := peersData.FullUpdate || peersData.Rid == 0
-
-		if isFullUpdate {
-			client, err := h.clientPool.GetClient(ctx, instanceID)
-			if err != nil {
-				log.Error().
-					Err(err).
-					Int("instanceId", instanceID).
-					Msg("Failed to get client for peer state update")
-				return
-			}
-
-			// Update peer state using the same pattern as maindata
-			client.UpdateWithPeersData(hash, &peersData)
-
-			log.Trace().
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Int64("rid", peersData.Rid).
-				Int("peerCount", len(peersData.Peers)).
-				Msg("Updated local peer state from full sync/torrentPeers response")
-		} else {
-			log.Trace().
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Int64("rid", peersData.Rid).
-				Msg("Skipping incremental sync/torrentPeers update")
-		}
-	}
-}
-
 // handleTorrentFiles handles /api/v2/torrents/files requests
 func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1853,11 +1790,10 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
+			Path: strings.TrimSpace(form.get("location"))}, true
+	})
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -2106,9 +2042,8 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+			strings.EqualFold(form.get("deleteFiles"), "true")
+	})
 }

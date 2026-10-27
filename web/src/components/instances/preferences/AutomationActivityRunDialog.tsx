@@ -71,7 +71,7 @@ export function AutomationActivityRunDialog({
   const [offset, setOffset] = useState(0)
   const [items, setItems] = useState<AutomationActivityRunItem[]>([])
   const [total, setTotal] = useState(0)
-  const { formatAddedOn, formatISOTimestamp } = useDateTimeFormatters()
+  const { formatTimestamp, formatISOTimestamp } = useDateTimeFormatters()
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
 
@@ -253,7 +253,7 @@ export function AutomationActivityRunDialog({
                       {typeof item.ratio === "number" ? item.ratio.toFixed(2) : "-"}
                     </td>
                     <td className="p-2 text-right text-xs text-muted-foreground whitespace-nowrap">
-                      {typeof item.addedOn === "number" && item.addedOn > 0 ? formatAddedOn(item.addedOn) : "-"}
+                      {typeof item.addedOn === "number" && item.addedOn > 0 ? formatTimestamp(item.addedOn) : "-"}
                     </td>
                   </tr>
                 ))}

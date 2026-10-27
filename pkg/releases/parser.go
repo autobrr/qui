@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
-	"github.com/moistari/rls"
+	"github.com/autobrr/go-cache/ttlcache"
+	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -33,6 +33,10 @@ var hdrTagMatchers = []struct {
 var trailingTokenRegexCache sync.Map
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
+//
+// github.com/autobrr/rls is the autobrr fork: fix a parse bug there and bump go.mod.
+// enrichReleaseHDR still covers the HDR10+ forms that rls misreads, and
+// enrichEpisodeRange applies the qui rule that a multi-episode range is a pack.
 type Parser struct {
 	cache         *ttlcache.Cache[string, *rls.Release]
 	keyNormalizer *stringutils.Normalizer[string, string]
@@ -40,8 +44,8 @@ type Parser struct {
 
 // NewParser returns a parser with the provided TTL for cached entries.
 func NewParser(ttl time.Duration) *Parser {
-	cache := ttlcache.New(ttlcache.Options[string, *rls.Release]{}.
-		SetDefaultTTL(ttl))
+	cache := ttlcache.New[string, *rls.Release](
+		ttlcache.SetDefaultTTL(ttl))
 	return &Parser{
 		cache:         cache,
 		keyNormalizer: stringutils.NewNormalizer(ttl, strings.TrimSpace),

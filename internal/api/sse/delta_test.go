@@ -52,7 +52,7 @@ func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 	require.Equal(t, streamEventUpdate, full.Type)
 	require.Nil(t, full.Delta)
 	require.Len(t, full.Data.Torrents, 3)
-	require.True(t, g.baselineSeeded)
+	require.NotNil(t, g.baselineSnapshot)
 
 	// No change: an aggregate-only delta with no changed rows and no order.
 	steady := g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
@@ -66,40 +66,6 @@ func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 	require.Equal(t, streamEventDelta, changed.Type)
 	require.Equal(t, []string{"b"}, changedHashes(changed))
 	require.Nil(t, changed.Delta.Order, "order is omitted when only values change")
-}
-
-func TestBuildUpdatePayloadSendsPreferencesOnlyWhenTheyChange(t *testing.T) {
-	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
-
-	withPrefs := func(prefs string) *qbittorrent.TorrentResponse {
-		resp := singleResp(tv("a", "A"))
-		resp.AppPreferences = json.RawMessage(prefs)
-		return resp
-	}
-
-	full := g.buildUpdatePayload(opts, withPrefs(`{"dht":true}`), &StreamMeta{})
-	require.JSONEq(t, `{"dht":true}`, string(full.Data.AppPreferences), "the seeding snapshot always carries preferences")
-
-	steady := g.buildUpdatePayload(opts, withPrefs(`{"dht":true}`), &StreamMeta{})
-	require.Nil(t, steady.Data.AppPreferences, "unchanged preferences are dropped from the delta")
-
-	edited := g.buildUpdatePayload(opts, withPrefs(`{"dht":false}`), &StreamMeta{})
-	require.JSONEq(t, `{"dht":false}`, string(edited.Data.AppPreferences), "an edit is sent")
-
-	again := g.buildUpdatePayload(opts, withPrefs(`{"dht":false}`), &StreamMeta{})
-	require.Nil(t, again.Data.AppPreferences, "the baseline advanced to the edited value")
-
-	// Explicit null is the tri-state that clears the client's cached copy, so it
-	// must survive the dedup even though the previous value was a real object.
-	cleared := g.buildUpdatePayload(opts, withPrefs(`null`), &StreamMeta{})
-	require.Equal(t, "null", string(cleared.Data.AppPreferences), "an explicit null still goes out")
-
-	// The response the caller handed us must not be mutated: it is shared with
-	// other subscribers and with the REST cache.
-	shared := withPrefs(`null`)
-	_ = g.buildUpdatePayload(opts, shared, &StreamMeta{})
-	require.Equal(t, "null", string(shared.AppPreferences), "dedup only edits the delta copy")
 }
 
 func TestBuildUpdatePayloadAddSendsOrderAndRow(t *testing.T) {
@@ -210,6 +176,47 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	require.Equal(t, []string{"a"}, changedHashes(sent), "a real change (speed) must re-send the row")
 }
 
+// A one-row view (the details row) resends its row when a counter that the
+// General tab shows changes. The main list keeps the volatile-field rule.
+func TestOneRowViewResendsLiveCounters(t *testing.T) {
+	counters := map[string]func(*qbt.Torrent){
+		"TimeActive":       func(tr *qbt.Torrent) { tr.TimeActive++ },
+		"SeedingTime":      func(tr *qbt.Torrent) { tr.SeedingTime++ },
+		"NumSeeds":         func(tr *qbt.Torrent) { tr.NumSeeds++ },
+		"NumLeechs":        func(tr *qbt.Torrent) { tr.NumLeechs++ },
+		"NumComplete":      func(tr *qbt.Torrent) { tr.NumComplete++ },
+		"NumIncomplete":    func(tr *qbt.Torrent) { tr.NumIncomplete++ },
+		"ConnectionsCount": func(tr *qbt.Torrent) { tr.ConnectionsCount++ },
+		"PiecesHave":       func(tr *qbt.Torrent) { tr.PiecesHave++ },
+	}
+	for name, tick := range counters {
+		for _, tc := range []struct {
+			view   string
+			limit  int
+			resend bool
+		}{
+			{view: "details row", limit: 1, resend: true},
+			{view: "main list", limit: 300, resend: false},
+		} {
+			t.Run(name+"/"+tc.view, func(t *testing.T) {
+				g := &subscriptionGroup{}
+				opts := StreamOptions{InstanceID: 1, Limit: tc.limit}
+				base := qbt.Torrent{Hash: "a", Name: "A"}
+				g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &base}), &StreamMeta{})
+
+				ticked := base
+				tick(&ticked)
+				payload := g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &ticked}), &StreamMeta{})
+				if tc.resend {
+					require.Equal(t, []string{"a"}, changedHashes(payload))
+				} else {
+					require.Empty(t, changedHashes(payload))
+				}
+			})
+		}
+	}
+}
+
 func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{InstanceIDs: []int{1, 2}}
@@ -295,68 +302,41 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 	require.Equal(t, 3, changed.Data.Counts.Status["seeding"])
 }
 
-// TestInitInheritsBaselinePreferences pins the fix for a subscriber joining a group
-// whose baseline already carries preferences while its own init snapshot found the
-// preferences cache empty. Ticks only send preferences on change and there is no
-// periodic keyframe, so without the backfill that subscriber never receives them.
-func TestInitInheritsBaselinePreferences(t *testing.T) {
-	prefs := json.RawMessage(`{"max_ratio":2}`)
-
-	g := &subscriptionGroup{}
-	seeded := singleResp(tv("a", "A"))
-	seeded.AppPreferences = prefs
+// TestInitUsesExactVersionedBaseline pins continuity for late joiners. Once a
+// group has a baseline, an independently materialized candidate cannot replace or
+// diverge from it; every init identifies the exact retained frame version.
+func TestInitUsesExactVersionedBaseline(t *testing.T) {
+	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 1}, Total: 1}
 	opts := StreamOptions{InstanceIDs: []int{1}}
-	g.reconcileInitWithBaseline(opts, seeded)
+	g := &subscriptionGroup{version: StreamVersion{Major: 7}}
 
-	// A later init whose materialized response has no preferences at all.
-	joiner := singleResp(tv("a", "A"))
-	require.Nil(t, joiner.AppPreferences)
-	g.reconcileInitWithBaseline(opts, joiner)
-	require.Equal(t, prefs, joiner.AppPreferences, "the init must inherit the baseline preferences")
-
-	// An init that carries its own preferences keeps them untouched.
-	own := singleResp(tv("a", "A"))
-	own.AppPreferences = json.RawMessage(`{"max_ratio":9}`)
-	g.reconcileInitWithBaseline(opts, own)
-	require.JSONEq(t, `{"max_ratio":9}`, string(own.AppPreferences),
-		"an init with its own preferences must not inherit the baseline")
-}
-
-// TestInitInheritsBaselineCounts pins the counts twin of the preferences backfill:
-// init metas never set IncludeCounts, and ticks only resend counts on change with
-// no periodic keyframe, so a joiner to a seeded group whose REST bootstrap failed
-// would otherwise show zero sidebar counts until the library next changes.
-func TestInitInheritsBaselineCounts(t *testing.T) {
-	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 3}, Total: 3}
-
-	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceIDs: []int{1}}
 	seeded := singleResp(tv("a", "A"))
 	seeded.Counts = counts
-	g.buildUpdatePayload(opts, seeded, &StreamMeta{})
+	first := g.buildInitPayload(opts, seeded, &StreamMeta{})
+	require.Equal(t, seeded, first.Data)
+	require.Equal(t, &StreamVersion{Major: 7, Minor: 1}, first.Version)
 
-	// A later init built without counts inherits the retained snapshot.
-	joiner := singleResp(tv("a", "A"))
-	require.Nil(t, joiner.Counts)
-	g.reconcileInitWithBaseline(opts, joiner)
-	require.Equal(t, counts, joiner.Counts, "the init must inherit the baseline counts")
+	// This candidate was built later but does not represent the group's baseline.
+	joinerCandidate := singleResp(tv("a", "not-the-baseline"))
+	joinerCandidate.Counts = &qbittorrent.TorrentCounts{Total: 9}
+	joiner := g.buildInitPayload(opts, joinerCandidate, &StreamMeta{})
+	require.Same(t, first.Data, joiner.Data)
+	require.Equal(t, first.Version, joiner.Version)
 
-	// A tick without counts must not wipe the retained snapshot.
-	g.buildUpdatePayload(opts, singleResp(tv("a", "A-renamed")), &StreamMeta{})
-	late := singleResp(tv("a", "A-renamed"))
-	g.reconcileInitWithBaseline(opts, late)
-	require.Equal(t, counts, late.Counts, "a counts-free tick must not clear the retained snapshot")
+	// Even an aggregate-only frame advances Minor. Its retained full snapshot keeps
+	// edge-triggered fields that were omitted from the delta on the wire.
+	delta := g.buildUpdatePayload(opts, singleResp(tv("a", "A")), &StreamMeta{})
+	require.Equal(t, StreamVersion{Major: 7, Minor: 1}, delta.Delta.BaseVersion)
+	require.Equal(t, &StreamVersion{Major: 7, Minor: 2}, delta.Version)
+	require.Empty(t, delta.Data.Torrents)
 
-	// An init that carries its own counts keeps them untouched.
-	own := singleResp(tv("a", "A-renamed"))
-	own.Counts = &qbittorrent.TorrentCounts{Status: map[string]int{"all": 9}, Total: 9}
-	g.reconcileInitWithBaseline(opts, own)
-	require.Equal(t, 9, own.Counts.Total, "an init with its own counts must not inherit the baseline")
+	late := g.buildInitPayload(opts, singleResp(tv("a", "stale")), &StreamMeta{})
+	require.Equal(t, &StreamVersion{Major: 7, Minor: 2}, late.Version)
+	require.Equal(t, "A", late.Data.Torrents[0].Name)
+	require.Equal(t, counts, late.Data.Counts)
 }
 
-// TestCountsFingerprintIgnoresMapOrder guards against hashing Go's randomized map
-// iteration order, which would resend counts on every tick and defeat the dedup.
-func TestCountsFingerprintIgnoresMapOrder(t *testing.T) {
+func TestCountsEqual(t *testing.T) {
 	build := func() *qbittorrent.TorrentCounts {
 		c := &qbittorrent.TorrentCounts{
 			Status:     map[string]int{},
@@ -370,10 +350,13 @@ func TestCountsFingerprintIgnoresMapOrder(t *testing.T) {
 		return c
 	}
 
-	want := countsFingerprint(build())
+	want := build()
+	require.True(t, countsEqual(nil, nil))
+	require.False(t, countsEqual(want, nil))
+	require.False(t, countsEqual(nil, want))
+	require.True(t, countsEqual(want, want))
 	for range 3 {
-		require.Equal(t, want, countsFingerprint(build()),
-			"identical counts must hash identically regardless of map iteration order")
+		require.True(t, countsEqual(want, build()))
 	}
 }
 
@@ -396,4 +379,20 @@ func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
 	mutated := []qbittorrent.TorrentView{tv("a", "A"), tv("b", "B-new")}
 	_, changedIdx3, _ := computeRowDelta(mutated, singleRowKey, singleRowFingerprint, fp)
 	require.Equal(t, []int{1}, changedIdx3)
+}
+
+func TestServerStatePayloadRebuildsWhenSubcategoryModeChanges(t *testing.T) {
+	g := &subscriptionGroup{}
+	opts := StreamOptions{InstanceID: 1}
+	seed := singleResp(tv("a", "A"))
+	seed.ServerState = &qbt.ServerState{DlInfoSpeed: 1}
+	g.buildUpdatePayload(opts, seed, &StreamMeta{})
+
+	same := g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 2}, nil, 0, &StreamMeta{})
+	require.NotNil(t, same)
+	require.Equal(t, int64(2), same.Data.ServerState.DlInfoSpeed)
+	require.Equal(t, int64(2), g.baselineSnapshot.ServerState.DlInfoSpeed, "a joiner must get the new server state")
+	require.Equal(t, same.Delta.BaseVersion.Minor+1, same.Version.Minor)
+
+	require.Nil(t, g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 3, UseSubcategories: true}, nil, 0, &StreamMeta{}))
 }

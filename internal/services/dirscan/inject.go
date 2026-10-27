@@ -11,14 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -32,17 +30,19 @@ const (
 	injectModeReflink  = "reflink"
 	injectModeRegular  = "regular"
 
-	qbitBoolTrue  = "true"
-	qbitBoolFalse = "false"
-
 	qbitContentLayoutOriginal    = "Original"
 	qbitContentLayoutNoSubfolder = "NoSubfolder"
 )
 
+// errSettleQueueFull means the settle module could not take the torrent, so
+// nothing rechecks or resumes it automatically.
+var errSettleQueueFull = errors.New("recheck and resume queue full, manual intervention required")
+
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
-	syncManager               TorrentManager
+	aligner                   *crossseed.Aligner
+	adder                     *crossseed.Adder
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
@@ -52,28 +52,6 @@ type Injector struct {
 // JackettDownloader is the interface for downloading torrent files.
 type JackettDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-}
-
-// TorrentAdder adds torrents and drives their lifecycle in qBittorrent.
-type TorrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
-	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
-	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
-}
-
-// TorrentPathAligner renames an injected torrent's internal folder/file names to match the
-// on-disk files it matched, and reads the current names back to confirm the renames landed.
-type TorrentPathAligner interface {
-	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
-	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
-	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-}
-
-// TorrentManager is the combined capability the Injector depends on: adding torrents and aligning
-// their content paths. Callers can depend on the narrower TorrentAdder/TorrentPathAligner instead.
-type TorrentManager interface {
-	TorrentAdder
-	TorrentPathAligner
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -92,7 +70,8 @@ type trackerCustomizationProvider interface {
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
-	syncManager TorrentManager,
+	aligner *crossseed.Aligner,
+	adder *crossseed.Adder,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
@@ -100,24 +79,13 @@ func NewInjector(
 ) *Injector {
 	return &Injector{
 		jackettService:            jackettService,
-		syncManager:               syncManager,
+		aligner:                   aligner,
+		adder:                     adder,
 		torrentChecker:            torrentChecker,
 		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		backendPool:               backendPool,
 	}
-}
-
-// TorrentExists checks if a torrent with the given hash already exists in qBittorrent.
-func (i *Injector) TorrentExists(ctx context.Context, instanceID int, hash string) (bool, error) {
-	if i.torrentChecker == nil {
-		return false, nil
-	}
-	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
-	if err != nil {
-		return false, fmt.Errorf("check torrent exists: %w", err)
-	}
-	return exists, nil
 }
 
 func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes []string) (bool, error) {
@@ -138,6 +106,9 @@ func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes 
 type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.
 	InstanceID int
+
+	// Check is the Pre-add check that cleared the torrent for InstanceID.
+	Check crossseed.PreAddCheck
 
 	// TorrentBytes contains the .torrent file contents.
 	TorrentBytes []byte
@@ -181,9 +152,6 @@ type InjectResult struct {
 	// Success is true if the torrent was added successfully.
 	Success bool
 
-	// TorrentHash is the hash of the added torrent.
-	TorrentHash string
-
 	// Mode describes how the torrent was added: hardlink, reflink, or regular.
 	Mode string
 
@@ -204,7 +172,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	if i.instanceStore == nil {
 		return result, errors.New("instance store is nil")
 	}
-	if i.syncManager == nil {
+	if i.adder == nil {
 		return result, errors.New("torrent adder is nil")
 	}
 
@@ -214,7 +182,16 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("get instance: %w", err)
 	}
 
-	savePath, addMode, linkCreated, linkBackend, err := i.prepareInjection(ctx, instance, req)
+	// Every read below takes this one backend. A scan admits the instance on
+	// local access minutes before it injects, and a fresh resolve per read
+	// could land on the SSH host if local access was turned off since.
+	backend, err := i.localBackend(ctx, instance.ID)
+	if err != nil {
+		result.ErrorMessage = err.Error()
+		return result, err
+	}
+
+	savePath, addMode, linkCreated, err := i.prepareInjection(ctx, instance, backend, req)
 	if err != nil {
 		result.ErrorMessage = err.Error()
 		return result, err
@@ -223,18 +200,8 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
-	addPolicy := addPolicyForInjectRequest(req)
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
-	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
-	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
-
-	// For rollback and alignment checks, prefer the backend that actually built
-	// the link tree: a fresh resolve can transiently fail and would silently
-	// skip rollback of a tree that exists on disk.
-	backend := linkBackend
-	if backend == nil {
-		backend = i.resolveBackend(ctx, instance.ID)
-	}
+	linkTree := isLinkTreeMode(addMode)
 
 	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
 	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
@@ -248,66 +215,67 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.
-	if partialLinkTree && !req.DownloadMissingFiles {
+	if linkTree && hasUnmatchedFiles && !req.DownloadMissingFiles {
 		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
 		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
 			len(req.MatchResult.UnmatchedTorrentFiles))
 	}
 
-	options := i.buildAddOptions(req, savePath)
+	// Keep qBittorrent's on-disk layout aligned with the existing files/hardlink tree, even if the
+	// instance default content layout is "Create subfolder".
+	placement := crossseed.AddPlacement{
+		SavePath:      savePath,
+		Category:      req.Category,
+		Tags:          req.Tags,
+		ContentLayout: qbitContentLayoutOriginal,
+	}
 	// A foldered torrent matched to a loose on-disk file has no folder to rename the root to;
 	// NoSubfolder makes qBittorrent strip the root from every stored path so the (rootless-style)
 	// plan lines up with the file where it actually lives.
 	if regularFullMatch && alignPlan.stripRoot {
-		options["contentLayout"] = qbitContentLayoutNoSubfolder
-	}
-	// Skip the on-add hash check for full matches (the data is already verified by the on-disk
-	// files we matched). Alignment adds MUST keep skip_checking too: qBittorrent blocks file/folder
-	// rename operations while a torrent is being verified, so letting it check the pre-rename paths
-	// would stall the renames. The manual recheck after alignment does the real verification.
-	if !hasUnmatchedFiles {
-		options["skip_checking"] = qbitBoolTrue
+		placement.ContentLayout = qbitContentLayoutNoSubfolder
 	}
 
-	// Force paused for partial link tree injections (recheck before qBit uses the incomplete
-	// tree) and for alignment injections (rename the paths before qBit acts on the wrong ones).
-	if partialLinkTree || alignmentNeeded {
-		options["paused"] = qbitBoolTrue
-		options["stopped"] = qbitBoolTrue
+	var afterAdd func(context.Context, []string) (string, bool)
+	if alignmentNeeded {
+		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
+			return i.align(ctx, req, alignPlan)
+		}
 	}
 
-	applyAddPolicy(options, addPolicy)
-
-	// Add the torrent to qBittorrent
-	if _, err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
-		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
-		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
-		return result, fmt.Errorf("add torrent: %w", err)
-	}
-
-	result.TorrentHash = req.ParsedTorrent.InfoHash
+	added := i.adder.Add(ctx, crossseed.AddRequest{
+		Check:   req.Check,
+		Torrent: req.TorrentBytes,
+		Facts: crossseed.AddFacts{
+			LinkTree:       linkTree,
+			PendingFiles:   hasUnmatchedFiles,
+			Align:          alignmentNeeded,
+			DiscMarker:     discMarker(req.ParsedTorrent),
+			LinkedPaths:    linkedTorrentPaths(req, addMode),
+			SkipAutoResume: req.StartPaused,
+			StartRunning:   !req.StartPaused,
+			DirScan:        true,
+		},
+		Placement: placement,
+		AfterAdd:  afterAdd,
+	})
 
 	switch {
-	case partialLinkTree:
-		if err := i.triggerRecheckForPartialLinkTree(req); err != nil {
-			result.ErrorMessage = fmt.Sprintf("torrent added but recheck failed: %v", err)
-			return result, fmt.Errorf("partial link tree recheck: %w", err)
-		}
-	case alignmentNeeded:
-		// The torrent was added force-paused. If the paths could not be aligned to the on-disk
-		// files, report failure so the run surfaces it instead of silently stranding a paused,
-		// mismatched torrent that will never recheck to 100%.
-		if !i.alignAndRecheck(ctx, req, alignPlan) {
-			result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
-			return result, nil
-		}
+	case added.Outcome == crossseed.AddRefused:
+		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
+		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", added.Err)
+		return result, fmt.Errorf("add torrent: %w", added.Err)
+	case added.Outcome == crossseed.AddLeftPaused:
+		// If the paths could not be aligned to the on-disk files, report failure so the run
+		// surfaces it instead of silently stranding a paused, mismatched torrent that will
+		// never recheck to 100%.
+		result.ErrorMessage = "alignment failed; torrent added paused for inspection"
+	case added.Settled.QueueFull && added.Paused:
+		// Nothing rechecks or resumes the paused torrent. A running add downloads without Settle.
+		result.ErrorMessage = "torrent added paused: " + errSettleQueueFull.Error()
 	default:
-		// Regular (non-aligned) adds are not force-paused, so a failed recheck is non-fatal here:
-		// log and continue rather than failing the injection.
-		_ = i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
+		result.Success = true
 	}
-
-	result.Success = true
 	return result, nil
 }
 
@@ -315,233 +283,18 @@ func isLinkTreeMode(mode string) bool {
 	return mode == injectModeHardlink || mode == injectModeReflink
 }
 
-func isCheckingState(state qbt.TorrentState) bool {
-	switch state { //nolint:exhaustive // only checking states matter
-	case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp,
-		qbt.TorrentStateCheckingResumeData, qbt.TorrentStateAllocating:
-		return true
-	}
-	return false
-}
-
-// triggerRecheckForPartialLinkTree handles partial link tree injections:
-// trigger a force recheck, then optionally resume the torrent once checking completes.
-// The torrent was added paused (forced) so qBit doesn't try to use the incomplete link tree.
-// Returns an error if the recheck cannot be scheduled, since the torrent would be stuck
-// in a forced-paused state with no way to recover.
-func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest) error {
-	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil {
-		return errors.New("missing injector components for recheck")
-	}
-
-	hash := req.ParsedTorrent.InfoHash
-	ctx := context.Background()
-
-	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
-		return fmt.Errorf("trigger recheck for partial link tree: %w", err)
-	}
-
-	// If the user wanted the torrent running, resume it after the recheck finishes.
-	// If StartPaused=true, leave it paused (we just honor the user's setting).
-	if !req.StartPaused {
-		i.resumeAfterRecheck(req.InstanceID, hash)
-	}
-	return nil
-}
-
-// resumeAfterRecheck polls the torrent state in a background goroutine and
-// resumes the torrent once it exits checking states. This is used for partial
-// link tree injections where we temporarily forced the torrent paused for a
-// safe recheck, but the user's StartPaused=false means they want it running.
-func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
-	if i.torrentChecker == nil || i.syncManager == nil {
-		return
-	}
-
-	go func() {
-		const (
-			pollInterval = 5 * time.Second
-			timeout      = 10 * time.Minute
-		)
-
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		ticker := time.NewTicker(pollInterval)
-		defer ticker.Stop()
-
-		// Wait for the sync cache to show a checking state, proving qBit
-		// actually started the recheck, then wait for it to leave that state.
-		// Without this two-phase check the first poll can see a stale
-		// stopped/paused state (cache not yet refreshed) and resume before
-		// the recheck runs. qBit's StopCondition::FilesChecked would then
-		// re-stop the torrent after checking, leaving it stuck.
-		// Even after resume succeeds, keep polling until running state is
-		// stable so a late files-checked stop can be retried.
-		const (
-			maxResumeAttempts = 3
-			stablePolls       = 2
-		)
-
-		sawChecking := false
-		recheckComplete := false
-		awaitingResumeConfirmation := false
-		resumeAttempts := 0
-		readyPolls := 0
-		resumeConfirmedPolls := 0
-		for {
-			select {
-			case <-ctx.Done():
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Bool("sawChecking", sawChecking).
-					Bool("recheckComplete", recheckComplete).
-					Int("resumeAttempts", resumeAttempts).
-					Msg("dirscan: resumeAfterRecheck timed out")
-				return
-			case <-ticker.C:
-			}
-
-			torrent, found, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
-			if err != nil || !found || torrent == nil {
-				continue
-			}
-
-			if isCheckingState(torrent.State) {
-				sawChecking = true
-				readyPolls = 0
-				resumeConfirmedPolls = 0
-				continue
-			}
-
-			if awaitingResumeConfirmation {
-				if isResumeConfirmedState(torrent.State) {
-					resumeConfirmedPolls++
-					if resumeConfirmedPolls < stablePolls {
-						continue
-					}
-					log.Info().
-						Int("instanceID", instanceID).
-						Str("hash", hash).
-						Str("state", string(torrent.State)).
-						Int("attempts", resumeAttempts).
-						Msg("dirscan: confirmed torrent resumed after partial link tree recheck")
-					return
-				}
-
-				resumeConfirmedPolls = 0
-				if !isPausedOrStoppedState(torrent.State) {
-					continue
-				}
-			}
-
-			// Two ways to know the recheck finished:
-			// 1. We observed a checking state and it transitioned out.
-			// 2. We never caught the checking state (fast disk / small
-			//    torrent) but Completed > 0 proves qBit verified data.
-			//    A freshly added paused torrent has Completed == 0 until
-			//    the recheck runs.
-			if sawChecking || torrent.Completed > 0 {
-				recheckComplete = true
-			}
-			if !recheckComplete {
-				continue
-			}
-			readyPolls++
-			if !sawChecking && readyPolls < stablePolls {
-				continue
-			}
-
-			if resumeAttempts >= maxResumeAttempts {
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Str("state", string(torrent.State)).
-					Int("attempts", resumeAttempts).
-					Msg("dirscan: resume attempts after partial link tree recheck exhausted")
-				return
-			}
-
-			resumeAttempts++
-			if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Int("attempt", resumeAttempts).
-					Int("maxAttempts", maxResumeAttempts).
-					Msg("dirscan: failed to resume torrent after recheck")
-				continue
-			}
-
-			awaitingResumeConfirmation = true
-			log.Info().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Int("attempt", resumeAttempts).
-				Msg("dirscan: resumed torrent after partial link tree recheck")
-		}
-	}()
-}
-
-func isResumeConfirmedState(state qbt.TorrentState) bool {
-	switch state { //nolint:exhaustive // only running states confirm resume
-	case qbt.TorrentStateUploading,
-		qbt.TorrentStateStalledUp,
-		qbt.TorrentStateQueuedUp,
-		qbt.TorrentStateForcedUp,
-		qbt.TorrentStateDownloading,
-		qbt.TorrentStateStalledDl,
-		qbt.TorrentStateQueuedDl,
-		qbt.TorrentStateForcedDl,
-		qbt.TorrentStateMetaDl:
-		return true
-	}
-	return false
-}
-
-func isPausedOrStoppedState(state qbt.TorrentState) bool {
-	switch state { //nolint:exhaustive // only stopped states need resume retries
-	case qbt.TorrentStatePausedUp,
-		qbt.TorrentStateStoppedUp,
-		qbt.TorrentStatePausedDl,
-		qbt.TorrentStateStoppedDl:
-		return true
-	}
-	return false
-}
-
-// triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
-// full-recheck matches after add, and only queues resume when the request did
-// not ask to stay paused. Returns an error if the recheck could not be scheduled so
-// callers that force-paused the torrent (alignment) can surface the failure instead
-// of leaving it stranded.
-func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) error {
-	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
+// linkedTorrentPaths returns the torrent paths of a hardlink add's matched files.
+// A reflink clone is copy-on-write, so a reflink add returns nil and skips the
+// linked-file check (ADR 0004).
+func linkedTorrentPaths(req *InjectRequest, addMode string) map[string]struct{} {
+	if addMode != injectModeHardlink {
 		return nil
 	}
-	if !needsRecheck {
-		return nil
+	linked := make(map[string]struct{}, len(req.MatchResult.MatchedFiles))
+	for _, pair := range req.MatchResult.MatchedFiles {
+		linked[pair.TorrentFile.Path] = struct{}{}
 	}
-
-	hash := req.ParsedTorrent.InfoHash
-	ctx := context.Background()
-	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", req.InstanceID).
-			Str("hash", hash).
-			Msg("dirscan: failed to trigger recheck after add")
-		return fmt.Errorf("trigger recheck after add: %w", err)
-	}
-
-	if !req.StartPaused {
-		i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
-			Timeout: 60 * time.Minute,
-		})
-	}
-	return nil
+	return linked
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {
@@ -560,47 +313,46 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	return nil
 }
 
-// resolveBackend returns the instance's filesystem backend, or nil when the pool is
-// missing or resolution fails. Callers treat a nil backend like an unreadable path.
-func (i *Injector) resolveBackend(ctx context.Context, instanceID int) fsops.Backend {
+// localBackend is the backend every read and write of one injection uses.
+func (i *Injector) localBackend(ctx context.Context, instanceID int) (fsops.Backend, error) {
 	if i.backendPool == nil {
-		return nil
+		return nil, errors.New("filesystem backend pool not configured")
 	}
-	backend, err := i.backendPool.GetBackend(ctx, instanceID)
+	backend, err := i.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("dirscan: failed to get filesystem backend")
-		return nil
+		return nil, fmt.Errorf("get filesystem backend: %w", err)
 	}
-	return backend
+	return backend, nil
 }
 
 func (i *Injector) prepareInjection(
 	ctx context.Context,
 	instance *models.Instance,
+	backend fsops.Backend,
 	req *InjectRequest,
-) (savePath, mode string, linkCreated *fsops.TreeCreateResult, linkBackend fsops.Backend, err error) {
+) (savePath, mode string, linkCreated *fsops.TreeCreateResult, err error) {
 	if instance == nil {
-		return "", "", nil, nil, errors.New("instance is nil")
+		return "", "", nil, errors.New("instance is nil")
 	}
 
 	if !instance.UseReflinks && !instance.UseHardlinks {
-		return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil, nil
+		return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
 	}
 
-	plan, linkMode, created, linkBackend, linkErr := i.materializeLinkTree(ctx, instance, req)
+	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, backend, req)
 	if linkErr == nil {
 		if plan == nil || plan.RootDir == "" {
-			return "", "", nil, linkBackend, errors.New("link-tree plan missing root dir")
+			return "", "", nil, errors.New("link-tree plan missing root dir")
 		}
-		return plan.RootDir, linkMode, created, linkBackend, nil
+		return plan.RootDir, linkMode, created, nil
 	}
 
 	if !instance.FallbackToRegularMode {
-		return "", "", nil, linkBackend, linkErr
+		return "", "", nil, linkErr
 	}
 
 	i.logLinkTreeFallback(instance, linkErr)
-	return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil, nil
+	return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
 }
 
 func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
@@ -625,8 +377,9 @@ func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
 
 // rollbackLinkTree removes what the link-tree creator recorded in the result,
 // never the whole plan: target paths can be shared with an earlier successful
-// injection for the same release (discussion #2282). The root dir is removed
-// only when empty.
+// injection for the same release (discussion #2282). The result lists the
+// folder that crossseed.LinkIntoNewFolder reserved. The root dir can be the
+// base dir itself, so it is not removed here.
 func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCreateResult, rootDir string, backend fsops.Backend) {
 	if created == nil || rootDir == "" || backend == nil {
 		return
@@ -638,11 +391,10 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 	if err := backend.RemoveTree(ctx, created); err != nil {
 		log.Warn().Err(err).Str("rootDir", rootDir).Msg("dirscan: failed to rollback link tree")
 	}
-	_ = backend.Remove(ctx, rootDir, fsops.RemoveOptions{})
 }
 
 // calculateSavePath determines the save path for the torrent.
-func (i *Injector) calculateSavePath(ctx context.Context, instance *models.Instance, req *InjectRequest) string {
+func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) string {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
@@ -652,7 +404,7 @@ func (i *Injector) calculateSavePath(ctx context.Context, instance *models.Insta
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
-		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, i.resolveBackend(ctx, instance.ID), req.Searchee.Path, req.ParsedTorrent) {
+		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent) {
 			savePath = req.Searchee.Path
 		}
 	}
@@ -698,126 +450,88 @@ func applyPathMapping(savePath, searcheePath, qbitPrefix string) string {
 	return qbitPrefix
 }
 
-// buildAddOptions builds the options map for adding a torrent.
-func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[string]string {
-	options := make(map[string]string)
-
-	// Disable autoTMM to use our explicit save path
-	options["autoTMM"] = qbitBoolFalse
-
-	// Keep qBittorrent's on-disk layout aligned with the existing files/hardlink tree, even if the
-	// instance default content layout is "Create subfolder".
-	options["contentLayout"] = qbitContentLayoutOriginal
-	// Backwards compatibility for older qBittorrent versions (<4.3.2).
-	options["root_folder"] = qbitBoolFalse
-
-	// Set the save path
-	options["savepath"] = savePath
-
-	// Set category if provided
-	if req.Category != "" {
-		options["category"] = req.Category
+// discMarker returns the disc layout folder (BDMV, VIDEO_TS) of the torrent, or empty.
+func discMarker(parsed *ParsedTorrent) string {
+	files := make(qbt.TorrentFiles, 0, len(parsed.Files))
+	for _, f := range parsed.Files {
+		files = append(files, qbt.TorrentFile{Name: f.Path, Size: f.Size})
 	}
-
-	// Set tags if provided
-	if len(req.Tags) > 0 {
-		options["tags"] = strings.Join(req.Tags, ",")
-	}
-
-	// Set paused state
-	if req.StartPaused {
-		options["paused"] = qbitBoolTrue
-		options["stopped"] = qbitBoolTrue
-	}
-
-	return options
+	return crossseed.PolicyForSourceFiles(files).DiscMarker
 }
 
-func addPolicyForInjectRequest(req *InjectRequest) crossseed.AddPolicy {
-	if req == nil || req.ParsedTorrent == nil {
-		return crossseed.AddPolicy{}
-	}
-
-	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
-	for _, f := range req.ParsedTorrent.Files {
-		files = append(files, qbt.TorrentFile{
-			Name: f.Path,
-			Size: f.Size,
-		})
-	}
-
-	return crossseed.PolicyForSourceFiles(files)
-}
-
-func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, fsops.Backend, error) {
+func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, backend fsops.Backend, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, error) {
 	if err := validateLinkTreeInstance(instance); err != nil {
-		return nil, "", nil, nil, err
+		return nil, "", nil, err
 	}
 	if req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return nil, "", nil, nil, errors.New("link-tree request is missing required data")
+		return nil, "", nil, errors.New("link-tree request is missing required data")
 	}
 
 	incomingFiles := buildLinkTreeIncomingFiles(req.ParsedTorrent)
-	needsIsolation := !hardlinktree.HasCommonRootFolder(incomingFiles)
 
 	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
 	if err != nil {
-		return nil, "", nil, nil, err
-	}
-
-	if i.backendPool == nil {
-		return nil, "", nil, nil, errors.New("filesystem backend pool not configured")
-	}
-	backend, err := i.backendPool.GetBackend(ctx, instance.ID)
-	if err != nil {
-		return nil, "", nil, nil, fmt.Errorf("get filesystem backend: %w", err)
-	}
-
-	selectedBaseDir, err := crossseed.FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend)
-	if err != nil {
-		return nil, "", nil, backend, fmt.Errorf("select hardlink base dir: %w", err)
-	}
-	if err := backend.MkdirAll(ctx, selectedBaseDir, fsutil.LinkTreeBaseDirMode); err != nil {
-		return nil, "", nil, backend, fmt.Errorf("create hardlink base dir: %w", err)
+		return nil, "", nil, err
 	}
 
 	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
 	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-	destDir := buildLinkDestDir(selectedBaseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
-	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+	var (
+		plan    *hardlinktree.TreePlan
+		mode    string
+		created *fsops.TreeCreateResult
+	)
+	err = crossseed.LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend, func(baseDir string) error {
+		if err := backend.MkdirAll(ctx, baseDir, fsutil.LinkTreeBaseDirMode); err != nil {
+			return fmt.Errorf("create hardlink base dir: %w", err)
+		}
+
+		presetDir := buildLinkPresetDir(backend.Paths(), baseDir, instance, trackerDisplayName)
+		var err error
+		created, err = crossseed.LinkIntoNewFolder(ctx, backend, presetDir, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, incomingFiles, func(destDir string) (*fsops.TreeCreateResult, error) {
+			var err error
+			plan, err = hardlinktree.BuildPlan(backend.Paths(), linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+			if err != nil {
+				// Debug: dump file data so we can diagnose BuildPlan mismatches.
+				for idx, lf := range linkableFiles {
+					log.Debug().
+						Int("idx", idx).
+						Str("path", lf.Path).
+						Int64("size", lf.Size).
+						Msg("dirscan: linkable file (candidate)")
+				}
+				for idx, ef := range existingFiles {
+					log.Debug().
+						Int("idx", idx).
+						Str("absPath", ef.AbsPath).
+						Str("relPath", ef.RelPath).
+						Int64("size", ef.Size).
+						Msg("dirscan: existing file")
+				}
+				log.Warn().
+					Err(err).
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Str("torrentName", req.ParsedTorrent.Name).
+					Msg("dirscan: failed to build link plan")
+				return nil, humanizeLinkPlanError(err)
+			}
+
+			var treeCreated *fsops.TreeCreateResult
+			mode, treeCreated, err = i.createLinkTree(ctx, instance, baseDir, existingFiles, plan, backend)
+			return treeCreated, err
+		})
+		return err
+	})
+	if errors.Is(err, crossseed.ErrNoMatchingBaseDir) {
+		return nil, "", nil, fmt.Errorf("select hardlink base dir: %w", err)
+	}
 	if err != nil {
-		// Debug: dump file data so we can diagnose BuildPlan mismatches.
-		for idx, lf := range linkableFiles {
-			log.Debug().
-				Int("idx", idx).
-				Str("path", lf.Path).
-				Int64("size", lf.Size).
-				Msg("dirscan: linkable file (candidate)")
-		}
-		for idx, ef := range existingFiles {
-			log.Debug().
-				Int("idx", idx).
-				Str("absPath", ef.AbsPath).
-				Str("relPath", ef.RelPath).
-				Int64("size", ef.Size).
-				Msg("dirscan: existing file")
-		}
-		log.Warn().
-			Err(err).
-			Int("instanceID", instance.ID).
-			Str("instanceName", instance.Name).
-			Str("torrentName", req.ParsedTorrent.Name).
-			Msg("dirscan: failed to build link plan")
-		return nil, "", nil, backend, humanizeLinkPlanError(err)
+		return nil, "", nil, err
 	}
 
-	mode, created, err := i.createLinkTree(ctx, instance, selectedBaseDir, existingFiles, plan, backend)
-	if err != nil {
-		return nil, "", nil, backend, err
-	}
-
-	return plan, mode, created, backend, nil
+	return plan, mode, created, nil
 }
 
 func humanizeLinkPlanError(err error) error {
@@ -861,7 +575,10 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	if !instance.HasLocalFilesystemAccess {
+	// Dirscan builds its link destinations with host filepath and walks through
+	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
+	// until #2919 moves it to the backend path dialect.
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
 	if instance.HardlinkBaseDir == "" {
@@ -963,34 +680,19 @@ func (i *Injector) createLinkTree(ctx context.Context, instance *models.Instance
 	return "", nil, errors.New("no link mode enabled")
 }
 
-func buildLinkDestDir(baseDir string, instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, trackerDisplayName string) string {
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
-	}
-
+// buildLinkPresetDir applies the instance's hardlink directory preset to
+// baseDir. crossseed.LinkIntoNewFolder picks the folder for the tree in it.
+func buildLinkPresetDir(d fsops.PathDialect, baseDir string, instance *models.Instance, trackerDisplayName string) string {
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		display := trackerDisplayName
 		if display == "" {
 			display = "Unknown"
 		}
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(display), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(display))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(display))
 	case "by-instance":
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
 	default: // "flat" or unknown
-		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return baseDir
 	}
-}
-
-func applyAddPolicy(options map[string]string, policy crossseed.AddPolicy) {
-	policy.ApplyToAddOptions(options)
 }

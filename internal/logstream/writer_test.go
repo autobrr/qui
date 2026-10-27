@@ -214,12 +214,3 @@ func TestSwitchableWriter_NilHub(t *testing.T) {
 		t.Errorf("expected 'test\\n', got %q", buf.String())
 	}
 }
-
-func TestSwitchableWriter_GetHub(t *testing.T) {
-	hub := NewHub(100)
-	sw := NewSwitchableWriter(&bytes.Buffer{}, hub)
-
-	if sw.GetHub() != hub {
-		t.Error("GetHub returned different hub")
-	}
-}

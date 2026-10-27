@@ -1,7 +1,8 @@
 ---
 sidebar_position: 6
-title: Logging
-description: Log levels, rotation, the live log viewer, and log exclusions.
+title: qui log level, log files, and live log viewer
+sidebar_label: Logging
+description: Set the log level, rotate log files, watch the live log viewer, and mute noisy messages in the live log viewer.
 ---
 
 # Logging
@@ -36,7 +37,7 @@ The viewer connects to the qui log stream over SSE. On connect, it loads the mos
 The toolbar gives you these controls:
 
 - **Search**. Matches against the log message and the structured fields of each entry.
-- **Level filter**. Select which of the five levels to show. **All** and **None** toggle every level at once.
+- **Level filter**. Select which of the five levels to show. **All** and **None** toggle every level at once. qui remembers your choice in every browser you use. The filter only hides entries in the viewer. The **Log Level** setting still decides what qui writes to stdout and the log file, and the viewer cannot show levels below it.
 - **Clear**. Empties the current view.
 - **Auto-scroll**. Follows the newest entries. Turn it off to pause and scroll back.
 

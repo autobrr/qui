@@ -12,7 +12,9 @@
     "generalSettings": "一般設定",
     "manageInstances": "管理實例",
     "appearance": "外觀",
-    "instanceBackups": "實例備份"
+    "instanceBackups": "實例備份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文件"
   },
   "sidebar": {
     "instances": "實例",
@@ -22,8 +24,8 @@
     "version": "版本 {{version}}",
     "language": "語言",
     "viewOnGitHub": "在 GitHub 上檢視",
-    "rssRunning": "RSS 執行中",
-    "rssEnabled": "RSS 已啟用",
+    "rssRunning": "輔種 RSS 執行中",
+    "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
     "showSidebar": "顯示側邊欄",
     "hideSidebar": "隱藏側邊欄"
@@ -44,25 +46,29 @@
     "tasksForInstance": "實例任務",
     "settingsForInstance": "實例設定",
     "clearSearch": "清除搜尋",
-    "searchTorrents": "搜尋種子... ({{shortcutKey}})",
+    "searchTorrents": "搜尋種子...",
     "globPattern": "Glob 模式...",
     "smartSearchTitle": "智慧搜尋功能：",
     "smartSearchGlob": "Glob 模式：",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "模糊匹配：",
     "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
     "smartSearchDots": "自動處理點號、底線和方括號",
     "smartSearchFields": "搜尋名稱、分類和標籤",
     "smartSearchEnter": "按Enter 鍵立即搜尋",
     "smartSearchAuto": "暫停輸入 500 毫秒後自動搜尋",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
     "torrentCreationTasksTitle": "種子建立任務",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 執行中",
-    "rssEnabled": "RSS 已啟用",
+    "rssRunning": "輔種 RSS 執行中",
+    "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
     "allScope": "全部",
     "unified": "統一檢視"
+  },
+  "titleBar": {
+    "speeds": "下載：{{download}} 上傳：{{upload}}"
   },
   "unifiedScope": {
     "unified": "統一檢視",
@@ -81,8 +87,8 @@
     "noActiveClients": "沒有活動的用戶端",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 執行中",
-    "rssEnabled": "RSS 已啟用",
+    "rssRunning": "輔種 RSS 執行中",
+    "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
     "logout": "登出",
     "version": "版本 {{version}}",
@@ -98,8 +104,7 @@
     "copyPath": "複製路徑",
     "scrollToTop": "回到頂部",
     "search": "搜尋",
-    "select": "選擇",
-    "toggle": "切換"
+    "select": "選擇"
   },
   "placeholders": {
     "search": "搜尋...",
@@ -107,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "未找到結果。"
+  },
+  "errors": {
+    "unknown": "未知錯誤",
+    "httpStatus": "HTTP 錯誤！狀態：{{status}}",
+    "httpStatusHtml": "HTTP 錯誤！狀態：{{status}}（伺服器傳回了 HTML 錯誤頁面）",
+    "ssoHtmlResponse": "API 傳回了 HTML 回應而非 JSON。如果您位於 SSO 代理（Cloudflare Access、Pangolin 等）之後，請嘗試重新整理頁面或在新分頁中重新開啟該 URL。",
+    "torrentFileDownloadFailed": "下載種子檔案失敗：{{status}}"
   },
   "status": {
     "disabled": "已停用",
@@ -118,6 +130,18 @@
     "unavailable": "無法取得",
     "trackerError": "Tracker 錯誤",
     "unreachable": "無法連線"
+  },
+  "contentTypeLabels": {
+    "movie": "電影",
+    "tv": "電視劇",
+    "music": "音樂",
+    "audiobook": "有聲書",
+    "book": "圖書",
+    "comic": "漫畫",
+    "game": "遊戲",
+    "app": "應用",
+    "adult": "成人",
+    "unknown": "未知"
   },
   "themeToggle": {
     "changeTheme": "切換主題",
@@ -131,14 +155,18 @@
     "switchedToMode": "已切換到{{mode}}模式",
     "switchedToTheme": "已切換到{{theme}}主題",
     "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
-    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。",
-    "custom": "自訂"
+    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 現已可用",
-    "viewRelease": "檢視釋出",
     "dismiss": "關閉"
+  },
+  "pwaUpdate": {
+    "reload": "重新載入",
+    "waitingDescription": "重新載入以套用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
   },
   "notFound": {
     "title": "迷路了？",
@@ -165,8 +193,7 @@
     "trigger": "更多資訊"
   },
   "numberInput": {
-    "unlimited": "無限制",
-    "useUnlimited": "（使用 -1 表示無限制）"
+    "unlimited": "無限制"
   },
   "dateTime": {
     "na": "N/A",
@@ -184,6 +211,25 @@
       "month_other": "{{count}} 個月",
       "year_other": "{{count}} 年"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "支援 qui",

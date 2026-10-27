@@ -15,13 +15,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 const (
-	defaultTimeout   = 15 * time.Second
-	defaultUserAgent = "qui/1.0"
+	defaultTimeout = 15 * time.Second
 )
 
 // Client is an HTTP client for communicating with Sonarr/Radarr v3 API
@@ -368,7 +368,7 @@ func (c *Client) parseRadarrResponse(ctx context.Context, body io.Reader) (*Exte
 // setHeaders sets the required headers for ARR API requests
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("X-Api-Key", c.apiKey)
-	req.Header.Set("User-Agent", defaultUserAgent)
+	req.Header.Set("User-Agent", buildinfo.UserAgent)
 	req.Header.Set("Accept", "application/json")
 	if c.basicUser != "" {
 		req.SetBasicAuth(c.basicUser, c.basicPass)

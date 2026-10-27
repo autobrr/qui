@@ -3,27 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { SETTINGS_TABS } from "@/components/settings/tabs"
 import { Settings } from "@/pages/Settings"
 import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 
 const settingsSearchSchema = z.object({
-  tab: z.enum([
-    "application",
-    "instances",
-    "indexers",
-    "search-cache",
-    "integrations",
-    "client-api",
-    "api",
-    "external-programs",
-    "notifications",
-    "datetime",
-    "themes",
-    "security",
-    "logs",
-  ]).optional().catch(undefined),
-  modal: z.enum(["add-instance"]).optional().catch(undefined),
+  tab: z.enum(SETTINGS_TABS).optional().catch(undefined),
+  modal: z.enum(["add-instance", "install-update"]).optional().catch(undefined),
   checkout: z.enum(["success"]).optional().catch(undefined),
   status: z.string().optional().catch(undefined),
   payment_id: z.string().optional().catch(undefined),

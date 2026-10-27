@@ -1,6 +1,7 @@
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
 import type { PrismTheme } from "prism-react-renderer";
+import { releaseBody } from "./src/components/DiscordEmbed/releaseBody";
 
 // Custom minimal light theme
 const minimalLightTheme: PrismTheme = {
@@ -40,20 +41,30 @@ const minimalDarkTheme: PrismTheme = {
 
 const config: Config = {
   title: "qui",
-  tagline: "Modern web interface for qBittorrent",
+  tagline:
+    "A fast web UI for qBittorrent. Manage one or many instances with cross-seed, automations, and backups in a single binary.",
   favicon: "img/favicon.png",
 
   url: "https://getqui.com",
   baseUrl: "/",
+  // Netlify serves /docs/x as /docs/x/ (301). Match it so canonical, og:url, and sitemap URLs resolve without a redirect.
+  trailingSlash: true,
 
   organizationName: "autobrr",
   projectName: "qui",
 
   onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
+
+  future: {
+    faster: true,
+    // Required by faster.ssgWorkerThreads.
+    v4: { removeLegacyPostBuildHeadAttribute: true },
+  },
 
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: "warn",
+      onBrokenMarkdownLinks: "throw",
     },
   },
 
@@ -85,6 +96,7 @@ const config: Config = {
         generateLLMsFullTxt: true,
         excludeImports: true,
         removeDuplicateHeadings: true,
+        generateMarkdownFiles: true,
       },
     ],
   ],
@@ -97,8 +109,27 @@ const config: Config = {
           sidebarPath: "./sidebars.ts",
           editUrl: "https://github.com/autobrr/qui/tree/main/documentation/",
           routeBasePath: "docs",
+          showLastUpdateTime: true,
         },
-        blog: false,
+        blog: {
+          routeBasePath: "release-notes",
+          blogTitle: "Release notes",
+          blogDescription: "What changed in each qui release.",
+          blogSidebarTitle: "Release notes",
+          blogSidebarCount: "ALL",
+          showReadingTime: false,
+          onUntruncatedBlogPosts: "ignore",
+          // The Discord link preview card lists the highlights and change counts of each post.
+          processBlogPosts: async ({ blogPosts }) => {
+            for (const post of blogPosts) {
+              post.metadata.frontMatter.discord_embed_body = releaseBody(post.content);
+            }
+          },
+        },
+        sitemap: {
+          ignorePatterns: ["/search/"],
+          lastmod: "date",
+        },
         theme: {
           customCss: "./src/css/custom.css",
         },
@@ -125,6 +156,7 @@ const config: Config = {
           position: "left",
           label: "Docs",
         },
+        { to: "/release-notes", label: "Release notes", position: "left" },
         {
           href: "https://discord.autobrr.com/qui",
           position: "right",
@@ -167,8 +199,8 @@ const config: Config = {
               href: "https://discord.autobrr.com/qui",
             },
             {
-              label: "GitHub Issues",
-              href: "https://github.com/autobrr/qui/issues",
+              label: "GitHub Discussions",
+              href: "https://github.com/autobrr/qui/discussions",
             },
           ],
         },
@@ -194,7 +226,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} autobrr`,
+      copyright: `Copyright ${new Date().getFullYear()} autobrr. GPL-2.0-or-later.`,
     },
     prism: {
       theme: minimalLightTheme,

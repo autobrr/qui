@@ -13,10 +13,10 @@ import { TorrentTableResponsive } from "@/components/torrents/TorrentTableRespon
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { VisuallyHidden } from "@/components/ui/visually-hidden"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useInstances } from "@/hooks/useInstances"
 import { useIsMobile } from "@/hooks/useMediaQuery"
+import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -26,9 +26,10 @@ import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { selectionScope } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
-import { useNavigate } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
@@ -54,7 +55,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const { clearSelection } = useTorrentSelection()
+  const { dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const routeSearch = useSearch({ strict: false }) as { q?: string }
+
   const { instances } = useInstances()
   const spreadsheetDisguise = useSpreadsheetDisguise()
   const [persistedUnifiedFilter] = usePersistedUnifiedInstanceFilter()
@@ -70,6 +73,19 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     const normalized = normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds)
     return normalized.length > 0 ? normalized : undefined
   }, [isAllInstances, persistedUnifiedFilter, activeInstanceIds])
+
+  // Mobile detection for responsive layout
+  const isMobile = useIsMobile()
+  const [columnFilters] = usePersistedColumnFilters(instanceId)
+
+  // A change of instance, instance subset, filters, column filters, search, or
+  // layout clears the selection, and so does leaving the page. The page renders
+  // a separate list for each layout, so neither list can own this.
+  const selectionScopeKey = selectionScope(instanceId, unifiedScopeInstanceIds, filters, (routeSearch?.q ?? "").trim(), columnFilters, isMobile)
+  useEffect(() => {
+    dispatchSelection({ type: "scope", scope: selectionScopeKey })
+  }, [dispatchSelection, selectionScopeKey])
+  useEffect(() => () => dispatchSelection({ type: "clear" }), [dispatchSelection])
   const instance = useMemo(() => {
     if (isAllInstances) {
       return undefined
@@ -94,9 +110,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
-
-  // Mobile detection for responsive layout
-  const isMobile = useIsMobile()
 
   // Hash currently reflected in the URL, so the Back handler only closes a
   // sheet whose history entry it owns.
@@ -459,12 +472,12 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
       // Close panel and clear selection in one action
       setSelectedTorrent(null)
-      clearSelection()
+      dispatchSelection({ type: "clear" })
     }
 
     window.addEventListener("keydown", handleEscape)
     return () => window.removeEventListener("keydown", handleEscape)
-  }, [clearSelection])
+  }, [dispatchSelection])
 
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
@@ -661,11 +674,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             hideClose
           >
             <SheetHeader className="sr-only">
-              <VisuallyHidden>
-                <SheetTitle>
-                  {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
-                </SheetTitle>
-              </VisuallyHidden>
+              <SheetTitle>
+                {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
+              </SheetTitle>
             </SheetHeader>
             {selectedTorrent && (
               <TorrentDetailsPanel

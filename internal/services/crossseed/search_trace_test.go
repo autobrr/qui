@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
@@ -106,7 +106,7 @@ func TestSearchTorrentMatches_TraceCountsRawCandidates(t *testing.T) {
 		sourceName = "Example.Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GROUP"
 	)
 
-	filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	cacheKey := asyncFilteringCacheKey(instanceID, sourceHash)
 	filterCache.Set(cacheKey, &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -145,7 +145,7 @@ func TestSearchTorrentMatches_TraceCountsRawCandidates(t *testing.T) {
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 	}
 
-	resp, _, _, err := service.searchTorrentMatches(context.Background(), instanceID, sourceHash, TorrentSearchOptions{}, nil)
+	resp, _, _, err := service.searchTorrentMatches(context.Background(), instanceID, sourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1}}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.DecisionTrace)

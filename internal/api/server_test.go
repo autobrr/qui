@@ -7,15 +7,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -43,7 +46,6 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                            {},
 	{Method: http.MethodGet, Path: "/api/torznab/activity"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/torznab/indexers"}:                                         {},
 	{Method: http.MethodPost, Path: "/api/torznab/indexers"}:                                        {},
@@ -60,7 +62,6 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodPut, Path: "/api/torznab/search/cache/settings"}:                            {},
 	{Method: http.MethodGet, Path: "/api/torznab/search/history"}:                                   {},
 	{Method: http.MethodGet, Path: "/api/torznab/search/recent"}:                                    {},
-	{Method: http.MethodGet, Path: "/api/stream"}:                                                   {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                      {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                      {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                   {},
@@ -102,6 +103,26 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 	sink := getClientPoolSyncEventSink(t, clientPool)
 	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
 	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
+}
+
+func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := NewServer(&Dependencies{
+			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		})
+
+		// http.Server.Shutdown starts the registered callbacks on every call.
+		require.NoError(t, server.Shutdown(t.Context()))
+		require.NoError(t, server.Shutdown(t.Context()))
+
+		// Each callback runs in its own goroutine; wait for both so a double close panics here.
+		synctest.Wait()
+		select {
+		case <-server.shuttingDown:
+		default:
+			t.Fatal("shutdown signal was not sent")
+		}
+	})
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -156,6 +177,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		nil,
 		nil,
 		trackerCustomizationStore,
+		nil,
 		nil,
 		nil,
 	)
@@ -335,4 +357,20 @@ func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbit
 	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
 	require.True(t, ok, "unexpected sink type stored on client pool")
 	return sink
+}
+
+func TestOpenStopsWhenPortIsInUse(t *testing.T) {
+	held, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer held.Close()
+
+	s := &Server{
+		logger: zerolog.Nop(),
+		config: &config.AppConfig{Config: &domain.Config{
+			Host: "localhost",
+			Port: held.Addr().(*net.TCPAddr).Port,
+		}},
+	}
+	err = s.open(nil)
+	require.ErrorIs(t, err, errAddrInUse)
 }

@@ -12,6 +12,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog/log"
 )
 
@@ -85,6 +86,37 @@ func decodeRawValue(raw bencode.Bytes) any {
 		return nil
 	}
 	return v
+}
+
+// announceDomain returns the lowest host by name in the first announce tier
+// that names one, then the announce host, or "" when the payload names no
+// tracker. On qBittorrent 4.6.x the payload was patched from the client's
+// tracker list first, so a tier with several URLs can still change between
+// runs there.
+func announceDomain(data []byte) string {
+	var meta struct {
+		Announce     string                `bencode:"announce"`
+		AnnounceList metainfo.AnnounceList `bencode:"announce-list"`
+	}
+	if err := bencode.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+
+	for _, tier := range meta.AnnounceList {
+		// BEP 12 clients reorder trackers inside a tier as announces succeed
+		// or fail, so pick by name rather than position.
+		domain := ""
+		for _, raw := range tier {
+			if host := hostFromURL(raw); host != "" && (domain == "" || host < domain) {
+				domain = host
+			}
+		}
+		if domain != "" {
+			return domain
+		}
+	}
+
+	return hostFromURL(meta.Announce)
 }
 
 func shouldInjectTrackerMetadata(apiVersion string) bool {

@@ -6,7 +6,6 @@ package dirscan
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -14,9 +13,30 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerolog.Logger) (map[string]string, error) {
+// seedingIndex maps the identity of every file the instance already seeds to
+// its torrent hash. Dirscan walks the qui host only, so the keys are unscoped.
+type seedingIndex struct {
+	byKey map[fsops.FileKey]string
+}
+
+func (idx *seedingIndex) len() int {
+	return len(idx.byKey)
+}
+
+// hash returns the torrent seeding the file with this identity.
+func (idx *seedingIndex) hash(id hardlink.FileID) (string, bool) {
+	key, ok := fsops.FileKeyOf(id, nil)
+	if !ok {
+		return "", false
+	}
+	hash, ok := idx.byKey[key]
+	return hash, ok
+}
+
+func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
 	if s == nil || s.syncManager == nil {
 		return nil, nil
 	}
@@ -29,8 +49,9 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerol
 
 	hashes, savePaths := collectCompletedTorrentSavePaths(torrents)
 
+	index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
 	if len(hashes) == 0 {
-		return map[string]string{}, nil
+		return index, nil
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
@@ -38,12 +59,6 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerol
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get backend: %w", err)
-	}
-
-	index := make(map[string]string, len(filesByHash))
 	statErrors := 0
 	for hash, files := range filesByHash {
 		savePath := savePaths[hash]
@@ -56,7 +71,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerol
 	if l != nil {
 		l.Debug().
 			Int("torrents", len(hashes)).
-			Int("fileIDs", len(index)).
+			Int("fileIDs", index.len()).
 			Int("statErrors", statErrors).
 			Dur("took", time.Since(start)).
 			Msg("dirscan: built FileID index")
@@ -81,9 +96,10 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 	return hashes, savePaths
 }
 
-func addTorrentFilesToFileIDIndex(ctx context.Context, index map[string]string, hash, savePath string, files qbt.TorrentFiles, backend fsops.Backend) (statErrors int) {
+func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash, savePath string, files qbt.TorrentFiles, backend fsops.Backend) (statErrors int) {
+	d := backend.Paths()
 	for _, file := range files {
-		absPath := filepath.Join(savePath, filepath.FromSlash(file.Name))
+		absPath := d.Join(savePath, d.FromSlash(file.Name))
 		// Stat, not Lstat: symlinked torrent data must index the target's
 		// identity or symlink-farm setups lose already-seeding detection.
 		info, err := backend.Stat(ctx, absPath)
@@ -92,10 +108,9 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index map[string]string, 
 			continue
 		}
 
-		if info.FileID.IsZero() {
-			continue
+		if key, ok := fsops.FileKeyOf(info.FileID, nil); ok {
+			index.byKey[key] = hash
 		}
-		index[string(info.FileID.Bytes())] = hash
 	}
 
 	return statErrors

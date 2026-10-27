@@ -6,6 +6,7 @@ package collector
 import (
 	"context"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 
@@ -190,7 +191,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	log.Debug().Int("instances", len(instances)).Msg("Collecting metrics for instances")
 
 	for _, instance := range instances {
-		instanceIDStr := instance.IDString()
+		instanceIDStr := strconv.Itoa(instance.ID)
 		instanceName := instance.Name
 
 		connected := 0.0

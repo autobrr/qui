@@ -16,8 +16,47 @@ async function detectedLanguage(languages: string[]): Promise<string | undefined
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   localStorage.clear()
+})
+
+describe("language preferences with blocked storage", () => {
+  it.each([
+    ["fr-FR", "fr", "Tableau de bord"],
+    ["sv-SE", "en", "Dashboard"],
+  ])("initializes translations for %s when storage reads fail", async (browserLanguage, expectedLanguage, label) => {
+    vi.resetModules()
+    vi.stubGlobal("navigator", { languages: [browserLanguage], language: browserLanguage })
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Storage is blocked", "SecurityError")
+    })
+
+    const { initI18n } = await import("./index")
+    const i18n = await initI18n()
+
+    expect(i18n.resolvedLanguage).toBe(expectedLanguage)
+    expect(i18n.t("nav.dashboard")).toBe(label)
+  })
+
+  it.each(["getItem", "setItem"] as const)("changes the language when storage %s fails", async (operation) => {
+    vi.resetModules()
+    localStorage.setItem("qui.language", "en")
+    const { initI18n, changeLanguage } = await import("./index")
+    const i18n = await initI18n()
+    expect(i18n.t("nav.dashboard")).toBe("Dashboard")
+
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(Storage.prototype, operation).mockImplementation(() => {
+      throw new DOMException("Storage is blocked", "SecurityError")
+    })
+
+    await changeLanguage("fr")
+
+    expect(i18n.resolvedLanguage).toBe("fr")
+    expect(i18n.t("nav.dashboard")).toBe("Tableau de bord")
+  })
 })
 
 describe("browser language detection", () => {

@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
@@ -35,19 +36,26 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, nil
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	// The callers gate on an instance snapshot taken before the hardlink index
+	// build, which can run for minutes, so the backend comes from a new read
+	// of the row, which must still grant Read.
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityRead)
 	if err != nil {
 		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")
 		return result, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
 
-	result = buildMissingFilesResult(ctx, backend, torrentByHash, filesByHash)
+	result, connectionLost := buildMissingFilesResult(ctx, backend, torrentByHash, filesByHash)
+	if connectionLost {
+		log.Warn().Int("instanceID", instanceID).
+			Msg("automations: connection to the filesystem lost during missing files detection, torrents with unchecked files stay unknown until the next run")
+	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -58,44 +66,63 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 	return result, nil
 }
 
-func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) map[string]bool {
-	result := make(map[string]bool)
+// buildMissingFilesResult stats every file in one fsops.StatAll. A torrent with
+// an unchecked file gets no result, unless another file is confirmed missing.
+//
+// ponytail: no cache, so every evaluation stats every file again: 50,000
+// files take 3 to 4 minutes on the sftp tier, and a preview waits as long. A
+// cache is the upgrade if a field test or a user report shows a problem.
+func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (result map[string]bool, connectionLost bool) {
+	d := backend.Paths()
 
+	// span is the run of paths that one torrent's files take in paths.
+	type span struct {
+		start, end int
+		rejected   bool
+	}
+	spans := make(map[string]span, len(filesByHash))
+	var paths []string
 	for hash, files := range filesByHash {
 		torrent := torrentByHash[hash]
-		hasMissing := false
-		filesChecked := 0
-		allPathsValid := true
-
+		s := span{start: len(paths)}
 		for _, f := range files {
-			if f.Name == "" {
-				allPathsValid = false
-				continue
-			}
-			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+			fullPath, ok := buildFullPath(d, torrent.SavePath, f.Name)
 			if !ok {
-				allPathsValid = false
+				s.rejected = true
 				continue
 			}
-			if _, err := backend.Stat(ctx, fullPath); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					hasMissing = true
-					break
-				}
-				// Log warning for other errors, continue checking
-				log.Trace().Err(err).Str("path", fullPath).Str("torrent", torrent.Name).
+			paths = append(paths, fullPath)
+		}
+		s.end = len(paths)
+		spans[hash] = s
+	}
+
+	_, errs := fsops.StatAll(ctx, backend, paths)
+
+	result = make(map[string]bool, len(spans))
+	for hash, s := range spans {
+		hasMissing, unchecked, filesChecked := false, s.rejected, 0
+		for i := s.start; i < s.end; i++ {
+			switch err := errs[i]; {
+			case err == nil:
+				filesChecked++
+			// OpenSSH's sftp-server answers a symlink loop as no such file,
+			// so a loop counts as missing on a remote instance. A local
+			// os.Stat returns ELOOP, and the default case skips the file.
+			case errors.Is(err, fs.ErrNotExist):
+				hasMissing = true
+			case errors.Is(err, fsops.ErrConnectionLost):
+				unchecked, connectionLost = true, true
+			default:
+				log.Trace().Err(err).Str("path", paths[i]).Str("torrent", torrentByHash[hash].Name).
 					Msg("automations: error checking file existence")
-				continue
 			}
-			filesChecked++
 		}
 
-		// A confirmed missing file is known even if another path was rejected.
-		// Only publish false when no path was rejected and at least one file was checked.
-		if hasMissing || (allPathsValid && filesChecked > 0) {
+		if hasMissing || (!unchecked && filesChecked > 0) {
 			result[hash] = hasMissing
 		}
 	}
 
-	return result
+	return result, connectionLost
 }

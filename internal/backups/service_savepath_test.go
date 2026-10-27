@@ -78,7 +78,7 @@ func TestExecuteBackupCapturesSavePath(t *testing.T) {
 				exportTrack: "tracker",
 			}
 
-			svc := NewService(store, sm, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+			svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
 			svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
 
 			result, err := svc.executeBackup(ctx, job{runID: int64(i + 1), instanceID: instanceID, kind: models.BackupRunKindManual})
@@ -135,7 +135,7 @@ func TestBackupItemSavePathRoundTrip(t *testing.T) {
 	require.Equal(t, savePath, *got.SavePath)
 
 	// LoadManifest must rehydrate the path so it reaches the restore planner.
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
 	manifest, err := svc.LoadManifest(ctx, run.ID)
 	require.NoError(t, err)
 

@@ -3,6 +3,7 @@ package automations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func (q *testDBQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbint
 	return tx, nil
 }
 
-func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
+func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 	ctx := context.Background()
 
 	sqlDB, err := sql.Open("sqlite", ":memory:")
@@ -75,14 +76,14 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 	// Both tracker fields match display names, so both must load the map.
 	for _, field := range []ConditionField{FieldTracker, FieldTrackers} {
 		t.Run(string(field), func(t *testing.T) {
-			evalCtx := &EvalContext{}
 			cond := &RuleCondition{
 				Field:    field,
 				Operator: OperatorNotEqual,
 				Value:    "BHD",
 			}
 
-			s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
+			evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+			require.NoError(t, err)
 
 			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
 			assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
@@ -90,21 +91,43 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 	}
 }
 
-func TestSetupPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
+func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 	ctx := context.Background()
 
 	s := &Service{
 		trackerCustomizationStore: models.NewTrackerCustomizationStore(&mockQuerier{}),
 	}
 
-	evalCtx := &EvalContext{}
 	cond := &RuleCondition{
 		Field:    FieldTags,
 		Operator: OperatorEqual,
 		Value:    "tier1",
 	}
 
-	s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
+	evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+	require.NoError(t, err)
 
 	assert.Nil(t, evalCtx.TrackerDisplayNameByDomain)
+}
+
+type unavailableCrossMatcher struct{ err error }
+
+func (m unavailableCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
+	return &CrossMatchResult{Err: m.err}
+}
+
+func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("torrent snapshot unavailable")
+	svc := &Service{crossMatcher: unavailableCrossMatcher{err: wantErr}}
+	for _, action := range []*models.ActionConditions{
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}},
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}},
+		{Move: &models.MoveAction{Enabled: true}},
+		{Category: &models.CategoryAction{Enabled: true, IncludeCrossSeeds: true}},
+	} {
+		needs := previewNeeds(&models.Automation{Conditions: action})
+		_, _, err := svc.buildEvalContext(t.Context(), 1, nil, nil, needs)
+		require.ErrorIs(t, err, wantErr)
+	}
 }

@@ -4,12 +4,15 @@
  */
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
+import { isDemo } from "@/lib/demo";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
 
 // Theme constants
-const THEME_KEY = "theme";
+// The demo shares getqui.com with Docusaurus, which stores its own color
+// mode under "theme"; the demo build mirrors that key into its own at boot.
+const THEME_KEY = isDemo ? "qui-demo-theme" : "theme";
 const COLOR_THEME_KEY = "color-theme";
 const THEME_DARK = "dark";
 const THEME_LIGHT = "light";
@@ -387,18 +390,6 @@ export const initializeTheme = async (): Promise<void> => {
 
   // Always listen for system theme changes
   addMediaQueryListener(systemPreference, handleSystemThemeChange);
-};
-
-export const resetToSystemTheme = async (): Promise<void> => {
-  setStoredMode(THEME_AUTO);
-  const theme = getCurrentTheme();
-  const variation = getThemeVariation(theme.id);
-  await applyTheme(theme, variation, getSystemPreference().matches, false);
-  dispatchThemeChange(THEME_AUTO, theme, false, variation);
-};
-
-export const setAutoTheme = async (): Promise<void> => {
-  await resetToSystemTheme();
 };
 
 export const setThemeVariation = async (variation: string): Promise<void> => {

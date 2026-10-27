@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -31,8 +32,15 @@ type InstanceCrossSeedCompletionSettings struct {
 }
 
 // InstanceCrossSeedCompletionStore manages persistence for InstanceCrossSeedCompletionSettings.
+// It caches Get results: a burst of completions reads each instance's settings
+// once, and Upsert is the only writer.
 type InstanceCrossSeedCompletionStore struct {
 	db dbinterface.Querier
+
+	// mu is held across the cache-miss read, so concurrent misses for one
+	// burst share one query.
+	mu    sync.Mutex
+	cache map[int]InstanceCrossSeedCompletionSettings
 }
 
 // NewInstanceCrossSeedCompletionStore creates a new store.
@@ -40,7 +48,7 @@ func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossS
 	if db == nil {
 		panic("db cannot be nil")
 	}
-	return &InstanceCrossSeedCompletionStore{db: db}
+	return &InstanceCrossSeedCompletionStore{db: db, cache: make(map[int]InstanceCrossSeedCompletionSettings)}
 }
 
 // GetCategories returns the categories filter.
@@ -75,6 +83,21 @@ func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSe
 
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if cached, ok := s.cache[instanceID]; ok {
+		return &cached, nil
+	}
+	settings, err := s.get(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	s.cache[instanceID] = *settings
+	return settings, nil
+}
+
+func (s *InstanceCrossSeedCompletionStore) get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
 		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
 		FROM instance_crossseed_completion_settings WHERE instance_id = ?`
@@ -173,6 +196,10 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	if err != nil {
 		return nil, err
 	}
+
+	s.mu.Lock()
+	delete(s.cache, coerced.InstanceID)
+	s.mu.Unlock()
 
 	return s.Get(ctx, coerced.InstanceID)
 }

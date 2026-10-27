@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Стрічки",
     "refreshAll": "Оновити всі",
-    "addFolder": "Додати папку",
-    "addFeed": "Додати стрічку",
     "articles": "Статті",
     "unread": "{{count}} непрочитаних",
     "markAllAsRead": "Позначити всі як прочитані",
@@ -48,7 +46,6 @@
     "toggleDetails": "Показати/приховати деталі"
   },
   "rules": {
-    "title": "Правила",
     "reprocess": "Переопрацювати",
     "reprocessTooltip": "Повторно перевірити всі непрочитані статті за правилами",
     "addRule": "Додати правило",
@@ -144,14 +141,10 @@
     "saveChanges": "Зберегти зміни"
   },
   "settingsPopover": {
-    "title": "Налаштування RSS",
     "refreshInterval": "Інтервал оновлення",
-    "min": "хв",
     "maxArticles": "Макс. статей на стрічку",
     "autoDownload": "Автозавантаження",
-    "downloadRepack": "Завантажувати REPACK/PROPER",
-    "saving": "Збереження...",
-    "save": "Зберегти"
+    "downloadRepack": "Завантажувати REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE активний",
@@ -197,8 +190,6 @@
     "ruleCreated": "Правило успішно створено",
     "failedToCreateRule": "Не вдалося створити правило",
     "ruleUpdated": "Правило успішно оновлено",
-    "failedToUpdateRuleEdit": "Не вдалося оновити правило",
-    "rssSettingsSaved": "Налаштування RSS збережено",
-    "failedToSaveRssSettings": "Не вдалося зберегти налаштування RSS"
+    "failedToUpdateRuleEdit": "Не вдалося оновити правило"
   }
 }

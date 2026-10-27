@@ -4,7 +4,8 @@
  */
 
 import { api } from "@/lib/api"
-import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
+import { LICENSE_PORTAL_URL } from "@/lib/dodo-constants"
+import { getLicenseErrorKey } from "@/lib/license-errors.ts"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -41,31 +42,19 @@ export const useActivateLicense = () => {
       }
     },
     onError: (error: Error) => {
-      toast.error(getLicenseErrorMessage(error))
-    },
-  })
-}
-
-// Hook to validate a license
-export const useValidateLicense = () => {
-  const { t } = useTranslation("settings")
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (licenseKey: string) => api.validateLicense(licenseKey),
-    onSuccess: (data) => {
-      if (data.valid) {
-        const message = data.productName === "premium-access"
-          ? t("themes.license.toasts.activationSuccessPremium")
-          : t("themes.license.toasts.activationSuccess")
-        toast.success(message)
-        // Invalidate license queries to refresh the UI
-        queryClient.invalidateQueries({ queryKey: ["licenses"] })
-        queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      const key = getLicenseErrorKey(error) ?? "themes.license.errors.generic"
+      if (key === "themes.license.errors.activationLimit") {
+        // The full text with the portal steps shows inline. A toast gets the short text and a button.
+        toast.error(t("themes.license.errors.limitReached"), {
+          duration: 10_000,
+          action: {
+            label: t("themes.license.actions.openLicensePortal"),
+            onClick: () => window.open(LICENSE_PORTAL_URL, "_blank", "noopener,noreferrer"),
+          },
+        })
+        return
       }
-    },
-    onError: (error: Error) => {
-      toast.error(getLicenseErrorMessage(error))
+      toast.error(t(key))
     },
   })
 }
@@ -83,27 +72,8 @@ export const useDeleteLicense = () => {
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
     },
-    onError: (error: Error) => {
-      toast.error(getLicenseErrorMessage(error))
-    },
-  })
-}
-
-// Hook to refresh all licenses
-export const useRefreshLicenses = () => {
-  const { t } = useTranslation("settings")
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: () => api.refreshLicenses(),
-    onSuccess: () => {
-      toast.success(t("themes.license.toasts.refreshedAll"))
-      // Invalidate license queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ["licenses"] })
-      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || t("themes.license.toasts.refreshFailed"))
+    onError: () => {
+      toast.error(t("themes.license.errors.deleteFailed"))
     },
   })
 }

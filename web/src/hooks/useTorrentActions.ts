@@ -87,6 +87,8 @@ interface ClientMeta {
   totalSelected?: number
   actionTargets?: Array<{ instanceId: number; hash: string }>
   excludeTargets?: Array<{ instanceId: number; hash: string }>
+  // Cross-seeds that the user chose to delete with the selection.
+  crossSeedTargets?: Array<{ instanceId: number; hash: string }>
 }
 
 type TagBulkActionResult = {
@@ -215,12 +217,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       const { clientHashes, clientCount, ...payload } = data
       void clientHashes
       void clientCount
-      const effectiveFilters = payload.filters ? {
-        ...payload.filters,
-        categories: payload.filters.expandedCategories ?? payload.filters.categories ?? [],
-        excludeCategories: payload.filters.expandedExcludeCategories ?? payload.filters.excludeCategories ?? [],
-      } : undefined
-
       return api.bulkAction(instanceId, {
         hashes: payload.hashes,
         instanceIds: payload.instanceIds,
@@ -240,7 +236,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         downloadLimit: payload.downloadLimit,
         location: payload.location,
         selectAll: payload.selectAll,
-        filters: effectiveFilters,
+        filters: payload.filters,
         search: payload.search,
         excludeHashes: payload.excludeHashes,
         excludeTargets: payload.excludeTargets,
@@ -333,7 +329,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       onActionComplete?.(variables.action)
     },
     onError: (error: Error, variables) => {
-      const count = variables.hashes.length || 1
+      const count = variables.hashes.length || variables.targets?.length || 1
       toast.error(getActionErrorMessage(t, variables.action, count), {
         description: error.message || t("actionToasts.unexpectedError"),
       })
@@ -342,18 +338,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const updateTagsMutation = useMutation({
     mutationFn: async (data: TagUpdatePlan & Omit<TorrentActionData, "action" | "tags">) => {
-      const effectiveFilters = data.filters ? {
-        ...data.filters,
-        categories: data.filters.expandedCategories ?? data.filters.categories ?? [],
-        excludeCategories: data.filters.expandedExcludeCategories ?? data.filters.excludeCategories ?? [],
-      } : undefined
-
       const sharedPayload = {
         hashes: data.hashes,
         instanceIds: data.instanceIds,
         targets: data.targets,
         selectAll: data.selectAll,
-        filters: effectiveFilters,
+        filters: data.filters,
         search: data.search,
         excludeHashes: data.excludeHashes,
         excludeTargets: data.excludeTargets,
@@ -542,15 +532,20 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     excludeHashes?: string[],
     clientMeta?: ClientMeta
   ) => {
-    const clientHashes = clientMeta?.clientHashes ?? hashes
-    const clientCount = clientMeta?.totalSelected
-      ?? (clientHashes?.length ?? hashes.length)
+    // A select-all request cannot list hashes, so its cross-seeds go in a second request.
+    // Any other delete lists them with the selection.
+    const crossSeedTargets = clientMeta?.crossSeedTargets ?? []
+    const mergedTargets = isAllSelected ? [] : crossSeedTargets
+    const mergedHashes = mergedTargets.map(target => target.hash)
+    const clientHashes = [...(clientMeta?.clientHashes ?? hashes), ...mergedHashes]
+    const clientCount = (clientMeta?.totalSelected ?? clientMeta?.clientHashes?.length ?? hashes.length) + mergedHashes.length
+    const actionTargets = clientMeta?.actionTargets && [...clientMeta.actionTargets, ...mergedTargets]
     await mutation.mutateAsync({
       action: "delete",
       instanceIds,
-      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
+      targets: isAllSelected ? undefined : actionTargets,
       deleteFiles,
-      hashes: isAllSelected ? [] : hashes,
+      hashes: isAllSelected ? [] : [...hashes, ...mergedHashes],
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
@@ -559,6 +554,20 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientHashes,
       clientCount,
     })
+    // The cross-seed warning leaves out every selected torrent, so the second delete
+    // never repeats a torrent of the select-all delete (#3341).
+    if (isAllSelected && crossSeedTargets.length) {
+      const crossSeedHashes = crossSeedTargets.map(target => target.hash)
+      await mutation.mutateAsync({
+        action: "delete",
+        instanceIds,
+        targets: crossSeedTargets,
+        deleteFiles,
+        hashes: [],
+        clientHashes: crossSeedHashes,
+        clientCount: crossSeedHashes.length,
+      })
+    }
     setShowDeleteDialog(false)
     setDeleteCrossSeeds(false)
     setContextHashes([])

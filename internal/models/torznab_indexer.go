@@ -5,14 +5,9 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
@@ -89,12 +84,6 @@ type TorznabIndexerUpdateParams struct {
 	TimeoutSeconds *int
 }
 
-// TorznabIndexerCapability represents a search capability
-type TorznabIndexerCapability struct {
-	IndexerID      int    `json:"indexer_id"`
-	CapabilityType string `json:"capability_type"`
-}
-
 // TorznabIndexerCategory represents a category supported by an indexer
 type TorznabIndexerCategory struct {
 	IndexerID      int    `json:"indexer_id"`
@@ -112,16 +101,6 @@ type TorznabIndexerError struct {
 	OccurredAt   time.Time  `json:"occurred_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
 	ErrorCount   int        `json:"error_count"`
-}
-
-// TorznabIndexerLatency represents a latency measurement
-type TorznabIndexerLatency struct {
-	ID            int       `json:"id"`
-	IndexerID     int       `json:"indexer_id"`
-	OperationType string    `json:"operation_type"`
-	LatencyMs     int       `json:"latency_ms"`
-	Success       bool      `json:"success"`
-	MeasuredAt    time.Time `json:"measured_at"`
 }
 
 // TorznabIndexerLatencyStats represents aggregated latency statistics
@@ -153,71 +132,40 @@ type TorznabIndexerHealth struct {
 
 // TorznabIndexerStore manages Torznab indexers in the database
 type TorznabIndexerStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db     dbinterface.Querier
+	cipher *CredentialCipher
 }
 
 // NewTorznabIndexerStore creates a new TorznabIndexerStore
-func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte) (*TorznabIndexerStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*TorznabIndexerStore, error) {
+	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
+	if err != nil {
+		return nil, err
 	}
 
-	return &TorznabIndexerStore{
-		db:            db,
-		encryptionKey: encryptionKey,
-	}, nil
+	return &TorznabIndexerStore{db: db, cipher: credentialCipher}, nil
 }
 
 // encrypt encrypts a string using AES-GCM
 func (s *TorznabIndexerStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return s.cipher.Encrypt(plaintext, nil)
 }
 
 // decrypt decrypts a string encrypted with encrypt
 func (s *TorznabIndexerStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
+	return s.cipher.Decrypt(ciphertext, nil)
+}
 
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+// RewriteLegacyCredentials re-encrypts stored Torznab indexer credentials that still
+// carry the pre-HKDF format and reports how many rows it rewrote.
+func (s *TorznabIndexerStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
+	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
+		table: "torznab_indexers",
+		columns: []string{
+			"api_key_encrypted",
+			"basic_password_encrypted",
+		},
+	})
 }
 
 // Create creates a new Torznab indexer
@@ -797,19 +745,6 @@ func (s *TorznabIndexerStore) GetDecryptedBasicPassword(indexer *TorznabIndexer)
 	return s.decrypt(*indexer.BasicPasswordEncrypted)
 }
 
-// Test tests the connection to a Torznab indexer by querying its capabilities
-func (s *TorznabIndexerStore) Test(ctx context.Context, baseURL, apiKey string) error {
-	// This would be implemented by calling the caps endpoint
-	// For now, just validate the parameters
-	if baseURL == "" {
-		return errors.New("base URL is required")
-	}
-	if apiKey == "" {
-		return errors.New("API key is required")
-	}
-	return nil
-}
-
 // GetCapabilities retrieves all capabilities for an indexer
 func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
 	query := `
@@ -1089,19 +1024,6 @@ func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, er
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
-}
-
-// ResolveErrors marks all unresolved errors for an indexer as resolved
-func (s *TorznabIndexerStore) ResolveErrors(ctx context.Context, indexerID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE torznab_indexer_errors
-		SET resolved_at = CURRENT_TIMESTAMP
-		WHERE indexer_id = ? AND resolved_at IS NULL
-	`, indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve errors: %w", err)
-	}
 	return nil
 }
 

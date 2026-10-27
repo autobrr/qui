@@ -27,17 +27,6 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
-  // Async filtering status
-  contentFilteringCompleted?: boolean
-}
-
-export interface AsyncIndexerFilteringState {
-  capabilitiesCompleted: boolean
-  contentCompleted: boolean
-  capabilityIndexers: number[]
-  filteredIndexers: number[]
-  excludedIndexers: Record<number, string>
-  contentMatches: string[]
 }
 
 export interface CrossSeedInstanceResult {
@@ -119,6 +108,8 @@ export interface CrossSeedTorrentSearchResponse {
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
+  gazelleTimedOut?: boolean
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
 
@@ -155,6 +146,11 @@ export interface ManualCrossSeedProposal {
 }
 
 export interface ManualCrossSeedProposalsResponse {
+  packMode: boolean
+  packEpisodeCount: number
+  assemblyUnavailableReason: string
+  proposalLimit: number
+  proposalsTruncated: boolean
   sourceName: string
   sourceSize: number
   sourceFileCount: number
@@ -162,6 +158,30 @@ export interface ManualCrossSeedProposalsResponse {
   /** Set when settings pin every cross-seed to one category; the apply discards any pick. */
   pinnedCategory: string
   proposals: ManualCrossSeedProposal[]
+}
+
+export interface ManualAssembleRequest {
+  instanceId: number
+  torrentData: string
+  targetHashes: string[]
+  category?: string
+  tags?: string[]
+}
+
+export interface ManualAssembleResponse {
+  ready: boolean
+  applied: boolean
+  reason: string
+  message: string
+  targets: { hash: string; name: string; reason: string }[]
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkedBytes: number
+  missingBytes: number
+  destination: string
+  defaultCategory: string
+  linkMode: string
 }
 
 export interface ManualCrossSeedApplyResponse {
@@ -219,8 +239,6 @@ export interface CategoryMappingRule {
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
-  startPaused: boolean
-  category?: string | null
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -287,8 +305,6 @@ export interface CrossSeedAutomationSettings {
 export interface CrossSeedAutomationSettingsPatch {
   enabled?: boolean
   runIntervalMinutes?: number
-  startPaused?: boolean
-  category?: string | null
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -435,7 +451,7 @@ export interface CrossSeedSearchStatus {
 export interface SeasonPackRun {
   id: number
   torrentName: string
-  phase: "check" | "apply"
+  phase: "check" | "apply" | "resume"
   status: "ready" | "skipped" | "applied" | "failed"
   reason: string
   message: string

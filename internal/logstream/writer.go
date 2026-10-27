@@ -91,8 +91,3 @@ func (sw *SwitchableWriter) Swap(newWriter io.Writer, newCloser io.Closer) io.Cl
 	}
 	return nil
 }
-
-// GetHub returns the Hub associated with this writer.
-func (sw *SwitchableWriter) GetHub() *Hub {
-	return sw.hub
-}

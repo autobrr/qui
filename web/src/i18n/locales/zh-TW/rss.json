@@ -23,8 +23,6 @@
   "feeds": {
     "title": "訂閱源",
     "refreshAll": "全部重新整理",
-    "addFolder": "新增資料夾",
-    "addFeed": "新增訂閱源",
     "articles": "文章",
     "unread": "{{count}} 條未讀",
     "markAllAsRead": "全部標記為已讀",
@@ -48,7 +46,6 @@
     "toggleDetails": "切換詳情"
   },
   "rules": {
-    "title": "規則",
     "reprocess": "重新處理",
     "reprocessTooltip": "對所有未讀文章重新檢查規則",
     "addRule": "新增規則",
@@ -144,14 +141,10 @@
     "saveChanges": "儲存更改"
   },
   "settingsPopover": {
-    "title": "RSS 設定",
     "refreshInterval": "重新整理間隔",
-    "min": "分鐘",
     "maxArticles": "每個訂閱源最大文章數",
     "autoDownload": "自動下載",
-    "downloadRepack": "下載 REPACK/PROPER",
-    "saving": "儲存中……",
-    "save": "儲存"
+    "downloadRepack": "下載 REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE 已連線",
@@ -197,8 +190,6 @@
     "ruleCreated": "規則已建立",
     "failedToCreateRule": "建立規則失敗",
     "ruleUpdated": "規則已更新",
-    "failedToUpdateRuleEdit": "更新規則失敗",
-    "rssSettingsSaved": "RSS 設定已儲存",
-    "failedToSaveRssSettings": "儲存 RSS 設定失敗"
+    "failedToUpdateRuleEdit": "更新規則失敗"
   }
 }

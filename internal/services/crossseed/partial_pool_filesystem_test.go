@@ -71,7 +71,7 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetRoot, relativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetRoot, relativePath, sourcePath)
 	require.NoError(t, err)
 	created, err := hardlinktree.Create(plan)
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestPartialPoolHardlinkRollbackRejectsStaleAdmission(t *testing.T) {
 	_, _, err = store.RegisterPartialPoolMember(t.Context(), registration)
 	require.NoError(t, err)
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetRoot, relativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetRoot, relativePath, sourcePath)
 	require.NoError(t, err)
 	created, err := hardlinktree.Create(plan)
 	require.NoError(t, err)
@@ -1554,6 +1554,48 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 	require.Equal(t, stagingPath, readdedStagingPath)
 }
 
+// windowsNamePaths keeps host joins but applies the Windows name rules, so Linux CI reaches them.
+type windowsNamePaths struct{ fsops.PathDialect }
+
+func (windowsNamePaths) Separator() string { return `\` }
+
+func TestPartialPoolReflinkCleanupSkipsNamesTheHostCannotStore(t *testing.T) {
+	if filepath.Separator != '\\' {
+		hostPaths := fsops.HostPaths
+		fsops.HostPaths = windowsNamePaths{hostPaths}
+		t.Cleanup(func() { fsops.HostPaths = hostPaths })
+	}
+	baseDir := t.TempDir()
+	sourceFile := &models.CrossSeedPartialPoolMemberFile{ID: 1, RelativePath: "CON"}
+	source := &models.CrossSeedPartialPoolMember{
+		Mode:     models.CrossSeedPartialPoolModeReflink,
+		RootPath: filepath.Join(baseDir, "source"),
+		Files:    []*models.CrossSeedPartialPoolMemberFile{sourceFile},
+	}
+	target := &models.CrossSeedPartialPoolMember{
+		Mode:     models.CrossSeedPartialPoolModeReflink,
+		RootPath: filepath.Join(baseDir, "target"),
+		Files: []*models.CrossSeedPartialPoolMemberFile{
+			{ID: 2, RelativePath: "1:payload"},
+			{ID: 3, RelativePath: "ep.mkv", SourceFileID: &sourceFile.ID},
+		},
+	}
+	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{source, target}}
+	_, err := partialPoolLocalPath(target, target.Files[0])
+	require.ErrorIs(t, err, hardlinktree.ErrUnstorableName)
+
+	targetPath, err := partialPoolLocalPath(target, target.Files[1])
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(targetPath), 0o755))
+	stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
+	require.NoError(t, ensurePartialPoolReflinkStagingRoot(stagingRoot))
+	require.NoError(t, os.WriteFile(stagingPath, []byte("orphaned crash clone"), 0o600))
+
+	require.NoError(t, cleanupPartialPoolMemberReflinkStaging(pool, target))
+	require.NoDirExists(t, stagingRoot)
+	require.NoFileExists(t, partialPoolReflinkStagingOwnerPath(stagingRoot))
+}
+
 func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	pool, member, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
@@ -1681,6 +1723,16 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 }
 
 func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T) {
+	// Older qBittorrent reports a skip_checking add as complete before its first
+	// piece check; 5.2 reports missingFiles when an extra file is absent.
+	for _, targetState := range []qbt.TorrentState{qbt.TorrentStateStoppedUp, qbt.TorrentStateMissingFiles} {
+		t.Run(string(targetState), func(t *testing.T) {
+			testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t, targetState)
+		})
+	}
+}
+
+func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T, targetState qbt.TorrentState) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	baseDir := t.TempDir()
 	files := []struct {
@@ -1762,13 +1814,13 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 				snapshot.fileByIndex[index] = snapshot.files[index]
 			}
 		} else {
-			// qBittorrent can optimistically report a skip-checking add as
-			// complete before its first real piece check.
-			snapshot.torrent.Progress = 1
-			snapshot.torrent.State = qbt.TorrentStateStoppedUp
-			for index := range snapshot.files {
-				snapshot.files[index].Progress = 1
-				snapshot.fileByIndex[index] = snapshot.files[index]
+			snapshot.torrent.State = targetState
+			if targetState == qbt.TorrentStateStoppedUp {
+				snapshot.torrent.Progress = 1
+				for index := range snapshot.files {
+					snapshot.files[index].Progress = 1
+					snapshot.fileByIndex[index] = snapshot.files[index]
+				}
 			}
 		}
 		snapshots[member.ID] = snapshot

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/expr-lang/expr/vm"
 	"github.com/lithammer/fuzzysearch/fuzzy"
@@ -70,7 +70,7 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 // Expression filters had no coverage in this package, and the manual filter
 // loop now hands expr.Run a dereferenced pointer. Pin that the env still works.
 func TestApplyManualFiltersExprFilter(t *testing.T) {
-	sm := &SyncManager{exprCache: ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute))}
+	sm := &SyncManager{exprCache: ttlcache.New[string, *vm.Program](ttlcache.SetDefaultTTL(5 * time.Minute))}
 	torrents := []qbt.Torrent{
 		{Hash: "A", Name: "low", Ratio: 0.5},
 		{Hash: "B", Name: "high", Ratio: 2.5},

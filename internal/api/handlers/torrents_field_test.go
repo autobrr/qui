@@ -10,13 +10,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -38,7 +40,7 @@ func TestGetTorrentField_TagBaselineAcceptsFrontendMixedSelectionPayload(t *test
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
 		"hashes":      []string{"aaa", "bbb"},
@@ -68,7 +70,7 @@ func TestGetTorrentField_TagBaselineHandlesDuplicateCrossInstanceHashesWithoutTa
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
 		"hashes":      []string{"shared"},
@@ -96,7 +98,7 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 		"field": "magnet_uri",
 		"sort":  "name",
@@ -116,6 +118,37 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 	}, response.Values)
 }
 
+// TestGetTorrentField_FullPathReturnsContentPath covers a renamed torrent (issue #3179).
+func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Renamed Show", Hash: "aaa", SavePath: "/data/tv", ContentPath: "/data/tv/Show.S01.1080p.WEB-GRP"},
+			{Name: "Pending", Hash: "bbb", SavePath: "/data/tv"},
+		},
+	})
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
+
+	for name, body := range map[string]map[string]any{
+		"select all":      {"field": "full_path", "sort": "name", "order": "asc"},
+		"explicit hashes": {"field": "full_path", "hashes": []string{"aaa", "bbb"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+			handler.GetTorrentField(rec, newTorrentFieldRequest(t, instanceIDs["alpha"], body))
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+			var response quiqbt.TorrentFieldResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			require.Equal(t, []string{"/data/tv/Show.S01.1080p.WEB-GRP"}, response.Values)
+		})
+	}
+}
+
 // TestGetTorrentField_MagnetURIExplicitHashes pins magnet values through the
 // explicit-hash field path. List payloads no longer carry magnet_uri (issue
 // #2328), so this endpoint is the only source for the copy-magnet action.
@@ -130,7 +163,7 @@ func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 		"field":  "magnet_uri",
 		"hashes": []string{"aaa", "ccc"},
@@ -165,7 +198,7 @@ func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
 		},
 	})
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "magnet_uri",
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
@@ -201,7 +234,7 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	broken, err := instanceStore.Create(context.Background(), "beta", "http://127.0.0.1:1", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "magnet_uri",
 		"instanceIds": []int{instanceIDs["alpha"], broken.ID},
@@ -213,35 +246,93 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 }
 
-func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
-	handler, release := createStaleCrossInstanceReadHarness(t)
-	defer release()
+// TestGetTorrentField_SingleInstanceFormatsLikeUnified pins the single-instance
+// route to the unified formatters: an uppercase hash and a trimmed name, so a
+// copied value matches whichever view it came from. The exclude by v1 hash
+// covers the hybrid case on this route.
+func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
+	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/torrents/cross-instance?limit=10", nil)
-	rec := httptest.NewRecorder()
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "  Alpha  ", Hash: "aaa", InfohashV1: "aaa", AddedOn: 2},
+			{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+		},
+	})
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		handler.ListCrossInstanceTorrents(rec, req)
-	}()
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
+	for field, want := range map[string][]string{
+		"hash": {"AAA"},
+		"name": {"Alpha"},
+	} {
+		req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
+			"field":         field,
+			"excludeHashes": []string{"EEE"},
+		})
 
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		cancel()
-		release()
-		select {
-		case <-done:
-		case <-time.After(time.Second):
-		}
-		t.Fatal("cross-instance list joined a stale in-flight sync")
+		rec := httptest.NewRecorder()
+		handler.GetTorrentField(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var response quiqbt.TorrentFieldResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Equal(t, want, response.Values, field)
 	}
+}
 
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+// regression: #3558
+func TestListCrossInstanceTorrentsSyncsInstanceWithDataInBackground(t *testing.T) {
+	h := newUnifiedPollHarness(t)
+	h.makeWarmDataStale(t)
+	release := h.warm.hold(t)
+
+	start := time.Now()
+	response, rec := h.list(t, h.warmID)
+	require.Less(t, time.Since(start), 30*time.Second, "the poll waited for the sync")
 	require.Empty(t, rec.Header().Get("X-Data-Source"))
+	require.False(t, response.PartialResults)
+	require.Len(t, response.CrossInstanceTorrents, 1)
+	require.Equal(t, "Alpha", response.CrossInstanceTorrents[0].Name)
+
+	release()
+	h.warm.syncFromTest(t)
+	require.Contains(t, h.warm.requestsFromTest(), false, "the poll started no background sync")
+}
+
+// regression: #3558
+func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T) {
+	h := newUnifiedPollHarness(t)
+	h.makeWarmDataStale(t)
+	h.cold.hold(t)
+
+	start := time.Now()
+	response, _ := h.list(t, h.warmID, h.coldID)
+	require.Less(t, time.Since(start), 30*time.Second, "the poll waited for the first sync of the instance without data")
+	require.True(t, response.PartialResults, "a view without the rows of one instance must not read as complete")
+	require.Len(t, response.CrossInstanceTorrents, 1)
+	require.Equal(t, h.warmID, response.CrossInstanceTorrents[0].InstanceID)
+
+	// The poll started the first sync, so the next poll shows the rows.
+	select {
+	case <-h.cold.requested:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the poll started no sync on the instance without data")
+	}
+}
+
+// regression: #3558
+func TestCrossInstanceStreamReadStartsNoSync(t *testing.T) {
+	h := newUnifiedPollHarness(t)
+	h.makeWarmDataStale(t)
+
+	// The stream reads the Unified view through the same function, with this context.
+	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(quiqbt.WithSkipFreshData(t.Context()), 0, 0, "", "", "", quiqbt.FilterOptions{}, []int{h.warmID})
+	require.NoError(t, err)
+	require.Len(t, response.CrossInstanceTorrents, 1)
+
+	h.warm.syncFromTest(t)
+	require.Equal(t, []bool{true}, h.warm.requestsFromTest(), "the stream read started a sync")
 }
 
 func TestGetTorrentFieldCrossInstanceReadSkipsFreshData(t *testing.T) {
@@ -348,7 +439,165 @@ func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()
 	}
 	t.Cleanup(release)
 
-	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore), release
+	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore, nil), release
+}
+
+// unifiedPollHarness serves a Unified view over two instances. The warm
+// instance has one cached torrent, and the cold instance has no data yet.
+type unifiedPollHarness struct {
+	handler     *TorrentsHandler
+	syncManager *quiqbt.SyncManager
+	warmID      int
+	coldID      int
+	warm        *maindataStub
+	cold        *maindataStub
+}
+
+func newUnifiedPollHarness(t *testing.T) *unifiedPollHarness {
+	t.Helper()
+
+	db := testdb.NewMigratedSQLite(t, "torrents-unified-poll")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := quiqbt.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	warm, err := instanceStore.Create(t.Context(), "warm", "http://warm.example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	cold, err := instanceStore.Create(t.Context(), "cold", "http://cold.example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	h := &unifiedPollHarness{
+		warmID: warm.ID,
+		coldID: cold.ID,
+		warm:   newMaindataStub(t, []qbt.Torrent{{Name: "Alpha", Hash: "aaa", AddedOn: 1}}),
+		cold:   newMaindataStub(t, nil),
+	}
+	setUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{warm.ID: h.warm.client, cold.ID: h.cold.client})
+	h.syncManager = quiqbt.NewSyncManager(clientPool, nil)
+	h.handler = NewTorrentsHandler(h.syncManager, nil, instanceStore, nil)
+	return h
+}
+
+// makeWarmDataStale dates the last sync of the warm instance one hour back,
+// so the next checked read finds its data stale.
+func (h *unifiedPollHarness) makeWarmDataStale(t *testing.T) {
+	t.Helper()
+	syncManager := h.warm.client.GetSyncManager()
+	setUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
+	setUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
+}
+
+func (h *unifiedPollHarness) list(t *testing.T, instanceIDs ...int) (quiqbt.TorrentResponse, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	ids := make([]string, len(instanceIDs))
+	for i, id := range instanceIDs {
+		ids[i] = strconv.Itoa(id)
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/torrents/cross-instance?instanceIds="+strings.Join(ids, ","), nil)
+	rec := httptest.NewRecorder()
+	h.handler.ListCrossInstanceTorrents(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var response quiqbt.TorrentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	return response, rec
+}
+
+type syncFromTestKey struct{}
+
+// maindataStub is the in-process qBittorrent of one instance. Each
+// sync/maindata request returns the torrents that the stub started with.
+type maindataStub struct {
+	client *quiqbt.Client
+	// requested gets a value for each sync/maindata request.
+	requested chan struct{}
+	// gate, when set, holds each sync/maindata request until it closes.
+	gate chan struct{}
+
+	mu       sync.Mutex
+	fromTest []bool
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// newMaindataStub returns a stub with a healthy client and a dynamic sync
+// manager. A nil torrents slice leaves the cache empty, as before a first sync.
+func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
+	t.Helper()
+
+	torrentMap := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentMap[torrent.Hash] = torrent
+	}
+	body, err := json.Marshal(map[string]any{"rid": 2, "full_update": true, "torrents": torrentMap})
+	require.NoError(t, err)
+
+	s := &maindataStub{requested: make(chan struct{}, 16)}
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid", Timeout: 60}).WithHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			rec := httptest.NewRecorder()
+			if r.URL.Path != "/api/v2/sync/maindata" {
+				rec.WriteHeader(http.StatusNotFound)
+				return rec.Result(), nil
+			}
+			s.mu.Lock()
+			s.fromTest = append(s.fromTest, r.Context().Value(syncFromTestKey{}) != nil)
+			s.mu.Unlock()
+			select {
+			case s.requested <- struct{}{}:
+			default:
+			}
+			if s.gate != nil {
+				<-s.gate
+			}
+			_, _ = rec.Write(body)
+			return rec.Result(), nil
+		}),
+	})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	syncManager := qbtClient.NewSyncManager(syncOpts)
+	if torrents != nil {
+		setUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
+		setUnexportedField(t, syncManager, "allTorrents", slices.Clone(torrents))
+	}
+
+	s.client = &quiqbt.Client{Client: qbtClient}
+	setUnexportedField(t, s.client, "isHealthy", true)
+	setUnexportedField(t, s.client, "syncManager", syncManager)
+	setUnexportedField(t, s.client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
+	return s
+}
+
+// hold holds each sync/maindata request until the returned func or the test
+// cleanup runs.
+func (s *maindataStub) hold(t *testing.T) func() {
+	t.Helper()
+	s.gate = make(chan struct{})
+	release := sync.OnceFunc(func() { close(s.gate) })
+	t.Cleanup(release)
+	return release
+}
+
+// syncFromTest runs a sync that the stub records as sent by the test. If a
+// read started a sync that is still in flight, this sync joins it and sends
+// no request of its own.
+func (s *maindataStub) syncFromTest(t *testing.T) {
+	t.Helper()
+	require.NoError(t, s.client.GetSyncManager().Sync(context.WithValue(t.Context(), syncFromTestKey{}, true)))
+}
+
+// requestsFromTest reports, for each sync/maindata request in order, whether
+// syncFromTest sent it.
+func (s *maindataStub) requestsFromTest() []bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.fromTest)
 }
 
 func newCachedClient(t *testing.T, torrents []qbt.Torrent) *quiqbt.Client {
@@ -394,7 +643,7 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 	setUnexportedField(t, client, "isHealthy", true)
 	setUnexportedField(t, client, "lastHealthCheck", time.Now())
 	setUnexportedField(t, client, "syncManager", syncManager)
-	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New(ttlcache.Options[string, *quiqbt.OptimisticTorrentUpdate]{}))
+	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
 
 	return client
 }

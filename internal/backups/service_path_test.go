@@ -17,7 +17,7 @@ import (
 
 func TestResolveBackupPath(t *testing.T) {
 	root := t.TempDir()
-	svc := NewService(nil, nil, nil, Config{WorkerCount: 1, BackupDir: root}, nil)
+	svc := NewService(nil, nil, Config{WorkerCount: 1, BackupDir: root}, nil)
 
 	tests := []struct {
 		name     string
@@ -89,7 +89,7 @@ func TestResolveBackupPath(t *testing.T) {
 }
 
 func TestResolveBackupPathNoRoot(t *testing.T) {
-	svc := NewService(nil, nil, nil, Config{WorkerCount: 1}, nil)
+	svc := NewService(nil, nil, Config{WorkerCount: 1}, nil)
 	assert.Empty(t, svc.ResolveBackupPath("backups/torrents/ab/test.torrent"))
 }
 
@@ -97,7 +97,7 @@ func TestBackupDirOverridesDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := t.TempDir()
 	store := models.NewBackupStore(setupTestBackupDB(t))
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir, BackupDir: backupDir}, nil)
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir, BackupDir: backupDir}, nil)
 
 	require.Equal(t, filepath.Join(backupDir, "torrents"), svc.cacheDir)
 	require.DirExists(t, svc.cacheDir)
@@ -114,7 +114,7 @@ func TestDeleteRunKeepsBlobReferencedUnderOtherSpelling(t *testing.T) {
 	store := models.NewBackupStore(db)
 
 	backupDir := t.TempDir()
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: t.TempDir(), BackupDir: backupDir}, nil)
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: t.TempDir(), BackupDir: backupDir}, nil)
 
 	blobAbs := filepath.Join(backupDir, "torrents", "aa", "bb", "cc", "shared.torrent")
 	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbs), 0o755))
@@ -154,7 +154,7 @@ func TestDeleteRunKeepsBlobReferencedUnderOtherSpelling(t *testing.T) {
 
 func TestBackupDirDefaultsUnderDataDir(t *testing.T) {
 	dataDir := t.TempDir()
-	svc := NewService(nil, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc := NewService(nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
 
 	require.Equal(t, filepath.Join(dataDir, "backups", "torrents"), svc.cacheDir)
 	assert.Equal(t, filepath.Join(dataDir, "backups", "torrents", "ab", "x.torrent"),

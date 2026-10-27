@@ -5,7 +5,6 @@
 
 import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import {
-  formatAddedOn,
   formatDate,
   formatDateOnly,
   formatISOTimestamp,
@@ -188,19 +187,6 @@ describe("formatDate", () => {
   })
 })
 
-// Intent: alias of formatTimestamp used by the torrent table for the
-// "Added On" column. Keep the contract obvious so callers don't drift.
-describe("formatAddedOn", () => {
-  it("is equivalent to formatTimestamp", () => {
-    expect(formatAddedOn(TS_2024_06_15_14_30_45_UTC, utcPrefs())).toBe(
-      formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs())
-    )
-  })
-})
-
-// Intent: parse an ISO string and format it. Two safety properties matter:
-// 1) bad input falls back to the original string instead of throwing, and
-// 2) empty input returns "N/A" (same convention as the unix-seconds APIs).
 describe("formatISOTimestamp", () => {
   it("returns 'N/A' for empty string", () => {
     expect(formatISOTimestamp("")).toBe("N/A")

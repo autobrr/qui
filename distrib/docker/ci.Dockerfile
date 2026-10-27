@@ -12,7 +12,6 @@ ARG VERSION=dev
 ARG BUILDTIME
 ARG REVISION
 ARG BUILDER
-ARG POLAR_ORG_ID=""
 
 # Cross-compilation arguments from Docker BuildKit
 ARG TARGETOS
@@ -47,8 +46,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="\
     -s -w \
     -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} \
     -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILDTIME} \
-    -X github.com/autobrr/qui/internal/buildinfo.Commit=${REVISION} \
-    -X main.PolarOrgID=${POLAR_ORG_ID}" \
+    -X github.com/autobrr/qui/internal/buildinfo.Commit=${REVISION}" \
     -o qui ./cmd/qui
 
 # Final stage

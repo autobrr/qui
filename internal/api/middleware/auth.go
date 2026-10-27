@@ -45,8 +45,21 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			if !sessionManager.GetBool(r.Context(), "authenticated") {
 				// Use 403 to avoid Chromium resetting upstream Basic Auth creds when
 				// qui is behind a reverse proxy (e.g. Swizzin nginx auth_basic).
+				// The frontend logs the user out on a 403 whose message is "unauthorized"
+				// in any letter case, as plain text or in a JSON "error" or "message"
+				// field (web/src/lib/api.ts). Give any other 403 another message.
 				http.Error(w, "Unauthorized", http.StatusForbidden)
 				return
+			}
+
+			// A cookie rides along on cross-site form posts; a custom header
+			// does not. Reserve cookie writes for the qui web UI.
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+				if r.Header.Get("X-Requested-With") == "" {
+					http.Error(w, "Missing X-Requested-With header", http.StatusForbidden)
+					return
+				}
 			}
 
 			username := sessionManager.GetString(r.Context(), "username")

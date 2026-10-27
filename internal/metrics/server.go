@@ -51,7 +51,7 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 
 	// Add basic auth if configured
 	if authConfigured {
-		router.Use(BasicAuth("metrics", s.basicAuthUsers))
+		router.Use(middleware.BasicAuth("metrics", s.basicAuthUsers))
 	}
 
 	// Create metrics handler
@@ -86,9 +86,4 @@ func (s *Server) ListenAndServe() error {
 		Msg("Starting Prometheus metrics server")
 
 	return s.server.ListenAndServe()
-}
-
-// BasicAuth middleware for metrics endpoint (matches autobrr implementation)
-func BasicAuth(realm string, users map[string]string) func(http.Handler) http.Handler {
-	return middleware.BasicAuth(realm, users)
 }

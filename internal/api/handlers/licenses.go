@@ -67,7 +67,6 @@ type LicenseInfo struct {
 	LicenseKey  string    `json:"licenseKey"`
 	ProductName string    `json:"productName"`
 	Status      string    `json:"status"`
-	Provider    string    `json:"provider,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -236,7 +235,6 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 			LicenseKey:  lic.LicenseKey,
 			ProductName: lic.ProductName,
 			Status:      lic.Status,
-			Provider:    lic.Provider,
 			CreatedAt:   lic.CreatedAt,
 		})
 	}

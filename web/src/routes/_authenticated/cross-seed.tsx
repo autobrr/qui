@@ -3,13 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { crossSeedSearchSchema, DEFAULT_CROSS_SEED_TAB, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { CrossSeedPage } from "@/pages/CrossSeedPage"
 import { createFileRoute } from "@tanstack/react-router"
-import { z } from "zod"
-
-const crossSeedSearchSchema = z.object({
-  tab: z.enum(["auto", "scan", "dir-scan", "rules", "blocklist"]).optional().catch(undefined),
-})
 
 export const Route = createFileRoute("/_authenticated/cross-seed")({
   validateSearch: crossSeedSearchSchema,
@@ -20,7 +16,7 @@ function CrossSeedRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
 
-  const handleTabChange = (tab: "auto" | "scan" | "dir-scan" | "rules" | "blocklist") => {
+  const handleTabChange = (tab: CrossSeedTab) => {
     navigate({
       search: { tab },
       replace: true,
@@ -29,7 +25,7 @@ function CrossSeedRoute() {
 
   return (
     <CrossSeedPage
-      activeTab={search.tab ?? "auto"}
+      activeTab={search.tab ?? DEFAULT_CROSS_SEED_TAB}
       onTabChange={handleTabChange}
     />
   )

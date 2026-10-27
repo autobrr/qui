@@ -104,7 +104,7 @@ func TestProcessSearchee_CoverageGatesFinalization(t *testing.T) {
 			t.Parallel()
 
 			svc := coverageTestService(tt.response)
-			matches, outcome := svc.processSearchee(ctx, dir, coverageTestSearchee(), settings, matcher, 1, enabled, &l)
+			matches, outcome := svc.processSearchee(ctx, dir, coverageTestSearchee(), settings, matcher, 1, enabled, nil, &l)
 			require.Nil(t, matches)
 			require.Equal(t, tt.wantSearched, outcome.searched)
 			require.False(t, outcome.searchError)

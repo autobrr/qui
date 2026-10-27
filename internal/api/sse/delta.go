@@ -4,13 +4,13 @@
 package sse
 
 import (
-	"bytes"
 	"encoding/binary"
 	"hash/fnv"
 	"maps"
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -32,11 +32,10 @@ import (
 //
 // There is intentionally no periodic full keyframe: a recurring full page re-send is
 // hundreds of KB and, over an HTTP/2 proxy, head-of-line-blocks every other request
-// on the shared connection each time it fires. Correctness instead rests on
-// init-seeds-baseline (the client's init equals the server baseline) plus a fresh
-// init on every reconnect; the only drift window is the sub-millisecond gap between
-// subscription registration and go-sse subscribe, which self-heals on the next
-// reconnect.
+// on the shared connection each time it fires. Instead, every frame advances an
+// explicit sequence and the complete reconstructed snapshot is retained for new
+// subscribers. Clients can therefore detect a missed delta and reconnect for an
+// exact init without periodically paying for a full page.
 //
 // The caller holds no lock; the group's single-processor invariant (the sending
 // flag) already serializes ticks, and baselineMu guards the baseline against the
@@ -55,30 +54,40 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	if isCross {
 		order, changedIdx, newFP = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, g.baselineFP)
 	} else {
-		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, g.baselineFP)
+		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), g.baselineFP)
 	}
 
-	forceFull := !g.baselineSeeded
+	forceFull := g.baselineSnapshot == nil
+	baseVersion := g.version
 
-	countsFP := countsFingerprint(resp.Counts)
+	// Nil edge-triggered fields mean "no update", not "clear". Reconstruct the
+	// complete snapshot represented by this frame before retaining it for joiners.
+	snapshot := *resp
+	detachSnapshotRows(&snapshot)
+	if g.baselineSnapshot != nil && snapshot.Counts == nil {
+		snapshot.Counts = g.baselineSnapshot.Counts
+	}
 
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
-	prevPrefs := g.baselinePrefs
-	prevCounts := g.baselineCounts
+	var prevCounts *qbittorrent.TorrentCounts
+	if g.baselineSnapshot != nil {
+		prevCounts = g.baselineSnapshot.Counts
+	}
 	g.baselineFP = newFP
 	g.baselineOrder = order
-	g.baselinePrefs = resp.AppPreferences
-	g.baselineCounts = countsFP
-	// A tick without counts (a cross-instance page where no member contributed
-	// any) must not wipe the snapshot reconcileInitWithBaseline hands to joiners.
-	if resp.Counts != nil {
-		g.baselineCountsData = resp.Counts
-	}
-	g.baselineSeeded = true
+	g.baselineSnapshot = &snapshot
+	g.rebuildFailed = false
+	g.lastFrame = time.Now()
+	g.version.Minor++
 
 	if forceFull {
-		return &StreamPayload{Type: streamEventUpdate, Data: resp, Meta: meta}
+		return &StreamPayload{
+			Type:    streamEventUpdate,
+			Data:    &snapshot,
+			Meta:    meta,
+			Version: new(g.version),
+		}
 	}
 
 	// Shallow-copy the response so the delta frame keeps every aggregate field but
@@ -86,15 +95,12 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// shared read-only.
 	deltaResp := *resp
 
-	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
-	if bytes.Equal(resp.AppPreferences, prevPrefs) {
-		deltaResp.AppPreferences = nil
-	}
-
 	// Several KB per tick on an instance with many categories, tags and trackers,
 	// and unchanged whenever the library is; the client keeps its cached copy.
-	if countsFP == prevCounts {
+	if countsEqual(snapshot.Counts, prevCounts) {
 		deltaResp.Counts = nil
+	} else {
+		deltaResp.Counts = snapshot.Counts
 	}
 
 	if isCross {
@@ -105,7 +111,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		deltaResp.CrossInstanceTorrents = nil
 	}
 
-	delta := &StreamDelta{}
+	delta := &StreamDelta{BaseVersion: baseVersion}
 	if !slices.Equal(order, prevOrder) {
 		// Send the order even when empty (the page drained to zero rows): a pointer
 		// keeps a present-but-empty order distinct from an absent one on the wire, so
@@ -113,42 +119,97 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		delta.Order = &order
 	}
 
-	return &StreamPayload{Type: streamEventDelta, Data: &deltaResp, Delta: delta, Meta: meta}
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   delta,
+		Meta:    meta,
+		Version: new(g.version),
+	}
 }
 
-// reconcileInitWithBaseline makes a freshly built init snapshot and the group
-// baseline agree, in whichever direction is available.
-//
-// With no baseline yet, the snapshot seeds it, so the client's init and the server
-// baseline are identical and the very next tick is a clean delta the client applies
-// without drift.
-//
-// A later joiner to an already-seeded group must not re-seed (that would desync
-// existing subscribers), so the snapshot takes the edge-triggered fields from the
-// baseline instead. Its rows may still differ slightly from the shared baseline
-// until it reconnects.
-func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *qbittorrent.TorrentResponse) {
-	if resp == nil {
-		return
-	}
-
+// buildServerStatePayload sends a new server state with the rows and counts of the
+// last frame, as a delta with no changed rows. A nil serverState keeps the server
+// state of the last frame, for an idle tick. It returns nil when the view must
+// be rebuilt: the group has no baseline yet, the last rebuild failed, or the
+// subcategory mode changed, which changes the category counts.
+func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
 	g.baselineMu.Lock()
 	defer g.baselineMu.Unlock()
 
-	if g.baselineSeeded {
-		// Preferences are edge-triggered and there is no periodic keyframe, so an
-		// init built while the preferences cache was empty would leave this joiner
-		// without them until it reconnects. It inherits the baseline instead.
-		if resp.AppPreferences == nil {
-			resp.AppPreferences = g.baselinePrefs
+	prev := g.baselineSnapshot
+	if prev == nil || g.rebuildFailed {
+		return nil
+	}
+	if serverState == nil {
+		serverState = prev.ServerState
+	} else if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+		return nil
+	}
+
+	snapshot := *prev
+	snapshot.ServerState = serverState
+	snapshot.InstanceMeta = instanceMeta
+	snapshot.ActiveTaskCount = activeTaskCount
+	// The tick comes from a successful sync, so the rows are fresh again.
+	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
+	return g.resendBaselineLocked(snapshot, meta)
+}
+
+// buildIdlePayload sends the last frame of a cross-instance view again, as a delta
+// with no changed rows. It returns nil when the view must be rebuilt: the group
+// has no baseline yet, or the last rebuild failed.
+func (g *subscriptionGroup) buildIdlePayload(meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	if g.baselineSnapshot == nil || g.rebuildFailed {
+		return nil
+	}
+	return g.resendBaselineLocked(*g.baselineSnapshot, meta)
+}
+
+// resendBaselineLocked keeps snapshot as the baseline and returns it as a delta
+// with no changed rows. The caller holds baselineMu.
+func (g *subscriptionGroup) resendBaselineLocked(snapshot qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
+	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
+	baseVersion := g.version
+	g.version.Minor++
+
+	deltaResp := snapshot
+	deltaResp.Torrents = nil
+	deltaResp.CrossInstanceTorrents = nil
+	deltaResp.Counts = nil
+
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   &StreamDelta{BaseVersion: baseVersion},
+		Meta:    meta,
+		Version: new(g.version),
+	}
+}
+
+// buildInitPayload returns the exact complete snapshot represented by the group's
+// current baseline. The first init seeds that baseline from resp; later callers
+// ignore independently materialized rows so they cannot join halfway through a
+// delta sequence with a different page. A nil result means the group is unseeded
+// and no candidate snapshot was supplied.
+func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	if g.baselineSnapshot != nil {
+		return &StreamPayload{
+			Type:    streamEventInit,
+			Data:    g.baselineSnapshot,
+			Meta:    meta,
+			Version: new(g.version),
 		}
-		// Counts are edge-triggered the same way: init metas never set
-		// IncludeCounts, so without this backfill a joiner whose REST bootstrap
-		// failed would show zero sidebar counts until the library next changes.
-		if resp.Counts == nil {
-			resp.Counts = g.baselineCountsData
-		}
-		return
+	}
+	if resp == nil {
+		return nil
 	}
 
 	var (
@@ -158,15 +219,50 @@ func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *
 	if opts.isMultiInstance() {
 		order, _, fp = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, nil)
 	} else {
-		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, nil)
+		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), nil)
 	}
 
 	g.baselineFP = fp
 	g.baselineOrder = order
-	g.baselinePrefs = resp.AppPreferences
-	g.baselineCounts = countsFingerprint(resp.Counts)
-	g.baselineCountsData = resp.Counts
-	g.baselineSeeded = true
+	snapshot := *resp
+	detachSnapshotRows(&snapshot)
+	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
+	g.version.Minor++
+
+	return &StreamPayload{
+		Type:    streamEventInit,
+		Data:    g.baselineSnapshot,
+		Meta:    meta,
+		Version: new(g.version),
+	}
+}
+
+// Page rows can point into a full library allocation. Retain only the page.
+func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
+	snapshot.Torrents = slices.Clone(snapshot.Torrents)
+	snapshot.CrossInstanceTorrents = slices.Clone(snapshot.CrossInstanceTorrents)
+	torrents := make([]qbt.Torrent, len(snapshot.Torrents)+len(snapshot.CrossInstanceTorrents))
+	for i := range snapshot.Torrents {
+		if row := &snapshot.Torrents[i]; row.Torrent != nil {
+			torrents[i] = *row.Torrent
+			row.Torrent = &torrents[i]
+		}
+	}
+	views := make([]qbittorrent.TorrentView, len(snapshot.CrossInstanceTorrents))
+	for i := range snapshot.CrossInstanceTorrents {
+		row := &snapshot.CrossInstanceTorrents[i]
+		if row.TorrentView == nil {
+			continue
+		}
+		views[i] = *row.TorrentView
+		if row.Torrent != nil {
+			idx := len(snapshot.Torrents) + i
+			torrents[idx] = *row.Torrent
+			views[i].Torrent = &torrents[idx]
+		}
+		row.TorrentView = &views[i]
+	}
 }
 
 // computeRowDelta walks the freshly materialized rows in display order, producing
@@ -213,14 +309,16 @@ func (b *fpBuf) bit(v bool) {
 // torrent appends every change-relevant torrent field. The per-second counters and
 // swarm/peer-count jitter that move on an otherwise-idle torrent every tick
 // (Reannounce, TimeActive, SeedingTime, ETA, LastActivity, SeenComplete, Popularity,
-// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds) are deliberately
-// left out: on a mostly-idle instance they are the sole fields that change each tick,
-// so including them would flag nearly every row as changed and make each "delta"
-// almost as large as a full snapshot (the root cause of the stream saturating an
-// HTTP/2 connection). The excluded fields still ride along with their current value
-// whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row. MagnetURI and HasMetadata are also left out, for a different
-// reason: TorrentView shadows them out of the serialized payload entirely, so
+// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds, ConnectionsCount)
+// are deliberately left out: on a mostly-idle instance they are the sole fields that
+// change each tick, so including them would flag nearly every row as changed and make
+// each "delta" almost as large as a full snapshot (the root cause of the stream
+// saturating an HTTP/2 connection). PiecesHave is left out because Progress already
+// resends the row during a download. The excluded fields still ride along with their
+// current value whenever a row is sent for a real change; they are just not on their
+// own a reason to resend a row (oneRowFingerprint adds some of them back). MagnetURI and
+// HasMetadata are also left out, for a different reason: TorrentView shadows
+// them out of the serialized payload entirely, so
 // changes to them have nothing to update and must not resend a row (issue #2328).
 // TestTorrentFingerprintCoversEveryField pins this partition, so a
 // go-qbittorrent bump that adds a field fails until the field is categorized here.
@@ -235,7 +333,9 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.str(t.Comment)
 	b.i64(t.Completed)
 	b.i64(t.CompletionOn)
+	b.i64(t.ConnectionsLimit)
 	b.str(t.CreatedBy)
+	b.i64(t.CreationDate)
 	b.str(t.ContentPath)
 	b.i64(t.DlLimit)
 	b.i64(t.DlSpeed)
@@ -252,6 +352,8 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.i64(t.MaxSeedingTime)
 	b.i64(t.MaxInactiveSeedingTime)
 	b.str(t.Name)
+	b.i64(t.PieceSize)
+	b.i64(t.PiecesNum)
 	b.i64(t.Priority)
 	b.f64(t.Progress)
 	b.f64(t.Ratio)
@@ -267,6 +369,7 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.bit(t.SuperSeeding)
 	b.str(t.Tags)
 	b.i64(t.TotalSize)
+	b.i64(t.TotalWasted)
 	b.str(t.Tracker)
 	b.i64(t.TrackersCount)
 	b.i64(t.UpLimit)
@@ -302,6 +405,33 @@ func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	return b.sum()
 }
 
+// oneRowFingerprint is singleRowFingerprint for a one-row view, the details row.
+// It also hashes the counters that the General tab shows live. One row costs
+// little to resend, so the reason to leave them out of a list does not apply.
+func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
+	*b = (*b)[:0]
+	b.torrent(tv.Torrent)
+	b.str(string(tv.TrackerHealth))
+	if t := tv.Torrent; t != nil {
+		b.i64(t.TimeActive)
+		b.i64(t.SeedingTime)
+		b.i64(t.NumSeeds)
+		b.i64(t.NumLeechs)
+		b.i64(t.NumComplete)
+		b.i64(t.NumIncomplete)
+		b.i64(t.ConnectionsCount)
+		b.i64(t.PiecesHave)
+	}
+	return b.sum()
+}
+
+func singleRowFingerprintFor(opts StreamOptions) func(*fpBuf, qbittorrent.TorrentView) uint64 {
+	if opts.Limit == 1 {
+		return oneRowFingerprint
+	}
+	return singleRowFingerprint
+}
+
 // crossRowFingerprint hashes a cross-instance row's change-relevant content,
 // including its instance identity (the same torrent on two instances is two rows).
 func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint64 {
@@ -315,42 +445,22 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 	return b.sum()
 }
 
-// fpSortedMap appends a map in key order so the hash does not follow Go's
-// randomized map iteration order.
-func fpSortedMap[V any](b *fpBuf, m map[string]V, appendValue func(*fpBuf, V)) {
-	b.i64(int64(len(m)))
-	for _, k := range slices.Sorted(maps.Keys(m)) {
-		b.str(k)
-		appendValue(b, m[k])
+// countsEqual compares read-only snapshots without allocating or sorting map keys.
+func countsEqual(a, b *qbittorrent.TorrentCounts) bool {
+	if a == b {
+		return true
 	}
-}
-
-// countsFingerprint hashes the sidebar counts aggregate. Counts are several KB of
-// JSON on an instance with many categories, tags and trackers, and they only move
-// when the library does, so a tick that leaves them unchanged omits the field the
-// same way it already omits preferences. The client reuses its last same-scope
-// counts snapshot when the field is absent.
-func countsFingerprint(c *qbittorrent.TorrentCounts) uint64 {
-	if c == nil {
-		return 0
+	if a == nil || b == nil {
+		return false
 	}
-	b := make(fpBuf, 0, fpBufSize)
-	b.i64(int64(c.Total))
-	fpSortedMap(&b, c.Status, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.Categories, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.CategorySizes, func(b *fpBuf, v int64) { b.i64(v) })
-	fpSortedMap(&b, c.Tags, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.TagSizes, func(b *fpBuf, v int64) { b.i64(v) })
-	fpSortedMap(&b, c.Trackers, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.TrackerTransfers, func(b *fpBuf, v qbittorrent.TrackerTransferStats) {
-		b.i64(v.Uploaded)
-		b.i64(v.Downloaded)
-		b.i64(v.UploadedSession)
-		b.i64(v.DownloadedSession)
-		b.i64(v.TotalSize)
-		b.i64(int64(v.Count))
-	})
-	return b.sum()
+	return a.Total == b.Total &&
+		maps.Equal(a.Status, b.Status) &&
+		maps.Equal(a.Categories, b.Categories) &&
+		maps.Equal(a.CategorySizes, b.CategorySizes) &&
+		maps.Equal(a.Tags, b.Tags) &&
+		maps.Equal(a.TagSizes, b.TagSizes) &&
+		maps.Equal(a.Trackers, b.Trackers) &&
+		maps.Equal(a.TrackerTransfers, b.TrackerTransfers)
 }
 
 // subsetRows returns the rows at the given indices, preserving order.

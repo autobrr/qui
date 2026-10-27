@@ -1,6 +1,7 @@
 ---
 sidebar_position: 100
-title: Support Development
+title: Support qui development
+sidebar_label: Support Development
 description: Donation and subscription options that fund qui development.
 ---
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -76,7 +76,6 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:            true,
 		RSSAutomationTags:      []string{"cross-seed"},
 		TargetInstanceIDs:      []int{instanceID},
 		FindIndividualEpisodes: true,
@@ -119,7 +118,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service := &Service{
 		syncManager:         sync,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
@@ -135,10 +134,9 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:        "guid-2",
 		Size:        2048,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         []string{"ARR Alias"},
+			Class:        searchCandidateClassExactSizeFallback,
+			Relaxed:      differencesOf(differenceCollection),
+			SourceTitles: []string{"ARR Alias"},
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
@@ -173,6 +171,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		FindIndividualEpisodes: true,
 	}
 
+	withAdder(service)
 	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
@@ -180,8 +179,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
-	require.Equal(t, cached.SearchDecision.StrictMismatchReason, captured.SearchDecision.StrictMismatchReason)
-	require.Equal(t, cached.SearchDecision.RelaxedDifferences, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
 
@@ -189,7 +187,7 @@ func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
 	t.Parallel()
 
 	service := &Service{
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 	}
 
 	const (

@@ -4,6 +4,7 @@
  */
 
 import { getColumnType, type ColumnFilter } from "@/lib/column-filter-utils"
+import { columnLabel } from "@/lib/torrent-table/column-label"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender } from "@tanstack/react-table"
@@ -59,9 +60,10 @@ interface DraggableTableHeaderProps {
   columnFilters?: ColumnFilter[]
   viewMode?: ViewMode
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
+  stretched?: boolean
 }
 
-export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange, stretched = false }: DraggableTableHeaderProps) {
   const { column } = header
 
   const isSelectHeader = column.id === "select"
@@ -69,8 +71,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const isTrackerIconHeader = column.id === "tracker_icon"
   const isStatusIconHeader = column.id === "status_icon"
   const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
-  // Match cell padding: compact columns use px-0, others use px-2 (dense) or px-3 (normal)
-  const headerPadding = isCompactHeader ? "px-0" : (viewMode === "dense" ? "px-2" : "px-3")
 
   const {
     attributes,
@@ -86,8 +86,9 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const table = header.getContext().table
   const trackerColumn = isTrackerIconHeader ? table.getColumn("tracker") : null
 
-  const canResize = column.getCanResize()
-  const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
+  // A stretched column's width is derived, so resizing it would only store an invisible value.
+  const canResize = column.getCanResize() && !stretched
+  const shouldShowSeparator = canResize || stretched || column.columnDef.enableResizing === false
   const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
   const canSort = column.getCanSort() || (!!trackerColumn && trackerColumn.getCanSort())
   const toggleSortingHandler = column.getToggleSortingHandler()
@@ -112,7 +113,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
       className="group overflow-hidden"
     >
       <div
-        className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
+        className={`${viewMode === "dense" ? "px-2 h-7 text-xs" : "px-3 h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
         } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
         }`}
         onClick={event => {
@@ -152,8 +153,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
             <span className={columnFilterIconVisibilityClassName}>
               <ColumnFilterPopover
                 columnId={column.id}
-                columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
-                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                columnName={columnLabel(column)}
                 columnType={getColumnType(column.id)}
                 currentFilter={columnFilters.find(f => f.columnId === column.id)}
                 onApply={(filter) => onFilterChange(column.id, filter)}

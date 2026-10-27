@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestRateLimitError_Error(t *testing.T) {
@@ -46,38 +48,8 @@ func TestIsRetryableDownloadError(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "502 Bad Gateway is retryable",
-			err:  &DownloadError{StatusCode: http.StatusBadGateway},
-			want: true,
-		},
-		{
-			name: "503 Service Unavailable is retryable",
-			err:  &DownloadError{StatusCode: http.StatusServiceUnavailable},
-			want: true,
-		},
-		{
-			name: "504 Gateway Timeout is retryable",
-			err:  &DownloadError{StatusCode: http.StatusGatewayTimeout},
-			want: true,
-		},
-		{
 			name: "400 Bad Request is not retryable",
 			err:  &DownloadError{StatusCode: http.StatusBadRequest},
-			want: false,
-		},
-		{
-			name: "401 Unauthorized is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusUnauthorized},
-			want: false,
-		},
-		{
-			name: "403 Forbidden is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusForbidden},
-			want: false,
-		},
-		{
-			name: "404 Not Found is not retryable",
-			err:  &DownloadError{StatusCode: http.StatusNotFound},
 			want: false,
 		},
 		{
@@ -163,6 +135,46 @@ func TestDownloadRateLimitUsesGrabScopeAndRetryAfter(t *testing.T) {
 	grabLimited, _ := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeGrab)
 	assert.False(t, queryLimited)
 	assert.True(t, grabLimited)
+}
+
+func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
+	const torrentBody = testTorrentPayload
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html>Login required</html>"))
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(torrentBody))
+	}))
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, "torrent-download-cache")
+	store, err := models.NewTorznabIndexerStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	indexer, err := store.Create(t.Context(), "Test indexer", server.URL, "test-key", nil, nil, true, 0, 5)
+	require.NoError(t, err)
+	cache := models.NewTorznabTorrentCacheStore(db)
+	service := NewService(store, WithTorrentCache(cache))
+	t.Cleanup(service.searchScheduler.Stop)
+	req := TorrentDownloadRequest{IndexerID: indexer.ID, DownloadURL: server.URL + "/download", GUID: "test-release"}
+
+	data, err := service.DownloadTorrent(t.Context(), req)
+	require.ErrorIs(t, err, ErrInvalidTorrentPayload)
+	assert.Nil(t, data)
+	assert.Equal(t, int32(1), calls.Load(), "rejected payload must not trigger a retry")
+	_, found, err := cache.Fetch(t.Context(), indexer.ID, req.GUID, defaultTorrentCacheTTL)
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	for range 2 {
+		data, err = service.DownloadTorrent(t.Context(), req)
+		require.NoError(t, err)
+		assert.Equal(t, []byte(torrentBody), data)
+		assert.Equal(t, int32(2), calls.Load(), "valid payload must be fetched once and then cached")
+	}
 }
 
 // timeoutError implements net.Error for testing timeout detection

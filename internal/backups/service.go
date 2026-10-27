@@ -32,7 +32,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
-	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
@@ -61,7 +60,6 @@ type BackupProgress struct {
 
 type missingTorrent struct {
 	hash    string
-	name    string
 	relPath string
 	absPath string
 }
@@ -73,7 +71,6 @@ type Service struct {
 	categoryWriter backupCategoryMutator
 	tagWriter      backupTagMutator
 	torrentWriter  backupTorrentMutator
-	jackettSvc     *jackett.Service
 	notifier       notifications.Notifier
 	cfg            Config
 	root           string // backup root directory; stored paths resolve against it
@@ -154,7 +151,7 @@ type ManifestItem struct {
 	SavePath    string   `json:"savePath,omitempty"`
 }
 
-func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
+func NewService(store *models.BackupStore, reader backupReader, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -183,23 +180,17 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		}
 	}
 
-	var jackettService *jackett.Service
-	if svc, ok := jackettSvc.(*jackett.Service); ok {
-		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
-	}
-
 	svc := &Service{
-		store:      store,
-		reader:     reader,
-		jackettSvc: jackettService,
-		notifier:   notifier,
-		cfg:        cfg,
-		root:       root,
-		cacheDir:   cacheDir,
-		jobs:       make(chan job, cfg.WorkerCount*2),
-		inflight:   make(map[int]int64),
-		progress:   make(map[int64]*BackupProgress),
-		now:        func() time.Time { return time.Now().UTC() },
+		store:    store,
+		reader:   reader,
+		notifier: notifier,
+		cfg:      cfg,
+		root:     root,
+		cacheDir: cacheDir,
+		jobs:     make(chan job, cfg.WorkerCount*2),
+		inflight: make(map[int]int64),
+		progress: make(map[int64]*BackupProgress),
+		now:      func() time.Time { return time.Now().UTC() },
 
 		activityPublisher: activity.NopPublisher{},
 	}
@@ -1041,6 +1032,12 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 		}
 	}
 
+	// The fallbacks above follow qBittorrent's currently working tracker,
+	// which flips between runs for torrents with several announce hosts.
+	if domain := announceDomain(data); domain != "" {
+		trackerDomain = domain
+	}
+
 	if blobRelPath == nil && s.cacheDir != "" {
 		sum := sha256.Sum256(data)
 		hash := hex.EncodeToString(sum[:])
@@ -1088,10 +1085,10 @@ func sweepStaleBlobTemps(cacheDir string) {
 	removed := 0
 	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".tmp-") {
-			return nil
+			return nil //nolint:nilerr // the sweep is best-effort, so it skips an entry that it cannot read
 		}
 		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
-			return nil
+			return nil //nolint:nilerr // the sweep keeps a file whose age it cannot read
 		}
 		if root.Remove(filepath.FromSlash(p)) == nil {
 			removed++
@@ -1206,14 +1203,14 @@ func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 			return err
 		}
 		if entryErr != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // the cleanup skips an entry that it cannot read and goes on
 		}
 		if _, ok := referenced[filepath.Join(s.cacheDir, filepath.FromSlash(p))]; ok {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil || info.ModTime().After(cutoff) {
-			return nil
+			return nil //nolint:nilerr // the cleanup keeps a file whose age it cannot read
 		}
 		if root.Remove(filepath.FromSlash(p)) == nil {
 			removed++
@@ -1423,7 +1420,9 @@ func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.Back
 		s.clearInstance(instanceID, run.ID)
 
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := s.store.DeleteRun(cleanupCtx, run.ID); err != nil {
+		// CleanupRun, not a bare run delete: an item row covers a range of runs,
+		// so only this path drops rows a deleted run leaves uncovered.
+		if err := s.store.CleanupRun(cleanupCtx, run.ID); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int64("runID", run.ID).Msg("Failed to remove canceled backup run")
 		}
 		cancelCleanup()
@@ -1530,7 +1529,7 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		}
 	}
 
-	// Get all items for all runs in one query
+	// Items of the deleted runs, as blob cleanup candidates.
 	items, err := s.store.ListItemsForRuns(ctx, runIDs)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to list backup items for cleanup")
@@ -1860,7 +1859,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			}
 
 			// Mark for background download from qBittorrent
-			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, relPath: rel, absPath: absPath})
+			missing = append(missing, missingTorrent{hash: item.Hash, relPath: rel, absPath: absPath})
 		}
 
 		items = append(items, backupItem)
@@ -2003,44 +2002,6 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, rootDir s
 			}
 		} else {
 			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client")
-			// TODO: Torznab search fallback is disabled due to API changes
-			/*
-				// Attempt Torznab search fallback for missing torrents
-				if s.jackettSvc != nil {
-					ctx := context.Background()
-					searchReq := &jackett.TorznabSearchRequest{
-						Query: mt.name, // Search by torrent name
-						Limit: 10,      // Get multiple results to find the right one
-					}
-
-					searchResp, searchErr := s.jackettSvc.SearchGeneric(ctx, searchReq)
-					if searchErr != nil {
-						log.Warn().Err(searchErr).Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search failed")
-					} else if len(searchResp.Results) > 0 {
-						// Look for a result that matches our infohash or name
-						var matchingResult *jackett.SearchResult
-						for _, result := range searchResp.Results {
-							// Check if this result has the infohash we want
-							// TODO: If InfoHashV1/InfoHashV2 are populated from RSS, check them here
-
-							// For now, prefer exact name matches, then partial matches
-							if result.Title == mt.name {
-								matchingResult = &result
-								break // Exact match, use this one
-							} else if strings.Contains(strings.ToLower(result.Title), strings.ToLower(mt.name)) && matchingResult == nil {
-								matchingResult = &result // Partial match, keep looking for exact
-							}
-						}
-
-						// If no good name match, take the first result as a last resort
-						if matchingResult == nil && len(searchResp.Results) > 0 {
-							matchingResult = &searchResp.Results[0]
-							log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("fallbackTitle", matchingResult.Title).Msg("No good name match found, using first result as fallback")
-						}
-
-						if matchingResult != nil {
-							log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
-			*/
 			s.updateProgress(runID, i+1)
 		}
 	}

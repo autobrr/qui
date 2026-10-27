@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -106,13 +106,36 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			name:    "WEB simplification disabled",
+			// The season pack check has no exact-source rule, so WEB matches WEB-DL.
+			name:    "WEB against WEB-DL without WEB simplification",
 			pack:    "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB.H.264-RlsGrp",
 			settings: &models.CrossSeedAutomationSettings{
 				SeasonPackSkipRepackCompare:  true,
 				SeasonPackSimplifyWEBCompare: false,
 			},
+			wantSeasonPack:  true,
+			checkSeasonPack: true,
+		},
+		{
+			// Without sizes, the web source relabel does not apply.
+			name:    "WEBRip against WEB-DL without WEB simplification",
+			pack:    "Show.S01.1080p.WEBRip.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: true,
+			},
+			checkSeasonPack: true,
+		},
+		{
+			name:    "WEBRip against WEB-DL with WEB simplification",
+			pack:    "Show.S01.1080p.WEBRip.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  true,
+				SeasonPackSimplifyWEBCompare: true,
+			},
+			wantSeasonPack:  true,
 			checkSeasonPack: true,
 		},
 		{
@@ -160,21 +183,28 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 		},
 	}
 
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pack := parseSeasonPackTestRelease(t, tt.pack)
 			episode := parseSeasonPackTestRelease(t, tt.episode)
 
 			if tt.checkSeasonPack {
-				match, _ := matcher.seasonPackReleasesMatchWithReason(pack, episode, tt.strict, tt.settings, nil)
+				match, _ := seasonPackEpisodeMatches(matcher, pack, episode, tt.settings, nil)
 				require.Equal(t, tt.wantSeasonPack, match)
 			}
 			if tt.checkGeneric {
-				require.Equal(t, tt.wantGeneric, matcher.releasesMatch(pack, episode, tt.strict))
+				require.Equal(t, tt.wantGeneric, matcher.strictCompare(pack, episode, tt.strict).matched())
 			}
 		})
 	}
+}
+
+// seasonPackEpisodeMatches asks the season pack verdict about a local episode
+// against the same episode of the pack, with no sizes, as the light check does.
+func seasonPackEpisodeMatches(m matcher, pack, episode *rls.Release, settings *models.CrossSeedAutomationSettings, aliases []string) (bool, string) {
+	verdict := m.matchVerdict(namedRelease{release: episode}, namedRelease{release: asEpisode(pack, episode.Episode)}, matchEvidence{CandidateTitles: aliases}, seasonPackPolicy(settings))
+	return verdict.Matched, verdict.RejectReason
 }
 
 func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
@@ -192,7 +222,7 @@ func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
 // supplied on the pack side (alias bridge, #2). The no-alias case is the current 0%
 // behaviour and keeps the fix load-bearing.
 func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	cases := []struct {
 		name    string
@@ -225,11 +255,11 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 			pack := parseSeasonPackTestRelease(t, tc.pack)
 			episode := parseSeasonPackTestRelease(t, tc.episode)
 
-			ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+			ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, nil)
 			require.False(t, ok, "expected no match without aliases")
 			require.Equal(t, "title mismatch", reason)
 
-			ok, reason = matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, tc.aliases)
+			ok, reason = seasonPackEpisodeMatches(matcher, pack, episode, nil, tc.aliases)
 			require.True(t, ok, "expected match with aliases, got reason %q", reason)
 			require.Empty(t, reason)
 		})
@@ -241,7 +271,7 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 // "Overtake.S01...") still matches local fansub episodes that keep it. Reported for
 // BTN's Overtake pack, which failed while BHD's punctuation-keeping name matched.
 func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	pack := parseSeasonPackTestRelease(t, "Overtake.S01.1080p.CR.WEB-DL.AAC2.0.H.264-SubsPlease")
 	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Overtake! - 01 (1080p) [F5A70A05]")
@@ -249,7 +279,7 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 	// before matching; mirror that here.
 	episode.Series = pack.Series
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+	ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, nil)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
 }
@@ -259,7 +289,7 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 // like Aither tag JAPANESE on anime that every other tracker leaves untagged, which used to
 // reject the whole season as a language mismatch.
 func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	pack := parseSeasonPackTestRelease(t, "Reborn as a Vending Machine, I Now Wander the Dungeon S03 JAPANESE 1080p CR WEB-DL AAC 2.0 H.264-SubsPlease")
 	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou S3 - 02 (1080p) [7ECCC53C]")
@@ -268,7 +298,24 @@ func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
 		"Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou",
 	}
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, aliases)
+	ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, aliases)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
+}
+
+// TestSeasonPackEpisode_TagsOnlyOnLocalName pins that a group or a CRC tag that
+// only the local episode carries does not reject the pack. A pack name does not
+// carry the group or the CRC tag of each episode.
+func TestSeasonPackEpisode_TagsOnlyOnLocalName(t *testing.T) {
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	for _, tc := range []struct{ pack, episode string }{
+		{"Show.S01.1080p.WEB.H.264", "Show.S01E01.1080p.WEB.H.264-RlsGrp"},
+		{"[RlsGrp] Show S01 (1080p)", "[RlsGrp] Show S01E01 (1080p) [F5A70A05]"},
+	} {
+		t.Run(tc.episode, func(t *testing.T) {
+			ok, reason := seasonPackEpisodeMatches(matcher, parseSeasonPackTestRelease(t, tc.pack), parseSeasonPackTestRelease(t, tc.episode), nil, nil)
+			require.True(t, ok, "expected match, got reason %q", reason)
+		})
+	}
 }

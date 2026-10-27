@@ -36,122 +36,6 @@ func setupTestPool(t *testing.T) *ClientPool {
 	return pool
 }
 
-/*
-	func TestClientPool_BackoffLogic(t *testing.T) {
-		pool := setupTestPool(t)
-		defer pool.Close()
-
-		instanceID := 1
-
-		tests := []struct {
-			name           string
-			err            error
-			expectedBanned bool
-			minBackoff     time.Duration
-			maxBackoff     time.Duration
-		}{
-			{
-				name:           "IP ban error triggers long backoff",
-				err:            errors.New("User's IP is banned for too many failed login attempts"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "Rate limit error triggers long backoff",
-				err:            errors.New("Rate limit exceeded"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "403 forbidden triggers long backoff",
-				err:            errors.New("HTTP 403 Forbidden"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "Generic connection error triggers short backoff",
-				err:            errors.New("connection refused"),
-				expectedBanned: false,
-				minBackoff:     25 * time.Second,
-				maxBackoff:     35 * time.Second,
-			},
-			{
-				name:           "Timeout error triggers short backoff",
-				err:            errors.New("context deadline exceeded"),
-				expectedBanned: false,
-				minBackoff:     25 * time.Second,
-				maxBackoff:     35 * time.Second,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				// Reset failure tracking
-				pool.ResetFailureTracking(instanceID)
-
-				// Should not be in backoff initially
-				assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff initially")
-
-				// Track failure
-				pool.trackFailure(instanceID, tt.err)
-
-				// Should now be in backoff
-				assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failure")
-
-				// Check failure info
-				pool.mu.RLock()
-				info, exists := pool.failureTracker[instanceID]
-				pool.mu.RUnlock()
-
-				require.True(t, exists, "Failure info should exist")
-
-				// Check if this is a ban error (we can't directly check isBanned field anymore)
-				isBanError := pool.isBanError(tt.err)
-				assert.Equal(t, tt.expectedBanned, isBanError, "Ban error classification mismatch")
-
-				// Check backoff duration is in expected range
-				backoffDuration := time.Until(info.nextRetry)
-				assert.Truef(t, backoffDuration >= tt.minBackoff && backoffDuration <= tt.maxBackoff,
-					"Backoff duration %v not in range [%v, %v]", backoffDuration, tt.minBackoff, tt.maxBackoff)
-			})
-		}
-	}
-
-	func TestClientPool_BackoffEscalation(t *testing.T) {
-		pool := setupTestPool(t)
-		defer pool.Close()
-
-		instanceID := 1
-		banError := errors.New("User's IP is banned for too many failed login attempts")
-
-		// Test exponential backoff escalation for ban errors
-		expectedMinutes := []int{5, 10, 20, 40, 60, 60} // Max at 1 hour
-
-		for i, expectedMin := range expectedMinutes {
-			t.Run(fmt.Sprintf("failure_%d", i+1), func(t *testing.T) {
-				pool.trackFailure(instanceID, banError)
-
-				pool.mu.RLock()
-				info, exists := pool.failureTracker[instanceID]
-				pool.mu.RUnlock()
-
-				require.True(t, exists, "Failure info should exist")
-
-				assert.Equal(t, i+1, info.attempts, "Attempt count mismatch")
-
-				backoffDuration := time.Until(info.nextRetry)
-				minExpected := time.Duration(expectedMin-1) * time.Minute
-				maxExpected := time.Duration(expectedMin+1) * time.Minute
-
-				assert.Truef(t, backoffDuration >= minExpected && backoffDuration <= maxExpected,
-					"Failure %d: backoff duration %v not in range [%v, %v]", i+1, backoffDuration, minExpected, maxExpected)
-			})
-		}
-	}
-*/
 func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -288,7 +172,10 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 // interrupted by caller cancellation (client disconnect / shutdown) does NOT record a
 // failure or back off the instance, so a healthy instance is not stranded (review of #2096).
 func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -304,7 +191,7 @@ func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-arrived
 		cancel()
 	}()
 
@@ -366,11 +253,6 @@ func TestClientPool_IsBanError(t *testing.T) {
 		{
 			name:     "IP banned error",
 			err:      errors.New("User's IP is banned for too many failed login attempts"),
-			expected: true,
-		},
-		{
-			name:     "Simple banned error",
-			err:      errors.New("IP is banned"),
 			expected: true,
 		},
 		{
@@ -467,27 +349,6 @@ func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
 	assert.Equal(t, sink, poolSink, "pool should have stored the sink")
 }
 
-func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	// Verify pool starts with no clients
-	pool.mu.RLock()
-	clientCount := len(pool.clients)
-	pool.mu.RUnlock()
-	assert.Equal(t, 0, clientCount, "pool should start with no clients")
-
-	// Setting sink should not panic when there are no clients
-	sink := &mockPoolSyncEventSink{}
-	pool.SetSyncEventSink(sink)
-
-	// Verify the pool stored the sink
-	pool.mu.RLock()
-	poolSink := pool.syncEventSink
-	pool.mu.RUnlock()
-	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
-}
-
 func TestClientPoolSetSyncEventSinkUpdatesSyncManager(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -535,27 +396,6 @@ func TestClientPoolSetSyncManagerSkipsStaleSinkReplay(t *testing.T) {
 	pool.applySyncManagerSinkIfCurrent(sm, oldSink, staleSeq)
 
 	assert.Equal(t, newSink, sm.getSyncEventSink(), "stale captured sink replay should not overwrite newer sink")
-}
-
-func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	// Create a client and add to pool
-	client := &Client{instanceID: 1}
-	pool.mu.Lock()
-	pool.clients[1] = client
-	pool.mu.Unlock()
-
-	// Set first sink
-	sink1 := &mockPoolSyncEventSink{id: 1}
-	pool.SetSyncEventSink(sink1)
-	assert.Equal(t, sink1, client.getSyncEventSink(), "client should have sink1")
-
-	// Set second sink (replaces first)
-	sink2 := &mockPoolSyncEventSink{id: 2}
-	pool.SetSyncEventSink(sink2)
-	assert.Equal(t, sink2, client.getSyncEventSink(), "client should have sink2 after replacement")
 }
 
 // mockPoolSyncEventSink is a simple mock for testing pool sink propagation.

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -24,7 +24,7 @@ const (
 	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
 
 	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
-	// cannot hold them forever; writerMu is not context-aware while blocked.
+	// cannot hold them forever.
 	cacheWriteTimeout = 5 * time.Second
 
 	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)
@@ -88,18 +88,6 @@ func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrID
 		positiveTTL:   DefaultPositiveCacheTTL,
 		negativeTTL:   DefaultNegativeCacheTTL,
 	}
-}
-
-// WithPositiveTTL sets the TTL for positive cache entries
-func (s *Service) WithPositiveTTL(ttl time.Duration) *Service {
-	s.positiveTTL = ttl
-	return s
-}
-
-// WithNegativeTTL sets the TTL for negative cache entries
-func (s *Service) WithNegativeTTL(ttl time.Duration) *Service {
-	s.negativeTTL = ttl
-	return s
 }
 
 // LookupExternalIDs queries ARR instances for external IDs based on content type.
@@ -193,7 +181,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
 	}
 	if err != nil || cacheEntry == nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
 	if cacheEntry.IsNegative {
 		log.Debug().
@@ -609,11 +597,6 @@ func (s *Service) getArrTypeForContent(contentType ContentType) models.ArrInstan
 	default:
 		return ""
 	}
-}
-
-// CleanupExpiredCache removes expired cache entries
-func (s *Service) CleanupExpiredCache(ctx context.Context) (int64, error) {
-	return s.cacheStore.CleanupExpired(ctx)
 }
 
 // DebugResolveResult contains detailed debug information about an ID resolution

@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -563,40 +563,6 @@ func (s *Service) GetSearchHistory(_ context.Context, limit int) (*SearchHistory
 	}, nil
 }
 
-// GetSearchHistoryStats returns statistics about search history.
-func (s *Service) GetSearchHistoryStats(_ context.Context) (*SearchHistoryStats, error) {
-	if s.searchHistory == nil {
-		return &SearchHistoryStats{
-			ByStatus:   make(map[string]int),
-			ByPriority: make(map[string]int),
-		}, nil
-	}
-
-	stats := s.searchHistory.Stats()
-	return &stats, nil
-}
-
-// GetIndexerName resolves a Torznab indexer ID to its configured name.
-func (s *Service) GetIndexerName(ctx context.Context, id int) string {
-	if id <= 0 {
-		return ""
-	}
-
-	indexer, err := s.indexerStore.Get(ctx, id)
-	if err != nil {
-		log.Debug().
-			Err(err).
-			Int("indexer_id", id).
-			Msg("Failed to resolve indexer name")
-		return ""
-	}
-	if indexer == nil {
-		return ""
-	}
-
-	return indexer.Name
-}
-
 // Search searches enabled Torznab indexers with intelligent category detection
 func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
 	return s.performSearch(ctx, req, searchCacheScopeCrossSeed)
@@ -758,7 +724,9 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			// live indexers degrades to a partial response instead of failing the
 			// whole multi-indexer search.
 			if cachedPortion != nil {
-				log.Warn().
+				// Trace: rate-limited indexers hit this on every search, and search
+				// history already records each failed indexer task.
+				log.Trace().
 					Err(err).
 					Int("indexers_requested", len(indexersToSearch)).
 					Int("cached_results", len(cachedResults)).
@@ -1628,14 +1596,6 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 	}()
 }
 
-// FlushSearchCache removes all cached search responses.
-func (s *Service) FlushSearchCache(ctx context.Context) (int64, error) {
-	if !s.shouldUseSearchCache() {
-		return 0, nil
-	}
-	return s.searchCache.Flush(ctx)
-}
-
 // InvalidateSearchCache clears cached searches referencing the provided indexers.
 func (s *Service) InvalidateSearchCache(ctx context.Context, indexerIDs []int) (int64, error) {
 	if !s.shouldUseSearchCache() || len(indexerIDs) == 0 {
@@ -1848,7 +1808,16 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
-	return timeouts.AdaptiveSearchTimeout(len(indexers))
+	timeout := timeouts.AdaptiveSearchTimeout(len(indexers))
+	// The execution deadline must allow each client's configured HTTP timeout.
+	for _, indexer := range indexers {
+		seconds := indexer.TimeoutSeconds
+		if seconds <= 0 {
+			seconds = defaultIndexerTimeoutSeconds
+		}
+		timeout = max(timeout, time.Duration(seconds)*time.Second)
+	}
+	return timeout
 }
 
 func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
@@ -2145,7 +2114,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				earliestRateLimit = rateLimitErr
 			}
 			localResumeAt := resumeAt.In(time.Local)
-			log.Warn().
+			log.Trace().
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
 				Time("resume_at", localResumeAt).
@@ -4079,31 +4048,6 @@ func getCategoriesForContentType(ct contentType) []int {
 	}
 }
 
-// GetTrackerDomains extracts domain names from all configured indexers
-func (s *Service) GetTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := s.indexerStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list indexers: %w", err)
-	}
-
-	domainMap := make(map[string]bool)
-	var domains []string
-
-	for _, indexer := range indexers {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Sort for consistent output
-	sort.Strings(domains)
-	return domains, nil
-}
-
 // EnabledIndexerInfo holds both name and domain information for an enabled indexer
 type EnabledIndexerInfo struct {
 	ID     int
@@ -4189,61 +4133,6 @@ func GetIndexerDomainFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID 
 		return info.Domain
 	}
 	return ""
-}
-
-// GetEnabledTrackerDomains extracts domain names from enabled indexers only
-func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := s.indexerStore.ListEnabled(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
-	}
-
-	domainMap := make(map[string]bool)
-	var domains []string
-
-	// Group indexers by backend for efficient processing
-	var jackettIndexers, prowlarrIndexers, nativeIndexers []*models.TorznabIndexer
-	for _, indexer := range indexers {
-		switch indexer.Backend {
-		case models.TorznabBackendProwlarr:
-			prowlarrIndexers = append(prowlarrIndexers, indexer)
-		case models.TorznabBackendNative:
-			nativeIndexers = append(nativeIndexers, indexer)
-		default: // Jackett
-			jackettIndexers = append(jackettIndexers, indexer)
-		}
-	}
-
-	// Handle Jackett and Native indexers (use BaseURL)
-	for _, indexer := range append(jackettIndexers, nativeIndexers...) {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Handle Prowlarr indexers (need to query Prowlarr API for actual tracker domains)
-	if len(prowlarrIndexers) > 0 {
-		prowlarrDomains := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
-
-		for _, indexer := range prowlarrIndexers {
-			domain := prowlarrDomains[indexer.ID]
-			if domain == "" && indexer.BaseURL != "" {
-				domain = extractDomainFromURL(indexer.BaseURL)
-			}
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Sort for consistent output
-	sort.Strings(domains)
-	return domains, nil
 }
 
 // GetConfiguredTrackerDomains returns tracker domains for enabled indexers whose
@@ -4358,51 +4247,6 @@ func extractDomainFromURL(urlStr string) string {
 	return hostname
 }
 
-// TrackerDomainInfo represents detailed information about a tracker domain
-type TrackerDomainInfo struct {
-	Domain    string `json:"domain"`
-	IndexerID int    `json:"indexer_id"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url"`
-	JackettID string `json:"jackett_id,omitempty"`
-	Backend   string `json:"backend"`
-	Enabled   bool   `json:"enabled"`
-}
-
-// GetTrackerDomainDetails returns detailed information about tracker domains from all indexers
-func (s *Service) GetTrackerDomainDetails(ctx context.Context) ([]TrackerDomainInfo, error) {
-	indexers, err := s.indexerStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list indexers: %w", err)
-	}
-
-	var domainInfos []TrackerDomainInfo
-
-	for _, indexer := range indexers {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" {
-				domainInfos = append(domainInfos, TrackerDomainInfo{
-					Domain:    domain,
-					IndexerID: indexer.ID,
-					Name:      indexer.Name,
-					BaseURL:   indexer.BaseURL,
-					JackettID: indexer.IndexerID,
-					Backend:   string(indexer.Backend),
-					Enabled:   indexer.Enabled,
-				})
-			}
-		}
-	}
-
-	// Sort by domain name for consistent output
-	sort.Slice(domainInfos, func(i, j int) bool {
-		return domainInfos[i].Domain < domainInfos[j].Domain
-	})
-
-	return domainInfos, nil
-}
-
 // GetIndexerDomain gets the tracker domain for a specific indexer by name
 func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (string, error) {
 	indexers, err := s.indexerStore.ListEnabled(ctx)
@@ -4430,7 +4274,7 @@ func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (str
 		domain, err := s.getProwlarrIndexerDomain(ctx, targetIndexer)
 		if err != nil || domain == "" {
 			// Fallback to BaseURL extraction
-			return extractDomainFromURL(targetIndexer.BaseURL), nil
+			return extractDomainFromURL(targetIndexer.BaseURL), nil //nolint:nilerr // if the Prowlarr lookup fails, use the domain of BaseURL
 		}
 		return domain, nil
 	default:
@@ -4524,11 +4368,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 
 		// Create Prowlarr client for this instance
-		timeout := indexers[0].TimeoutSeconds
-		if timeout <= 0 {
-			timeout = 30
-		}
-		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, indexers[0].TimeoutSeconds)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

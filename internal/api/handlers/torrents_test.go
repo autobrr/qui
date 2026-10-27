@@ -4,9 +4,13 @@
 package handlers
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/torrentname"
 )
@@ -100,4 +104,23 @@ func TestValidateTorrentFilePath(t *testing.T) {
 			t.Fatalf("%s: expected nil error, got %v", tt.name, err)
 		}
 	}
+}
+
+// TestSortedPeersResponseOmitsFullUpdate pins the shadow field on the peers
+// response: MergePeers never copies FullUpdate into the cached struct, so the
+// endpoint has only ever sent false and must now send nothing.
+func TestSortedPeersResponseOmitsFullUpdate(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(SortedPeersResponse{
+		TorrentPeersResponse: &qbt.TorrentPeersResponse{Rid: 7, FullUpdate: true},
+		SortedPeers:          []SortedPeer{{Key: "192.0.2.1:1"}},
+	})
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.NotContains(t, decoded, "full_update")
+	require.EqualValues(t, 7, decoded["rid"])
+	require.Contains(t, decoded, "sorted_peers")
 }

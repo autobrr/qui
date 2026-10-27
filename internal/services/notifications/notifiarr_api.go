@@ -174,6 +174,21 @@ func ValidateNotifiarrAPIKey(ctx context.Context, rawURL string) error {
 	return nil
 }
 
+// BuildNotifiarrTestPayload formats a synthetic event for the manual payload generator.
+// It uses no stores or network services and returns nil for events with no title or message.
+func BuildNotifiarrTestPayload(event Event) (json.RawMessage, error) {
+	var s Service
+	ctx := context.Background()
+	title, message := s.formatEvent(ctx, event, false)
+	if strings.TrimSpace(title) == "" && strings.TrimSpace(message) == "" {
+		return nil, nil
+	}
+	return json.Marshal(notifiarrAPIPayload{
+		Event: buildNotifiarrEventValue(event.Type),
+		Data:  s.buildNotifiarrAPIData(ctx, event, title, message),
+	})
+}
+
 func (s *Service) sendNotifiarrAPI(ctx context.Context, rawURL string, event Event, title, message string) error {
 	config, err := parseNotifiarrAPIConfig(rawURL)
 	if err != nil {

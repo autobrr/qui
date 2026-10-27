@@ -7,10 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 
-	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -28,23 +27,20 @@ func resolveFreeSpaceSource(src *models.FreeSpaceSource) models.FreeSpaceSource 
 }
 
 // GetFreeSpaceSourceKey returns a unique key for the given source.
-// Keys are "qbt" for the qBittorrent default directory, "path:/cleaned/path" for local
-// filesystem sources, and "qbitPath:<path>" for paths read on the qBittorrent host.
+// Keys are "qbt" for qBittorrent source or "path:/cleaned/path" for path sources.
 func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 	resolved := resolveFreeSpaceSource(src)
-	trimmed := strings.TrimSpace(resolved.Path)
-	if trimmed == "" {
-		return FreeSpaceSourceKeyQBittorrent
-	}
-
 	switch resolved.Type {
 	case models.FreeSpaceSourcePath:
-		// Clean path for consistent keys
-		return "path:" + filepath.Clean(trimmed)
-	case models.FreeSpaceSourceQbitPath:
-		// Remote path: keep the qBittorrent host's separators, so a Windows host
-		// and a POSIX host never collapse onto the same key.
-		return "qbitPath:" + trimmed
+		trimmed := strings.TrimSpace(resolved.Path)
+		if trimmed == "" {
+			return FreeSpaceSourceKeyQBittorrent
+		}
+
+		// path, not filepath: the source is a POSIX path on the host that
+		// holds the disk, which is not the qui host when access is over SSH.
+		cleanPath := path.Clean(trimmed)
+		return "path:" + cleanPath
 	default:
 		return FreeSpaceSourceKeyQBittorrent
 	}
@@ -75,52 +71,34 @@ func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, ins
 	return freeSpace, nil
 }
 
-// qbtFreeSpaceAtPath returns the free space qBittorrent reports at path on its own host.
-func qbtFreeSpaceAtPath(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance, path string) (int64, error) {
-	if syncManager == nil {
-		return 0, errors.New("syncManager is nil")
-	}
-	if instance == nil {
-		return 0, errors.New("instance required for qBittorrent path free space source")
-	}
-
-	// An unmeasurable path arrives as an error, so conditions never read it as zero free space.
-	freeSpace, err := syncManager.GetFreeSpaceAtPath(ctx, instance.ID, path)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get free space at %s from qBittorrent: %w", path, err)
-	}
-
-	return freeSpace, nil
-}
-
-// GetFreeSpaceBytesForSource returns the free space in bytes for the given source.
-func GetFreeSpaceBytesForSource(
-	ctx context.Context,
-	syncManager *qbittorrent.SyncManager,
-	instance *models.Instance,
-	src *models.FreeSpaceSource,
-	backend fsops.Backend,
-) (int64, error) {
+// freeSpaceBytes reads the free space of src. Only a path source resolves a
+// backend, and it fails rather than fall back to qBittorrent's value, which
+// can measure a different disk.
+func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance, src *models.FreeSpaceSource) (int64, error) {
 	resolved := resolveFreeSpaceSource(src)
 
 	switch resolved.Type {
 	case models.FreeSpaceSourceQBittorrent, "":
-		return qbtFreeSpace(ctx, syncManager, instance)
+		return qbtFreeSpace(ctx, s.syncManager, instance)
 
 	case models.FreeSpaceSourcePath:
-		p := filepath.Clean(strings.TrimSpace(resolved.Path))
+		// The pool's fresh row decides the mode, not the caller's snapshot.
+		backend, fsInstance, err := s.backendPool.Require(ctx, instance.ID, models.CapabilityRead)
+		if err != nil {
+			return 0, fmt.Errorf("no filesystem backend for free space path: %w", err)
+		}
+		if windowsLocalPathSource(fsInstance) {
+			return 0, errors.New("path-based free space source is not supported on Windows")
+		}
+		p := backend.Paths().Clean(strings.TrimSpace(resolved.Path))
 		if p == "" || p == "." {
 			return 0, errors.New("free space source path is empty")
 		}
-		return backendFreeSpace(ctx, backend, p)
-
-	case models.FreeSpaceSourceQbitPath:
-		// The path belongs to the qBittorrent host, so qui passes it through unchanged.
-		p := strings.TrimSpace(resolved.Path)
-		if p == "" {
-			return 0, errors.New("free space source path is empty")
+		result, err := backend.Statfs(ctx, p)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", p, err)
 		}
-		return qbtFreeSpaceAtPath(ctx, syncManager, instance, p)
+		return result.BytesAvailable, nil
 
 	default:
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)

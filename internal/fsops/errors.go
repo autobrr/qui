@@ -3,11 +3,54 @@
 
 package fsops
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"syscall"
+)
 
 // Sentinel errors returned by Backend implementations.
 var (
 	// ErrNoFilesystemAccess is returned by the NoopBackend for instances that
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
+
+	// ErrNotLocal is returned by Pool.LocalBackend for an instance that no
+	// longer has local filesystem access.
+	ErrNotLocal = errors.New("instance does not have local filesystem access")
+
+	// ErrNotCapable is returned by Pool.Require for an instance whose
+	// filesystem mode does not grant the capability asked for.
+	ErrNotCapable = errors.New("instance filesystem mode does not grant this capability")
+
+	// ErrRemoteBackendNotWired is returned by a Pool built without a remote
+	// factory for an instance in remote mode: a wiring mistake must fail
+	// loudly rather than read as "not configured".
+	ErrRemoteBackendNotWired = errors.New("remote filesystem backend is not wired into this pool")
+
+	// ErrConnectionLost marks a remote read that failed because the backend
+	// could not be reached (the transport dropped, or the pool would not
+	// dial), not because of the path. It ends a walk as its one Err entry, and
+	// a consumer that skips per-directory errors checks for it so that a walk
+	// cut short is not read as complete. The cause is kept as text only, apart
+	// from sshpool's own sentinels, so a lost connection never also matches
+	// fs.ErrPermission or fs.ErrNotExist.
+	ErrConnectionLost = errors.New("connection to the filesystem backend was lost")
+
+	// ErrUnsupported reports a per-host fact: this server lacks the extension
+	// the operation needs, or this transport has no such operation at all.
+	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.
+	ErrUnsupported = fmt.Errorf("operation is not supported by this filesystem backend: %w", errors.ErrUnsupported)
 )
+
+// IsDirNotEmpty reports whether err comes from removing a folder that is not
+// empty. It reads only error codes, never message text: Windows translates
+// its messages, and a folder named "Not Empty" puts those words in the path.
+// Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY there,
+// so that code is checked on Windows. Every caller passes an error from a
+// backend's Remove, and both backends report the code: the local one from
+// os.Remove, the remote one as syscall.ENOTEMPTY when a listing shows the
+// folder still holds entries.
+func IsDirNotEmpty(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
+}
