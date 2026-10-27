@@ -142,6 +142,14 @@ func corpusPackWithExtras(dir string) qbt.TorrentFiles {
 		qbt.TorrentFile{Name: dir + "/Extras/Kaiju.Squad.NCOP.1080p.BluRay.x264-GRP.mkv", Size: corpusHybridExtrasSize})
 }
 
+// corpusResized gives each file of files the same size.
+func corpusResized(files qbt.TorrentFiles, size int64) qbt.TorrentFiles {
+	for i := range files {
+		files[i].Size = size
+	}
+	return files
+}
+
 // hybridSearchOnlyDifferences lists the differences of a row whose only name difference is
 // a HYBRID tag on one side, inside the size tolerance.
 func hybridSearchOnlyDifferences() map[matchPath]corpusDifference {
@@ -859,7 +867,7 @@ var corpusRows = []corpusRow{
 		sourceSize:     corpusPackSize,
 		candidateSize:  corpusPackSize - corpusHybridExtrasSize,
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.x264-GRP"),
-		candidateFiles: corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.HYBRID.x264-GRP"),
+		candidateFiles: corpusResized(corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.HYBRID.x264-GRP"), corpusEpisodeSize-corpusHybridExtrasSize/10),
 		// The release names decide here. The file comparison after the download
 		// rejects the pair, because the episode sizes differ.
 		want:        corpusMatch,
