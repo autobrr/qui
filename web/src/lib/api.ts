@@ -1011,10 +1011,11 @@ class ApiClient {
 
   // changeStreamSubscriptions adds and removes subscriptions on the open stream
   // that the connection event named.
-  async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[]): Promise<void> {
+  async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[], signal?: AbortSignal): Promise<void> {
     return this.request("/stream/subscriptions", {
       method: "POST",
       body: JSON.stringify({ connectionId, add: add.map(normalizeStreamSubscription), remove }),
+      signal,
     })
   }
 

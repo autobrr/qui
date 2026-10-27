@@ -527,13 +527,19 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (connectionRef.current.source !== source) {
             return
           }
+          // Changes run one at a time. A request with no answer fails after the
+          // stale timeout, and the catch reopens the stream.
+          const abort = new AbortController()
+          const timer = window.setTimeout(() => abort.abort(), STREAM_STALE_TIMEOUT_MS)
           try {
-            await api.changeStreamSubscriptions(connectionId, add, remove)
+            await api.changeStreamSubscriptions(connectionId, add, remove, abort.signal)
           } catch (err) {
             if (connectionRef.current.source === source) {
               console.warn("Stream subscription change failed, reopening the stream:", err)
               ensureConnectionRef.current({ preserveState: true, force: true })
             }
+          } finally {
+            window.clearTimeout(timer)
           }
         })
         return
@@ -877,6 +883,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         // attempts, so events could have been missed before we ever connected -
         // reconcile even on the first successful open, not just on later reconnects.
         const openedAfterFailures = connection.retryAttempt > 0
+        // A native retry sends a new init, which gets the same grace as the first.
+        connection.firstEventSeen = false
         resetStaleTimer()
         // An open socket does not prove that rejected frames have recovered.
         // Keep the retry budget until every subscription accepts a baseline.

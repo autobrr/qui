@@ -1903,12 +1903,12 @@ describe("subscription changes on an open stream", () => {
     select("aaa")
     await settle()
     expect(change).toHaveBeenCalledTimes(1)
-    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")), limit: 1 })], [])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")), limit: 1 })], [], expect.any(AbortSignal))
 
     select(null)
     await settle()
     expect(change).toHaveBeenCalledTimes(2)
-    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [], [createStreamKey(details("aaa"))])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [], [createStreamKey(details("aaa"))], expect.any(AbortSignal))
 
     expect(MockEventSource.instances).toEqual([source])
     expect(source.closed).toBe(false)
@@ -1939,14 +1939,15 @@ describe("subscription changes on an open stream", () => {
     expect(change).toHaveBeenLastCalledWith(
       "qui-conn-7",
       [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
-      [createStreamKey(details("aaa"))]
+      [createStreamKey(details("aaa"))],
+      expect.any(AbortSignal)
     )
 
     // The old row still waits for its teardown and does not join again.
     addSpeedsView()
     await settle()
     expect(change).toHaveBeenCalledTimes(2)
-    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [], expect.any(AbortSignal))
     expect(MockEventSource.instances).toEqual([source])
   })
 
@@ -1963,12 +1964,12 @@ describe("subscription changes on an open stream", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(50)
     })
-    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [createStreamKey(details("aaa"))])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [createStreamKey(details("aaa"))], expect.any(AbortSignal))
 
     select("aaa")
     await settle()
     expect(change).toHaveBeenCalledTimes(2)
-    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [], expect.any(AbortSignal))
   })
 
   it("reopens the stream when a change request fails, with the current views in the URL", async () => {
@@ -2002,6 +2003,31 @@ describe("subscription changes on an open stream", () => {
     expect(source.closed).toBe(false)
   })
 
+  it("gives the first init after a native retry its grace", () => {
+    function Root() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: createStreamKey(MAIN) }, data: { torrents: [], total: 0 },
+      })
+      source.emitTransientError()
+      source.emitOpen()
+    })
+    act(() => {
+      vi.advanceTimersByTime(INITIAL_GRACE - 1)
+    })
+    expect(source.closed).toBe(false)
+  })
+
   it("sends the views that changed to the new server connection after a native retry", async () => {
     const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
     const { source, select } = renderTableWithDetails()
@@ -2013,7 +2039,7 @@ describe("subscription changes on an open stream", () => {
     act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
     await settle()
     expect(change).toHaveBeenCalledTimes(1)
-    expect(change).toHaveBeenLastCalledWith("qui-conn-8", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [])
+    expect(change).toHaveBeenLastCalledWith("qui-conn-8", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [], expect.any(AbortSignal))
     expect(MockEventSource.instances).toEqual([source])
   })
 
@@ -2031,6 +2057,25 @@ describe("subscription changes on an open stream", () => {
     })
     expect(MockEventSource.instances).toHaveLength(2)
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("bbb"))].sort())
+  })
+
+  it.each([false, true])("reopens the stream when a change request gets no answer, retry=%s", async retry => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
+      new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason))))
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    if (retry) {
+      act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
+    }
+    // Heartbeats keep the stream alive, so only the stuck request can reopen it.
+    for (let elapsed = 0; elapsed <= STALE; elapsed += 5000) {
+      act(() => source.emit("heartbeat"))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+    }
+    expect(source.closed).toBe(true)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
   })
 
   it("does not hold changes on a new stream behind a stuck request of the old one", async () => {
@@ -2054,7 +2099,8 @@ describe("subscription changes on an open stream", () => {
     expect(change).toHaveBeenLastCalledWith(
       "qui-conn-9",
       [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
-      [createStreamKey(details("aaa"))]
+      [createStreamKey(details("aaa"))],
+      expect.any(AbortSignal)
     )
   })
 })
