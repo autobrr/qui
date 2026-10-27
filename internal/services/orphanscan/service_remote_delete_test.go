@@ -243,16 +243,16 @@ func TestMaybeAutoCleanup_RemoteExecTierRunCleansUp(t *testing.T) {
 	require.FileExists(t, f.owned)
 }
 
-// Skipping cleanup adds its reason after the scan's own warning, which says
-// what the server did wrong.
-func TestMaybeAutoCleanup_RemoteRunWithIncompleteIdentityKeepsBothWarnings(t *testing.T) {
+// Skipping cleanup keeps the scan's own warning, which says why the preview
+// cannot be deleted and what to do, and adds no second reason that conflicts with it.
+func TestMaybeAutoCleanup_RemoteRunWithIncompleteIdentityKeepsTheScanWarning(t *testing.T) {
 	t.Parallel()
 
 	f, _ := newSSHFixture(t, "orphanscan-remote-fallback-autoclean", sshtest.ExecSFTPOnly, models.SSHTierExec)
 
 	run := f.scan(t, "scheduled")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
-	require.Equal(t, IdentityIncompleteMessage+"\n\n"+AutoCleanupNoIdentityMessage, run.ErrorMessage)
+	require.Equal(t, IdentityIncompleteMessage, run.ErrorMessage)
 	f.requireNothingDeleted(t)
 	f.requireNoFailureEvent(t)
 }

@@ -1313,7 +1313,11 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
 			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
-			warning := strings.TrimSpace(run.ErrorMessage + "\n\n" + AutoCleanupNoIdentityMessage)
+			// The scan already stored IdentityIncompleteMessage, which says what to do instead.
+			warning := run.ErrorMessage
+			if !strings.Contains(warning, IdentityIncompleteMessage) {
+				warning = strings.TrimSpace(warning + "\n\n" + AutoCleanupNoIdentityMessage)
+			}
 			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
 				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
 				return
@@ -2142,8 +2146,9 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 // reached over SSH by one instance and through a mount by another. A local scan
 // also pairs with every local instance. The endpoint and
 // mode come from scanned, the row the walk's backend was built from, so a later
-// edit cannot pick peers for an endpoint the walk never touched.
-func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance) ([]*models.Instance, error) {
+// edit cannot pick peers for an endpoint the walk never touched. scannedPin is
+// scanned's host key pin, read once by the caller.
+func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance, scannedPin []byte) ([]*models.Instance, error) {
 	instances, err := s.instances.List(ctx)
 	if err != nil {
 		return nil, err
@@ -2154,7 +2159,7 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 		if inst == nil || inst.ID == scanned.ID || !inst.IsActive {
 			continue
 		}
-		if _, ok := s.overlapPeer(scanned, inst); ok {
+		if _, ok := s.overlapPeer(scanned, scannedPin, inst); ok {
 			candidates = append(candidates, inst)
 		}
 	}
@@ -2163,11 +2168,11 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 
 // overlapPeer reports whether inst can protect scanned's files and names why, so a
 // local scan blocked by a remote-only peer does not call it local-access.
-func (s *Service) overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
+func (s *Service) overlapPeer(scanned *models.Instance, scannedPin []byte, inst *models.Instance) (label string, ok bool) {
 	switch {
 	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
 		return "local-access instance", true
-	case s.sameSSHServer(scanned, inst):
+	case s.sameSSHServer(scanned, scannedPin, inst):
 		return "remote instance on the same host", true
 	}
 	return "", false
@@ -2175,16 +2180,15 @@ func (s *Service) overlapPeer(scanned, inst *models.Instance) (label string, ok 
 
 // sameSSHServer reports whether a and b reach one SSH server: the same stored
 // host and port, or the same pinned host key under any name or port (an IP and
-// a hostname for one seedbox). A pin only ever adds a match, so an instance
-// without one, or whose pin cannot be read, still pairs by host and port.
-func (s *Service) sameSSHServer(a, b *models.Instance) bool {
+// a hostname for one seedbox). aPin is a's pin. A pin only ever adds a match, so
+// an instance without one, or whose pin cannot be read, still pairs by host and port.
+func (s *Service) sameSSHServer(a *models.Instance, aPin []byte, b *models.Instance) bool {
 	if a.SSHHost == "" || b.SSHHost == "" {
 		return false
 	}
 	if a.SSHHost == b.SSHHost && a.SSHPort == b.SSHPort {
 		return true
 	}
-	aPin := s.hostKeyPin(a)
 	return len(aPin) > 0 && bytes.Equal(aPin, s.hostKeyPin(b))
 }
 
@@ -2300,12 +2304,13 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend, scanned)
 	}
 
-	candidates, err := s.getOverlapCandidateInstances(ctx, scanned)
+	scannedPin := s.hostKeyPin(scanned)
+	candidates, err := s.getOverlapCandidateInstances(ctx, scanned, scannedPin)
 	if err != nil {
 		return nil, err
 	}
 	for _, inst := range candidates {
-		peer, _ := s.overlapPeer(scanned, inst)
+		peer, _ := s.overlapPeer(scanned, scannedPin, inst)
 		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, d, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(

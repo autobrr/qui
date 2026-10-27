@@ -82,7 +82,7 @@ func TestGetOverlapCandidateInstances(t *testing.T) {
 		{"remote scan pairs by the scanned row, not the list", remoteInstance(1, "other.example", 22), []int{6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := svc.getOverlapCandidateInstances(context.Background(), tc.scanned)
+			got, err := svc.getOverlapCandidateInstances(context.Background(), tc.scanned, nil)
 			if err != nil {
 				t.Fatalf("getOverlapCandidateInstances: %v", err)
 			}
@@ -109,7 +109,7 @@ func TestGetOverlapCandidateInstances_EmptyHostIsIgnored(t *testing.T) {
 		}, nil
 	}
 
-	got, err := svc.getOverlapCandidateInstances(context.Background(), remoteInstance(1, "box.example", 22))
+	got, err := svc.getOverlapCandidateInstances(context.Background(), remoteInstance(1, "box.example", 22), nil)
 	if err != nil {
 		t.Fatalf("getOverlapCandidateInstances: %v", err)
 	}
