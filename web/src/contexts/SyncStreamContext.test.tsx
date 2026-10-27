@@ -570,6 +570,38 @@ describe("SyncStreamContext", () => {
       expect(stateB.retryAttempt).toBe(0)
     })
 
+    it("keeps a server-error subscription polling while shared recovery waits", () => {
+      const paramsB = makeParams({ instanceId: 2 })
+      let stateB = DEFAULT
+      function Subscribers() {
+        useSyncStream(BASE_PARAMS)
+        stateB = useSyncStream(paramsB)
+        return null
+      }
+      render(<TestProviders><Subscribers /></TestProviders>)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen()
+        source.emit("init", {
+          type: "init", version: { major: 1, minor: 1 },
+          meta: { streamKey: createStreamKey(BASE_PARAMS) }, data: { torrents: [] },
+        })
+        source.emit("stream-error", {
+          type: "stream-error", error: "instance unreachable",
+          meta: { streamKey: createStreamKey(paramsB) },
+        })
+      })
+      expect(streamFallbackPollInterval(stateB, 3000)).toBe(false)
+      act(() => source.emit("delta", {
+        type: "delta", version: { major: 1, minor: 3 },
+        delta: { baseVersion: { major: 1, minor: 2 } },
+        meta: { streamKey: createStreamKey(BASE_PARAMS) }, data: { torrents: [] },
+      }))
+      expect(source.closed).toBe(true)
+      expect(streamFallbackPollInterval(stateB, 3000)).toBe(3000)
+    })
+
     it("resets recovery using only subscriptions sent to the source", () => {
       let state = DEFAULT
       function Subscribers() {

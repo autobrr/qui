@@ -9,6 +9,7 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { StreamState } from "@/contexts/SyncStreamContext"
+import { createDashboardStatsFallbackQueryKey } from "@/lib/dashboard-stream"
 import { STREAM_ERROR_DISCONNECTED } from "@/lib/sync-stream-state"
 import type { InstanceResponse } from "@/types"
 
@@ -65,6 +66,23 @@ describe("useAllInstanceStats fallback poll", () => {
     expect(mocks.getTorrents).toHaveBeenCalledTimes(callsAt31s)
     await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
     expect(mocks.getTorrents).toHaveBeenCalledTimes(callsAt33s)
+    unmount()
+    client.clear()
+  })
+
+  it("keeps a server stream-error visible over an older stream snapshot", async () => {
+    vi.useFakeTimers()
+    mocks.state = { ...healthy, connected: false, error: "instance unreachable: connection refused" }
+    mocks.getTorrents.mockResolvedValue({ torrents: [], total: 0 })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(createDashboardStatsFallbackQueryKey(1), { torrents: [], total: 0 })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { result, unmount } = renderHook(() => useAllInstanceStats(instances, { enabled: true }), { wrapper })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
+
+    expect(result.current[0].streamError).toBe("instance unreachable: connection refused")
     unmount()
     client.clear()
   })

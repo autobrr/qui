@@ -6,7 +6,7 @@
 import { api } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
 import { applyStreamDelta, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
-import { STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, STREAM_ERROR_UNSUPPORTED } from "@/lib/sync-stream-state"
+import { isClientConnectionErrorCode, STREAM_ERROR_DISCONNECTED, STREAM_ERROR_RETRY_EXHAUSTED, STREAM_ERROR_UNSUPPORTED } from "@/lib/sync-stream-state"
 import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentResponse, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
@@ -931,6 +931,10 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entry.connected = false
         entry.initialized = false
         entry.version = undefined
+        // A server error stops the fallback poll, and the closed source cannot clear it.
+        if (entry.error && !isClientConnectionErrorCode(entry.error)) {
+          entry.error = STREAM_ERROR_DISCONNECTED
+        }
         clearHandoffState(entry)
       })
       notifyAllStateSubscribers()

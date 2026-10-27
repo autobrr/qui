@@ -704,7 +704,8 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
+      // A stopped poll refreshes nothing, so its fallback data must not hide the error
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive && state.fallbackPollInterval !== false, fallbackData),
       hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
       isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
