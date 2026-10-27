@@ -282,6 +282,17 @@ describe("useTorrentDetailTab content and piece bar", () => {
     expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(2, "a", { refresh: true })
   })
 
+  it("reads past the file cache on the first Content fetch of the next torrent while the stream is down", async () => {
+    vi.useFakeTimers()
+    mocks.state = { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }
+    mocks.getTorrents.mockResolvedValue({ torrents: [makeTorrent({ hash: "a", progress: 1, state: "stalledUP" })] })
+    const view = renderTab("content")
+    await advance(0)
+    view.rerender({ instanceId: 2, hash: "a" })
+    await advance(0)
+    expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(2, "a", { refresh: true })
+  })
+
   it("reloads Content past the file cache when the stream comes back after a change", async () => {
     vi.useFakeTimers()
     mocks.state = { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }

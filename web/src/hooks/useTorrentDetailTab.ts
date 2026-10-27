@@ -89,18 +89,20 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   const checking = CHECKING_STATES.has(row?.state ?? "")
   const rowKey = tabQuery.reloadGap && row ? reloadKey(row) : null
   // fetchedKey holds the row of the last fetch that bypassed the cache and
-  // succeeded. The first fetch, and a fetch for a row that changed while the
-  // stream is usable, bypass the cache. A retry or a refetch from elsewhere then
-  // bypasses it too.
+  // succeeded, and fetchedTorrent the torrent of the last fetch that succeeded.
+  // The first fetch of each torrent, and a fetch for a row that changed while
+  // the stream is usable, bypass the cache. A retry or a refetch from elsewhere
+  // then bypasses it too.
   const fetchedKey = useRef<string | null>(null)
-  const fetched = useRef(false)
+  const fetchedTorrent = useRef<string | null>(null)
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
     queryFn: async () => {
       const key = rowKey
-      const refresh = checking || !fetched.current || (streamUsable && key !== fetchedKey.current)
+      const torrent = `${instanceId}|${hash}`
+      const refresh = checking || fetchedTorrent.current !== torrent || (streamUsable && key !== fetchedKey.current)
       const data = await tabQuery.fetch(instanceId, hash!, refresh)
-      fetched.current = true
+      fetchedTorrent.current = torrent
       if (refresh) {
         fetchedKey.current = key
       }
