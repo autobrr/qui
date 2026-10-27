@@ -15,12 +15,12 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDiscScans } from "@/hooks/useDiscScans"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
+import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
+import { useQueueLimits } from "@/hooks/usePreferenceValues"
 import { scheduleTorrentListRefetches } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
@@ -30,11 +30,11 @@ import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
-import { getStateLabel } from "@/lib/torrent-state-utils"
-import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
+import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
+import type { SortedPeer, Torrent, TorrentFile, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
@@ -88,7 +88,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [peersToAdd, setPeersToAdd] = useState("")
   const [peerToBan, setPeerToBan] = useState<SortedPeer | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const queueLimits = useQueueLimits(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const queryClient = useQueryClient()
   const [speedUnit] = useSpeedUnits()
@@ -136,81 +136,17 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
-  const hashFilter = useMemo<TorrentFilters | undefined>(() => {
-    if (!torrent?.hash) {
-      return undefined
-    }
-
-    return {
-      hashes: [torrent.hash],
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-    }
-  }, [torrent?.hash])
-  const streamParams = useMemo(() => {
-    if (!hashFilter || !isReady) {
-      return null
-    }
-
-    return {
-      instanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-      filters: hashFilter,
-    }
-  }, [hashFilter, instanceId, isReady])
-  const [streamTorrent, setStreamTorrent] = useState<Torrent | null>(null)
-  const handleStreamPayload = useCallback(
-    (payload: TorrentStreamPayload) => {
-      if (!payload?.data || !torrent?.hash) {
-        return
-      }
-
-      const data = payload.data
-      setStreamTorrent(previous => resolveStreamRow(previous, data))
-    },
-    [torrent?.hash]
-  )
-  const streamState = useSyncStream(streamParams, {
-    enabled: Boolean(streamParams),
-    onMessage: handleStreamPayload,
-  })
-
-  useEffect(() => {
-    setStreamTorrent(null)
-  }, [torrent?.hash])
-
-  // Drop the streamed snapshot when the stream is not live so the merge below falls
-  // back to fresh poll data instead of freezing on a stale pre-disconnect snapshot.
-  useEffect(() => {
-    if (!streamState.connected || streamState.error) {
-      setStreamTorrent(null)
-    }
-  }, [streamState.connected, streamState.error])
-
-  // Fetch torrent properties
-  const { data: properties, isLoading: loadingProperties } = useQuery({
-    queryKey: ["torrent-properties", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentProperties(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady,
-    staleTime: 30000, // Cache for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-  })
+  const readyHash = torrent && isReady ? torrent.hash : null
+  const general = useTorrentDetailTab(instanceId, readyHash, "general", torrent?.hash ?? null)
+  const properties = general.data?.properties
+  const loadingProperties = general.isLoading
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
 
 
 
   // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
-  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -247,60 +183,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     })
   }, [matchingTorrentsKeys])
 
-  // Fetch torrent trackers
-  const { data: trackers, isLoading: loadingTrackers } = useQuery({
-    queryKey: ["torrent-trackers", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentTrackers(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
-  })
+  const { data: trackers, isLoading: loadingTrackers } = useTorrentDetailTab(instanceId, readyHash, "trackers", torrent?.hash ?? null)
 
-  const shouldUseFallbackPolling = !!torrent && isReady && (!streamState.connected || !!streamState.error)
-
-  // SSE is primary for live row state; polling only runs while stream is unavailable.
-  const { data: polledLiveTorrent } = useQuery({
-    queryKey: ["torrent-live-state", instanceId, torrent?.hash],
-    queryFn: async () => {
-      const response = await api.getTorrents(instanceId, {
-        filters: hashFilter!,
-        limit: 1,
-      })
-      return response.torrents[0] ?? null
-    },
-    enabled: shouldUseFallbackPolling && !!hashFilter,
-    staleTime: 1000,
-    refetchInterval: shouldUseFallbackPolling ? 2000 : false,
-  })
-
-  // Merge live data with prop, preferring live values for frequently-changing fields
-  const liveTorrent = streamTorrent ?? polledLiveTorrent ?? null
+  const liveTorrent = general.data?.row ?? null
   const displayTorrent = useMemo(() => {
     if (!torrent) return null
     if (!liveTorrent) return torrent
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
 
-  // Fetch torrent files
-  // Bypass cache during recheck so progress bars update in real-time
-  const currentState = displayTorrent?.state
-  const isChecking = !!currentState && ["checkingDL", "checkingUP", "checkingResumeData"].includes(currentState)
-  const { data: files, isLoading: loadingFiles } = useQuery({
-    queryKey: ["torrent-files", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash, { refresh: isChecking }),
-    enabled: !!torrent && isReady && isContentTabActive,
-    staleTime: 3000,
-    gcTime: 5 * 60 * 1000,
-    refetchInterval: () => {
-      if (!isContentTabActive) return false
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        return 3000
-      }
-      return false
-    },
-    refetchOnWindowFocus: isContentTabActive,
-    refetchOnReconnect: isContentTabActive,
-  })
+  const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")
 
   const setFilePriorityMutation = useMutation<void, unknown, { indices: number[]; priority: number; hash: string }>({
     mutationFn: async ({ indices, priority, hash }) => {
@@ -470,44 +362,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
 
   // flag-icons inlines 400 flags as data URIs, 73% of the boot stylesheet; load it with the tab.
+  // Not emoji flags: Windows has no flag glyphs and shows the letters, such as "US".
   useEffect(() => {
     // offline PWA: the CSS is not precached, flags just render unstyled
     if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
   }, [isPeersTabActive])
 
-  const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
-
-  const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({
-    queryKey: peersQueryKey,
-    queryFn: () => api.getTorrentPeers(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady && isPeersTabActive,
-    refetchInterval: () => {
-      if (!isPeersTabActive) return false
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        return 2000
-      }
-      return false
-    },
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
-  const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
-    queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady,
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
-  })
+  const { data: peersData, isLoading: loadingPeers } = useTorrentDetailTab(instanceId, isPeersTabActive ? readyHash : null, "peers")
+  // Always loaded: the HTTP Sources tab shows only when the torrent has web seeds.
+  const { data: webseedsData, isLoading: loadingWebseeds } = useTorrentDetailTab(instanceId, readyHash, "webseeds")
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds).
+  // Before isReady the query is disabled and has no data, so wait for it.
   useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+    if (isReady && activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
       setActiveTab("general")
     }
-  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+  }, [isReady, activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -942,7 +814,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 displayInfohashV2={displayInfohashV2}
                 displayComment={displayComment}
                 displayCreatedBy={displayCreatedBy}
-                queueingEnabled={metadata?.preferences?.queueing_enabled}
+                queueingEnabled={queueLimits.enabled}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1135,7 +1007,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         </div>
                       </div>
 
-                      {metadata?.preferences?.queueing_enabled && (
+                      {queueLimits.enabled && (
                         <div className="space-y-3">
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.queueManagement")}</h3>
                           <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
@@ -1152,28 +1024,28 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 )}
                               </div>
                             </div>
-                            {(metadata.preferences.max_active_downloads > 0 ||
-                              metadata.preferences.max_active_uploads > 0 ||
-                              metadata.preferences.max_active_torrents > 0) && (
+                            {(queueLimits.maxActiveDownloads > 0 ||
+                              queueLimits.maxActiveUploads > 0 ||
+                              queueLimits.maxActiveTorrents > 0) && (
                               <>
                                 <Separator className="opacity-50" />
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                  {metadata.preferences.max_active_downloads > 0 && (
+                                  {queueLimits.maxActiveDownloads > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxDownloads")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveDownloads}</p>
                                     </div>
                                   )}
-                                  {metadata.preferences.max_active_uploads > 0 && (
+                                  {queueLimits.maxActiveUploads > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxUploads")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveUploads}</p>
                                     </div>
                                   )}
-                                  {metadata.preferences.max_active_torrents > 0 && (
+                                  {queueLimits.maxActiveTorrents > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxActive")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveTorrents}</p>
                                     </div>
                                   )}
                                 </div>
@@ -1724,6 +1596,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
+                loadFailed={!!matchesError}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
@@ -1740,6 +1613,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   {isLoadingMatches ? (
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : matchesError ? (
+                    // A refetch that fails keeps the last data: the error wins,
+                    // so the stale matches and their delete actions go away.
+                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
+                      {t("crossSeedTable.loadFailed")}
                     </div>
                   ) : matchingTorrents.length > 0 ? (
                     <div className="space-y-4">
@@ -1811,42 +1690,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             }
                           }
 
-                          // Get enriched status (tracker-aware)
-                          const trackerHealth = match.tracker_health ?? null
-                          let statusLabel = getStateLabel(match.state, t)
-                          let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
-                          let statusClass = ""
-
-                          // Check tracker health first (if supported)
-                          if (trackerHealth === "unregistered") {
-                            statusLabel = t("crossSeedTable.statusLabels.unregistered")
-                            statusVariant = "outline"
-                            statusClass = "text-destructive border-destructive/40 bg-destructive/10"
-                          } else if (trackerHealth === "tracker_down") {
-                            statusLabel = t("crossSeedTable.statusLabels.trackerDown")
-                            statusVariant = "outline"
-                            statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-                          } else if (trackerHealth === "tracker_error") {
-                            statusLabel = t("crossSeedTable.statusLabels.trackerError")
-                            statusVariant = "outline"
-                            statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-                          } else {
-                            // Normal state-based styling
-                            if (match.state === "downloading" || match.state === "uploading") {
-                              statusVariant = "default"
-                            } else if (
-                              match.state === "stalledDL" ||
-                              match.state === "stalledUP" ||
-                              match.state === "pausedDL" ||
-                              match.state === "pausedUP" ||
-                              match.state === "queuedDL" ||
-                              match.state === "queuedUP"
-                            ) {
-                              statusVariant = "secondary"
-                            } else if (match.state === "error" || match.state === "missingFiles") {
-                              statusVariant = "destructive"
-                            }
-                          }
+                          const { label: statusLabel, variant: statusVariant, className: statusClass } = getStatusBadgeProps(match, true, t)
 
                           // Match type display
                           const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "hardlink" | "reflink" | "release" | "name"

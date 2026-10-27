@@ -3,8 +3,8 @@
 # Claude, inserts them under "## Changelog", and publishes the draft release.
 # Usage: release-highlights.sh [--dry-run] <tag>
 # --dry-run prints the new body and does not edit or publish the release.
-# Needs gh with write access to autobrr/qui, curl, jq, and the tags in the
-# local clone. Needs RELEASE_NOTES_ANTHROPIC_API_KEY.
+# Needs gh with write access to autobrr/qui, jq, the tags in the local clone,
+# and Claude Code (claude) signed in, for example with CLAUDE_CODE_OAUTH_TOKEN.
 #
 # If the sections cannot be made, the script prints a ::warning:: line and
 # publishes the release with the body unchanged. Only a failed publish exits
@@ -69,13 +69,26 @@ collect_input() {
 	while IFS= read -r subject; do
 		# Merge commits and other commits without a PR number add nothing.
 		[[ $subject =~ \(#([0-9]+)\)$ ]] || continue
-		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body) || {
+		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body,author) || {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
-		# Dependency, CI-only, and docs-only PRs give only their title.
-		if [[ $subject =~ ^(chore\(deps\)|ci|docs)[:\(!] ]] ||
-			jq -e 'any(.labels[]; .name == "dependencies")' <<<"$json" >/dev/null; then
+		# CI, test, and docs PRs change nothing in qui. Users cannot reach a
+		# "no-ui-yet" PR until its UI ships. Leave these PRs out, unless they
+		# break something. The SSH API is reachable already.
+		if jq -e --arg subject "$subject" '
+			(any(.labels[]; .name == "no-ui-yet") or ($subject | test("^(ci|test|docs)[:(]"))) and
+			(any(.labels[]; .name == "BREAKING CHANGE") or ($subject | test("^\\w+(\\([^)]*\\))?!:")) | not)
+		' <<<"$json" >/dev/null; then
+			continue
+		fi
+		# A dependency PR from a bot gives only its title, because its body is
+		# the changelog of the dependency. A person says in the body what the
+		# update changes for users, so that body stays.
+		if jq -e --arg subject "$subject" '
+			.author.is_bot and
+			(any(.labels[]; .name == "dependencies") or ($subject | test("^chore\\(deps\\)[:(!]")))
+		' <<<"$json" >/dev/null; then
 			json=$(jq 'del(.body)' <<<"$json")
 		fi
 		jq -r --arg subject "$subject" '
@@ -87,17 +100,15 @@ collect_input() {
 
 # Prints the Breaking changes and Highlights sections as Markdown.
 write_sections() {
-	if [[ -z ${RELEASE_NOTES_ANTHROPIC_API_KEY:-} ]]; then
-		warn "RELEASE_NOTES_ANTHROPIC_API_KEY is not set"
-		return 1
-	fi
 	{
 		cat <<'EOF'
 You write two sections of the GitHub release notes for qui, a web UI that self-hosters use to manage qBittorrent instances. The input after these instructions has two writing skills and the pull requests (PRs) in the release. Write only Markdown, with no text before or after the sections.
 
+Write only about changes that qui users get in the app, the API, the binary, or the Docker image. Leave out changes to CI, the release pipeline, the build, tests, linting, the documentation site, and the repository. A toolchain or dependency update goes in only when it fixes something for users, for example a security fix.
+
 ## Breaking changes
 
-Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body says that users must act. If nothing breaks, leave the section out. Never write "None".
+Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body has a Breaking change section that describes a change. The template comment does not count. Text that says nothing breaks, such as "No breaking change." (any case, with or without the period or a plural), "None", or "N/A", does not count either. A Behaviour change section is material for the Highlights, never for this section. If nothing breaks, leave the section out. Never write "None".
 
 - Write one bullet for each breaking change. Do not group them.
 - Start with the change in bold, then say in one or two sentences what the user must do. Keep only what the user needs to act: the option name, the new value, the error text that they will see.
@@ -111,6 +122,7 @@ Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" bef
 - Keep one fact for each bullet: a version requirement, an option name as it shows in the app, or a striking number.
 - Use 3 to 6 bullets on a normal release, fewer on a small release, in about 1,000 to 1,500 characters. The last bullet is always "**Fixes and polish.**" with the smaller items, each named in a few words.
 - If no change in the release is visible to users, write no Highlights section.
+- A PR with the "no-ui-yet" label goes only in Breaking changes, never in the Highlights. Users cannot reach its feature in the app yet.
 - Use only facts from the PR titles, labels, and bodies. Do not invent features or numbers.
 - Do not quote torrent or release names from the PRs.
 
@@ -149,35 +161,24 @@ After you write the draft, apply the Document rules of the simple-english skill,
 EOF
 		collect_input
 	} >"$work/prompt.md" || return 1
+	if ! grep -q '^### PR #' "$work/prompt.md"; then
+		echo "::notice::release highlights: no PR in $tag changes qui for users, so the release gets no new sections" >&2
+		return 1
+	fi
 
-	jq -n --rawfile prompt "$work/prompt.md" '{
-		model: "claude-opus-5-5",
-		max_tokens: 16000,
-		messages: [{role: "user", content: $prompt}]
-	}' >"$work/request.json" || return 1
-
-	local status
-	status=$(curl -sS --max-time 600 -o "$work/response.json" -w '%{http_code}' \
-		https://api.anthropic.com/v1/messages \
-		-H "x-api-key: $RELEASE_NOTES_ANTHROPIC_API_KEY" \
-		-H 'anthropic-version: 2023-06-01' \
-		-H 'content-type: application/json' \
-		--data-binary "@$work/request.json") || {
-		warn "the Claude request failed"
+	# --safe-mode loads no CLAUDE.md, skill, or setting from the repo or the
+	# user, and --tools "" leaves Claude no tools, so only the prompt counts.
+	claude -p --safe-mode --tools "" --no-session-persistence \
+		--model claude-opus-5-5 --effort medium --system-prompt "You write release notes." \
+		--output-format json <"$work/prompt.md" >"$work/response.json" || {
+		warn "the Claude request failed: $(jq -r '.result // empty' "$work/response.json" 2>/dev/null)"
 		return 1
 	}
-	if [[ $status != 2* ]]; then
-		warn "Claude returned HTTP $status: $(jq -r '.error.message // empty' "$work/response.json" 2>/dev/null)"
+	if [[ $(jq -r .is_error "$work/response.json") != false ]]; then
+		warn "Claude returned an error: $(jq -r '.result // .subtype' "$work/response.json")"
 		return 1
 	fi
-	local stop_reason
-	stop_reason=$(jq -r .stop_reason "$work/response.json")
-	if [[ $stop_reason != end_turn ]]; then
-		warn "Claude stopped with stop_reason $stop_reason"
-		return 1
-	fi
-	# Opus 5.5 always returns a thinking block first. Read only the text blocks.
-	jq -j '[.content[] | select(.type == "text") | .text] | join("")' "$work/response.json"
+	jq -j .result "$work/response.json"
 }
 
 new_body=$body
@@ -191,7 +192,7 @@ done
 if [[ $nl$body != *"$marker"* ]]; then
 	warn "the release body has no '## Changelog' line"
 elif ! sections=$(write_sections); then
-	: # write_sections printed the warning.
+	: # write_sections printed the reason.
 elif [[ -z ${sections//[[:space:]]/} ]]; then
 	warn "Claude returned no text"
 # A contributor can edit a PR body after the merge. Accept only the two

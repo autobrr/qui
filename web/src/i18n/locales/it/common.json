@@ -46,7 +46,7 @@
     "tasksForInstance": "Attività per l'istanza",
     "settingsForInstance": "Impostazioni per l'istanza",
     "clearSearch": "Svuota ricerca",
-    "searchTorrents": "Cerca torrent... ({{shortcutKey}})",
+    "searchTorrents": "Cerca torrent...",
     "globPattern": "Pattern glob...",
     "smartSearchTitle": "Funzionalità di ricerca intelligente:",
     "smartSearchGlob": "Pattern glob:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Cerca nel nome, nella categoria e nei tag",
     "smartSearchEnter": "Premi Invio per la ricerca istantanea",
     "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
+    "smartSearchShortcut": "Premi {{shortcutKey}} per andare alla ricerca",
     "torrentCreationTasksTitle": "Attività di creazione torrent",
     "updateAvailable": "Aggiornamento disponibile",
     "updateVersion": "Versione {{version}}",
@@ -191,8 +192,7 @@
     "trigger": "Maggiori informazioni"
   },
   "numberInput": {
-    "unlimited": "Illimitato",
-    "useUnlimited": " (usa -1 per illimitato)"
+    "unlimited": "Illimitato"
   },
   "dateTime": {
     "na": "N/D",

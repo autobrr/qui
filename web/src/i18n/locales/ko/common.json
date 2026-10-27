@@ -46,7 +46,7 @@
     "tasksForInstance": "인스턴스 작업",
     "settingsForInstance": "인스턴스 설정",
     "clearSearch": "검색 지우기",
-    "searchTorrents": "토렌트 검색... ({{shortcutKey}})",
+    "searchTorrents": "토렌트 검색...",
     "globPattern": "Glob 패턴...",
     "smartSearchTitle": "스마트 검색 기능:",
     "smartSearchGlob": "Glob 패턴:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "이름, 카테고리, 태그를 검색합니다",
     "smartSearchEnter": "Enter를 눌러 즉시 검색",
     "smartSearchAuto": "500ms 일시정지 후 자동 검색",
+    "smartSearchShortcut": "{{shortcutKey}}를 눌러 검색창으로 이동",
     "torrentCreationTasksTitle": "토렌트 생성 작업",
     "updateAvailable": "업데이트 사용 가능",
     "updateVersion": "버전 {{version}}",
@@ -191,8 +192,7 @@
     "trigger": "자세한 정보"
   },
   "numberInput": {
-    "unlimited": "무제한",
-    "useUnlimited": " (무제한은 -1 사용)"
+    "unlimited": "무제한"
   },
   "dateTime": {
     "na": "N/A",

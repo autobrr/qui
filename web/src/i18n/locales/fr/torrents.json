@@ -103,7 +103,15 @@
     "totalSize": "Taille totale : {{size}}",
     "blockCrossSeeds": "Bloquer les infohash de cross-seeds (empêcher la rajout)",
     "cancel": "Annuler",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "titleSelectAll_one": "Supprimer le {{count}} torrent qui correspond au filtre ?",
+    "titleSelectAll_other": "Supprimer les {{count}} torrents qui correspondent au filtre ?",
+    "selectAllNotice": "Tout sélectionner est activé. Cette action supprime les torrents sélectionnés qui correspondent au filtre actuel.",
+    "notLoaded_one": "{{count}} d'entre eux n'est pas chargé dans le tableau.",
+    "notLoaded_other": "{{count}} d'entre eux ne sont pas chargés dans le tableau.",
+    "andMore": "et {{more}} de plus",
+    "deleteCount_one": "Supprimer {{count}} torrent",
+    "deleteCount_other": "Supprimer {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Supprimer également les fichiers du disque",
@@ -123,7 +131,6 @@
       "check": "Vérifier"
     },
     "searching": "Vérification des cross-seeds",
-    "searchingProgress": "Vérification des cross-seeds ({{checked}}/{{total}})",
     "error": "Échec de la vérification des cross-seeds",
     "retry": "Réessayer",
     "noCrossSeeds": "Aucun cross-seed trouvé",
@@ -429,6 +436,9 @@
       "description": "Définir les limites de vitesse d'envoi et de réception en Ko/s. Désactiver pour utiliser les limites globales.",
       "uploadLimit": "Définir la limite d'envoi (Ko/s)",
       "downloadLimit": "Définir la limite de réception (Ko/s)",
+      "selectValue": "Sélectionner une valeur",
+      "wasMixed": "(était mixte)",
+      "unresolvedMixed": "Sélectionnez des valeurs pour tous les champs mixtes avant d'appliquer",
       "cancel": "Annuler",
       "setting": "Définition...",
       "confirm": "Appliquer les limites"
@@ -719,19 +729,18 @@
     "partialResults": "Résultats partiels - certains indexeurs n'ont pas répondu",
     "arrLookupFailed": "Échec de la recherche d'ID de métadonnées - recherche par titre uniquement, les résultats peuvent être incomplets",
     "arrNoIds": "Aucun ID de métadonnées trouvé pour cette release - recherche par titre uniquement",
+    "gazelleTimedOut": "RED/OPS n'a pas répondu à temps",
+    "torznabFailed": "La recherche Torznab a échoué - résultats RED/OPS uniquement",
     "searchScope": "Portée de la recherche",
     "noIndexers": "Aucun indexeur Torznab disponible",
     "noIndexersHelp": "Ajoutez ou activez des indexeurs Torznab dans les paramètres pour chercher des cross-seeds.",
+    "gazelleOnlySearch": "La recherche interroge uniquement les sites RED/OPS qui ont une clé API.",
     "capabilityNote": "Note sur les capacités",
     "capabilityDescription": "Ces indexeurs n'ont pas les capacités/catégories requises pour ce torrent et seront ignorés par le serveur :",
-    "contentFilteringInProgress": "Filtrage du contenu en cours",
-    "analyzingContent": "Analyse du contenu existant...",
     "smartFilteringActive": "Filtrage intelligent actif",
     "indexersFiltered_one": "{{count}} indexeur filtré",
     "indexersFiltered_other": "{{count}} indexeurs filtrés",
-    "contentFilteringDescription": "Vérification de vos torrents existants pour trouver des doublons et exclure les trackers redondants. Cela permet d'éviter de télécharger le même contenu plusieurs fois.",
     "excludedDescription": "Vous seedez déjà cette release depuis ces trackers, ils sont donc exclus de la recherche.",
-    "noContentDuplicates": "Le filtrage du contenu est terminé. Aucun contenu en double n'a été trouvé sur vos trackers activés.",
     "searchingIndexers": "Recherche sur les indexeurs...",
     "noMatchesFound": "Aucune correspondance trouvée.",
     "selectReleasesToAdd": "Sélectionnez les releases à ajouter",
@@ -780,7 +789,6 @@
       "selectAllIndexers": "Tout sélectionner",
       "clearSelection": "Effacer la sélection",
       "search": "Chercher",
-      "filtering": "Filtrage...",
       "searching": "Recherche en cours",
       "noneSelected": "Aucun sélectionné",
       "enabledIndexers": "{{count}} activé(s) {{suffix}}",
@@ -879,6 +887,11 @@
       "checking": "En vérification",
       "moving": "En déplacement"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Aucun torrent trouvé",
+    "noFilterMatches": "Aucun torrent ne correspond aux filtres actuels",
+    "noSearchMatches": "Aucun torrent ne correspond à la recherche actuelle"
   },
   "filterSidebar": {
     "views": {
@@ -1331,11 +1344,6 @@
     "matchCount_other": "{{count}} correspondances",
     "deleteSelected": "Supprimer ({{count}})",
     "deleteThis": "Supprimer Ceci",
-    "statusLabels": {
-      "trackerDown": "Tracker Injoignable",
-      "unregistered": "Non enregistré",
-      "trackerError": "Erreur Tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenu",
@@ -1359,6 +1367,7 @@
       }
     },
     "noMatches": "Aucun torrent correspondant trouvé sur d'autres instances",
+    "loadFailed": "Impossible de vérifier les correspondances cross-seed. Rechargez pour réessayer.",
     "toast": {
       "savePathCopied": "Chemin de sauvegarde copié",
       "copyFailed": "Échec de la copie"
@@ -1509,25 +1518,6 @@
       "placeholder": "Chercher des torrents...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Recherche automatique pendant la frappe"
-    },
-    "shareLimit": {
-      "title": "Définir les limites de partage pour {{count}} torrent(s)",
-      "description": "Configurez les limites de seed. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setRatioLimit": "Définir la limite de ratio",
-      "setSeedingTimeLimit": "Définir la limite de temps de seed (minutes)",
-      "setInactiveSeedingLimit": "Définir la limite de seed inactif (minutes)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
-    },
-    "speedLimit": {
-      "title": "Définir les limites de vitesse pour {{count}} torrent(s)",
-      "description": "Définir les limites en Ko/s. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setUploadLimit": "Définir la limite d'envoi (Ko/s)",
-      "setDownloadLimit": "Définir la limite de réception (Ko/s)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
     },
     "ratio": "Ratio :"
   },

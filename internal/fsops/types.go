@@ -34,6 +34,8 @@ type DirEntry struct {
 	Name      string
 	IsDir     bool
 	IsSymlink bool
+	// Mode contains only the entry's type bits, without following links.
+	Mode fs.FileMode
 }
 
 // LstatInfo holds metadata from an Lstat call, including hardlink identity.
@@ -74,6 +76,10 @@ type WalkOptions struct {
 	// set instead of silently skipping them. Consumers that delete based on
 	// walk results use this to fail closed on paths they cannot verify.
 	EmitStatErrors bool
+	// FollowRoot walks a root that is a symlink to a directory as that
+	// directory. Entries are reported under the root as given, and symlinks
+	// below the root are still not followed.
+	FollowRoot bool
 }
 
 // Skip reports whether a walk leaves out an entry, and its subtree when the

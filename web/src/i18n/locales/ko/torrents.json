@@ -102,7 +102,12 @@
     "totalSize": "전체 크기: {{size}}",
     "blockCrossSeeds": "cross-seed infohash 차단(재추가 방지)",
     "cancel": "취소",
-    "delete": "삭제"
+    "delete": "삭제",
+    "titleSelectAll_other": "필터와 일치하는 토렌트 {{count}}개를 삭제하시겠습니까?",
+    "selectAllNotice": "전체 선택이 켜져 있습니다. 현재 필터와 일치하는 선택된 토렌트를 삭제합니다.",
+    "notLoaded_other": "그중 {{count}}개는 표에 로드되지 않았습니다.",
+    "andMore": "외 {{more}}개",
+    "deleteCount_other": "토렌트 {{count}}개 삭제"
   },
   "deleteFilesPreference": {
     "label": "디스크에서 파일도 삭제",
@@ -122,7 +127,6 @@
       "check": "확인"
     },
     "searching": "cross-seed 확인 중",
-    "searchingProgress": "cross-seed 확인 중 ({{checked}}/{{total}})",
     "error": "cross-seed를 확인하지 못했습니다",
     "retry": "다시 시도",
     "noCrossSeeds": "cross-seed를 찾을 수 없습니다",
@@ -380,6 +384,9 @@
       "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 전역 제한을 사용하려면 비활성화하세요.",
       "uploadLimit": "업로드 제한 설정(KB/s)",
       "downloadLimit": "다운로드 제한 설정(KB/s)",
+      "selectValue": "값 선택",
+      "wasMixed": "(혼합이었음)",
+      "unresolvedMixed": "적용하기 전에 모든 혼합 필드의 값을 선택하세요",
       "cancel": "취소",
       "setting": "설정 중...",
       "confirm": "제한 적용"
@@ -664,18 +671,17 @@
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
+    "gazelleTimedOut": "RED/OPS가 제시간에 응답하지 않았습니다",
+    "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
+    "gazelleOnlySearch": "검색은 API 키가 있는 RED/OPS 사이트에만 요청합니다.",
     "capabilityNote": "기능 참고",
     "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
-    "contentFilteringInProgress": "콘텐츠 필터링 진행 중",
-    "analyzingContent": "기존 콘텐츠 분석 중...",
     "smartFilteringActive": "스마트 필터링 활성",
     "indexersFiltered_other": "인덱서 {{count}}개 필터링됨",
-    "contentFilteringDescription": "기존 토렌트를 확인하여 중복을 찾고 불필요한 트래커를 제외합니다. 이를 통해 동일한 콘텐츠를 여러 번 다운로드하는 것을 방지합니다.",
     "excludedDescription": "이 트래커에서 이미 이 릴리스를 시드 중이므로 검색에서 제외됩니다.",
-    "noContentDuplicates": "콘텐츠 필터링이 완료되었습니다. 활성화된 트래커에서 중복 콘텐츠를 찾지 못했습니다.",
     "searchingIndexers": "인덱서 검색 중…",
     "noMatchesFound": "검색에서 일치 항목을 찾을 수 없습니다.",
     "selectReleasesToAdd": "추가할 릴리스를 선택하세요",
@@ -724,7 +730,6 @@
       "selectAllIndexers": "모두 선택",
       "clearSelection": "선택 해제",
       "search": "검색",
-      "filtering": "필터링 중…",
       "searching": "검색 중",
       "noneSelected": "선택 안 됨",
       "enabledIndexers": "{{count}}개 활성화 {{suffix}}",
@@ -823,6 +828,11 @@
       "checking": "확인 중",
       "moving": "이동 중"
     }
+  },
+  "emptyState": {
+    "noTorrents": "토렌트를 찾을 수 없습니다",
+    "noFilterMatches": "현재 필터와 일치하는 토렌트가 없습니다",
+    "noSearchMatches": "현재 검색과 일치하는 토렌트가 없습니다"
   },
   "filterSidebar": {
     "views": {
@@ -1260,11 +1270,6 @@
     "matchCount_other": "일치 {{count}}개",
     "deleteSelected": "삭제 ({{count}})",
     "deleteThis": "이 항목 삭제",
-    "statusLabels": {
-      "trackerDown": "트래커 다운",
-      "unregistered": "등록되지 않음",
-      "trackerError": "트래커 오류"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "콘텐츠",
@@ -1288,6 +1293,7 @@
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",
+    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요.",
     "toast": {
       "savePathCopied": "저장 경로가 복사되었습니다",
       "copyFailed": "복사하지 못했습니다"
@@ -1435,25 +1441,6 @@
       "placeholder": "토렌트 검색...",
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
-    },
-    "shareLimit": {
-      "title": "토렌트 {{count}}개의 공유 제한 설정",
-      "description": "시딩 제한을 구성합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setRatioLimit": "비율 제한 설정",
-      "setSeedingTimeLimit": "시딩 시간 제한 설정(분)",
-      "setInactiveSeedingLimit": "비활성 시딩 제한 설정(분)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
-    },
-    "speedLimit": {
-      "title": "토렌트 {{count}}개의 속도 제한 설정",
-      "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setUploadLimit": "업로드 제한 설정(KB/s)",
-      "setDownloadLimit": "다운로드 제한 설정(KB/s)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
     },
     "ratio": "비율:"
   },

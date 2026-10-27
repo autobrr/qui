@@ -46,7 +46,7 @@
     "tasksForInstance": "实例任务",
     "settingsForInstance": "实例设置",
     "clearSearch": "清除搜索",
-    "searchTorrents": "搜索种子... ({{shortcutKey}})",
+    "searchTorrents": "搜索种子...",
     "globPattern": "Glob 模式...",
     "smartSearchTitle": "智能搜索功能：",
     "smartSearchGlob": "Glob 模式：",
@@ -57,6 +57,7 @@
     "smartSearchFields": "搜索名称、分类和标签",
     "smartSearchEnter": "按回车键立即搜索",
     "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
     "torrentCreationTasksTitle": "种子创建任务",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
@@ -191,8 +192,7 @@
     "trigger": "更多信息"
   },
   "numberInput": {
-    "unlimited": "无限制",
-    "useUnlimited": "（使用 -1 表示无限制）"
+    "unlimited": "无限制"
   },
   "dateTime": {
     "na": "N/A",

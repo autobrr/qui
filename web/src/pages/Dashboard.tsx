@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
@@ -48,7 +50,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useListenPort } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -67,7 +69,8 @@ import {
   resolveDashboardTorrentCounts,
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
-import { copyTextToClipboard, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
+import { TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { cn, copyTextToClipboard, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
   DashboardSettings,
@@ -98,7 +101,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
-import { createStreamKey, useSyncStreamManager } from "@/contexts/SyncStreamContext"
+import { createStreamKey, useSyncStreamManager, type StreamState } from "@/contexts/SyncStreamContext"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
 import { useCreateTrackerCustomization, useDeleteTrackerCustomization, useTrackerCustomizations, useUpdateTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -134,9 +137,12 @@ type InstanceStreamData = {
   streamConnected: boolean
   streamError: string | null
   hasLiveDashboardStatsPayload: boolean
+  fallbackPollInterval: number | false
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
+
+const STATS_FALLBACK_POLL_INTERVAL_MS = 5000
 
 const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   stats: null,
@@ -149,6 +155,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   streamConnected: false,
   streamError: null,
   hasLiveDashboardStatsPayload: false,
+  fallbackPollInterval: STATS_FALLBACK_POLL_INTERVAL_MS,
   cacheMetadata: null,
   instanceMeta: null,
 })
@@ -213,6 +220,7 @@ function instanceStreamDataFromResponse(
     streamConnected: current?.streamConnected ?? false,
     streamError: current?.streamError ?? null,
     hasLiveDashboardStatsPayload: current?.hasLiveDashboardStatsPayload ?? false,
+    fallbackPollInterval: current?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS,
     cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
     instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
   }
@@ -321,7 +329,8 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const { enabled: streamEnabled } = options
   const syncStream = useSyncStreamManager()
   const queryClient = useQueryClient()
@@ -342,6 +351,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       limit: 1,
       sort: "added_on",
       order: "desc" as const,
+      summary: true,
     }),
     []
   )
@@ -369,7 +379,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           order: DASHBOARD_STATS_FALLBACK_ORDER,
         }),
         enabled: fallbackEnabled,
-        refetchInterval: fallbackEnabled ? 5000 : false,
+        refetchInterval: fallbackEnabled ? (streamState?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS) : false,
         refetchIntervalInBackground: false,
         staleTime: 2000,
         gcTime: 300000,
@@ -568,6 +578,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               streamConnected: true,
               streamError: null,
               hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload || hasLiveDashboardStatsPayload,
+              fallbackPollInterval: current.fallbackPollInterval,
               cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
@@ -579,59 +590,42 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           })
         })
 
-        const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
-          if (cancelRef.current) {
-            return
-          }
-
+        const applyStreamState = (snapshot: StreamState) => {
+          const streamUsable = isStreamUsable(snapshot)
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
               ...current,
-              streamConnected: snapshot.connected,
-              streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
-              hasLiveDashboardStatsPayload: snapshot.connected &&
-                !snapshot.error &&
+              streamConnected: streamUsable,
+              streamError: snapshot.error ?? (streamUsable ? null : current.streamError),
+              hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
+              fallbackPollInterval: streamFallbackPollInterval(snapshot, STATS_FALLBACK_POLL_INTERVAL_MS),
             }
 
             if (snapshot.error) {
               next.error = snapshot.error
               next.isLoading = false
-            } else if (snapshot.connected && !current.isLoading) {
+            } else if (streamUsable && !current.isLoading) {
               next.error = null
             }
 
-            if (!snapshot.connected || snapshot.error) {
+            if (!streamUsable) {
               next.instanceMeta = null
             }
 
             return next
           })
+        }
+
+        const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+          if (!cancelRef.current) {
+            applyStreamState(snapshot)
+          }
         })
 
         const initialSnapshot = syncStream.getState(streamKey)
         if (initialSnapshot) {
-          applyInstanceData(instance.id, current => {
-            const next: InstanceStreamData = {
-              ...current,
-              streamConnected: initialSnapshot.connected,
-              streamError: initialSnapshot.error ?? current.streamError,
-              hasLiveDashboardStatsPayload: initialSnapshot.connected &&
-                !initialSnapshot.error &&
-                current.hasLiveDashboardStatsPayload,
-            }
-
-            if (initialSnapshot.error) {
-              next.error = initialSnapshot.error
-              next.isLoading = false
-            }
-
-            if (!initialSnapshot.connected || initialSnapshot.error) {
-              next.instanceMeta = null
-            }
-
-            return next
-          })
+          applyStreamState(initialSnapshot)
         }
 
         streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe, cancelRef })
@@ -710,7 +704,8 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
+      // A stopped poll refreshes nothing, so its fallback data must not hide the error
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive && state.fallbackPollInterval !== false, fallbackData),
       hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
       isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
@@ -719,6 +714,13 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   })
 }
 
+
+// Issue rows of the instance card, in the order they show
+const TRACKER_HEALTH_ROWS: Array<{ health: TrackerHealth; labelKey: string }> = [
+  { health: "unregistered", labelKey: "instanceCard.unregisteredTorrents" },
+  { health: "tracker_down", labelKey: "instanceCard.trackerDown" },
+  { health: "tracker_error", labelKey: "instanceCard.trackerError" },
+]
 
 function InstanceCard({
   instanceData,
@@ -766,7 +768,7 @@ function InstanceCard({
     initialData: appInfo ?? undefined,
     fetchIfMissing: !appInfo,
   })
-  const { preferences } = useInstancePreferences(instance.id, { enabled: instance.connected })
+  const listenPort = useListenPort(instance.id, { enabled: instance.connected })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
@@ -794,7 +796,6 @@ function InstanceCard({
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : ""
 
-  const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
 
   const dashboardDataStatusKind = resolveDashboardDataStatusKind({
@@ -843,7 +844,7 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} overflow-hidden`}>
+        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} grid-cols-[minmax(0,1fr)] overflow-hidden`}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
               to={linkTo}
@@ -1046,40 +1047,29 @@ function InstanceCard({
 
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
                 {/* Issue rows - only shown when there are problems */}
-                {(torrentCounts?.status?.unregistered || 0) > 0 && (
-                  <Link
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    onClick={() => {
-                      writeRaw("qui-filters-global", JSON.stringify({
-                        status: ["unregistered"],
-                        excludeStatus: [],
-                      }))
-                    }}
-                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
-                  >
-                    <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
-                    <span className="text-destructive">{t("instanceCard.unregisteredTorrents")}</span>
-                    <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
-                  </Link>
-                )}
-                {(torrentCounts?.status?.tracker_down || 0) > 0 && (
-                  <Link
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    onClick={() => {
-                      writeRaw("qui-filters-global", JSON.stringify({
-                        status: ["tracker_down"],
-                        excludeStatus: [],
-                      }))
-                    }}
-                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
-                  >
-                    <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                    <span className="text-yellow-500">{t("instanceCard.trackerDown")}</span>
-                    <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
-                  </Link>
-                )}
+                {TRACKER_HEALTH_ROWS.map(({ health, labelKey }) => {
+                  const count = torrentCounts?.status?.[health] || 0
+                  if (count === 0) return null
+                  const { icon: Icon, iconClass, hoverClass } = TRACKER_HEALTH_DISPLAY[health]
+                  return (
+                    <Link
+                      key={health}
+                      to="/instances/$instanceId"
+                      params={{ instanceId: instance.id.toString() }}
+                      onClick={() => {
+                        writeRaw("qui-filters-global", JSON.stringify({
+                          status: [health],
+                          excludeStatus: [],
+                        }))
+                      }}
+                      className={cn("flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 transition-colors", hoverClass)}
+                    >
+                      <Icon className={cn("h-3 w-3 flex-shrink-0", iconClass)} />
+                      <span className={iconClass}>{t(labelKey)}</span>
+                      <span className={cn("ml-auto font-medium", iconClass)}>{count}</span>
+                    </Link>
+                  )
+                })}
                 {(torrentCounts?.status?.errored || 0) > 0 && (
                   <Link
                     to="/instances/$instanceId"
@@ -3165,7 +3155,7 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-4 sm:p-6">
+      <div className="p-4 lg:p-6 pb-16">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-48"></div>
           <div className="h-4 bg-muted rounded w-64"></div>
@@ -3180,30 +3170,23 @@ export function Dashboard() {
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6">
-      {/* Header with Actions */}
+    <div className="p-4 lg:p-6 pb-16">
       <div className="mb-6">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("title")}</h1>
-          {/* on phones the two rare actions ride the title row, which is otherwise dead
-              space, so only the primary action costs a row of its own below */}
-          {instances && instances.length > 0 && (
-            <div className="flex items-center gap-1 sm:hidden">
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
-                <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
-                  <HardDrive className="h-4 w-4" />
-                </Button>
-              </Link>
-              <DashboardSettingsDialog iconOnly />
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
-          <p className="text-muted-foreground">
-            {t("description")}
-          </p>
-          {instances && instances.length > 0 && (
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <PageHeader
+          title={t("title")}
+          description={t("description")}
+          actions={instances && instances.length > 0 && (
+            <>
+              {/* on phones the two rare actions ride the title row, which is otherwise dead
+                  space, so only the primary action costs a row of its own below */}
+              <div className="flex items-center gap-1 sm:hidden">
+                <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+                  <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
+                    <HardDrive className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <DashboardSettingsDialog iconOnly />
+              </div>
               <QuickActionsDropdown statsData={statsData} />
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
                 <Button variant="outline" size="sm">
@@ -3214,9 +3197,9 @@ export function Dashboard() {
               <div className="hidden sm:block">
                 <DashboardSettingsDialog />
               </div>
-            </div>
+            </>
           )}
-        </div>
+        />
       </div>
 
       {/* Show banner if any instances have decryption errors */}

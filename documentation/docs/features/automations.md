@@ -146,7 +146,7 @@ System Day and System Year do not wrap. A month boundary depends on the length o
 
 If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboard → **Tracker Breakdown**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
 
-On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the tracker that qBittorrent reports as working. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
+On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the one tracker in the qBittorrent tracker field. That is the last tracker that answered, also when that tracker is down now. If no tracker answered yet, the field is empty. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
 :::note
 Any tracker condition (**Tracker**, **Trackers (All)**, **Tracker status**, or **Tracker message**) makes qui read the tracker list of every torrent. qui sends one request for each instance and keeps the result for 5 minutes. Rules without a tracker condition, and rules that are turned off, send no extra request.
@@ -173,7 +173,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Field | Description |
 | --- | --- |
 | Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines; courses are `unknown` |
-| Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty) |
+| Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty). Periods become spaces, so `S.W.A.T.` gives `s w a t` |
 | Release Source | Parsed release specifier (for example `WEBDL`, `WEBRIP`, `BLURAY`, can be empty) |
 | Release Resolution | Parsed release specifier (for example `1080p`, can be empty) |
 | Release Codec | Parsed release specifier (for example `HEVC`, can be empty) |
@@ -358,6 +358,7 @@ To run a dry-run immediately without waiting for interval execution:
 
 A dry-run executes the current workflow configuration as a simulation and writes results to automation activity.
 A dry-run reports the same torrents as the live impact preview, because it deletes nothing.
+Dry-run rules and live rules run in separate passes, so a dry run does not see what live rules do in the same cycle.
 
 No-match behavior:
 
@@ -426,6 +427,7 @@ Group expansion uses strict semantics:
 - Every member in the expanded group must satisfy the action condition checks for that rule.
 - If any member fails or qui cannot resolve the group, qui skips the entire grouped action.
 - If `groupId` is set, there is no "trigger-only fallback".
+- qui leaves out a member that the same run deletes, and applies the action to the other members. The deleted member still counts for the strict check.
 
 Built-in group IDs:
 
@@ -547,6 +549,10 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFilesPreserveCrossSeeds` | Remove files, but keep them if qui detects cross-seeds |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
+Delete skips a torrent while qBittorrent checks it, because the progress of the torrent is not correct until the check ends. qui still deletes a checking torrent that another match pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode.
+
+In a live run, if a delete depends on hardlink data and the hardlinks changed or can't be read when qui checks them again, qui skips the delete for that run and decides again on the next one. A dry run does not check them again. See [Unknown scope and safety behavior](#unknown-scope-and-safety-behavior).
+
 **Optional grouping (advanced):**
 
 Delete actions can specify a `groupId` to expand the deletion to all torrents in that group.
@@ -566,6 +572,8 @@ When a torrent matches the rule, qui finds other torrents that point to the same
 **Include hardlinked copies:**
 
 If you enable "Include hardlinked copies" (available only with `deleteWithFilesIncludeCrossSeeds` mode), qui also deletes torrents that share the same physical files through hardlinks, even when their Content Paths differ.
+
+qui follows both hardlinks and shared file paths until it finds every affected torrent. If a hardlinked episode shares its path with a season pack, qui includes the pack and its other cross-seeds. If a file check fails, qui skips the entire deletion group.
 
 - **Requires**: You must enable Local Filesystem Access on the instance.
 - **Safe scope**: qui includes only hardlinks fully contained within qBittorrent's torrent set. qui never follows hardlinks to files outside qBittorrent (for example, your media library).
@@ -617,9 +625,10 @@ Move torrents to a different category. Select **Uncategorized** to remove their 
 
 Options:
 
-- **Include affected cross-seeds**: Also move cross-seeds (torrents with matching ContentPath AND SavePath).
+- **Include affected cross-seeds**: Also move the torrents that use any of the same files on disk.
 - **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include affected cross-seeds".
 - **Strict grouped matching**: If you set `groupId`, category expansion applies only when all group members satisfy the category rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seed exists in categories**: If another cross-seed is in a protected category, prevent the move.
 
 ### Move
@@ -627,13 +636,18 @@ Options:
 Move torrents to a different path on disk. If AutoTMM is off, use this action to move content.
 
 Options:
-- **Group ID (advanced)**: Expand moves to all torrents in the specified group (see [Grouping](#grouping)). qui resolves the move path for the matched torrent and applies it to the whole group.
+- **Group ID (advanced)**: Expand moves to all torrents in the specified group (see [Grouping](#grouping)). qui resolves the move path for the matched torrent and applies it to the whole group. If a torrent outside the group shares a file with a group member, qui skips the move.
 - **Strict grouped matching**: If you set `groupId`, move expansion is all-or-none. Every member must satisfy the move rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seeds don't match the rule's conditions**: If the torrent has cross-seeds that do not match the rule's conditions, skip the move. If **Group ID** is set, qui ignores this option.
 
 #### Move path templates
 
 qui evaluates the move path as a **Go template** for each torrent. Use a fixed path (for example `/data/archive`) or template actions to build paths from torrent properties.
+
+The path must be absolute on the machine that runs qBittorrent, for example `/data/archive`, `D:\Archive` or `\\nas\media`. qBittorrent resolves a relative path against its own working directory and default save path, so the move fails or repeats on every run.
+
+When you save an enabled rule or start a dry run, qui renders the path for a sample torrent whose name and category are `sample` and whose tracker is `tracker`. It rejects the rule if the template is invalid or the result is relative. A template that renders nothing for the sample, such as `{{ if eq .Category "tv" }}/data/tv{{ end }}`, is accepted. When the rule runs, qui skips the move for any torrent whose path renders empty or relative, and logs a warning for a relative path.
 
 **Available template variables:**
 
@@ -642,7 +656,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 | `.Name` | Torrent display name |
 | `.Hash` | Info hash |
 | `.Category` | qBittorrent category |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 **Template function:**
@@ -758,7 +772,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Name` | Torrent display name |
 | `.Hash` | Info hash |
 | `.Category` | qBittorrent category (on source instance) |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 | Function | Description |
@@ -777,7 +791,12 @@ If you set no save path but set a category, qui enables qBittorrent's Automatic 
 
 Automations detect cross-seeded torrents (same content and files) and can handle them specially:
 
-- **Detection**: Cross-seed condition fields match on content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload that has the same exact byte size. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
+- **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
+- **Read errors**: If qui cannot read the instance list, the torrent list of another instance, or a file list, or cannot complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui tries again on the next run. A confirmed positive existence or seeding result stays known when another candidate cannot be checked. Cross-seed tags and action-group safety stay unknown until the checks complete.
+- **Grouping**: Delete, move, and category actions treat torrents that use any of the same files on disk as one group. This includes subtitles and other files that matching ignores, because deleting those files can break another torrent.
+- **Torrent lookup errors**: If qui cannot load the current torrent snapshot for cross-seed checks, the automation run stops. Previews show an error.
+- **Unknown groups**: A move, or a category action with **Include affected cross-seeds**, skips a group when a file check cannot complete.
+- **Nested save folders**: Automatic moves skip a group when its torrents have different save folders. Giving those torrents the same destination can separate their shared files.
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together.
@@ -1101,7 +1120,7 @@ qui sends an API call only when the torrent's current setting differs from the t
 
 ### Processing order
 
-- **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
+- **Delete wins.** When a rule chooses delete for a torrent, qui evaluates no further rules for it and drops the actions earlier rules chose. A torrent qui deletes gets nothing else in the run: cross-seed and group expansion of category and move leave it out, and a torrent the delete pulls in (for example a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode) gets none of its own actions.
 - **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
@@ -1112,7 +1131,9 @@ When a delete rule uses the **Free Space** condition, qui tracks freed space cum
 1. **Configurable processing order**: qui processes torrents according to the automation's Torrent Priority (Default, Simple, or Score). This lets you prioritize cleanups (for example, largest files first, or lowest score first).
 2. **Cumulative space tracking**: As qui marks each torrent for deletion, qui adds its size to the projected free space (only when the delete mode frees disk bytes).
 3. **Stop when satisfied**: Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match.
-4. **Cross-seed aware**: qui counts cross-seeded torrents that share the same files once to avoid overestimating freed space.
+4. **Cross-seed aware**: For `Delete with files`, qui counts the files selected for deletion. Each shared file path counts once, even when an unselected torrent connects the selected torrents into one shared-file group.
+
+For `Delete with files`, a required file list that cannot be read stops that rule's deletions for the run. The **Needed to reach target** preview returns an error. Estimates use reported sizes, not actual disk allocation.
 
 **Preview views for Free Space rules**
 
@@ -1144,10 +1165,12 @@ The preview expands and shows cross-seeds only in `Remove with files (include cr
 
 **How preserve cross-seeds works:**
 
-- Torrents become candidates when they share the same Content Path. qui then compares their resolved file paths and sizes.
+- Two torrents are candidates when they have the same Content Path, or when one Content Path is inside the folder of the other torrent. They are also candidates when they have the same Save Path and one torrent has no subfolder. qui then compares their resolved file paths and sizes.
 - qui does not treat torrents in the same directory that use different files as cross-seeds. qui removes their files.
 - If torrents share files or the file comparison cannot complete, qui keeps the files.
 - Only torrents whose files qui removes contribute to the free-space projection.
+
+With **Include hardlinked copies**, a free-space rule counts the complete group that deletion selects through shared paths and hardlinks. Each physical file counts once. The preview uses the same estimate.
 
 **Example:** If you have 400GB free and a rule "Delete if Free Space < 500GB" in `Remove with files` mode, qui deletes the oldest torrents. It stops when the cumulative freed space reaches 100GB. A 50GB torrent and its cross-seed (same files) count as 50GB freed, not 100GB.
 

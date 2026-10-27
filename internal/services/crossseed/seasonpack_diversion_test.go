@@ -66,7 +66,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 		libraryTorrents   []qbt.Torrent
 		libraryFiles      map[string]qbt.TorrentFiles
 		decisionClass     searchCandidateClass
-		mismatchReason    string
+		relaxed           matchDifferences
 		applied           bool
 		wantDiverted      bool
 		wantSuccess       bool
@@ -115,7 +115,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			libraryTorrents:   episodeTorrents,
 			libraryFiles:      episodeFiles,
 			decisionClass:     searchCandidateClassExactSizeFallback,
-			mismatchReason:    groupMismatchReason,
+			relaxed:           differencesOf(differenceGroup),
 			applied:           true,
 			wantDiverted:      false,
 			wantSuccess:       false,
@@ -164,14 +164,15 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				},
 			}
 
+			withLinkAdder(svc)
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:            packB64,
 				TargetInstanceIDs:      []int{instance.ID},
 				FindIndividualEpisodes: true,
 				IndexerName:            "tracker",
 				SearchDecision: searchDecisionProvenance{
-					Class:                tt.decisionClass,
-					StrictMismatchReason: tt.mismatchReason,
+					Class:   tt.decisionClass,
+					Relaxed: tt.relaxed,
 				},
 			})
 			require.NoError(t, err)
@@ -231,6 +232,8 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	require.Equal(t, 1, response.Results[1].InstanceID)
 	require.Equal(t, "main", response.Results[1].InstanceName)
 	require.Equal(t, "added", response.Results[1].Status)
+	require.NotNil(t, response.Results[1].MatchedTorrent)
+	require.Equal(t, "Show.Title.S01.1080p.WEB.H264-GRP", response.Results[1].MatchedTorrent.Name)
 }
 
 // TestProcessAutomationCandidate_DownloadsPackForDiversion covers the RSS flow:

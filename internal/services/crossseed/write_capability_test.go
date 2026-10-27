@@ -13,15 +13,16 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// A remote instance has Read only, so every link-tree seam refuses it even
-// with a link mode and a base dir configured.
-func TestLinkTreeSeamsRefuseRemoteInstance(t *testing.T) {
+// A remote instance has Write (#2942), so the link-tree seams admit it the
+// way they admit a local one; an instance with no filesystem access is refused.
+func TestLinkTreeSeamsAdmitRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		ID: 1, UseHardlinks: true, HardlinkBaseDir: "/links",
 		SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey",
 	}
 	local := *remote
 	local.HasLocalFilesystemAccess = true
+	none := &models.Instance{ID: 1, UseHardlinks: true, HardlinkBaseDir: "/links"}
 
 	for _, tc := range []struct {
 		name     string
@@ -29,7 +30,8 @@ func TestLinkTreeSeamsRefuseRemoteInstance(t *testing.T) {
 		writable bool
 	}{
 		{"local", &local, true},
-		{"remote", remote, false},
+		{"remote", remote, true},
+		{"none", none, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.writable, len(filterLinkEligible([]*models.Instance{tc.instance})) == 1, "season pack link eligibility")

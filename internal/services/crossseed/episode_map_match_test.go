@@ -17,12 +17,9 @@ import (
 
 const (
 	episodeMapAbsoluteName = "[KiraSubs] Azure Compass - 81 (1080p) [ABCD1234].mkv"
-	// The search classifier has no one-sided checksum tolerance below exact
-	// size, so the search fixture drops the CRC to isolate the map rule.
-	episodeMapAbsoluteNoCRCName = "[KiraSubs] Azure Compass - 81 (1080p).mkv"
-	episodeMapSeasonedName      = "Azure Compass S04E15 1080p WEB-DL AAC2.0 H.264-KiraSubs"
-	episodeMapOffByOneName      = "Azure Compass S04E16 1080p WEB-DL AAC2.0 H.264-KiraSubs"
-	episodeMapSize              = int64(1_449_551_462)
+	episodeMapSeasonedName = "Azure Compass S04E15 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	episodeMapOffByOneName = "Azure Compass S04E16 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	episodeMapSize         = int64(1_449_551_462)
 )
 
 var episodeMapS04E15 = &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
@@ -67,10 +64,9 @@ func TestClassifyWebhookAnnouncementSourceEpisodeMap(t *testing.T) {
 			candidate := namedRelease{release: svc.releaseCache.Parse(tt.announceName), rawName: tt.announceName}
 
 			got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, tt.announceSize, announcementMatchPolicy{
-				findIndividualEpisodes:   true,
-				skipRecheck:              true,
-				episodeMap:               tt.episodeMap,
-				tolerateOneSidedChecksum: true,
+				findIndividualEpisodes: true,
+				skipRecheck:            true,
+				episodeMap:             tt.episodeMap,
 			})
 
 			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
@@ -108,14 +104,14 @@ func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
 		wantClass     searchCandidateClass
 		wantReason    string
 	}{
-		{name: "mapped pair is strict", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassStrict},
-		{name: "mapped pair in reverse is strict", sourceName: episodeMapSeasonedName, candidateName: episodeMapAbsoluteNoCRCName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassStrict},
-		{name: "no map is an episode mismatch", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, wantReason: episodeMismatchReason},
-		{name: "tracker disagreement is an episode mismatch", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantReason: episodeMismatchReason},
-		{name: "tracker disagreement passes the exact-size tier", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassExactSizeFallback},
+		{name: "mapped pair is strict", sourceName: episodeMapAbsoluteName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassStrict},
+		{name: "mapped pair in reverse is strict", sourceName: episodeMapSeasonedName, candidateName: episodeMapAbsoluteName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassStrict},
+		{name: "no map is an episode mismatch", sourceName: episodeMapAbsoluteName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, wantReason: episodeMismatchReason},
+		{name: "tracker disagreement is an episode mismatch", sourceName: episodeMapAbsoluteName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantReason: episodeMismatchReason},
+		{name: "tracker disagreement passes the exact-size tier", sourceName: episodeMapAbsoluteName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassExactSizeFallback},
 		// A special maps to season 0; without the guard the seasonless "- 15" would
 		// pose as the seasoned side and "- 81" would be rewritten onto it.
-		{name: "season-zero map never equates two seasonless episodes", sourceName: episodeMapAbsoluteNoCRCName, candidateName: "[KiraSubs] Azure Compass - 15 (1080p).mkv", candidateSize: episodeMapSize + 500, episodeMap: &models.EpisodeMap{Season: 0, Episode: 15, Absolute: 81}, wantReason: episodeMismatchReason},
+		{name: "season-zero map never equates two seasonless episodes", sourceName: episodeMapAbsoluteName, candidateName: "[KiraSubs] Azure Compass - 15 (1080p).mkv", candidateSize: episodeMapSize + 500, episodeMap: &models.EpisodeMap{Season: 0, Episode: 15, Absolute: 81}, wantReason: episodeMismatchReason},
 	}
 
 	for _, tt := range tests {
@@ -158,8 +154,8 @@ func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 		existingName string
 		targetName   string
 	}{
-		{name: "seasoned target against absolute local", existingName: episodeMapAbsoluteNoCRCName, targetName: episodeMapSeasonedName},
-		{name: "absolute target against seasoned local", existingName: episodeMapSeasonedName, targetName: episodeMapAbsoluteNoCRCName},
+		{name: "seasoned target against absolute local", existingName: episodeMapAbsoluteName, targetName: episodeMapSeasonedName},
+		{name: "absolute target against seasoned local", existingName: episodeMapSeasonedName, targetName: episodeMapAbsoluteName},
 	}
 
 	for _, tt := range tests {
@@ -183,10 +179,11 @@ func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 				TargetInstanceIDs:      []int{instanceID},
 				FindIndividualEpisodes: true,
 				SearchDecision: searchDecisionProvenance{
-					Class:            searchCandidateClassStrict,
-					SourceInstanceID: instanceID,
-					SourceHash:       sourceHash,
-					EpisodeMap:       episodeMapS04E15,
+					Class:               searchCandidateClassStrict,
+					SearchCandidateName: tt.targetName,
+					SourceInstanceID:    instanceID,
+					SourceHash:          sourceHash,
+					EpisodeMap:          episodeMapS04E15,
 				},
 			})
 			require.NoError(t, err)

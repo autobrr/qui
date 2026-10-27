@@ -93,19 +93,23 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, collectHashes(prep.meta)); err != nil {
-		return nil, err
-	} else if found {
+	check, refusal := s.adder.Check(ctx, inst.ID, AddFacts{ManualAssembly: true}, collectHashes(prep.meta)...)
+	if refusal != nil {
+		if refusal.Status != "exists" {
+			return nil, refusal.Err
+		}
 		resp.Ready, resp.Reason = false, "already_exists"
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planned.build, resp.LinkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
-		return resp, nil
+		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
-	result, err := s.addSeasonPack(ctx, prep, inst, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
+	// A cross-device retry may have moved the tree to another base dir.
+	resp.Destination = planned.build.plan.RootDir
+	result, err := s.addSeasonPack(ctx, prep, inst, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +129,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid torrent: %w", ErrInvalidRequest, err)
 	}
-	packRelease := s.releaseCache.Parse(meta.Name)
+	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	if !isTVSeasonPack(packRelease) {
 		return nil, fmt.Errorf("%w: upload is not a season pack", ErrInvalidRequest)
 	}
@@ -143,7 +147,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	prep := &seasonPackPrep{
 		manual: true, rejected: make(map[string]string), settings: settings,
 		meta: meta, torrentBytes: torrentBytes, packName: meta.Name, packRelease: packRelease,
-		packEpisodes: extractPackEpisodes(meta.Files, packRelease),
+		packEpisodes: s.matcher().extractPackEpisodes(meta.Files, packRelease),
 	}
 	prep.totalEpisodes = len(prep.packEpisodes)
 	resp := &ManualAssembleResponse{

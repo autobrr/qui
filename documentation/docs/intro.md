@@ -15,7 +15,7 @@ Most people run qui with one qBittorrent instance. Multi-instance support is opt
 
 qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
 
-If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode or hardlink mode.
 
 ## Features
 
@@ -57,7 +57,7 @@ Sizes and speeds follow the language: French shows `1,5 Gio` where English shows
 
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 
-Community members contribute translations. To add or improve a language, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
+The team does not take new translations at this time. To report a wrong translation, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
 
 ## Quick start
 

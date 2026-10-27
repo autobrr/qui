@@ -80,6 +80,8 @@ For an episode to count toward coverage, it must:
 - Pass the same release-compatibility checks used by normal cross-seeding
 - Belong to the same episode in the season pack
 
+A plain `WEB` source matches both `WEB-DL` and `WEBRip`. If the check has the torrent data, a `WEB-DL` episode also matches a `WEBRip` pack, and the reverse, when the size of the episode torrent is within 5% of the episode file in the pack. Trackers often give the same web release a different label. At apply, qui compares the exact file sizes.
+
 Mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
 The default threshold is **75%**. Change it in **Cross-Seed > Season packs** in the qui UI.
@@ -94,7 +96,7 @@ The defaults match common seasonpackarr expectations.
 | --- | --- | --- | --- |
 | Ignore REPACK/PROPER differences | On | Treat REPACK and PROPER episodes as compatible with the season pack. | `Show.S01E01.REPACK` matches `Show.S01E01.PROPER` |
 | Simplify HDR matching | Off | Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching. | `HDR10+` matches `HDR10` |
-| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
+| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. A WEB-DL episode then also matches a WEBRip pack at any size. | `WEB-DL` matches `WEBRip` |
 | Ignore year differences | Off | Allow matches when release dates differ or when one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
 ### Alternate titles
@@ -104,6 +106,10 @@ If Sonarr resolves the show, qui pulls its series-wide alternate titles and uses
 ### Anime absolute numbering
 
 If both sides use the same absolute numbering, qui matches absolute-numbered anime episodes (for example `Show - 1140`, with no season number) against a season pack. qui keys the local episode to the pack season and uses the absolute episode number to identify it.
+
+If a pack file has no season in its name, qui reads its number as an absolute episode, with one exception. If the pack is season 2 or later and the lowest episode number of these files is 1, the files use season numbering. For example, in a `Show S02` pack, the files `Show - 01` to `Show - 12` are `S02E01` to `S02E12`. In the same pack, the files `Show - 13` to `Show - 24` are absolute episodes 13 to 24.
+
+Some pack names have no season number, but the title ends with a Roman numeral from II to X, such as `Show II [Batch]`. qui reads the numeral as the season of the pack, so `Show II [Batch]` is season 2 of `Show`.
 
 Season-pack matching does not translate between numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation needs per-episode data for every file in the pack. Single episodes are different: with Sonarr linked, qui maps one episode between schemes. See [Manual Search](./overview.md#manual-search) in the overview.
 
@@ -129,11 +135,11 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- You must enable **Local filesystem access** on the target instance
-- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees.
+- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
-During eligibility checks, qui skips instances that lack local filesystem access or a link mode.
+During eligibility checks, qui skips instances that lack filesystem access or a link mode.
 
 See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
@@ -317,7 +323,7 @@ Keep the `Season pack status` condition in the rule. It limits the rule to episo
 
 If `instanceIds` is omitted or contains multiple instances:
 
-1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
+1. qui filters the list to instances with a link mode qui can use: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode
 2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID

@@ -187,7 +187,7 @@ func TestAugmentCrossInstanceScope_NoDeficits(t *testing.T) {
 			"hash2": HardlinkScopeTorrentsOnly,
 		},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap:   make(map[hardlink.FileID]*fileIDTracker),
+			globalFileIDMap:   make(map[fsops.FileKey]*fileIDTracker),
 			seenPaths:         make(map[string]struct{}),
 			torrentInfoByHash: make(map[string]*torrentFileInfo),
 		},
@@ -241,7 +241,7 @@ func TestAugmentCrossInstanceScope_DeficitWithNoOtherInstances(t *testing.T) {
 			"hash1": HardlinkScopeOutsideQBitTorrent,
 		},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[hardlink.FileID]*fileIDTracker{fid: tracker},
+			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{testFileKey(fid, nil): tracker},
 			seenPaths:       make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
 				"hash1": {
@@ -307,7 +307,7 @@ func lstatFileID(t *testing.T, path string) (hardlink.FileID, uint64) {
 func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBuildState {
 	t.Helper()
 	state := &hardlinkBuildState{
-		globalFileIDMap:   make(map[hardlink.FileID]*fileIDTracker),
+		globalFileIDMap:   make(map[fsops.FileKey]*fileIDTracker),
 		seenPaths:         make(map[string]struct{}),
 		torrentInfoByHash: make(map[string]*torrentFileInfo),
 	}
@@ -321,10 +321,10 @@ func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBu
 			info.fileIDs = append(info.fileIDs, fid)
 			if nlink > 1 {
 				info.hasHardlinks = true
-				tracker := state.globalFileIDMap[fid]
+				tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
 				if tracker == nil {
 					tracker = &fileIDTracker{nlink: nlink}
-					state.globalFileIDMap[fid] = tracker
+					state.globalFileIDMap[testFileKey(fid, state.instance)] = tracker
 				}
 				if _, seen := state.seenPaths[p]; !seen {
 					state.seenPaths[p] = struct{}{}
@@ -488,7 +488,7 @@ func TestCrossScope_CrossInstanceResolvesDeficit(t *testing.T) {
 
 	// Simulate Phase 2: Lstat Instance B's file and augment state.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[fidB]
+	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID with Instance A")
 	}
@@ -538,7 +538,7 @@ func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
 
 	// Phase 2: augment with Instance B.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[fidB]
+	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID")
 	}
@@ -593,7 +593,7 @@ func TestCrossScope_DeficitSetResolution(t *testing.T) {
 
 	// Phase 2: augment with Instance B's file1 (resolves file1's deficit).
 	fidB1, _ := lstatFileID(t, fileB1)
-	if tracker := state.globalFileIDMap[fidB1]; tracker != nil {
+	if tracker := state.globalFileIDMap[testFileKey(fidB1, state.instance)]; tracker != nil {
 		state.seenPaths[fileB1] = struct{}{}
 		tracker.uniquePathCount++
 	}
@@ -628,7 +628,7 @@ func TestCrossScope_SeenPathsDedup(t *testing.T) {
 	})
 
 	fid, _ := lstatFileID(t, fileA)
-	tracker := state.globalFileIDMap[fid]
+	tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
 	if tracker == nil {
 		t.Skip("nlink=1, no hardlinks to test (filesystem may not support)")
 	}
@@ -667,8 +667,8 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 	index := &HardlinkIndex{
 		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[hardlink.FileID]*fileIDTracker{
-				fid: {nlink: 2, uniquePathCount: 1},
+			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{
+				testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1},
 			},
 			seenPaths: make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
@@ -828,7 +828,7 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 	}
 }
 
-func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
+func TestDeletionSelection_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 	const instanceID = 902
 	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
 	dir := t.TempDir()
@@ -848,17 +848,17 @@ func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 			},
 		}},
 	}
-	evalCtx := &EvalContext{InstanceHasFileIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
-	require.Empty(t, processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil))
+	evalCtx := &EvalContext{InstanceHasTrustedIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
+	require.Empty(t, selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false).triggers)
 
 	// Known unlinked torrents still match the same delete rule.
 	for _, torrent := range torrents {
 		index.ScopeByHash[torrent.Hash] = HardlinkScopeNone
 	}
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
-	require.Len(t, states, len(torrents))
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false)
+	require.Len(t, selection.triggers, len(torrents))
 	for _, torrent := range torrents {
-		require.True(t, states[torrent.Hash].shouldDelete)
+		require.Contains(t, selection.byHash, torrent.Hash)
 	}
 }
 
@@ -881,29 +881,30 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[stale])
 	require.NoError(t, os.Remove(filepath.Join(torrents[1].SavePath, "data.bin")))
 	torrentByHash := map[string]qbt.Torrent{unknown: torrents[0], stale: torrents[1], readable: torrents[2]}
-	deleteHashes := map[string][]string{DeleteModeWithFiles: {unknown, stale, readable}}
-	pending := map[string]pendingDeletion{unknown: {ruleID: 1}, stale: {ruleID: 1}, readable: {ruleID: 1}}
+	pending := &deletionSelection{byHash: map[string]selectedDeletion{
+		unknown: {rule: ruleRef{id: 1}}, stale: {rule: ruleRef{id: 1}}, readable: {rule: ruleRef{id: 1}},
+	}}
 	scope := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeNone}
 	category := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
 	rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: scope}}}
 	rules := map[int]*models.Automation{1: rule}
 
-	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Equal(t, map[string]string{unknown: "hardlink scope unknown", stale: "files no longer readable"}, blocked)
 
 	// An independent OR match still requires verification when the rule uses hardlink data.
 	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
-	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasFileIdentity: true}, 0))
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasTrustedIdentity: true}, 0))
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Contains(t, blocked, unknown)
 
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, deleteHashes, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, pending, rules)
 	require.Len(t, blocked, len(torrents))
 
 	// Rules without hardlink data do not need a scope or a filesystem rescan.
 	rule.Conditions.Delete.Condition = category
 	for _, index := range []*HardlinkIndex{index, nil} {
-		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules))
+		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules))
 	}
 }
 
@@ -913,7 +914,7 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 	// Torrents with allAccessible=false should not appear in cross-scope.
 	fid := createFile(t, filepath.Join(t.TempDir(), "shared-file"))
 	state := &hardlinkBuildState{
-		globalFileIDMap: map[hardlink.FileID]*fileIDTracker{},
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{},
 		seenPaths:       make(map[string]struct{}),
 		torrentInfoByHash: map[string]*torrentFileInfo{
 			"accessible": {
@@ -1233,9 +1234,15 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 
 			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: tt.condition}}}
 			blocked := service.blockedDeleteCandidates(t.Context(), instanceA.ID, index,
-				map[string]qbt.Torrent{hash: torrent}, map[string][]string{DeleteModeWithFiles: {hash}},
-				map[string]pendingDeletion{hash: {ruleID: 1}}, map[int]*models.Automation{1: rule})
+				map[string]qbt.Torrent{hash: torrent},
+				&deletionSelection{byHash: map[string]selectedDeletion{hash: {rule: ruleRef{id: 1}}}}, map[int]*models.Automation{1: rule})
 			require.Equal(t, tt.want, blocked)
 		})
 	}
+}
+
+// testFileKey is fsops.FileKeyOf for a test ID that is known to have a key.
+func testFileKey(id hardlink.FileID, instance *models.Instance) fsops.FileKey {
+	key, _ := fsops.FileKeyOf(id, instance)
+	return key
 }

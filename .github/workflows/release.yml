@@ -69,7 +69,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -101,13 +101,7 @@ jobs:
 
       - name: Type check and build frontend
         working-directory: web
-        run: |
-          pnpm tsc --noEmit &
-          TSC_PID=$!
-          CI= pnpm run build &
-          BUILD_PID=$!
-          wait $TSC_PID || exit 1
-          wait $BUILD_PID || exit 1
+        run: CI= pnpm run build
 
       - name: Upload web production build
         uses: actions/upload-artifact@v7
@@ -136,10 +130,26 @@ jobs:
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
 
-      - name: Fetch premium themes
-        run: make themes-fetch
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
         env:
-          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: autobrr/qui-premium-themes
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          path: .themes-temp
+          sparse-checkout: themes
+          persist-credentials: false
+
+      - name: Copy premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -186,7 +196,7 @@ jobs:
           fi
 
       - name: Run GoReleaser build and publish tags
-        uses: goreleaser/goreleaser-action@v7.2.3
+        uses: goreleaser/goreleaser-action@v7.3.0
         with:
           distribution: goreleaser-pro
           version: "~> v2"
@@ -218,13 +228,30 @@ jobs:
             dist/msi/*/*.msi
           if-no-files-found: error
 
-      # GoReleaser makes a draft. This step adds the Highlights and publishes it.
+  # GoReleaser makes a draft. This job adds the Highlights and publishes it.
+  # It has its own job so that only this job can read the Claude token. The
+  # claude environment holds the token and allows develop and v* tags.
+  highlights:
+    name: Write Highlights and publish the release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    needs: goreleaserbuild
+    environment: claude
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          # The script finds the previous tag with git describe.
+          fetch-depth: 0
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.280
+
       - name: Write Highlights and publish the release
-        if: startsWith(github.ref, 'refs/tags/')
         run: .github/scripts/release-highlights.sh "$GITHUB_REF_NAME"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NOTES_ANTHROPIC_API_KEY: ${{ secrets.RELEASE_NOTES_ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
   docker-matrix:
     name: Determine Docker platforms
@@ -267,10 +294,26 @@ jobs:
           name: web-dist
           path: web/dist
 
-      - name: Fetch premium themes
-        run: make themes-fetch
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
         env:
-          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: autobrr/qui-premium-themes
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          path: .themes-temp
+          sparse-checkout: themes
+          persist-credentials: false
+
+      - name: Copy premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Extract metadata
         id: meta
@@ -327,9 +370,15 @@ jobs:
 
   docker-merge:
     name: Publish Docker multi-arch manifest
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
+    # On a tag, the image tags go out only after GoReleaser succeeds. A failed
+    # release then pushes no image, and a retag gives no image tag a new digest.
+    if: >-
+      !cancelled() &&
+      needs.docker.result == 'success' && needs.test.result == 'success' &&
+      (!startsWith(github.ref, 'refs/tags/') || needs.goreleaserbuild.result == 'success') &&
+      (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
-    needs: [docker, test]
+    needs: [docker, test, goreleaserbuild]
     steps:
       - name: Download image digests
         uses: actions/download-artifact@v8

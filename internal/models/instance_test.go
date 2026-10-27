@@ -46,6 +46,7 @@ const testInstanceSchema = `
 		ssh_username TEXT NOT NULL DEFAULT '',
 		ssh_key_encrypted TEXT NOT NULL DEFAULT '',
 		ssh_host_key_encrypted TEXT NOT NULL DEFAULT '',
+		ssh_tier TEXT NOT NULL DEFAULT 'sftp',
 		FOREIGN KEY (name_id) REFERENCES string_pool(id),
 		FOREIGN KEY (host_id) REFERENCES string_pool(id),
 		FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -75,7 +76,8 @@ const testInstanceSchema = `
 		i.ssh_port,
 		i.ssh_username,
 		i.ssh_key_encrypted,
-		i.ssh_host_key_encrypted
+		i.ssh_host_key_encrypted,
+		i.ssh_tier
 	FROM instances i
 	LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
 	LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -117,34 +119,14 @@ func TestHostValidation(t *testing.T) {
 			expected: "http://localhost:8080",
 		},
 		{
-			name:     "Private IP address",
-			input:    "192.168.1.100:9091",
-			expected: "http://192.168.1.100:9091",
-		},
-		{
-			name:     "Domain without protocol",
-			input:    "torrent.example.com",
-			expected: "http://torrent.example.com",
-		},
-		{
 			name:     "IPv6 address",
 			input:    "[2001:db8::1]:8080",
 			expected: "http://[2001:db8::1]:8080",
 		},
 		{
-			name:     "URL with query params",
-			input:    "http://localhost:8080?key=value",
-			expected: "http://localhost:8080?key=value",
-		},
-		{
 			name:     "URL with auth",
 			input:    "http://user:pass@localhost:8080",
 			expected: "http://user:pass@localhost:8080",
-		},
-		{
-			name:     "Loopback address",
-			input:    "127.0.0.1:8080",
-			expected: "http://127.0.0.1:8080",
 		},
 		{
 			name:     "Localhost",

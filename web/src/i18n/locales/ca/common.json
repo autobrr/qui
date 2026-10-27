@@ -46,7 +46,7 @@
     "tasksForInstance": "Tasques de la instància",
     "settingsForInstance": "Configuració per a la instància",
     "clearSearch": "Neteja la cerca",
-    "searchTorrents": "Cerca torrents... ({{shortcutKey}})",
+    "searchTorrents": "Cerca torrents...",
     "globPattern": "Patró glob...",
     "smartSearchTitle": "Funcions de cerca intel·ligent:",
     "smartSearchGlob": "Patrons glob:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Cerca al nom, la categoria i les etiquetes",
     "smartSearchEnter": "Prem Retorn per cercar a l'instant",
     "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
+    "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
     "torrentCreationTasksTitle": "Tasques de creació de torrents",
     "updateAvailable": "Actualització disponible",
     "updateVersion": "Versió {{version}}",
@@ -191,8 +192,7 @@
     "trigger": "Més informació"
   },
   "numberInput": {
-    "unlimited": "Il·limitat",
-    "useUnlimited": " (fes servir -1 per a il·limitat)"
+    "unlimited": "Il·limitat"
   },
   "dateTime": {
     "na": "N/D",

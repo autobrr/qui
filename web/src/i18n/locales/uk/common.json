@@ -46,7 +46,7 @@
     "tasksForInstance": "Завдання екземпляра",
     "settingsForInstance": "Налаштування екземпляра",
     "clearSearch": "Очистити пошук",
-    "searchTorrents": "Пошук торентів... ({{shortcutKey}})",
+    "searchTorrents": "Пошук торентів...",
     "globPattern": "Glob шаблон...",
     "smartSearchTitle": "Можливості розумного пошуку:",
     "smartSearchGlob": "Glob шаблони:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Пошук за назвою, категорією та тегами",
     "smartSearchEnter": "Натисніть Enter для миттєвого пошуку",
     "smartSearchAuto": "Автопошук після паузи 500 мс",
+    "smartSearchShortcut": "Натисніть {{shortcutKey}}, щоб перейти до пошуку",
     "torrentCreationTasksTitle": "Завдання створення торента",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
@@ -191,8 +192,7 @@
     "trigger": "Докладніше"
   },
   "numberInput": {
-    "unlimited": "Без обмежень",
-    "useUnlimited": " (використовуйте -1 для необмеженого)"
+    "unlimited": "Без обмежень"
   },
   "dateTime": {
     "na": "Н/Д",

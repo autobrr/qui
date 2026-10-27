@@ -5,9 +5,11 @@ package crossseed
 
 import (
 	"context"
+	"math"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -30,12 +32,9 @@ type announcementMatchPolicy struct {
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
 	episodeMap *models.EpisodeMap
-	// tolerateOneSidedChecksum lets the advisory webhook check pass a candidate
-	// whose only strict failure is a CRC tag on one side. IRC announce sizes are
-	// rounded, so the check cannot reach the exact-size checksum relaxation that
-	// apply gets from the real torrent bytes. A false positive here costs one
-	// torrent download; apply re-validates and stays authoritative.
-	tolerateOneSidedChecksum bool
+	// sourceReads holds the local torrents of the scan that readLocalTorrents
+	// read from their files. Without it, a local torrent reads by its name.
+	sourceReads localReads
 }
 
 type announcementCandidateDecision struct {
@@ -55,7 +54,7 @@ func (s *Service) classifyAnnouncementSource(
 		return announcementCandidateDecision{decision: searchCandidateDecision{Class: searchCandidateClassRejected}}
 	}
 
-	rawInput := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	rawInput := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)
 	if candidateSize == 0 {
 		if !policy.allowUnknownSize {
 			return announcementCandidateDecision{decision: searchCandidateDecision{Class: searchCandidateClassRejected}}
@@ -64,7 +63,7 @@ func (s *Service) classifyAnnouncementSource(
 		return announcementCandidateDecision{decision: decision}
 	}
 
-	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source, rawInput.Source.release)
+	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source)
 	rawInput.Source = sourceView
 	decision := s.matcher().classifySearchCandidate(rawInput)
 	return announcementCandidateDecision{decision: decision, replayable: true}
@@ -93,19 +92,88 @@ func (s *Service) classifyWebhookAnnouncementSource(
 		return result
 	}
 
-	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	input := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)
 	decision := s.matcher().classifySearchCandidate(input)
-	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
-		s.matcher().hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		relaxed, _ := s.matcher().withRelaxedDifferenceNeutralized(input, "checksum")
-		decision = s.matcher().classifySearchCandidate(relaxed)
-	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
 		decision.RejectReason = "nonexact size requires strict match"
 	}
 	return announcementCandidateDecision{decision: decision, replayable: true}
+}
+
+// webhookSkipRecheckReason rejects a match that Skip recheck cannot verify.
+const webhookSkipRecheckReason = "skip recheck needs a verified match"
+
+// webhookCandidate decides whether one local torrent can cross-seed the
+// announced release. The decision says why a torrent was rejected.
+func (s *Service) webhookCandidate(
+	ctx context.Context,
+	instance *models.Instance,
+	torrent *qbt.Torrent,
+	announced namedRelease,
+	announceSize uint64,
+	policy announcementMatchPolicy,
+) (WebhookCheckMatch, searchCandidateDecision) {
+	decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announced, int64(announceSize), policy).decision
+	if !decision.Accepted {
+		return WebhookCheckMatch{}, decision
+	}
+	if policy.skipRecheck && searchDecisionRequiresVerification(decision.provenance()) {
+		decision.Accepted = false
+		decision.Class = searchCandidateClassRejected
+		decision.RejectReason = webhookSkipRecheckReason
+		return WebhookCheckMatch{}, decision
+	}
+
+	sourceSize := searchSourceSize(torrent)
+	// A season pack can take an episode without a size check, so a local
+	// torrent with no reported size gets here. Its size difference has no value.
+	if announceSize > 0 && sourceSize <= 0 {
+		decision.Accepted = false
+		decision.Class = searchCandidateClassRejected
+		decision.RejectReason = "unknown local size"
+		return WebhookCheckMatch{}, decision
+	}
+
+	matchType := "metadata"
+	var sizeDiff float64
+	if announceSize > 0 {
+		diff := math.Abs(float64(announceSize) - float64(sourceSize))
+		sizeDiff = (diff / float64(sourceSize)) * 100.0
+		if int64(announceSize) == sourceSize {
+			matchType = "exact"
+		} else {
+			matchType = "size"
+		}
+	}
+
+	existingRelease := s.releaseCache.Parse(torrent.Name)
+	matchScore, matchReasons := evaluateReleaseMatch(announced.release, existingRelease)
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Int("instanceId", instance.ID).
+		Str("instanceName", instance.Name).
+		Str("incomingName", announced.rawName).
+		Str("incomingTitle", announced.release.Title).
+		Str("existingName", torrent.Name).
+		Str("existingTitle", existingRelease.Title).
+		Str("matchType", matchType).
+		Float64("sizeDiff", sizeDiff).
+		Float64("matchScore", matchScore).
+		Str("matchReasons", matchReasons).
+		Msg("Webhook cross-seed: matched existing torrent")
+
+	return WebhookCheckMatch{
+		InstanceID:   instance.ID,
+		InstanceName: instance.Name,
+		TorrentHash:  torrent.Hash,
+		TorrentName:  torrent.Name,
+		MatchType:    matchType,
+		SizeDiff:     sizeDiff,
+		Progress:     torrent.Progress,
+	}, decision
 }
 
 // announceAliasTitles resolves ARR alternate titles and the episode map for an
@@ -120,10 +188,9 @@ func (s *Service) announceAliasTitles(ctx context.Context, announcedName, conten
 	return nil, nil
 }
 
-func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
-	parsedSource := s.releaseCache.Parse(source.Name)
+func (s *Service) announcementRawSearchInput(instanceID int, source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
 	return searchCandidateInput{
-		Source:                 namedRelease{release: parsedSource, rawName: source.Name},
+		Source:                 policy.sourceReads.read(s.matcher(), instanceID, source),
 		Candidate:              candidate,
 		SourceSize:             searchSourceSize(source),
 		CandidateSize:          candidateSize,
@@ -135,10 +202,13 @@ func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate name
 	}
 }
 
+// classifyUnknownSizePreflight asks the Match verdict as if the sizes were
+// equal. Announces often leave out the group, so a group or site that only the
+// local name carries does not count.
 func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipRecheck bool) searchCandidateDecision {
 	input.CandidateSize = input.SourceSize
 	input.RescueTitleMismatches = false
-	input = s.normalizeUnknownSizePreflightIdentity(input)
+	input.AllowMissingCandidateGroup = true
 	decision := s.matcher().classifySearchCandidate(input)
 	if !allowsUnknownSizePreflight(decision, skipRecheck) {
 		decision.Accepted = false
@@ -146,31 +216,6 @@ func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipR
 		decision.RejectReason = "unknown size requires verification"
 	}
 	return decision
-}
-
-// normalizeUnknownSizePreflightIdentity preserves the legacy advisory treatment
-// of an announcement that simply omits a local group/site tag. It is confined
-// to the non-replayable preflight: known-size classification still requires the
-// generic file-aware identity rules, and any populated conflicting tag remains
-// visible to the classifier.
-func (s *Service) normalizeUnknownSizePreflightIdentity(input searchCandidateInput) searchCandidateInput {
-	source := input.Source.release
-	candidate := input.Candidate.release
-	if source == nil || candidate == nil {
-		return input
-	}
-
-	normalizer := normalizerForService(s)
-	if normalizer.Normalize(candidate.Group) != "" || normalizer.Normalize(candidate.Site) != "" ||
-		(normalizer.Normalize(source.Group) == "" && normalizer.Normalize(source.Site) == "") {
-		return input
-	}
-
-	candidateCopy := *candidate
-	candidateCopy.Group = source.Group
-	candidateCopy.Site = source.Site
-	input.Candidate.release = &candidateCopy
-	return input
 }
 
 func allowsUnknownSizePreflight(decision searchCandidateDecision, skipRecheck bool) bool {
@@ -181,21 +226,12 @@ func allowsUnknownSizePreflight(decision searchCandidateDecision, skipRecheck bo
 	case searchCandidateClassStrict, searchCandidateClassWebSourceRelabel:
 		return true
 	case searchCandidateClassExactSizeFallback:
-		if len(decision.RelaxedDifferences) == 0 {
-			return false
+		allowed := encodeDifferences
+		// A split group needs a full recheck, which skip recheck turns off.
+		if !skipRecheck {
+			allowed |= differencesOf(differenceGroup)
 		}
-		for _, difference := range decision.RelaxedDifferences {
-			switch difference {
-			case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum", "variant":
-			case "group":
-				if skipRecheck {
-					return false
-				}
-			default:
-				return false
-			}
-		}
-		return true
+		return decision.Relaxed != 0 && decision.Relaxed&^allowed == 0
 	case searchCandidateClassRejected, searchCandidateClassTitleRescue:
 		return false
 	default:

@@ -318,15 +318,7 @@ function isRunSummary(event: AutomationActivity): boolean {
     || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
-interface WorkflowsOverviewProps {
-  expandedInstances?: string[]
-  onExpandedInstancesChange?: (values: string[]) => void
-}
-
-export function WorkflowsOverview({
-  expandedInstances: controlledExpanded,
-  onExpandedInstancesChange,
-}: WorkflowsOverviewProps) {
+export function WorkflowsOverview() {
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
@@ -349,12 +341,7 @@ export function WorkflowsOverview({
     })
   )
 
-  // Internal state for standalone usage
-  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
-
-  // Use controlled props if provided, otherwise internal state
-  const expandedInstances = controlledExpanded ?? internalExpanded
-  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
@@ -851,7 +838,7 @@ export function WorkflowsOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.workflowsOverview.noInstancesDescription")}
           </CardDescription>
@@ -864,7 +851,7 @@ export function WorkflowsOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

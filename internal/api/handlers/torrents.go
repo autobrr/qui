@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -43,6 +45,10 @@ type torrentDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
+type deleteMatchFinder interface {
+	FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error)
+}
+
 type torrentContentResolver interface {
 	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
@@ -57,6 +63,7 @@ type TorrentsHandler struct {
 	torrentDownloader torrentDownloader // nil when no indexer service is configured
 	contentResolver   torrentContentResolver
 	archiveExporter   torrentArchiveExporter
+	deleteMatches     deleteMatchFinder
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -99,13 +106,14 @@ type SortedPeersResponse struct {
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
-func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service, instanceStore *models.InstanceStore) *TorrentsHandler {
+func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service, instanceStore *models.InstanceStore, crossSeedService *crossseed.Service) *TorrentsHandler {
 	h := &TorrentsHandler{
 		syncManager:     syncManager,
 		instanceStore:   instanceStore,
 		torrentAdder:    syncManager,
 		contentResolver: syncManager,
 		archiveExporter: syncManager,
+		deleteMatches:   crossSeedService,
 	}
 	if jackettService != nil {
 		h.torrentDownloader = jackettService
@@ -349,7 +357,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -379,7 +387,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	values := make([]string, 0, len(torrents))
 	for _, torrent := range torrents {
-		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 		if shouldIncludeTorrentFieldValue(req.Field, value) {
 			values = append(values, value)
 		}
@@ -391,7 +399,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, contentPath, tags, magnetURI string) string {
 	switch field {
 	case "name":
 		return strings.TrimSpace(name)
@@ -402,7 +410,7 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 			InfohashV2: infohashV2,
 		})
 	case "full_path":
-		return fullPathValue(savePath, name)
+		return strings.TrimSpace(contentPath)
 	case "tags":
 		return tags
 	case "magnet_uri":
@@ -646,41 +654,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
-	// NOTE: qBittorrent's API does not properly support the start_paused_enabled preference
-	// (it gets rejected/ignored when set via app/setPreferences). As a workaround, the frontend
-	// now stores this preference in localStorage and applies it when adding torrents.
-	// This complex logic attempts to respect qBittorrent's global preference, but since the
-	// preference cannot be set via API, this is effectively unused in the current implementation.
+	// Always send the choice: qBittorrent 4.x reads paused, 5.x reads stopped.
 	if pausedStr := r.FormValue("paused"); pausedStr != "" {
-		requestedPaused := pausedStr == "true"
-
-		// Get current preferences to check start_paused_enabled
-		prefs, err := h.torrentAdder.GetAppPreferences(ctx, instanceID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
-			// If we can't get preferences, apply the requested paused state explicitly
-			if requestedPaused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			} else {
-				options["paused"] = "false"
-				options["stopped"] = "false"
-			}
-		} else {
-			// Only set paused options if the requested state differs from the global preference
-			globalStartPaused := prefs.StartPausedEnabled
-			if requestedPaused != globalStartPaused {
-				if requestedPaused {
-					options["paused"] = "true"
-					options["stopped"] = "true"
-				} else {
-					options["paused"] = "false"
-					options["stopped"] = "false"
-				}
-			}
-			// If requestedPaused == globalStartPaused, don't set paused options
-			// This allows qBittorrent's global preference to take effect
-		}
+		paused := strconv.FormatBool(pausedStr == "true")
+		options["paused"] = paused
+		options["stopped"] = paused
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
@@ -1261,20 +1239,6 @@ func preferredHashValue(torrent *qbt.Torrent) string {
 	return ""
 }
 
-func fullPathValue(savePath, name string) string {
-	normalizedSavePath := strings.ReplaceAll(strings.TrimSpace(savePath), "\\", "/")
-	trimmedName := strings.TrimSpace(name)
-	if normalizedSavePath == "" || trimmedName == "" {
-		return ""
-	}
-
-	if strings.HasSuffix(normalizedSavePath, "/") {
-		return normalizedSavePath + trimmedName
-	}
-
-	return normalizedSavePath + "/" + trimmedName
-}
-
 // BulkAction performs bulk operations on torrents
 func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
@@ -1297,20 +1261,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 	req.InstanceIDs = normalizedInstanceIDs
 
-	// Validate input - either specific hashes/targets or selectAll mode
-	if !req.SelectAll && len(req.Hashes) == 0 && len(req.Targets) == 0 {
-		RespondError(w, http.StatusBadRequest, "No torrents selected")
-		return
-	}
-
-	if req.SelectAll && (len(req.Hashes) > 0 || len(req.Targets) > 0) {
-		RespondError(w, http.StatusBadRequest, "Cannot specify hashes/targets together with selectAll")
-		return
-	}
-
-	// A hash names a torrent, not an instance. In the unified scope only targets can.
-	if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
-		RespondError(w, http.StatusBadRequest, "targets is required when addressing torrents by hash in the unified scope")
+	if message := torrentSelectionError(instanceID, req); message != "" {
+		RespondError(w, http.StatusBadRequest, message)
 		return
 	}
 
@@ -1334,44 +1286,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var targetsByInstance map[int][]string
-	if req.SelectAll {
-		targetsByInstance = make(map[int][]string)
-		if req.Filters == nil {
-			req.Filters = &qbittorrent.FilterOptions{}
-		}
-
-		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
-		if selectErr != nil {
-			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
-				return
-			}
-			if errors.Is(selectErr, errPartialResults) {
-				log.Warn().Str("action", req.Action).Ints("instanceIDs", req.InstanceIDs).Msg("SelectAll bulk action aborted due to partial results")
-				RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
-				return
-			}
-			log.Error().Err(selectErr).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
-			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
-			return
-		}
-
-		// selectAllTorrents already dropped the excluded torrents.
-		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, nil, nil)
-
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("targetCount", len(torrents)).
-			Int("excludedHashes", len(req.ExcludeHashes)).
-			Int("excludedTargets", len(req.ExcludeTargets)).
-			Str("action", req.Action).
-			Msg("SelectAll bulk action")
-	} else {
-		targetsByInstance = explicitTargets(instanceID, req.Targets, req.Hashes)
-	}
-
-	if len(targetsByInstance) == 0 {
-		RespondError(w, http.StatusBadRequest, "No torrents match the selection criteria")
+	targetsByInstance, ok := h.resolveTorrentSelection(w, r, instanceID, req)
+	if !ok {
 		return
 	}
 
@@ -1415,6 +1331,119 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
 	})
+}
+
+// torrentSelectionError returns the response message for a request that does
+// not name its torrents with explicit hashes or targets, or with selectAll, or
+// that names them both ways. It returns "" for a valid selection.
+func torrentSelectionError(instanceID int, req BulkActionRequest) string {
+	if !req.SelectAll && len(req.Hashes) == 0 && len(req.Targets) == 0 {
+		return "No torrents selected"
+	}
+	if req.SelectAll && (len(req.Hashes) > 0 || len(req.Targets) > 0) {
+		return "Cannot specify hashes/targets together with selectAll"
+	}
+	// A hash names a torrent, not an instance. In the unified scope only targets can.
+	if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
+		return "targets is required when addressing torrents by hash in the unified scope"
+	}
+	return ""
+}
+
+// resolveTorrentSelection returns the hashes of the selected torrents per
+// instance. When it returns false, it has written the error response.
+func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http.Request, instanceID int, req BulkActionRequest) (map[int][]string, bool) {
+	var targetsByInstance map[int][]string
+	if req.SelectAll {
+		targetsByInstance = make(map[int][]string)
+		if req.Filters == nil {
+			req.Filters = &qbittorrent.FilterOptions{}
+		}
+
+		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
+		if selectErr != nil {
+			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
+				return nil, false
+			}
+			if errors.Is(selectErr, errPartialResults) {
+				log.Warn().Str("action", req.Action).Ints("instanceIDs", req.InstanceIDs).Msg("SelectAll bulk action aborted due to partial results")
+				RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
+				return nil, false
+			}
+			log.Error().Err(selectErr).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
+			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
+			return nil, false
+		}
+
+		// selectAllTorrents already dropped the excluded torrents.
+		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, nil, nil)
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("targetCount", len(torrents)).
+			Int("excludedHashes", len(req.ExcludeHashes)).
+			Int("excludedTargets", len(req.ExcludeTargets)).
+			Str("action", req.Action).
+			Msg("SelectAll bulk action")
+	} else {
+		targetsByInstance = explicitTargets(instanceID, req.Targets, req.Hashes)
+	}
+
+	if len(targetsByInstance) == 0 {
+		RespondError(w, http.StatusBadRequest, "No torrents match the selection criteria")
+		return nil, false
+	}
+
+	return targetsByInstance, true
+}
+
+// GetDeleteCrossSeeds returns the torrents that a delete of the selected
+// torrents with their files affects. It takes the selection of a bulk action,
+// so a select-all delete checks every selected torrent in one request.
+func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req BulkActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	normalizedInstanceIDs, instanceIDsErr := normalizeInstanceIDs(req.InstanceIDs)
+	if instanceIDsErr != nil {
+		RespondError(w, http.StatusBadRequest, instanceIDsErr.Error())
+		return
+	}
+	req.InstanceIDs = normalizedInstanceIDs
+	if message := torrentSelectionError(instanceID, req); message != "" {
+		RespondError(w, http.StatusBadRequest, message)
+		return
+	}
+
+	targetsByInstance, ok := h.resolveTorrentSelection(w, r, instanceID, req)
+	if !ok {
+		return
+	}
+
+	matches := []crossseed.LocalMatch{}
+	for _, targetInstanceID := range slices.Sorted(maps.Keys(targetsByInstance)) {
+		found, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetInstanceID, targetsByInstance[targetInstanceID])
+		if findErr != nil {
+			// The dialog closed and the browser cancelled the request.
+			if r.Context().Err() != nil {
+				return
+			}
+			log.Error().Err(findErr).Int("instanceID", targetInstanceID).Msg("Failed to check cross-seeds for delete")
+			RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+			return
+		}
+		matches = append(matches, found...)
+	}
+
+	RespondJSON(w, http.StatusOK, crossseed.LocalMatchesResponse{Matches: matches})
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {
@@ -2693,9 +2722,10 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	// Calculate offset from page
 	offset := page * limit
 
-	// Get torrents from all instances with the filter expression
+	// A poll stands in for the stream, so it starts background syncs. The
+	// stream itself reads this function with WithSkipFreshData.
 	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-		qbittorrent.WithSkipFreshData(r.Context()),
+		r.Context(),
 		limit,
 		offset,
 		sort,

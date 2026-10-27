@@ -4274,7 +4274,7 @@ func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (str
 		domain, err := s.getProwlarrIndexerDomain(ctx, targetIndexer)
 		if err != nil || domain == "" {
 			// Fallback to BaseURL extraction
-			return extractDomainFromURL(targetIndexer.BaseURL), nil
+			return extractDomainFromURL(targetIndexer.BaseURL), nil //nolint:nilerr // if the Prowlarr lookup fails, use the domain of BaseURL
 		}
 		return domain, nil
 	default:

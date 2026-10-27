@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -48,7 +48,7 @@ themes-fetch:
 	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
 		rm -rf .themes-temp && \
 		git clone --depth=1 --filter=blob:none --sparse \
-			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
+			https://x-access-token:$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
 		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
 		mkdir -p internal/themes/assets/premium && \
 		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
@@ -218,7 +218,7 @@ generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
-precommit: check-mojibake generate fmt gofix-changed lint
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -234,6 +234,10 @@ lint-full:
 	golangci-lint run --timeout=10m
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
+
+# Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
+lint-ratchet:
+	go run ./scripts/ratchet -base $$(git merge-base HEAD develop)
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:
@@ -294,6 +298,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
+	@echo "  make lint-ratchet   - Check that the lint ratchet allowlist only shrinks"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
@@ -302,7 +307,7 @@ help:
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"
