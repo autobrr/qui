@@ -21,10 +21,12 @@ const mocks = vi.hoisted(() => ({
   capabilities: { data: {} },
   matches: { matchingTorrents: [], isLoadingMatches: false, allInstances: [] },
   renders: [] as number[],
+  params: [] as unknown[],
 }))
 
 vi.mock("@/contexts/SyncStreamContext", () => ({
-  useSyncStream: (_params: unknown, options: { onMessage: typeof mocks.onMessage }) => {
+  useSyncStream: (params: unknown, options: { onMessage: typeof mocks.onMessage }) => {
+    mocks.params.push(params)
     mocks.onMessage = options.onMessage
     return mocks.state
   },
@@ -58,6 +60,7 @@ vi.mock("./details", () => ({
 
 beforeEach(() => {
   mocks.renders.length = 0
+  mocks.params.length = 0
   mocks.onMessage = undefined
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -169,6 +172,26 @@ describe("TorrentDetailsPanel cross-seed tab", () => {
     expect(await findByText(/crossSeedTable\.loadFailed|Could not check for cross-seed matches/)).toBeTruthy()
     expect(queryByText("Kept.Match.2024.1080p.WEB-GRP")).toBeNull()
     mocks.matches = kept
+    client.clear()
+  })
+})
+
+describe("TorrentDetailsPanel stream subscription", () => {
+  it("moves the stream from one torrent to the next with no gap", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = (hash: string) => (
+      <QueryClientProvider client={client}>
+        <TorrentDetailsPanel instanceId={1} torrent={makeTorrent({ hash })} layout="horizontal" onClose={vi.fn()} />
+      </QueryClientProvider>
+    )
+    const hashes = () => mocks.params.map(params => (params as { filters?: { hashes?: string[] } } | null)?.filters?.hashes?.[0] ?? null)
+    const { rerender } = render(view("a"))
+    await waitFor(() => expect(hashes()).toContain("a"))
+
+    mocks.params.length = 0
+    rerender(view("b"))
+    await waitFor(() => expect(hashes()).toContain("b"))
+    expect(hashes()).not.toContain(null)
     client.clear()
   })
 })

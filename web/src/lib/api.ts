@@ -543,6 +543,34 @@ function toLocalCrossSeedMatches(raw: RawLocalMatchesResponse): LocalCrossSeedMa
   }))
 }
 
+export interface StreamSubscription {
+  key: string
+  instanceId: number
+  instanceIds?: number[] | null
+  page: number
+  limit: number
+  sort: string
+  order: "asc" | "desc"
+  search?: string
+  filters?: TorrentFilters | null
+  summary?: boolean
+}
+
+function normalizeStreamSubscription(stream: StreamSubscription) {
+  return {
+    key: stream.key,
+    instanceId: stream.instanceId,
+    instanceIds: stream.instanceIds ?? null,
+    page: stream.page,
+    limit: stream.limit,
+    sort: stream.sort,
+    order: stream.order,
+    search: stream.search ?? "",
+    filters: serializeFilters(stream.filters) ?? null,
+    summary: stream.summary ?? false,
+  }
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -962,36 +990,13 @@ class ApiClient {
   }
 
   getTorrentsStreamBatchUrl(
-    streams: Array<{
-      key: string
-      instanceId: number
-      instanceIds?: number[] | null
-      page: number
-      limit: number
-      sort: string
-      order: "asc" | "desc"
-      search?: string
-      filters?: TorrentFilters | null
-      summary?: boolean
-    }>,
+    streams: StreamSubscription[],
     options: { activity?: boolean } = {}
   ): string {
     const params = new URLSearchParams()
 
     if (streams.length > 0) {
-      const normalized = streams.map(stream => ({
-        key: stream.key,
-        instanceId: stream.instanceId,
-        instanceIds: stream.instanceIds ?? null,
-        page: stream.page,
-        limit: stream.limit,
-        sort: stream.sort,
-        order: stream.order,
-        search: stream.search ?? "",
-        filters: serializeFilters(stream.filters) ?? null,
-        summary: stream.summary ?? false,
-      }))
-      params.set("streams", JSON.stringify(normalized))
+      params.set("streams", JSON.stringify(streams.map(normalizeStreamSubscription)))
     }
 
     // Activity events (qui-owned server signals) ride the same multiplexed
@@ -1002,6 +1007,15 @@ class ApiClient {
     }
 
     return withBasePath(`/api/stream?${params.toString()}`)
+  }
+
+  // changeStreamSubscriptions adds and removes subscriptions on the open stream
+  // that the connection event named.
+  async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[]): Promise<void> {
+    return this.request("/stream/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ connectionId, add: add.map(normalizeStreamSubscription), remove }),
+    })
   }
 
   async getTorrentField(

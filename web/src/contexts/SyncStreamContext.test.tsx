@@ -18,7 +18,7 @@ import {
 import type { TorrentStreamPayload } from "@/types"
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { act, cleanup, render } from "@testing-library/react"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // SyncStreamProvider now reads a QueryClient (to invalidate queries on activity
@@ -43,7 +43,7 @@ function TestProviders({ children }: { children: ReactNode }) {
 // instance and lets each test drive open / error / event emission by hand.
 // ---------------------------------------------------------------------------
 
-type SourceEventName = "init" | "update" | "delta" | "stream-error" | "heartbeat" | "activity"
+type SourceEventName = "connection" | "init" | "update" | "delta" | "stream-error" | "heartbeat" | "activity"
 
 class MockEventSource {
   static readonly CONNECTING = 0
@@ -1817,5 +1817,184 @@ describe("stream fallback poll interval", () => {
 
     act(() => source.emitError())
     expect(await countPolls(9_500, false)).toBe(3)
+  })
+})
+
+describe("subscription changes on an open stream", () => {
+  const MAIN = makeParams({ page: 0, limit: 300 })
+  const SPEEDS = makeParams({ page: 0, limit: 1, summary: true })
+  const details = (hash: string) => makeParams({ page: 0, limit: 1, filters: { hashes: [hash] } as StreamParams["filters"] })
+
+  // Renders the main table plus a details row whose torrent can change, the
+  // way the torrent list and its details panel share the provider.
+  function renderTableWithDetails() {
+    let setHash: (hash: string | null) => void = () => {}
+    let remountExtra: () => void = () => {}
+    let showSpeeds: () => void = () => {}
+    function Extra() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    function Speeds() {
+      useSyncStream(SPEEDS, {})
+      return null
+    }
+    // One panel that changes its torrent, as the details panel does.
+    function Details({ hash }: { hash: string }) {
+      useSyncStream(useMemo(() => details(hash), [hash]), {})
+      return null
+    }
+    function Root() {
+      const [hash, updateHash] = useState<string | null>(null)
+      const [extra, updateExtra] = useState(0)
+      const [speeds, updateSpeeds] = useState(false)
+      setHash = updateHash
+      remountExtra = () => updateExtra(n => n + 1)
+      showSpeeds = () => updateSpeeds(true)
+      useSyncStream(MAIN, {})
+      return <>{hash ? <Details hash={hash} /> : null}{extra > 0 ? <Extra key={extra} /> : null}{speeds ? <Speeds /> : null}</>
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("connection", { type: "connection", connectionId: "qui-conn-7" })
+      source.emit("init", {
+        type: "init", version: { major: 1, minor: 1 },
+        meta: { streamKey: createStreamKey(MAIN) }, data: { torrents: [], total: 0 },
+      })
+    })
+    return {
+      source,
+      select: (hash: string | null) => {
+        act(() => setHash(hash))
+        flushConnectionQueue()
+      },
+      // Another view mounts and asks the provider for an update.
+      remountMainView: () => {
+        act(() => remountExtra())
+        flushConnectionQueue()
+      },
+      // A view with its own key joins.
+      addSpeedsView: () => {
+        act(() => showSpeeds())
+        flushConnectionQueue()
+      },
+    }
+  }
+
+  const streamKeysOf = (url: string) => decodeStreamsParam(url).map(s => (s as { key?: string }).key).sort()
+
+  async function settle() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it("adds and removes a view with a change request and keeps the stream open", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+
+    select("aaa")
+    await settle()
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")), limit: 1 })], [])
+
+    select(null)
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [], [createStreamKey(details("aaa"))])
+
+    expect(MockEventSource.instances).toEqual([source])
+    expect(source.closed).toBe(false)
+  })
+
+  it.each([false, true])("switches from one torrent to another with one change request, gap=%s", async gap => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select, remountMainView, addSpeedsView } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    act(() => source.emit("init", {
+      type: "init", version: { major: 2, minor: 1 },
+      meta: { streamKey: createStreamKey(details("aaa")) }, data: { torrents: [], total: 0 },
+    }))
+    change.mockClear()
+
+    // The details panel shows no torrent for a moment between two torrents.
+    if (gap) {
+      select(null)
+      remountMainView()
+    }
+    select("bbb")
+    remountMainView()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith(
+      "qui-conn-7",
+      [expect.objectContaining({ key: createStreamKey(details("bbb")) })],
+      [createStreamKey(details("aaa"))]
+    )
+
+    // The old row still waits for its teardown and does not join again.
+    addSpeedsView()
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [])
+    expect(MockEventSource.instances).toEqual([source])
+  })
+
+  it("adds a view back when it mounts again after a change removed it", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { select, addSpeedsView } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    change.mockClear()
+
+    // The row waits for its teardown when another view joins, and it leaves.
+    select(null)
+    addSpeedsView()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(SPEEDS) })], [createStreamKey(details("aaa"))])
+
+    select("aaa")
+    await settle()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-7", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [])
+  })
+
+  it("reopens the stream when a change request fails, with the current views in the URL", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockRejectedValue(new Error("connection not found"))
+    const { source, select } = renderTableWithDetails()
+
+    select("aaa")
+    await settle()
+    expect(source.closed).toBe(true)
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
+  })
+
+  it("lists the current views in the URL of the stream after a reconnect", async () => {
+    vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    select("bbb")
+    await settle()
+
+    act(() => source.emitError())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("bbb"))].sort())
   })
 })

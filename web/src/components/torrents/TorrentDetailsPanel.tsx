@@ -154,8 +154,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       excludeTrackers: [],
     }
   }, [torrent?.hash])
+  // The stream row does not wait for isReady: a switch between two torrents
+  // then moves the subscription in one change.
   const streamParams = useMemo(() => {
-    if (!hashFilter || !isReady) {
+    if (!hashFilter) {
       return null
     }
 
@@ -167,7 +169,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       order: "desc" as const,
       filters: hashFilter,
     }
-  }, [hashFilter, instanceId, isReady])
+  }, [hashFilter, instanceId])
   const [streamSnapshot, setStreamSnapshot] = useState<{ instanceId: number; hash: string; torrent: Torrent | null } | null>(null)
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
