@@ -97,6 +97,12 @@ func crossMatchTorrent(instanceID int, hash, name, savePath, contentPath string,
 	return crossMatchFixture{view: view, files: files}
 }
 
+// withTotalSize sets the total size that qBittorrent reports from the files.
+func withTotalSize(torrent crossMatchFixture) crossMatchFixture {
+	torrent.view.Size = sourceFilesTotalSize(torrent.files)
+	return torrent
+}
+
 // buildCrossMatch runs BuildCrossMatchSets for instance 1 over the fixtures,
 // which can sit on instances 1 and 2.
 func buildCrossMatch(t *testing.T, needs CrossMatchNeeds, torrents ...crossMatchFixture) *CrossMatchResult {
@@ -344,6 +350,40 @@ func TestBuildCrossMatchSets_OtherInstance(t *testing.T) {
 		)
 		require.Empty(t, result.OtherInstanceExists)
 	})
+}
+
+// The size group selects a copy whose name shares no Title key or episode
+// with the source.
+// regression: #3587
+func TestBuildCrossMatchSets_SizeGroup(t *testing.T) {
+	const (
+		retitledSource = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
+		renumbered     = "Harbor Watch - 25 1080p WEB h264-GRP"
+		seasoned       = "Harbor.Watch.S02E01.1080p.WEB.h264-GRP"
+	)
+	tests := []struct {
+		name            string
+		source, copy    string
+		wantCrossSeeded bool
+	}{
+		{name: "retitled copy", source: retitledSource, copy: "Silent Shore 2020 1080p", wantCrossSeeded: true},
+		{name: "copy that numbers its episodes in another way", source: renumbered, copy: seasoned, wantCrossSeeded: true},
+		{name: "other release with the same total size", source: retitledSource, copy: "Silent.Shore.2020.720p.BluRay.x264-GRP"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true},
+				withTotalSize(crossMatchTorrent(1, "aaa", tt.source, "/data/a", "/data/a/"+tt.source+".mkv", cmFile(tt.source+".mkv", 1000))),
+				withTotalSize(crossMatchTorrent(1, "bbb", tt.copy, "/data/b", "/data/b/"+tt.copy+".mkv", cmFile(tt.copy+".mkv", 1000))),
+			)
+			if tt.wantCrossSeeded {
+				require.Contains(t, result.SameInstanceExists, "aaa")
+				require.Contains(t, result.SameInstanceExists, "bbb")
+			} else {
+				require.Empty(t, result.SameInstanceExists)
+			}
+		})
+	}
 }
 
 func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
