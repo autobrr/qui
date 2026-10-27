@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -16,11 +15,11 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDiscScans } from "@/hooks/useDiscScans"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
+import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
 import { useQueueLimits } from "@/hooks/usePreferenceValues"
 import { scheduleTorrentListRefetches } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
@@ -32,10 +31,10 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
-import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
+import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
+import type { SortedPeer, Torrent, TorrentFile, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
@@ -137,70 +136,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
-  const hashFilter = useMemo<TorrentFilters | undefined>(() => {
-    if (!torrent?.hash) {
-      return undefined
-    }
-
-    return {
-      hashes: [torrent.hash],
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-    }
-  }, [torrent?.hash])
-  const streamParams = useMemo(() => {
-    if (!hashFilter || !isReady) {
-      return null
-    }
-
-    return {
-      instanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-      filters: hashFilter,
-    }
-  }, [hashFilter, instanceId, isReady])
-  const [streamSnapshot, setStreamSnapshot] = useState<{ instanceId: number; hash: string; torrent: Torrent | null } | null>(null)
-  const handleStreamPayload = useCallback(
-    (payload: TorrentStreamPayload) => {
-      if (!payload?.data || !torrent?.hash) {
-        return
-      }
-
-      const data = payload.data
-      setStreamSnapshot(previous => ({
-        instanceId,
-        hash: torrent.hash,
-        torrent: resolveStreamRow(
-          previous?.instanceId === instanceId && previous.hash === torrent.hash ? previous.torrent : null,
-          data
-        ),
-      }))
-    },
-    [instanceId, torrent?.hash]
-  )
-  const streamState = useSyncStream(streamParams, {
-    enabled: Boolean(streamParams),
-    onMessage: handleStreamPayload,
-  })
-  const streamUsable = isStreamUsable(streamState)
-
-  // Fetch torrent properties
-  const { data: properties, isLoading: loadingProperties } = useQuery({
-    queryKey: ["torrent-properties", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentProperties(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady,
-    staleTime: 30000, // Cache for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-  })
+  const readyHash = torrent && isReady ? torrent.hash : null
+  const general = useTorrentDetailTab(instanceId, readyHash, "general")
+  const properties = general.data?.properties
+  const loadingProperties = general.isLoading
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
 
@@ -253,28 +192,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
-  const shouldUseFallbackPolling = !!torrent && isReady && !streamUsable
-
-  // SSE is primary for live row state; polling only runs while stream is unavailable.
-  const { data: polledLiveTorrent } = useQuery({
-    queryKey: ["torrent-live-state", instanceId, torrent?.hash],
-    queryFn: async () => {
-      const response = await api.getTorrents(instanceId, {
-        filters: hashFilter!,
-        limit: 1,
-      })
-      return response.torrents[0] ?? null
-    },
-    enabled: shouldUseFallbackPolling && !!hashFilter,
-    staleTime: 1000,
-    refetchInterval: shouldUseFallbackPolling ? streamFallbackPollInterval(streamState, 2000) : false,
-  })
-
-  // Merge live data with prop, preferring live values for frequently-changing fields
-  const streamTorrent = streamUsable && streamSnapshot?.instanceId === instanceId && streamSnapshot.hash === torrent?.hash
-    ? streamSnapshot.torrent
-    : null
-  const liveTorrent = streamTorrent ?? polledLiveTorrent ?? null
+  const liveTorrent = general.data?.row ?? null
   const displayTorrent = useMemo(() => {
     if (!torrent) return null
     if (!liveTorrent) return torrent
@@ -476,39 +394,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
   }, [isPeersTabActive])
 
-  const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
-
-  const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({
-    queryKey: peersQueryKey,
-    queryFn: () => api.getTorrentPeers(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady && isPeersTabActive,
-    refetchInterval: () => {
-      if (!isPeersTabActive) return false
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        return 2000
-      }
-      return false
-    },
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
-  const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
-    queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady,
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
-  })
+  const { data: peersData, isLoading: loadingPeers } = useTorrentDetailTab(instanceId, isPeersTabActive ? readyHash : null, "peers")
+  // Always loaded: the HTTP Sources tab shows only when the torrent has web seeds.
+  const { data: webseedsData, isLoading: loadingWebseeds } = useTorrentDetailTab(instanceId, readyHash, "webseeds")
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds).
+  // Before isReady the query is disabled and has no data, so wait for it.
   useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+    if (isReady && activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
       setActiveTab("general")
     }
-  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+  }, [isReady, activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({
