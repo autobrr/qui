@@ -113,9 +113,9 @@ If you enable "Launch in terminal window", qui detects and uses an available ter
    - Terminal.app
 5. **Fallback**: If qui finds no terminal, qui runs the command in the background with `sh -c`
 
-On Windows, terminal-window programs use `cmd.exe`. With the terminal option disabled, qui launches native executables directly and passes arguments literally, including shell characters such as `&` and `%`. Batch files (`.bat` and `.cmd`) still use `cmd.exe`. Their arguments follow Windows command-shell rules.
+On Windows, terminal-window programs use `cmd.exe`. With the terminal option disabled, qui launches native executables directly and passes arguments literally, including shell characters such as `&` and `%`. Batch files (`.bat` and `.cmd`) also use `cmd.exe`. In terminal and batch mode, qui quotes each argument for `cmd.exe`, so the program gets it literally too. `%VARIABLE%` does not expand, and operators such as `&` do not run. If a batch file needs an environment variable, read it in the script.
 
-For Python, PowerShell and other scripts, set **Program Path** to the interpreter executable and pass the script path as the first argument. File associations and shortcuts are not used for background launches. If an existing program uses a shortcut, change **Program Path** to its target executable. A quote in substituted torrent metadata can change command-shell parsing in batch or terminal mode, including executing shell operators. Use a native executable when those values must remain literal.
+For Python, PowerShell and other scripts, set **Program Path** to the interpreter executable and pass the script path as the first argument. File associations and shortcuts are not used for background launches. If an existing program uses a shortcut, change **Program Path** to its target executable.
 
 :::tip
 Terminal windows stay open after the command finishes so you can inspect output. Close the window when you finish.
@@ -170,7 +170,7 @@ qui has 8 execution slots. This limit applies to all instances, automations, cro
 - A program that waits for more than 30 minutes does not start. qui writes "not started: execution limit reached" to the activity log and a warning to the qui log.
 - When qui shuts down, it drops the programs that wait.
 
-On Windows, qui resolves the program through `PATH` and `PATHEXT` before choosing how to launch it. A path without an extension that resolves to `.bat` or `.cmd` follows the batch-file behavior above. Batch files and terminal launchers still use command-shell parsing, including `%VARIABLE%` expansion and shell operators such as `&`. Use a native executable when torrent metadata must arrive literally.
+On Windows, qui resolves the program through `PATH` and `PATHEXT` before choosing how to launch it. A path without an extension that resolves to `.bat` or `.cmd` follows the batch-file behavior above. If an argument for a batch file or a terminal window contains a line break, qui does not start the program. `cmd.exe` stops the command at a line break and drops the rest of the arguments.
 
 A native GUI program can still show its window. GUI programs often stay open for user interaction, so they release their slot after startup. Other programs can then start without waiting for a window to close. qui identifies these programs from the executable's Windows GUI subsystem. If it cannot read that information, it holds the slot until the process exits. If a program starts another process and exits, qui tracks the process it launched, not the replacement.
 

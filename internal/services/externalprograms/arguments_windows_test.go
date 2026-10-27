@@ -95,6 +95,10 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 			"classification must preserve the caller's COM apartment")
 	})
 
+	// Batch and terminal launches pass the arguments through cmd.exe before the recorder reads them.
+	launcher := filepath.Join(t.TempDir(), "recorder launcher.bat")
+	require.NoError(t, os.WriteFile(launcher, []byte("@echo off\r\n\""+programPath+"\" %*\r\nexit\r\n"), 0o600))
+
 	t.Setenv("QUI_TEST_WINDOWS_ARGV_CHILD", "1")
 	t.Setenv("QUI_TEST_WINDOWS_ARGV_SENTINEL", "EXPANDED")
 	for _, tc := range []struct {
@@ -109,62 +113,74 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		{name: "redirection", args: []string{"Fixture>nul"}},
 		{name: "caret", args: []string{"Fixture^Name"}},
 		{name: "percent expansion", args: []string{"%QUI_TEST_WINDOWS_ARGV_SENTINEL%"}},
+		{name: "delayed expansion", args: []string{"!QUI_TEST_WINDOWS_ARGV_SENTINEL!"}},
 		{name: "quote", args: []string{`a"b`}},
+		{name: "quote breakout", args: []string{`x" & rem "`, "after"}},
+		{name: "backslash quote breakout", args: []string{`x\" & rem \"`, "after"}},
 		{name: "empty argument", args: []string{""}},
 		{name: "unicode", args: []string{"媒体 library"}},
 		{name: "trailing backslash", args: []string{`C:\Media Library\`}},
 		{name: "GUI literal arguments", gui: true, args: []string{"Fixture&rem", "%QUI_TEST_WINDOWS_ARGV_SENTINEL%", `a"b`, "value with spaces", "", `C:\Media Library\`}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
-			require.NoError(t, err)
-			defer listener.Close()
-			t.Setenv("QUI_TEST_WINDOWS_ARGV_ADDRESS", listener.Addr().String())
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			args := append([]string{"-test.run=^TestBuildCommand_WindowsArgumentRoundTrip$", "--"}, tc.args...)
-			configured := programPath
-			if tc.gui {
-				configured, args = guiPath, tc.args
+		for _, launch := range []string{"direct", "batch", "terminal"} {
+			if tc.gui && launch != "direct" {
+				continue
 			}
-			cmd, _ := (&Service{}).buildCommand(ctx, &models.ExternalProgram{Path: configured}, args)
-			require.NoError(t, cmd.Start())
-			waited := false
-			defer func() {
-				if !waited {
-					cancel()
-					_ = cmd.Wait()
+			t.Run(tc.name+"/"+launch, func(t *testing.T) {
+				listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+				require.NoError(t, err)
+				defer listener.Close()
+				t.Setenv("QUI_TEST_WINDOWS_ARGV_ADDRESS", listener.Addr().String())
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				args := append([]string{"-test.run=^TestBuildCommand_WindowsArgumentRoundTrip$", "--"}, tc.args...)
+				configured := programPath
+				if launch != "direct" {
+					configured = launcher
 				}
-			}()
-			require.NoError(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
-			conn, err := listener.AcceptTCP()
-			require.NoError(t, err, "detached child did not report argv")
-			defer conn.Close()
-			require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
-			data, err := bufio.NewReader(conn).ReadBytes('\n')
-			require.NoError(t, err)
-			var received recording
-			require.NoError(t, json.Unmarshal(data, &received))
-			// Open the live child's handle before acknowledging it, so cleanup cannot target a reused PID.
-			child, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_TERMINATE, false, uint32(received.PID))
-			require.NoError(t, err)
-			defer func() {
-				_ = windows.TerminateProcess(child, 1)
-				_ = windows.CloseHandle(child)
-			}()
-			_, err = conn.Write([]byte{1})
-			require.NoError(t, err)
-			status, err := windows.WaitForSingleObject(child, 5000)
-			require.NoError(t, err)
-			require.EqualValues(t, windows.WAIT_OBJECT_0, status, "recorder must exit before its temporary executable is removed")
-			err = cmd.Wait()
-			waited = true
-			require.NoError(t, err)
-			assert.Equal(t, tc.args, received.Args, "substituted metadata must reach the child literally")
-		})
+				if tc.gui {
+					configured, args = guiPath, tc.args
+				}
+				program := &models.ExternalProgram{Path: configured, UseTerminal: launch == "terminal"}
+				cmd, _ := (&Service{}).buildCommand(ctx, program, args)
+				require.NoError(t, cmd.Start())
+				waited := false
+				defer func() {
+					if !waited {
+						cancel()
+						_ = cmd.Wait()
+					}
+				}()
+				require.NoError(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
+				conn, err := listener.AcceptTCP()
+				require.NoError(t, err, "detached child did not report argv")
+				defer conn.Close()
+				require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+				data, err := bufio.NewReader(conn).ReadBytes('\n')
+				require.NoError(t, err)
+				var received recording
+				require.NoError(t, json.Unmarshal(data, &received))
+				// Open the live child's handle before acknowledging it, so cleanup cannot target a reused PID.
+				child, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_TERMINATE, false, uint32(received.PID))
+				require.NoError(t, err)
+				defer func() {
+					_ = windows.TerminateProcess(child, 1)
+					_ = windows.CloseHandle(child)
+				}()
+				_, err = conn.Write([]byte{1})
+				require.NoError(t, err)
+				status, err := windows.WaitForSingleObject(child, 5000)
+				require.NoError(t, err)
+				require.EqualValues(t, windows.WAIT_OBJECT_0, status, "recorder must exit before its temporary executable is removed")
+				err = cmd.Wait()
+				waited = true
+				require.NoError(t, err)
+				assert.Equal(t, tc.args, received.Args, "substituted metadata must reach the child literally")
+			})
+		}
 	}
 
-	for _, kind := range []string{"native process", "GUI process", "extensionless batch launcher", "terminal launcher", "terminal expansion"} {
+	for _, kind := range []string{"native process", "GUI process", "extensionless batch launcher", "terminal launcher", "terminal percent"} {
 		t.Run(kind+" execution slot lifetime", func(t *testing.T) {
 			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 			require.NoError(t, err)
@@ -190,7 +206,7 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 				body := "@echo off\r\n\"" + guiPath + "\" %*\r\nexit\r\n"
 				require.NoError(t, os.WriteFile(program.Path, []byte(body), 0o600))
 				program.UseTerminal, program.ArgsTemplate = true, "literal"
-				if kind == "terminal expansion" {
+				if kind == "terminal percent" {
 					program.ArgsTemplate = "%QUI_TEST_WINDOWS_ARGV_SENTINEL%"
 				}
 			}
@@ -225,8 +241,8 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 				defer func() { _ = windows.TerminateProcess(terminal, 1); _ = windows.CloseHandle(terminal) }()
 				handles = append(handles, terminal)
 				want := "literal"
-				if kind == "terminal expansion" {
-					want = "EXPANDED"
+				if kind == "terminal percent" {
+					want = "%QUI_TEST_WINDOWS_ARGV_SENTINEL%"
 				}
 				require.Equal(t, []string{want}, received.Args)
 			}
@@ -328,10 +344,23 @@ func TestBuildCommand_WindowsBatchPathOperators(t *testing.T) {
 				require.True(t, launcher.releaseOnStart)
 				output, err := cmd.CombinedOutput()
 				require.NoError(t, err, "%s", output)
-				require.Equal(t, "literal\r\nexpanded\r\n", string(output), "path stays literal; arguments retain batch expansion")
+				require.Equal(t, "literal\r\n%QUI_TEST_WINDOWS_BATCH_PATH%\r\n", string(output), "path and arguments stay literal")
 			}
 		})
 	}
+}
+
+func TestBuildCommand_WindowsCmdRejectsLineBreaks(t *testing.T) {
+	program := filepath.Join(t.TempDir(), "marker.bat")
+	marker := filepath.Join(t.TempDir(), "marker")
+	require.NoError(t, os.WriteFile(program, []byte("@echo off\r\necho ran>\""+marker+"\"\r\n"), 0o600))
+	for _, terminal := range []bool{false, true} {
+		for _, arg := range []string{"line\nbreak", "line\rbreak"} {
+			cmd, _ := (&Service{}).buildCommand(t.Context(), &models.ExternalProgram{Path: program, UseTerminal: terminal}, []string{arg})
+			require.ErrorContains(t, cmd.Start(), "line break")
+		}
+	}
+	require.NoFileExists(t, marker)
 }
 
 func TestExecuteAsync_WindowsBatchActivity(t *testing.T) {
