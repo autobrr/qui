@@ -173,7 +173,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Field | Description |
 | --- | --- |
 | Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines; courses are `unknown` |
-| Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty) |
+| Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty). Periods become spaces, so `S.W.A.T.` gives `s w a t` |
 | Release Source | Parsed release specifier (for example `WEBDL`, `WEBRIP`, `BLURAY`, can be empty) |
 | Release Resolution | Parsed release specifier (for example `1080p`, can be empty) |
 | Release Codec | Parsed release specifier (for example `HEVC`, can be empty) |
@@ -549,6 +549,8 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFilesPreserveCrossSeeds` | Remove files, but keep them if qui detects cross-seeds |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
+Delete skips a torrent while qBittorrent checks it, because the progress of the torrent is not correct until the check ends. qui still deletes a checking torrent that another match pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode.
+
 In a live run, if a delete depends on hardlink data and the hardlinks changed or can't be read when qui checks them again, qui skips the delete for that run and decides again on the next one. A dry run does not check them again. See [Unknown scope and safety behavior](#unknown-scope-and-safety-behavior).
 
 **Optional grouping (advanced):**
@@ -654,7 +656,7 @@ When you save an enabled rule or start a dry run, qui renders the path for a sam
 | `.Name` | Torrent display name |
 | `.Hash` | Info hash |
 | `.Category` | qBittorrent category |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 **Template function:**
@@ -770,7 +772,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Name` | Torrent display name |
 | `.Hash` | Info hash |
 | `.Category` | qBittorrent category (on source instance) |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 | Function | Description |

@@ -117,6 +117,9 @@ export interface Torrent {
   num_incomplete: number
   num_leechs: number
   num_seeds: number
+  // qBittorrent 5.2 and later. Before 5.2 the server sends 0.
+  pieces_have?: number
+  pieces_num?: number
   priority: number
   progress: number
   ratio: number
@@ -269,6 +272,8 @@ export interface TorrentResponse {
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  // Some instances in the Unified view did not answer.
+  partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE

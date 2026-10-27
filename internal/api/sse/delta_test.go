@@ -176,6 +176,47 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	require.Equal(t, []string{"a"}, changedHashes(sent), "a real change (speed) must re-send the row")
 }
 
+// A one-row view (the details row) resends its row when a counter that the
+// General tab shows changes. The main list keeps the volatile-field rule.
+func TestOneRowViewResendsLiveCounters(t *testing.T) {
+	counters := map[string]func(*qbt.Torrent){
+		"TimeActive":       func(tr *qbt.Torrent) { tr.TimeActive++ },
+		"SeedingTime":      func(tr *qbt.Torrent) { tr.SeedingTime++ },
+		"NumSeeds":         func(tr *qbt.Torrent) { tr.NumSeeds++ },
+		"NumLeechs":        func(tr *qbt.Torrent) { tr.NumLeechs++ },
+		"NumComplete":      func(tr *qbt.Torrent) { tr.NumComplete++ },
+		"NumIncomplete":    func(tr *qbt.Torrent) { tr.NumIncomplete++ },
+		"ConnectionsCount": func(tr *qbt.Torrent) { tr.ConnectionsCount++ },
+		"PiecesHave":       func(tr *qbt.Torrent) { tr.PiecesHave++ },
+	}
+	for name, tick := range counters {
+		for _, tc := range []struct {
+			view   string
+			limit  int
+			resend bool
+		}{
+			{view: "details row", limit: 1, resend: true},
+			{view: "main list", limit: 300, resend: false},
+		} {
+			t.Run(name+"/"+tc.view, func(t *testing.T) {
+				g := &subscriptionGroup{}
+				opts := StreamOptions{InstanceID: 1, Limit: tc.limit}
+				base := qbt.Torrent{Hash: "a", Name: "A"}
+				g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &base}), &StreamMeta{})
+
+				ticked := base
+				tick(&ticked)
+				payload := g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &ticked}), &StreamMeta{})
+				if tc.resend {
+					require.Equal(t, []string{"a"}, changedHashes(payload))
+				} else {
+					require.Empty(t, changedHashes(payload))
+				}
+			})
+		}
+	}
+}
+
 func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{InstanceIDs: []int{1, 2}}

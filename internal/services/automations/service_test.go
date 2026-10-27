@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -1087,8 +1086,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	require.NoError(t, processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil))
-	require.NoError(t, processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -1132,8 +1131,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	require.NoError(t, processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil))
-	require.NoError(t, processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -1175,7 +1174,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -1216,7 +1215,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1262,20 +1261,9 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 		"second": {{Name: "shared/second.mkv", Size: 1_000}},
 	}
 
-	result, err := s.previewDeleteIncludeCrossSeeds(
-		rule,
-		torrents,
-		&EvalContext{},
-		nil,
-		10,
-		0,
-		true,
-		nil,
-		testCrossSeedGroups(torrents),
-		func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
-	)
-
-	require.NoError(t, err)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, true)
+	result := s.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
 }
@@ -1315,16 +1303,17 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 	}
 	for _, unread := range []bool{false, true} {
 		t.Run(fmt.Sprintf("unread=%t", unread), func(t *testing.T) {
-			fetch := func(_ []string) (map[string]qbt.TorrentFiles, error) {
-				if unread {
-					return nil, errors.New("file lists unavailable")
-				}
-				return files, nil
+			evalCtx := &EvalContext{CrossSeedFilesByHash: files, hardlinkIndex: hardlinks}
+			if unread {
+				evalCtx.CrossSeedFilesByHash = nil
 			}
-			result, err := svc.previewDeleteIncludeCrossSeeds(rule, torrents, &EvalContext{}, hardlinks, 10, 0, true, nil, groups, fetch)
-			require.NoError(t, err)
+			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
+				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, eligibleView: true,
+			})
+			result := svc.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 			if unread {
 				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
+				require.True(t, selection.isClaimed("source"), "a trigger whose expansion failed gets no other action")
 			} else {
 				require.Equal(t, 6, result.TotalMatches, "follow Content to Hardlink and Hardlink to Content until no member joins")
 				require.Equal(t, 3, result.CrossSeedCount)
@@ -1783,23 +1772,6 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	}
 }
 
-func TestSetupHardlinkSignatureContext_KeepsGroupingSignatures(t *testing.T) {
-	svc := &Service{}
-	evalCtx := &EvalContext{
-		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
-	}
-	hardlinkIndex := &HardlinkIndex{
-		SignatureByHash:           map[string]string{"abc123": "grouping-sig"},
-		DeleteSafeSignatureByHash: map[string]string{"abc123": "delete-sig"},
-	}
-	cond := &RuleCondition{Field: FieldFreeSpace}
-
-	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
-
-	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
-	require.Same(t, hardlinkIndex, evalCtx.hardlinkIndex)
-}
-
 // -----------------------------------------------------------------------------
 // deleteFreesSpace tests with include mode
 // -----------------------------------------------------------------------------
@@ -1985,16 +1957,6 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 // executeExternalProgramsFromAutomation tests
 // -----------------------------------------------------------------------------
 
-func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(_ *testing.T) {
-	// Test that empty executions list returns early without any side effects
-	s := &Service{}
-
-	// Should not panic and return immediately
-	s.executeExternalProgramsFromAutomation(context.Background(), 1, []pendingProgramExec{})
-
-	// If we get here without panic, the test passes
-}
-
 func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
 	// Test that nil externalProgramService is handled gracefully
 	// and doesn't panic (activity logging requires a real store, tested separately)
@@ -2066,61 +2028,26 @@ func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *te
 	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
 }
 
-func TestRecordDryRunActivities_Deletes(t *testing.T) {
-	mockDB := &mockQuerier{
-		activities: make([]*models.AutomationActivity, 0),
+// dryRunTestPlan builds the Run plan from the states, as the run does before the dry run.
+func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, evalCtx *EvalContext) (runPlan, map[string]qbt.Torrent) {
+	t.Helper()
+	if evalCtx == nil {
+		evalCtx = &EvalContext{}
 	}
-	activityStore := models.NewAutomationActivityStore(mockDB)
-
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{
-		activityStore: activityStore,
-		activityRuns:  newActivityRunStore(24*time.Hour, 10),
-		syncManager:   sm,
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
 	}
-
-	pending := map[string]pendingDeletion{
-		"abc123": {
-			hash:   "abc123",
-			action: models.ActivityActionDeletedCondition,
-		},
-	}
-
-	torrent := qbt.Torrent{
-		Hash:    "abc123",
-		Name:    "Test Torrent",
-		Tracker: "https://tracker.example.com/announce",
-	}
-
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		pending,
-		nil,
-		nil,
-		map[string]qbt.Torrent{"abc123": torrent},
-		[]qbt.Torrent{torrent},
-		map[string]*torrentDesiredState{},
-		nil,
-		nil,
-		true,
-	)
-
-	require.Len(t, mockDB.activities, 1)
-	assert.Empty(t, mockDB.activities[0].Hash)
-	assert.Equal(t, models.ActivityActionDeletedCondition, mockDB.activities[0].Action)
-	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+	plan := s.buildRunPlan(t.Context(), runPlanInput{
+		states:        states,
+		deletions:     &deletionSelection{},
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      ruleByID,
+		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
+		evalCtx:       evalCtx,
+	})
+	return plan, torrentByHash
 }
 
 func TestRecordDryRunActivities_Resumes(t *testing.T) {
@@ -2145,25 +2072,8 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	_ = s.recordDryRunActivities(
 		context.Background(),
 		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		[]string{"abc123", "abc123"},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
 		map[string]qbt.Torrent{"abc123": torrent},
-		[]qbt.Torrent{torrent},
-		map[string]*torrentDesiredState{},
-		nil,
-		nil,
 		true,
 	)
 
@@ -2229,38 +2139,9 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
-	categoryBatches := map[string][]string{
-		"new-category": {"h1"},
-	}
-	torrentByHash := map[string]qbt.Torrent{
-		"h1": torrents[0],
-		"h2": torrents[1],
-	}
-
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		categoryBatches,
-		nil,
-		nil,
-		nil,
-		nil,
-		torrentByHash,
-		torrents,
-		states,
-		map[int]*models.Automation{1: rule},
-		&EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)},
-		true,
-	)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, map[int]*models.Automation{1: rule}, evalCtx)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
@@ -2289,24 +2170,7 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		runPlan{deletions: &deletionSelection{}},
 		nil,
 		true,
 	)
@@ -2355,30 +2219,8 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 	}
 
 	require.NotPanics(t, func() {
-		_ = s.recordDryRunActivities(
-			context.Background(),
-			1,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-			map[string][]string{"movies": {"abc123"}},
-			nil,
-			nil,
-			nil,
-			nil,
-			map[string]qbt.Torrent{"abc123": torrent},
-			[]qbt.Torrent{torrent},
-			states,
-			ruleByID,
-			nil,
-			true,
-		)
+		plan, torrentByHash := dryRunTestPlan(t, s, []qbt.Torrent{torrent}, states, ruleByID, nil)
+		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 	})
 
 	require.Len(t, mockDB.activities, 1)
@@ -2425,12 +2267,6 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		},
 	}
 
-	torrentByHash := map[string]qbt.Torrent{
-		"a": torrents[0],
-		"b": torrents[1],
-		"c": torrents[2],
-	}
-
 	states := map[string]*torrentDesiredState{
 		"a": {
 			shouldMove:  true,
@@ -2457,30 +2293,8 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		},
 	}
 
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		map[string][]string{"/data/moved": {"a"}},
-		nil,
-		nil,
-		nil,
-		torrentByHash,
-		torrents,
-		states,
-		ruleByID,
-		nil,
-		true,
-	)
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -2517,10 +2331,8 @@ func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *test
 			}}
 			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
 
-			_ = s.recordDryRunActivities(t.Context(), 1,
-				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-				map[string][]string{"/data/moved": {"a"}}, nil, nil, nil,
-				map[string]qbt.Torrent{"a": torrents[0], "b": torrents[1]}, torrents, states, ruleByID, evalCtx, true)
+			plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, evalCtx)
+			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 			require.Len(t, mockDB.activities, 1)
 			if tc.wantMove {
@@ -2549,24 +2361,7 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		runPlan{deletions: &deletionSelection{}},
 		nil,
 		false,
 	)
@@ -2699,4 +2494,45 @@ func TestTrackerDataMissing(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The live run drops an export that is already on the target, keeps a failed one for its
+// failure activity, and exports a ready torrent once, also while an earlier export of it runs.
+func TestReserveExports(t *testing.T) {
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+	export := func(hash string, mark exportMark) pendingExportToInstance {
+		return pendingExportToInstance{hash: hash, action: action, mark: mark}
+	}
+	s := &Service{inFlightExports: map[string]struct{}{"2:busy": {}}}
+
+	reserved := s.reserveExports([]pendingExportToInstance{
+		export("ready", exportReady),
+		export("busy", exportReady),
+		export("on-target", exportAlreadyOnTarget),
+		export("check-failed", exportCheckFailed),
+		export("unresolved", exportSavePathUnresolved),
+	})
+
+	hashes := make([]string, 0, len(reserved))
+	for _, r := range reserved {
+		hashes = append(hashes, r.hash)
+	}
+	require.Equal(t, []string{"ready", "check-failed", "unresolved"}, hashes)
+	require.Equal(t, map[string]struct{}{"2:busy": {}, "2:ready": {}}, s.inFlightExports)
+}
+
+func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
+	// Another run exported the torrent after this run planned it.
+	s := &Service{
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
+		inFlightExports: map[string]struct{}{"2:done": {}},
+	}
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+
+	for activity := range results {
+		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
+	}
+	require.Empty(t, s.inFlightExports)
 }

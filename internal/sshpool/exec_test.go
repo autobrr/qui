@@ -347,6 +347,7 @@ func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
 	conn, err := pool.Exec(t.Context(), inst)
 	require.NoError(t, err)
 
+	opened := server.SessionOpened()
 	first := make(chan error, 1)
 	go func() {
 		_, err := conn.Output(t.Context(), Command{Name: "sleep", Paths: []string{"0.05"}})
@@ -354,7 +355,7 @@ func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
 	}()
 	// The first command now holds the host's last session, and it ends before
 	// the refusal of the next open arrives.
-	time.Sleep(20 * time.Millisecond)
+	<-opened
 	_, err = conn.Output(t.Context(), Command{Name: "true"})
 	require.NoError(t, err)
 	require.NoError(t, <-first)

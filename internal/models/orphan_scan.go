@@ -54,6 +54,11 @@ type OrphanScanRun struct {
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	// FilesystemMode is the mode the preview was walked under, not the instance's current one.
 	FilesystemMode FilesystemMode `json:"filesystemMode"`
+	// IdentityComplete is whether the walk read a file identity for every regular file it met.
+	IdentityComplete bool `json:"identityComplete"`
+	// FilesystemEndpoint is the SSH user@host:port a remote run was walked over, with digests of
+	// the host-key pin and the private key, and empty otherwise.
+	FilesystemEndpoint string `json:"-"`
 }
 
 // OrphanScanFile represents an orphan file found in a scan.
@@ -179,9 +184,10 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 // ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
 var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
 
-// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
-// This prevents race conditions between HasActiveRun and CreateRun.
-// A preview walked over SSH can never be confirmed, so the new run cancels it instead of being blocked by it.
+// CreateRunIfNoActive creates a pending run unless one is already active for the instance.
+// Concurrent calls for one instance can both insert on Postgres, so the orphan scan service serializes them.
+// A remote preview whose walk missed a file's identity can never be confirmed, so the new run cancels it
+// instead of being blocked by it.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -193,9 +199,10 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	// sees this run as active. A refused insert rolls the cancel back.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'canceled'
-		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0 AND filesystem_mode = ?
+		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0
+		  AND filesystem_mode = ? AND identity_complete = 0
 	`, instanceID, string(FilesystemModeRemote)); err != nil {
-		return 0, fmt.Errorf("cancel remote orphan scan preview: %w", err)
+		return 0, fmt.Errorf("cancel unconfirmable orphan scan preview: %w", err)
 	}
 
 	var id int64
@@ -227,7 +234,8 @@ func (s *OrphanScanStore) GetRun(ctx context.Context, runID int64) (*OrphanScanR
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE id = ?
 	`, runID)
@@ -240,7 +248,8 @@ func (s *OrphanScanStore) GetRunByInstance(ctx context.Context, instanceID int, 
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE id = ? AND instance_id = ?
 	`, runID, instanceID)
@@ -271,6 +280,8 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		&completedAt,
 		&run.Partial,
 		&run.FilesystemMode,
+		&run.IdentityComplete,
+		&run.FilesystemEndpoint,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -329,6 +340,8 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&completedAt,
 			&run.Partial,
 			&run.FilesystemMode,
+			&run.IdentityComplete,
+			&run.FilesystemEndpoint,
 		); err != nil {
 			return nil, err
 		}
@@ -368,7 +381,8 @@ func (s *OrphanScanStore) listRunsRecent(ctx context.Context, instanceID, limit 
 	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		ORDER BY started_at DESC
@@ -381,7 +395,8 @@ func (s *OrphanScanStore) listRunsActive(ctx context.Context, instanceID int) ([
 	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
@@ -457,7 +472,8 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ? AND status = 'completed'
 		ORDER BY completed_at DESC
@@ -468,14 +484,15 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 }
 
 // GetLastFinishedScan returns the newest completed run or preview still awaiting
-// review, the runs whose walk finished. A preview over SSH never completes,
-// so a schedule paced by completed runs alone would rescan it on every tick.
+// review, the runs whose walk finished. A preview that cannot be confirmed never
+// completes, so a schedule paced by completed runs alone would rescan it on every tick.
 // A preview has no completed_at, so it is ordered by when it started.
 func (s *OrphanScanStore) GetLastFinishedScan(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ? AND status IN ('completed', 'preview_ready')
 		ORDER BY CASE WHEN status = 'completed' THEN completed_at ELSE started_at END DESC
@@ -490,11 +507,13 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
-		       OR (status = 'preview_ready' AND files_found > 0 AND filesystem_mode <> ?))
+		       OR (status = 'preview_ready' AND files_found > 0
+		           AND NOT (filesystem_mode = ? AND identity_complete = 0)))
 		ORDER BY started_at DESC
 		LIMIT 1
 	`, instanceID, string(FilesystemModeRemote))
@@ -510,11 +529,19 @@ func (s *OrphanScanStore) UpdateRunStatus(ctx context.Context, runID int64, stat
 	return err
 }
 
-// UpdateRunFilesystemMode records the filesystem mode a run is walked under.
-func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int64, mode FilesystemMode) error {
+// UpdateRunFilesystemMode records the filesystem mode and SSH endpoint a run is walked under.
+func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int64, mode FilesystemMode, endpoint string) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE orphan_scan_runs SET filesystem_mode = ? WHERE id = ?
-	`, string(mode), runID)
+		UPDATE orphan_scan_runs SET filesystem_mode = ?, filesystem_endpoint = ? WHERE id = ?
+	`, string(mode), endpoint, runID)
+	return err
+}
+
+// UpdateRunIdentityComplete records whether a run's walk read every file's identity.
+func (s *OrphanScanStore) UpdateRunIdentityComplete(ctx context.Context, runID int64, complete bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE orphan_scan_runs SET identity_complete = ? WHERE id = ?
+	`, boolToInt(complete), runID)
 	return err
 }
 
@@ -577,6 +604,37 @@ func (s *OrphanScanStore) FailPreviewReadyRun(ctx context.Context, runID int64, 
 		return false, err
 	}
 	return rows > 0, nil
+}
+
+// RemotePreviewRunIDs returns the instance's preview_ready runs walked over SSH.
+func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM orphan_scan_runs
+		WHERE instance_id = ? AND status = 'preview_ready' AND filesystem_mode = ?
+	`, instanceID, string(FilesystemModeRemote))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// HasDeletingRun reports whether the instance has a run in deleting status.
+func (s *OrphanScanStore) HasDeletingRun(ctx context.Context, instanceID int) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM orphan_scan_runs WHERE instance_id = ? AND status = 'deleting'
+	`, instanceID).Scan(&n)
+	return n > 0, err
 }
 
 // StartRunDeletion moves a run from preview_ready to deleting, and reports

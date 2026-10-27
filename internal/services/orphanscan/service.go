@@ -5,10 +5,14 @@
 package orphanscan
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"path"
 	"slices"
@@ -38,9 +42,7 @@ type healthChecker interface {
 type syncReader interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
+	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
 
 type clientReadiness interface {
@@ -50,6 +52,7 @@ type clientReadiness interface {
 type instanceReader interface {
 	List(ctx context.Context) ([]*models.Instance, error)
 	Get(ctx context.Context, id int) (*models.Instance, error)
+	GetHostKeyPin(instance *models.Instance) ([]byte, error)
 }
 
 type lastRunReader interface {
@@ -80,13 +83,31 @@ type Service struct {
 
 	activityPublisher activity.Publisher
 
-	// Per-instance mutex to prevent overlapping scans
+	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
-	mu         sync.Mutex // protects instanceMu map
+	// Per-instance mutex around run creation only, never held during a scan
+	triggerMu map[int]*sync.Mutex
+	// Per-instance mutex around an SSH change, the start of a deletion, and the
+	// instance read and preview write of a scan
+	sshMu map[int]*sync.Mutex
+	// Per-instance count of stored SSH changes, written and compared under sshMu
+	sshChanges map[int]uint64
+	mu         sync.Mutex // protects instanceMu, triggerMu, sshMu and sshChanges maps
+	// beforeDeletionStart, when set, runs under the SSH lock just before a
+	// deletion starts. Nil outside tests.
+	beforeDeletionStart func()
+	// beforePreviewReady, when set, runs just before a scan takes the SSH lock
+	// to publish its preview. Nil outside tests.
+	beforePreviewReady func()
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
+
+	// runs counts the scan and deletion goroutines. A scan goroutine goes on
+	// after its run reaches a status, for example to start an auto-cleanup, so
+	// tests wait for it before they close the database.
+	runs sync.WaitGroup
 }
 
 // NewService creates a new orphan scan service.
@@ -111,6 +132,9 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		backendPool:       backendPool,
 		activityPublisher: activity.NopPublisher{},
 		instanceMu:        make(map[int]*sync.Mutex),
+		triggerMu:         make(map[int]*sync.Mutex),
+		sshMu:             make(map[int]*sync.Mutex),
+		sshChanges:        make(map[int]uint64),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
 }
@@ -139,34 +163,13 @@ func (s *Service) emitRun(instanceID int, runID int64) {
 	})
 }
 
-// validDefaultSavePath checks the default save path qBittorrent reported so it
-// can serve as a scan root. Files sitting directly in it are invisible to a
-// torrent-derived root set.
-//
-// A path that cannot be used is an error rather than an empty root: silently
-// falling back to torrent-derived roots would report a clean scan over a
-// narrower tree than the user asked for (discussion #2365).
-func validDefaultSavePath(d fsops.PathDialect, reported string) (string, error) {
-	savePath := d.Clean(reported)
-	if savePath == "." {
-		return "", errors.New("qBittorrent reported an empty default save path")
-	}
-	if !d.IsAbs(savePath) {
-		return "", fmt.Errorf("qBittorrent default save path %q is not absolute", savePath)
-	}
-	return savePath, nil
-}
-
-// walkForScope walks one root, collecting directory candidates only when the
-// run will actually use them.
-func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
-	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool,
+// walkForScope walks one root into the run's keys, collecting directory
+// candidates only when the run will actually use them.
+func walkForScope(ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	if !collectDirs {
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend, instance)
-		return orphans, nil, err
-	}
-	return walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, backend, instance)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, collectDirs, keys)
+	return orphans, dirs, err
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -236,25 +239,17 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 
 	pruned := make([]string, 0, len(roots))
 	for i, root := range roots {
+		// A walk skips a symlink below its root, so one that is a root of its
+		// own is walked on its own.
+		if info, err := backend.Lstat(ctx, cleaned[i]); err == nil && info.IsSymlink {
+			pruned = append(pruned, root)
+			continue
+		}
 		covered := false
 		for j := range roots {
 			// Keep case-distinct trees: a folded match does not prove walk coverage.
-			if !isPathUnderNormalized(d, cleaned[i], cleaned[j]) {
-				continue
-			}
-			covered = true
-			// WalkDir skips symlinks, including a root that is itself a symlink.
-			for dir := d.Dir(cleaned[i]); ; dir = d.Dir(dir) {
-				info, err := backend.Lstat(ctx, dir)
-				if err != nil || !info.IsDir || info.IsSymlink {
-					covered = false
-					break
-				}
-				if dir == cleaned[j] {
-					break
-				}
-			}
-			if covered {
+			if isPathUnderNormalized(d, cleaned[i], cleaned[j]) && walkReaches(ctx, backend, cleaned[j], cleaned[i]) {
+				covered = true
 				break
 			}
 		}
@@ -263,6 +258,27 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 		}
 	}
 	return pruned
+}
+
+// walkReaches reports whether the walk of cover reaches below, a path under it.
+// WalkDir skips symlinks, so every directory on the way must be a real one.
+func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string) bool {
+	d := backend.Paths()
+	for dir := d.Dir(below); ; dir = d.Dir(dir) {
+		info, err := backend.Lstat(ctx, dir)
+		if err != nil || !info.IsDir || info.IsSymlink {
+			return false
+		}
+		// Dir of \\host\share\x is \\host\share\, but a root given as
+		// \\host\share keeps no separator through Clean.
+		if dir == cover || dir == cover+d.Separator() {
+			return true
+		}
+		// Dir of \\host\share never reaches a share-less \\host\.
+		if d.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
@@ -455,22 +471,23 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 	}
 }
 
-func (s *Service) getInstanceMutex(instanceID int) *sync.Mutex {
+func (s *Service) getInstanceMutex(locks map[int]*sync.Mutex, instanceID int) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.instanceMu[instanceID] == nil {
-		s.instanceMu[instanceID] = &sync.Mutex{}
+	if locks[instanceID] == nil {
+		locks[instanceID] = &sync.Mutex{}
 	}
-	return s.instanceMu[instanceID]
+	return locks[instanceID]
 }
 
 // TriggerScan starts a new orphan scan for an instance.
 // Returns the run ID or an error if a scan is already in progress.
 func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	// Atomically check for active runs and create a new one.
-	// This avoids TOCTOU races between HasActiveRun and CreateRun,
-	// and avoids mutex deadlocks when a goroutine is stuck in a blocking call.
+	// On Postgres at READ COMMITTED, concurrent inserts each pass the store's NOT EXISTS check.
+	mu := s.getInstanceMutex(s.triggerMu, instanceID)
+	mu.Lock()
 	runID, err := s.store.CreateRunIfNoActive(ctx, instanceID, triggeredBy)
+	mu.Unlock()
 	if errors.Is(err, models.ErrRunAlreadyActive) {
 		return 0, ErrScanInProgress
 	}
@@ -487,14 +504,14 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	// Run created (pending) - notify clients so they begin tracking it.
 	s.emitRun(instanceID, runID)
 
-	go func() {
+	s.runs.Go(func() {
 		defer func() {
 			s.cancelMu.Lock()
 			delete(s.cancelFuncs, runID)
 			s.cancelMu.Unlock()
 		}()
 		s.executeScan(runCtx, instanceID, runID)
-	}()
+	})
 
 	return runID, nil
 }
@@ -571,27 +588,20 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}
 	if current := models.FilesystemAccessMode(instance); current != run.FilesystemMode {
 		logModeChanged(runID, run.FilesystemMode, current)
-		// Conditional on preview_ready, so a racing confirm cannot fail a run that is already deleting.
-		failed, updateErr := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
-		if updateErr != nil {
-			return fmt.Errorf("fail run %d after a filesystem access change: %w", runID, updateErr)
-		}
-		// ErrFilesystemModeChanged means this call failed the run, which a scheduled caller notifies about.
-		if !failed {
-			return fmt.Errorf("%w: the run is no longer preview_ready", ErrInvalidRunStatus)
-		}
-		s.emitRun(instanceID, runID)
-		return ErrFilesystemModeChanged
+		return s.failChangedPreview(ctx, instanceID, runID)
+	}
+	// Before the capability check, since saving SSH credentials also resets the
+	// tier. A run from before the endpoint was recorded has none and keeps its preview.
+	if run.FilesystemEndpoint != "" && walkedEndpoint(instance) != run.FilesystemEndpoint {
+		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed since the scan")
+		return s.failChangedPreview(ctx, instanceID, runID)
 	}
 	// Refused before the lock and without touching the run, so the preview stays reviewable.
-	// A remote run is refused by its recorded mode, not only by capabilities: with
-	// Write (#2942) and the exec tier's Identity both present, the capability gate
-	// alone would admit it. Remote deletes land with #3236.
-	if run.FilesystemMode == models.FilesystemModeRemote || !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+	if !runCanDelete(run, models.FilesystemCapabilitiesOf(instance)) {
 		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
 	}
 
-	mu := s.getInstanceMutex(instanceID)
+	mu := s.getInstanceMutex(s.instanceMu, instanceID)
 	if !mu.TryLock() {
 		return ErrScanInProgress
 	}
@@ -602,7 +612,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
 
-	go func() {
+	s.runs.Go(func() {
 		defer mu.Unlock()
 		defer func() {
 			s.cancelMu.Lock()
@@ -610,9 +620,89 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 			s.cancelMu.Unlock()
 		}()
 		s.executeDeletion(runCtx, instanceID, runID)
-	}()
+	})
 
 	return nil
+}
+
+// ChangeSSH runs change, which stores new SSH settings for the instance and
+// drops its pooled connection, and then fails the instance's remote previews.
+// A running deletion redials with the stored settings, so it returns
+// ErrDeletionInProgress without running change while a deletion runs. A
+// deletion starts under the same lock, so a change either fails the preview
+// before the run starts or sees it deleting. A scan reads the instance under
+// the same lock too, so it never pairs the new settings with the old
+// connection, and a remote scan publishes its preview under the same lock only
+// if no change was stored since that read. A failure to fail the previews is
+// only logged, since the change is stored, and every save changes the
+// endpoint, so confirm refuses those previews anyway.
+func (s *Service) ChangeSSH(ctx context.Context, instanceID int, change func() error) error {
+	mu := s.getInstanceMutex(s.sshMu, instanceID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	deleting, err := s.store.HasDeletingRun(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("check for a running orphan scan deletion: %w", err)
+	}
+	if deleting {
+		return ErrDeletionInProgress
+	}
+	if err := change(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.sshChanges[instanceID]++
+	s.mu.Unlock()
+	// The change is stored, so a client that goes away now must not skip this.
+	if err := s.failRemotePreviews(context.WithoutCancel(ctx), instanceID); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to fail remote previews after an SSH change")
+	}
+	return nil
+}
+
+// sshChangeCount is the number of SSH changes stored for instanceID. Callers
+// hold its SSH lock.
+func (s *Service) sshChangeCount(instanceID int) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sshChanges[instanceID]
+}
+
+// failRemotePreviews fails the instance's remote previews. Confirm refuses
+// them anyway, since every save changes the endpoint, but failing them here
+// shows the change in the preview right away.
+func (s *Service) failRemotePreviews(ctx context.Context, instanceID int) error {
+	runIDs, err := s.store.RemotePreviewRunIDs(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("list remote previews of instance %d: %w", instanceID, err)
+	}
+	for _, runID := range runIDs {
+		failed, err := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
+		if err != nil {
+			return fmt.Errorf("fail run %d after an SSH change: %w", runID, err)
+		}
+		if failed {
+			s.emitRun(instanceID, runID)
+		}
+	}
+	return nil
+}
+
+// failChangedPreview fails a preview walked through access the instance no
+// longer has. ErrFilesystemModeChanged means this call failed the run, which a
+// scheduled caller notifies about.
+func (s *Service) failChangedPreview(ctx context.Context, instanceID int, runID int64) error {
+	// Conditional on preview_ready, so a racing confirm cannot fail a run that is already deleting.
+	failed, err := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
+	if err != nil {
+		return fmt.Errorf("fail run %d after a filesystem access change: %w", runID, err)
+	}
+	if !failed {
+		return fmt.Errorf("%w: the run is no longer preview_ready", ErrInvalidRunStatus)
+	}
+	s.emitRun(instanceID, runID)
+	return ErrFilesystemModeChanged
 }
 
 // PathDialect is the path grammar of the backend instanceID is scanned through.
@@ -628,11 +718,38 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 	return backend.Paths(), nil
 }
 
+// walkedEndpoint names the SSH server and credentials a remote walk reads
+// through instance, and is empty for any other mode. The account is part of it
+// because a username change keeps the pin and can see other files. A digest of
+// the stored pin is part of it because a host key replaced at the same address
+// is another server, and a digest of the stored private key because another
+// key can log in to another view of the same server. Both are sealed with a
+// random nonce, so any save of either changes the digest, even of the same key.
+func walkedEndpoint(instance *models.Instance) string {
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
+		return ""
+	}
+	pin := sha256.Sum256([]byte(instance.SSHHostKeyEncrypted))
+	key := sha256.Sum256([]byte(instance.SSHKeyEncrypted))
+	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) +
+		"#" + hex.EncodeToString(pin[:8]) + "." + hex.EncodeToString(key[:8])
+}
+
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
 // as well as Write, because the walker spots a second path to a torrent's file
 // (a bind mount inside the scanned tree) only by its file identity.
 func canDeleteOrphans(caps models.FilesystemCapabilities) bool {
 	return caps.Write && caps.Identity
+}
+
+// runCanDelete reports whether run's preview can be deleted through an instance
+// with caps. A remote run also needs its walk to have read every file's
+// identity, since the exec tier walks over sftp when find fails.
+func runCanDelete(run *models.OrphanScanRun, caps models.FilesystemCapabilities) bool {
+	if run.FilesystemMode == models.FilesystemModeRemote && !run.IdentityComplete {
+		return false
+	}
+	return canDeleteOrphans(caps)
 }
 
 // logModeChanged records the modes a refused run was scanned under and would
@@ -686,7 +803,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, "backend pool not configured")
 		return
 	}
+	// Under the SSH lock, so the row is read before an SSH change or after the
+	// change dropped the pooled connection. A row read between the two names
+	// the new server while the pool still serves the connection to the old one.
+	sshMu := s.getInstanceMutex(s.sshMu, instanceID)
+	sshMu.Lock()
 	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityRead)
+	sshChanges := s.sshChangeCount(instanceID)
+	sshMu.Unlock()
 	if err != nil {
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
 		return
@@ -695,7 +819,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// it, so a scan that cannot record it stops here instead of leaving a
 	// preview labeled "none".
 	mode := models.FilesystemAccessMode(instance)
-	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode); err != nil {
+	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, walkedEndpoint(instance)); err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled while saving filesystem mode")
 			return
@@ -727,6 +851,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// run on lstat, with no way for the user to exclude it (issue #2483).
 	rootsBeforeIgnore := len(scanRoots)
 	scanRoots = filterCoveredScanRoots(d, scanRoots, settings.IgnorePaths)
+	// Ignoring a symlinked save path is how a user keeps it, so its files must
+	// still protect their twins at the target. Ignore paths that hold a
+	// torrent's files join these once the ignore paths are normalized.
+	inUseRoots := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
 
 	log.Info().
 		Int("files", tfm.Len()).
@@ -765,8 +893,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	allIgnorePaths := scanIgnorePaths(ctx, settings.IgnorePaths, scanRoots, result, backend, instance)
 
-	// Normalize ignore paths
-	ignorePaths, err := NormalizeIgnorePaths(d, allIgnorePaths)
+	protected, err := newProtectedPaths(d, allIgnorePaths, tfm)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
@@ -775,6 +902,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
+	protected.setScanRoots(scanRoots)
+	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs()), backend)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
@@ -795,6 +924,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	var orphanOnlyDirs []AbandonedDir
 	anyRootScanned := false
+	keys := newFileKeys()
 
 	for _, root := range walkRoots {
 		if ctx.Err() != nil {
@@ -802,7 +932,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, dirs, err := walkForScope(ctx, root, tfm, ignorePaths, gracePeriod, backend, instance, scope.AbandonedDirs)
+		orphans, dirs, err := walkForScope(ctx, root, protected, gracePeriod, backend, instance, scope.AbandonedDirs, keys)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -817,6 +947,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
 			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+			// The torrent files below the cut were never keyed, so their twins
+			// in other roots can be listed.
+			keys.incomplete = true
 			continue
 		}
 
@@ -825,7 +958,30 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	allOrphans = dedupeOrphans(d, allOrphans)
+	for _, root := range inUseRoots {
+		if err := recordInUse(ctx, root, protected, backend, instance, keys); err != nil {
+			if ctx.Err() != nil {
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			}
+			// Ignored paths are often unmounted (#2483), so a missing target is
+			// no walk error. Any other error can leave the twins of its files
+			// listed elsewhere, so the run must not clean up by itself.
+			if isMissingRoot(err) {
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored path is not on disk")
+				continue
+			}
+			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
+			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+			keys.incomplete = true
+		}
+	}
+
+	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
+	// The default is incomplete, which refuses a remote delete, so a failed write only costs the confirm.
+	if err := s.store.UpdateRunIdentityComplete(ctx, runID, !keys.incomplete); err != nil {
+		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to record file identity")
+	}
 	maxFiles := settings.MaxFilesPerRun
 	if maxFiles <= 0 {
 		maxFiles = DefaultSettings().MaxFilesPerRun
@@ -834,7 +990,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// Files rank first. If they already exceed the cap, no directory can enter
 	// the preview. At the cap, still check directories to set Truncated correctly.
 	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, result.categoryPaths, protected, gracePeriod, backend)
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
 		allOrphans = dedupeOrphans(d, append(allOrphans, abandoned...))
 	}
@@ -859,6 +1015,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// A mode change mid-scan cuts a remote walk short as a lost connection. The
 	// roots walked before it would otherwise land as a preview no confirm can use.
+	// A pin replaced at the same address leaves the mode as it was, so the
+	// endpoint is compared too, or the preview would be deleted on the new server.
 	reloaded, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -868,8 +1026,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
 		return
 	}
-	if current := models.FilesystemAccessMode(reloaded); current != mode {
-		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).
+	if current, endpointChanged := models.FilesystemAccessMode(reloaded), walkedEndpoint(reloaded) != walkedEndpoint(instance); current != mode || endpointChanged {
+		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).Bool("endpointChanged", endpointChanged).
 			Msg("orphanscan: failing scan, filesystem access changed while it ran")
 		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
 		return
@@ -887,12 +1045,23 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		scanWarnings = append(scanWarnings, warnMsg)
 	}
 	partial := len(scanWarnings) > 0
-	var scanWarning string
 	if partial {
 		scanWarnings = append(scanWarnings, "Automatic cleanup is disabled for partial scans. Review the results before deleting files.")
-		scanWarning = strings.Join(scanWarnings, "\n\n")
+	}
+	// On the exec tier an identity is missed by the walk falling back to sftp or by a
+	// walk error, including one in an ignored path.
+	if keys.incomplete && len(allOrphans) > 0 && mode == models.FilesystemModeRemote && models.FilesystemCapabilitiesOf(instance).Identity {
+		scanWarnings = append(scanWarnings, IdentityIncompleteMessage)
+	}
+	scanWarning := strings.Join(scanWarnings, "\n\n")
+	if partial {
 		if err := s.store.UpdateRunPartial(ctx, runID, scanWarning); err != nil {
 			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save partial scan result: %v", err))
+			return
+		}
+	} else if scanWarning != "" {
+		if err := s.store.UpdateRunWarning(ctx, runID, scanWarning); err != nil {
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save scan warning: %v", err))
 			return
 		}
 	}
@@ -955,8 +1124,24 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	// Mark as preview ready (orphans found)
-	if err := s.store.UpdateRunStatus(ctx, runID, "preview_ready"); err != nil {
+	// Mark as preview ready (orphans found). An SSH change fails remote previews
+	// but finds none while the run scans, and a new private key leaves the
+	// endpoint compare above unchanged. So a remote preview is published under
+	// the SSH lock, only if no change was stored since the backend was built. A
+	// later change finds the preview and fails it.
+	if s.beforePreviewReady != nil {
+		s.beforePreviewReady()
+	}
+	sshMu.Lock()
+	if mode == models.FilesystemModeRemote && s.sshChangeCount(instanceID) != sshChanges {
+		sshMu.Unlock()
+		log.Info().Int64("run", runID).Msg("orphanscan: failing scan, SSH settings changed while it ran")
+		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
+		return
+	}
+	err = s.store.UpdateRunStatus(ctx, runID, "preview_ready")
+	sshMu.Unlock()
+	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled before marking preview_ready")
 			return
@@ -1128,7 +1313,11 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
 			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
-			warning := "Automatic cleanup does not run for remote instances yet. Review the preview instead."
+			reason := AutoCleanupNoIdentityMessage
+			if strings.Contains(run.ErrorMessage, IdentityIncompleteMessage) {
+				reason = AutoCleanupSkippedMessage
+			}
+			warning := strings.TrimSpace(run.ErrorMessage + "\n\n" + reason)
 			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
 				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
 				return
@@ -1143,8 +1332,16 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int64) {
 	log.Info().Int("instance", instanceID).Int64("run", runID).Msg("orphanscan: starting deletion")
 
-	// Conditional on preview_ready, so a run a concurrent confirm just failed cannot go on to delete.
+	// Conditional on preview_ready, so a run a concurrent confirm or SSH change
+	// just failed cannot go on to delete. Under the SSH lock, so ChangeSSH
+	// cannot store a change between its check and this start.
+	mu := s.getInstanceMutex(s.sshMu, instanceID)
+	mu.Lock()
+	if s.beforeDeletionStart != nil {
+		s.beforeDeletionStart()
+	}
 	started, err := s.store.StartRunDeletion(ctx, runID)
+	mu.Unlock()
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
 		return
@@ -1183,6 +1380,13 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	mode := models.FilesystemAccessMode(instance)
 	if mode != run.FilesystemMode {
 		logModeChanged(runID, run.FilesystemMode, mode)
+		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+		return
+	}
+	// The protection map below comes from the current instance either way, so
+	// this keeps the delete on the server whose paths the user reviewed.
+	if walkedEndpoint(instance) != run.FilesystemEndpoint {
+		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
 	}
@@ -1237,28 +1441,72 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
 	}
-	tfm := fileMapResult.fileMap
 
 	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend, instance)
-	ignorePaths, err := NormalizeIgnorePaths(d, rawIgnorePaths)
+	// The scan refuses an ignore path that is not valid, so the delete refuses it
+	// too rather than run under a rule the preview never accepted.
+	protected, err := newProtectedPaths(d, rawIgnorePaths, fileMapResult.fileMap)
 	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
-		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
+		return
 	}
 
 	var filesDeleted int
 	var bytesReclaimed int64
 
+	// The remote backend redials with the instance's current row, so an SSH
+	// change mid-run would send the remaining deletes to another server.
+	// ChangeSSH refuses a change while a deletion runs, and this catches one
+	// made around it, such as a direct database edit. The run's endpoint holds
+	// digests of the pin and the key it was walked with, so this is one
+	// database read per entry.
+	var sshChanged bool
+	checkSSH := func() bool {
+		if mode != models.FilesystemModeRemote {
+			return false
+		}
+		current, err := s.instances.Get(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot reload the instance")
+			sshChanged = true
+		} else if walkedEndpoint(current) != run.FilesystemEndpoint {
+			log.Info().Int64("run", runID).Msg("orphanscan: stopping deletion, the SSH settings changed during it")
+			sshChanged = true
+		}
+		return sshChanged
+	}
+	skipRest := func(entries []*models.OrphanScanFile) {
+		for _, e := range entries {
+			s.updateFileStatus(ctx, e.ID, "skipped", "the SSH settings changed during the deletion")
+		}
+	}
+
 	// Track deletion failures for user-facing error reporting
 	var failedDeletes int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
+	var sawConnectionLost bool
+	classifyFailure := func(err error) {
+		switch {
+		// The loop goes on: the pool fails fast while it backs off, then redials.
+		case errors.Is(err, fsops.ErrConnectionLost):
+			sawConnectionLost = true
+		case isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system"):
+			sawReadOnly = true
+		case os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted"):
+			sawPermissionDenied = true
+		}
+	}
 
 	// Delete files
-	for _, f := range fileEntries {
+	for i, f := range fileEntries {
 		if ctx.Err() != nil {
 			// Canceled mid-deletion - mark remaining as skipped
 			log.Warn().Msg("orphanscan: deletion canceled mid-progress")
+			break
+		}
+		if checkSSH() {
+			skipRest(fileEntries[i:])
 			break
 		}
 
@@ -1270,18 +1518,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, protected, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
 			failedDeletes++
-
-			// Detect error type for user-facing message
-			if isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system") {
-				sawReadOnly = true
-			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
-				sawPermissionDenied = true
-			}
+			classifyFailure(err)
 			continue
 		}
 
@@ -1312,8 +1554,16 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// Remove the abandoned directories the preview listed. safeDeleteEmptyDir
 	// refuses a non-empty directory, so anything that gained content since the
 	// scan is reported rather than removed.
-	for _, dir := range dirEntries {
+	if sshChanged {
+		skipRest(dirEntries)
+		dirEntries = nil
+	}
+	for i, dir := range dirEntries {
 		if ctx.Err() != nil {
+			break
+		}
+		if checkSSH() {
+			skipRest(dirEntries[i:])
 			break
 		}
 
@@ -1323,7 +1573,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			failedDeletes++
 			continue
 		}
-		if isIgnoredPath(d, dir.FilePath, ignorePaths) {
+		if protected.ignored(dir.FilePath) {
 			s.updateFileStatus(ctx, dir.ID, "skipped", "path is protected by ignore paths")
 			continue
 		}
@@ -1337,12 +1587,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategoryPaths) {
-			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category destination")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category, download or monitored folder")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
 		// path, and that directory is empty on disk right now.
-		if tfm.HasAnyInDir(normDir) {
+		if protected.torrentFileIn(dir.FilePath) {
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now used by a torrent")
 			continue
 		}
@@ -1352,6 +1602,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, dir.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", dir.FilePath).Msg("orphanscan: failed to delete abandoned directory")
 			failedDeletes++
+			classifyFailure(err)
 			continue
 		}
 
@@ -1373,20 +1624,30 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// Build user-facing error message if deletion failures occurred
 	var failureMessage string
+	// sftp reports EROFS as a generic failure, so the read-only text is local only.
+	remote := mode == models.FilesystemModeRemote
 	if failedDeletes > 0 {
-		if sawReadOnly {
+		switch {
+		case sawConnectionLost:
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): the connection to the remote instance was lost. Run a new scan to list what is left.", failedDeletes)
+		case sawReadOnly && !remote:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): filesystem is read-only. If running via Docker, remove ':ro' from the volume mapping for your downloads path.", failedDeletes)
-		} else if sawPermissionDenied {
+		case sawPermissionDenied && remote:
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): permission denied. Check that the account qui uses on the remote instance has write access to the download directories.", failedDeletes)
+		case sawPermissionDenied:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): permission denied. Check that the qui process has write access to the download directories.", failedDeletes)
-		} else {
+		default:
 			failureMessage = fmt.Sprintf("Deletion failed for %d item(s). Check the details for specific errors.", failedDeletes)
 		}
+	}
+	if sshChanged {
+		failureMessage = strings.TrimSpace(failureMessage + "\n\n" + FilesystemModeChangedMessage)
 	}
 
 	// Determine final status based on deletion results. A run that removed
 	// directories did work, even when no file could go, and UpdateRunFailed
 	// records neither count.
-	if failedDeletes > 0 && filesDeleted == 0 && foldersDeleted == 0 {
+	if (failedDeletes > 0 || sshChanged) && filesDeleted == 0 && foldersDeleted == 0 {
 		// All deletions failed - mark as failed
 		failureMessage = strings.TrimSpace(run.ErrorMessage + "\n\n" + failureMessage)
 		if err := s.store.UpdateRunFailed(ctx, runID, failureMessage); err != nil {
@@ -1411,7 +1672,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	warningMessage := run.ErrorMessage
-	if failedDeletes > 0 {
+	if failureMessage != "" {
 		warningMessage = strings.TrimSpace(warningMessage + "\n\n" + failureMessage)
 	}
 
@@ -1565,11 +1826,31 @@ func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
 }
 
+// ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
+// symlinks.
+func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
+	var links []string
+	for _, root := range roots {
+		if slices.Contains(kept, d.Clean(root)) {
+			continue
+		}
+		if info, err := backend.Lstat(ctx, root); err == nil && info.IsSymlink {
+			links = append(links, root)
+		}
+	}
+	return links
+}
+
 func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []string {
 	filtered := make([]string, 0, len(scanRoots))
 	for _, root := range scanRoots {
 		covered := false
 		for _, cover := range covers {
+			// A filesystem root covers every path. Pruning with it would drop
+			// every scan root and fail the run; the walk must still ignore them.
+			if isAbsoluteFilesystemRoot(d, cover) {
+				continue
+			}
 			if isSameOrDescendantPath(d, root, cover) {
 				covered = true
 				break
@@ -1580,6 +1861,31 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 		}
 	}
 	return filtered
+}
+
+// canonicalizeHash matches SyncManager's internal hash normalization.
+func canonicalizeHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+// isAbsoluteFilesystemRoot reports whether p is "/", a drive root ("C:\"), or a
+// UNC share root. Clean keeps a trailing separator on / and C:\ and on
+// \\server\share\ ; \\server\share has none, so the prefix check covers it.
+func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
+	cleaned := d.Clean(p)
+	sep := d.Separator()
+	if sep == "" || cleaned == "" {
+		return false
+	}
+	if strings.HasSuffix(cleaned, sep) {
+		return true
+	}
+	if strings.HasPrefix(cleaned, sep+sep) {
+		rest := cleaned[len(sep)*2:]
+		server, share, found := strings.Cut(rest, sep)
+		return found && server != "" && share != "" && !strings.Contains(share, sep)
+	}
+	return false
 }
 
 func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend, instance *models.Instance) bool {
@@ -1835,13 +2141,14 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 
 // getOverlapCandidateInstances returns the other instances whose torrents can
 // protect scanned's files. Overlap compares path strings, which only mean the
-// same file on one filesystem. Instances stored against the same SSH host and
-// port pair in both modes, whatever their key, pin or local flag, since a
-// seedbox can be reached over SSH by one instance and through a mount by
-// another. A local scan also pairs with every local instance. The endpoint and
+// same file on one filesystem. Instances on the same SSH server (sameSSHServer)
+// pair in both modes, whatever their key or local flag, since a seedbox can be
+// reached over SSH by one instance and through a mount by another. A local scan
+// also pairs with every local instance. The endpoint and
 // mode come from scanned, the row the walk's backend was built from, so a later
-// edit cannot pick peers for an endpoint the walk never touched.
-func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance) ([]*models.Instance, error) {
+// edit cannot pick peers for an endpoint the walk never touched. scannedPin is
+// scanned's host key pin, read once by the caller.
+func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance, scannedPin []byte) ([]*models.Instance, error) {
 	instances, err := s.instances.List(ctx)
 	if err != nil {
 		return nil, err
@@ -1852,7 +2159,7 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 		if inst == nil || inst.ID == scanned.ID || !inst.IsActive {
 			continue
 		}
-		if _, ok := overlapPeer(scanned, inst); ok {
+		if _, ok := s.overlapPeer(scanned, scannedPin, inst); ok {
 			candidates = append(candidates, inst)
 		}
 	}
@@ -1861,14 +2168,36 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 
 // overlapPeer reports whether inst can protect scanned's files and names why, so a
 // local scan blocked by a remote-only peer does not call it local-access.
-func overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
+func (s *Service) overlapPeer(scanned *models.Instance, scannedPin []byte, inst *models.Instance) (label string, ok bool) {
 	switch {
 	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
 		return "local-access instance", true
-	case scanned.SSHHost != "" && inst.SSHHost == scanned.SSHHost && inst.SSHPort == scanned.SSHPort:
+	case s.sameSSHServer(scanned, scannedPin, inst):
 		return "remote instance on the same host", true
 	}
 	return "", false
+}
+
+// sameSSHServer reports whether a and b reach one SSH server: the same stored
+// host and port, or the same pinned host key under any name or port (an IP and
+// a hostname for one seedbox). aPin is a's pin. A pin only ever adds a match, so
+// an instance without one, or whose pin cannot be read, still pairs by host and port.
+func (s *Service) sameSSHServer(a *models.Instance, aPin []byte, b *models.Instance) bool {
+	if a.SSHHost == "" || b.SSHHost == "" {
+		return false
+	}
+	if a.SSHHost == b.SSHHost && a.SSHPort == b.SSHPort {
+		return true
+	}
+	return len(aPin) > 0 && bytes.Equal(aPin, s.hostKeyPin(b))
+}
+
+func (s *Service) hostKeyPin(inst *models.Instance) []byte {
+	pin, err := s.instances.GetHostKeyPin(inst)
+	if err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned) {
+		log.Warn().Err(err).Int("instance", inst.ID).Msg("orphanscan: cannot read the host key pin, pairing peers by host and port only")
+	}
+	return pin
 }
 
 func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialect, instanceID int, timeout time.Duration) ([]string, error) {
@@ -1975,12 +2304,13 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend, scanned)
 	}
 
-	candidates, err := s.getOverlapCandidateInstances(ctx, scanned)
+	scannedPin := s.hostKeyPin(scanned)
+	candidates, err := s.getOverlapCandidateInstances(ctx, scanned, scannedPin)
 	if err != nil {
 		return nil, err
 	}
 	for _, inst := range candidates {
-		peer, _ := overlapPeer(scanned, inst)
+		peer, _ := s.overlapPeer(scanned, scannedPin, inst)
 		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, d, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(
@@ -2033,6 +2363,11 @@ func findScanRoot(d fsops.PathDialect, path string, scanRoots []string) string {
 	longest := ""
 	for _, root := range scanRoots {
 		nRoot := fsops.NormalizePath(d, root)
+		// A filesystem root is not a delete boundary. That includes a UNC share
+		// root, which Clean can leave without a trailing separator.
+		if nPath != nRoot && isAbsoluteFilesystemRoot(d, nRoot) {
+			continue
+		}
 		if nPath != nRoot && !isPathUnderNormalized(d, nPath, nRoot) {
 			continue
 		}

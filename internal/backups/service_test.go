@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -149,7 +150,7 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 		close(started)
 	}()
 
-	timer := time.NewTimer(250 * time.Millisecond)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	select {
@@ -1119,34 +1120,38 @@ func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
 }
 
 func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
+		start := time.Now()
+		// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+		require.Equal(t, 200*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	err := adaptiveExportDelay(ctx, time.Second, 0)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+		start := time.Now()
+		err := adaptiveExportDelay(ctx, time.Second, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {

@@ -106,13 +106,36 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			name:    "WEB simplification disabled",
+			// The season pack check has no exact-source rule, so WEB matches WEB-DL.
+			name:    "WEB against WEB-DL without WEB simplification",
 			pack:    "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB.H.264-RlsGrp",
 			settings: &models.CrossSeedAutomationSettings{
 				SeasonPackSkipRepackCompare:  true,
 				SeasonPackSimplifyWEBCompare: false,
 			},
+			wantSeasonPack:  true,
+			checkSeasonPack: true,
+		},
+		{
+			// Without sizes, the web source relabel does not apply.
+			name:    "WEBRip against WEB-DL without WEB simplification",
+			pack:    "Show.S01.1080p.WEBRip.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: true,
+			},
+			checkSeasonPack: true,
+		},
+		{
+			name:    "WEBRip against WEB-DL with WEB simplification",
+			pack:    "Show.S01.1080p.WEBRip.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  true,
+				SeasonPackSimplifyWEBCompare: true,
+			},
+			wantSeasonPack:  true,
 			checkSeasonPack: true,
 		},
 		{
@@ -167,14 +190,21 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			episode := parseSeasonPackTestRelease(t, tt.episode)
 
 			if tt.checkSeasonPack {
-				match, _ := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", tt.strict, tt.settings, nil)
+				match, _ := seasonPackEpisodeMatches(matcher, pack, episode, tt.settings, nil)
 				require.Equal(t, tt.wantSeasonPack, match)
 			}
 			if tt.checkGeneric {
-				require.Equal(t, tt.wantGeneric, matcher.releasesMatch(pack, episode, tt.strict))
+				require.Equal(t, tt.wantGeneric, matcher.strictCompare(pack, episode, tt.strict).matched())
 			}
 		})
 	}
+}
+
+// seasonPackEpisodeMatches asks the season pack verdict about a local episode
+// against the same episode of the pack, with no sizes, as the light check does.
+func seasonPackEpisodeMatches(m matcher, pack, episode *rls.Release, settings *models.CrossSeedAutomationSettings, aliases []string) (bool, string) {
+	verdict := m.matchVerdict(namedRelease{release: episode}, namedRelease{release: asEpisode(pack, episode.Episode)}, matchEvidence{CandidateTitles: aliases}, seasonPackPolicy(settings))
+	return verdict.Matched, verdict.RejectReason
 }
 
 func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
@@ -225,11 +255,11 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 			pack := parseSeasonPackTestRelease(t, tc.pack)
 			episode := parseSeasonPackTestRelease(t, tc.episode)
 
-			ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, nil)
+			ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, nil)
 			require.False(t, ok, "expected no match without aliases")
 			require.Equal(t, "title mismatch", reason)
 
-			ok, reason = matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, tc.aliases)
+			ok, reason = seasonPackEpisodeMatches(matcher, pack, episode, nil, tc.aliases)
 			require.True(t, ok, "expected match with aliases, got reason %q", reason)
 			require.Empty(t, reason)
 		})
@@ -249,7 +279,7 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 	// before matching; mirror that here.
 	episode.Series = pack.Series
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, nil)
+	ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, nil)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
 }
@@ -268,7 +298,24 @@ func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
 		"Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou",
 	}
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, aliases)
+	ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, aliases)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
+}
+
+// TestSeasonPackEpisode_TagsOnlyOnLocalName pins that a group or a CRC tag that
+// only the local episode carries does not reject the pack. A pack name does not
+// carry the group or the CRC tag of each episode.
+func TestSeasonPackEpisode_TagsOnlyOnLocalName(t *testing.T) {
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	for _, tc := range []struct{ pack, episode string }{
+		{"Show.S01.1080p.WEB.H.264", "Show.S01E01.1080p.WEB.H.264-RlsGrp"},
+		{"[RlsGrp] Show S01 (1080p)", "[RlsGrp] Show S01E01 (1080p) [F5A70A05]"},
+	} {
+		t.Run(tc.episode, func(t *testing.T) {
+			ok, reason := seasonPackEpisodeMatches(matcher, parseSeasonPackTestRelease(t, tc.pack), parseSeasonPackTestRelease(t, tc.episode), nil, nil)
+			require.True(t, ok, "expected match, got reason %q", reason)
+		})
+	}
 }

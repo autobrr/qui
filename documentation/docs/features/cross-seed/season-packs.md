@@ -80,6 +80,8 @@ For an episode to count toward coverage, it must:
 - Pass the same release-compatibility checks used by normal cross-seeding
 - Belong to the same episode in the season pack
 
+A plain `WEB` source matches both `WEB-DL` and `WEBRip`. If the check has the torrent data, a `WEB-DL` episode also matches a `WEBRip` pack, and the reverse, when the size of the episode torrent is within 5% of the episode file in the pack. Trackers often give the same web release a different label. At apply, qui compares the exact file sizes.
+
 Mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
 The default threshold is **75%**. Change it in **Cross-Seed > Season packs** in the qui UI.
@@ -94,7 +96,7 @@ The defaults match common seasonpackarr expectations.
 | --- | --- | --- | --- |
 | Ignore REPACK/PROPER differences | On | Treat REPACK and PROPER episodes as compatible with the season pack. | `Show.S01E01.REPACK` matches `Show.S01E01.PROPER` |
 | Simplify HDR matching | Off | Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching. | `HDR10+` matches `HDR10` |
-| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
+| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. A WEB-DL episode then also matches a WEBRip pack at any size. | `WEB-DL` matches `WEBRip` |
 | Ignore year differences | Off | Allow matches when release dates differ or when one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
 ### Alternate titles

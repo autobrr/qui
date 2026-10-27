@@ -1348,7 +1348,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		assert.Equal(t, "cmd.exe", strings.ToLower(filepath.Base(path)))
 	}
 
-	t.Run("terminal mode uses cmd.exe with start cmd /k", func(t *testing.T) {
+	t.Run("terminal mode runs cmd /k in a new console", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
@@ -1356,27 +1356,20 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		// start would make cmd.exe parse the arguments a second time.
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path, "arg1", "arg2"}, cmd.Args)
+		assert.Contains(t, cmd.Env, "QUI_EXTERNAL_PROGRAM_PATH="+program.Path)
 	})
 
-	t.Run("direct mode uses cmd.exe with start /b", func(t *testing.T) {
+	t.Run("direct mode launches the executable without a shell", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
-
-		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		cmd, launcher := service.buildCommand(ctx, program, []string{"arg1"})
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path, "arg1"}, cmd.Args)
+		assert.False(t, launcher.releaseOnStart, "the service owns an unclassified process")
 	})
 
 	t.Run("arguments are passed correctly", func(t *testing.T) {
@@ -1400,11 +1393,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path}, cmd.Args)
 	})
 
 	t.Run("direct mode with no arguments", func(t *testing.T) {
@@ -1414,11 +1403,8 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path}, cmd.Args)
 	})
 
 	t.Run("path with spaces in terminal mode", func(t *testing.T) {
@@ -1439,8 +1425,8 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path, "--arg", "value"}, cmd.Args)
 	})
 
 	t.Run("arguments with special characters", func(t *testing.T) {
@@ -1616,7 +1602,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 
 func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("direct runs hold their slot only on Unix")
+		t.Skip("this fixture needs a POSIX shell; Windows uses the native recorder test")
 	}
 
 	ctx := t.Context()
@@ -1702,7 +1688,7 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}", UseTerminal: true}
 
 	_, launcher := s.buildCommand(t.Context(), program, nil)
-	require.False(t, launcher, "no terminal emulator, so qui runs the program with sh -c")
+	require.False(t, launcher.releaseOnStart, "no terminal emulator, so qui runs the program with sh -c")
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)

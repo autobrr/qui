@@ -27,7 +27,7 @@ I am a collaborator on autobrr/qui with write access. Skip the collaborator chec
 
 ## Become a contributor
 
-* Code: new features, bug fixes, improvements
+* Code: new features, bug fixes, improvements (collaborators only for now)
 * Report bugs
 
 ## Developer guide
@@ -49,13 +49,13 @@ Make sure you have the following dependencies installed before setting up your d
 - **Clone:** Clone the repository, or a [fork](https://github.com/autobrr/qui/fork), to start work on your changes.
 - **Branching:** Create a new branch for your changes. Use a descriptive name for easy understanding.
   - Checkout a new branch for your fix or feature `git checkout -b fix/torrent-actions-issue`
-- **Coding:** Ensure your code is well-commented for clarity. With go use `go fmt`
+- **Coding:** Follow the [coding standards](../CODING_STANDARDS.md). With go use `go fmt`
 - **Commit Guidelines:** We appreciate the use of [Conventional Commit Guidelines](https://www.conventionalcommits.org/en/v1.0.0/#summary) when writing your commits.
   - Examples: `fix(qbittorrent): improve connection pooling`, `feat(torrent): add bulk actions`
   - There is no need for force pushing or rebasing. We squash commits on merge to keep the history clean and manageable.
 - **Pull Requests:** Open a pull request with a clear description of your changes. Reference any related issues.
   - Mark it as Draft if it's still in progress.
-  - Fill in the [PR template](pull_request_template.md). A CI check fails until the PR body has the Description, Breaking change, Behaviour change, Performance, and AI disclosure sections. Write "No breaking change." or "No behaviour change." when that applies. When you edit the PR body, the check runs again.
+  - Fill in the [PR template](pull_request_template.md). For a PR from someone who is not a collaborator, a CI check fails until the PR body has the Description, Breaking change, Behaviour change, Performance, and AI disclosure sections. Write "No breaking change." or "No behaviour change." when that applies. When you edit the PR body, the check runs again.
 - **Code Review:** Be open to feedback during the code review process.
 
 ## Development environment
@@ -146,7 +146,7 @@ goreleaser build --snapshot --clean
 
 ## Tests
 
-The test suite consists of only backend tests at this point. All tests run per commit with GitHub Actions.
+GitHub Actions runs the backend and frontend tests.
 
 ### Run backend tests
 
@@ -155,7 +155,7 @@ We have a mix of unit and integration tests.
 Run all non-integration tests:
 
 ```shell
-go test -v ./...
+make test
 ```
 
 Run Postgres integration tests with a temporary server:
@@ -169,6 +169,12 @@ Each Postgres test keeps its isolated schema. CI runs this command on Linux.
 Use `PostgresIntegration` in the names of tests that need a Postgres server so this command selects them.
 Set `QUI_TEST_POSTGRES_DSN` to use an existing test database instead.
 To select tests, pass Go test arguments to `go run ./internal/testutil/postgres`.
+
+### Run frontend tests
+
+```shell
+make test-frontend
+```
 
 ## AI-assisted contributions
 

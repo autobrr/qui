@@ -113,7 +113,9 @@ If you enable "Launch in terminal window", qui detects and uses an available ter
    - Terminal.app
 5. **Fallback**: If qui finds no terminal, qui runs the command in the background with `sh -c`
 
-On Windows, qui always uses `cmd.exe`.
+On Windows, terminal-window programs use `cmd.exe`. With the terminal option disabled, qui launches native executables directly and passes arguments literally, including shell characters such as `&` and `%`. Batch files (`.bat` and `.cmd`) also use `cmd.exe`. In terminal and batch mode, qui quotes each argument for `cmd.exe`, so the program gets it literally too. `%VARIABLE%` does not expand, and operators such as `&` do not run. If a batch file needs an environment variable, read it in the script. A double quote (`"`) in a value reaches the program as two double quotes. This is the rule for batch file arguments. Programs built with current Microsoft compilers read the pair as one quote. Some other programs, for example programs written in Go, split the value at that point.
+
+For Python, PowerShell and other scripts, set **Program Path** to the interpreter executable and pass the script path as the first argument. File associations and shortcuts are not used for background launches. If an existing program uses a shortcut, change **Program Path** to its target executable.
 
 :::tip
 Terminal windows stay open after the command finishes so you can inspect output. Close the window when you finish.
@@ -157,15 +159,20 @@ The response contains a `results` array with per-hash `success` flags and option
 
 ## Execution limit
 
-qui runs at most 8 external programs at the same time. This limit applies to all instances, automations, cross-seed rules, and manual runs together. Other programs wait for a free slot, so a program can start later than its trigger. To change the limit, set `externalProgramMaxRunning` in `config.toml` or `QUI__EXTERNAL_PROGRAM_MAX_RUNNING`, then restart qui.
+qui has 8 execution slots. This limit applies to all instances, automations, cross-seed rules, and manual runs together. Other programs wait for a free slot, so a program can start later than its trigger. To change the limit, set `externalProgramMaxRunning` in `config.toml` or `QUI__EXTERNAL_PROGRAM_MAX_RUNNING`, then restart qui.
 
-- A program that runs directly on Linux or macOS holds its slot until it exits.
-- A program that runs in a terminal window, and every program on Windows, holds its slot only while qui starts it.
+- A program that runs directly holds its slot until it exits, including console executables on Windows.
+- A recognized Windows GUI executable releases its slot after startup. It still receives arguments literally.
+- A program that runs in a terminal window, or a Windows batch file, holds its slot only while qui starts it.
 - If qui finds no terminal emulator, for example in Docker, a terminal-window program runs directly and holds its slot until it exits.
 - If a program already waits for a torrent, qui does not queue the same program for that torrent again. An automation rule that matches the torrent on each pass therefore queues only one run.
 - At most 1000 programs can wait. When the queue is full, qui does not start the program. qui writes "not started: execution queue full" to the activity log and a warning to the qui log.
 - A program that waits for more than 30 minutes does not start. qui writes "not started: execution limit reached" to the activity log and a warning to the qui log.
 - When qui shuts down, it drops the programs that wait.
+
+On Windows, qui resolves the program through `PATH` and `PATHEXT` before choosing how to launch it. A path without an extension that resolves to `.bat` or `.cmd` follows the batch-file behavior above. If an argument for a batch file or a terminal window contains a line break, qui does not start the program. `cmd.exe` stops the command at a line break and drops the rest of the arguments.
+
+A native GUI program can still show its window. GUI programs often stay open for user interaction, so they release their slot after startup. Other programs can then start without waiting for a window to close. qui identifies these programs from the executable's Windows GUI subsystem. If it cannot read that information, it holds the slot until the process exits. If a program starts another process and exits, qui tracks the process it launched, not the replacement.
 
 ## Automation integration
 
@@ -197,6 +204,8 @@ qui logs automation executions in the activity feed with:
 
 :::note
 qui logs success after the program starts, not when qui queues the task. If the program fails to start (for example, executable not found or permission denied), qui captures and logs the error.
+
+On Windows, batch and terminal launchers report their activity after the command wrapper exits so qui can detect dispatch errors. A long-running batch script therefore delays its activity entry until completion. Restarting qui before it exits can leave no entry for that run. Native GUI programs report successful startup without waiting for the window to close.
 :::
 
 ### Example use cases
@@ -217,5 +226,5 @@ qui logs success after the program starts, not when qui queues the task. If the 
 
 - **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
-- **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and runs on Windows, hold a slot only while qui starts them. For more information, see [Execution limit](#execution-limit). Make sure that your script handles concurrent executions or uses a lock.
+- **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and Windows batch files, hold a slot only while qui starts them. For more information, see [Execution limit](#execution-limit). Make sure that your script handles concurrent executions or uses a lock.
 - **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.

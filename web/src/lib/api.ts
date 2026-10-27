@@ -11,7 +11,6 @@ import type {
   AppPreferences,
   PreferenceField,
   NetworkBindingInterface,
-  AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
   AutomationActivity,
@@ -506,6 +505,72 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
   }
 }
 
+type RawLocalMatchesResponse = {
+  matches: Array<{
+    instance_id: number
+    instance_name: string
+    hash: string
+    name: string
+    size: number
+    progress: number
+    save_path: string
+    content_path: string
+    category: string
+    tags: string
+    state: string
+    tracker: string
+    tracker_health?: string
+    match_type: string
+  }>
+}
+
+function toLocalCrossSeedMatches(raw: RawLocalMatchesResponse): LocalCrossSeedMatch[] {
+  return (raw.matches || []).map((m) => ({
+    instanceId: m.instance_id,
+    instanceName: m.instance_name,
+    hash: m.hash,
+    name: m.name,
+    size: m.size,
+    progress: m.progress,
+    savePath: m.save_path,
+    contentPath: m.content_path,
+    category: m.category,
+    tags: m.tags,
+    state: m.state,
+    tracker: m.tracker,
+    trackerHealth: m.tracker_health,
+    matchType: m.match_type as LocalCrossSeedMatch["matchType"],
+  }))
+}
+
+export interface StreamSubscription {
+  key: string
+  instanceId: number
+  instanceIds?: number[] | null
+  page: number
+  limit: number
+  sort: string
+  order: "asc" | "desc"
+  search?: string
+  filters?: TorrentFilters | null
+  summary?: boolean
+}
+
+function normalizeStreamSubscription(stream: StreamSubscription) {
+  return {
+    key: stream.key,
+    instanceId: stream.instanceId,
+    instanceIds: stream.instanceIds ?? null,
+    page: stream.page,
+    limit: stream.limit,
+    sort: stream.sort,
+    order: stream.order,
+    search: stream.search ?? "",
+    filters: serializeFilters(stream.filters) ?? null,
+    summary: stream.summary ?? false,
+  }
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -925,36 +990,13 @@ class ApiClient {
   }
 
   getTorrentsStreamBatchUrl(
-    streams: Array<{
-      key: string
-      instanceId: number
-      instanceIds?: number[] | null
-      page: number
-      limit: number
-      sort: string
-      order: "asc" | "desc"
-      search?: string
-      filters?: TorrentFilters | null
-      summary?: boolean
-    }>,
+    streams: StreamSubscription[],
     options: { activity?: boolean } = {}
   ): string {
     const params = new URLSearchParams()
 
     if (streams.length > 0) {
-      const normalized = streams.map(stream => ({
-        key: stream.key,
-        instanceId: stream.instanceId,
-        instanceIds: stream.instanceIds ?? null,
-        page: stream.page,
-        limit: stream.limit,
-        sort: stream.sort,
-        order: stream.order,
-        search: stream.search ?? "",
-        filters: serializeFilters(stream.filters) ?? null,
-        summary: stream.summary ?? false,
-      }))
-      params.set("streams", JSON.stringify(normalized))
+      params.set("streams", JSON.stringify(streams.map(normalizeStreamSubscription)))
     }
 
     // Activity events (qui-owned server signals) ride the same multiplexed
@@ -965,6 +1007,16 @@ class ApiClient {
     }
 
     return withBasePath(`/api/stream?${params.toString()}`)
+  }
+
+  // changeStreamSubscriptions adds and removes subscriptions on the open stream
+  // that the connection event named.
+  async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[], signal?: AbortSignal): Promise<void> {
+    return this.request("/stream/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ connectionId, add: add.map(normalizeStreamSubscription), remove }),
+      signal,
+    })
   }
 
   async getTorrentField(
@@ -1188,7 +1240,6 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
-      content_filtering_completed?: boolean
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -1217,35 +1268,6 @@ class ApiClient {
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
       contentMatches: raw.content_matches,
-      contentFilteringCompleted: raw.content_filtering_completed,
-    }
-  }
-
-  async getAsyncFilteringStatus(
-    instanceId: number,
-    hash: string
-  ): Promise<AsyncIndexerFilteringState> {
-    type RawAsyncFilteringState = {
-      capabilities_completed: boolean
-      content_completed: boolean
-      capability_indexers: number[]
-      filtered_indexers: number[]
-      excluded_indexers: Record<string, string>
-      content_matches: string[]
-    }
-
-    const raw = await this.request<RawAsyncFilteringState>(
-      `/cross-seed/torrents/${instanceId}/${hash}/async-status`,
-      { method: "GET" }
-    )
-
-    return {
-      capabilitiesCompleted: raw.capabilities_completed,
-      contentCompleted: raw.content_completed,
-      capabilityIndexers: raw.capability_indexers,
-      filteredIndexers: raw.filtered_indexers,
-      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers) || {},
-      contentMatches: raw.content_matches,
     }
   }
 
@@ -1260,49 +1282,37 @@ class ApiClient {
     hash: string,
     strict = false
   ): Promise<LocalCrossSeedMatch[]> {
-    type RawLocalMatch = {
-      instance_id: number
-      instance_name: string
-      hash: string
-      name: string
-      size: number
-      progress: number
-      save_path: string
-      content_path: string
-      category: string
-      tags: string
-      state: string
-      tracker: string
-      tracker_health?: string
-      match_type: string
-    }
-
-    type RawResponse = {
-      matches: RawLocalMatch[]
-    }
-
     const params = strict ? "?strict=true" : ""
-    const raw = await this.request<RawResponse>(
+    const raw = await this.request<RawLocalMatchesResponse>(
       `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
       { method: "GET" }
     )
+    return toLocalCrossSeedMatches(raw)
+  }
 
-    return (raw.matches || []).map((m) => ({
-      instanceId: m.instance_id,
-      instanceName: m.instance_name,
-      hash: m.hash,
-      name: m.name,
-      size: m.size,
-      progress: m.progress,
-      savePath: m.save_path,
-      contentPath: m.content_path,
-      category: m.category,
-      tags: m.tags,
-      state: m.state,
-      tracker: m.tracker,
-      trackerHealth: m.tracker_health,
-      matchType: m.match_type as LocalCrossSeedMatch["matchType"],
-    }))
+  /**
+   * Get the torrents that a delete of the selected torrents with their files affects.
+   * Takes the selection of a bulk action, so a select-all delete checks every selected
+   * torrent in one request. The selected torrents are not in the result.
+   */
+  async getDeleteCrossSeeds(
+    instanceId: number,
+    selection: {
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
+      filters?: TorrentFilters
+      search?: string
+      excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
+    },
+    signal?: AbortSignal
+  ): Promise<LocalCrossSeedMatch[]> {
+    const raw = await this.request<RawLocalMatchesResponse>(
+      `/instances/${instanceId}/torrents/delete-cross-seeds`,
+      { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
+    )
+    return toLocalCrossSeedMatches(raw)
   }
 
   async searchCrossSeedTorrent(
@@ -1386,6 +1396,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
+      gazelle_timed_out?: boolean
+      torznab_failed?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
     }
@@ -1445,6 +1457,8 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
+      gazelleTimedOut: response.gazelle_timed_out ?? undefined,
+      torznabFailed: response.torznab_failed ?? undefined,
       decisionTrace: response.decisionTrace,
     }
   }

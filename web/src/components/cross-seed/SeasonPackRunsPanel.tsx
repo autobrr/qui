@@ -121,12 +121,12 @@ export function SeasonPackRunsPanel({
               </div>
               <div className="flex items-center justify-between gap-3 sm:justify-start">
                 <div className="flex items-center gap-2">
+                  <Label htmlFor="season-pack-show-skipped" className="text-xs">{t("seasonPackRuns.showSkipped")}</Label>
                   <Switch
                     id="season-pack-show-skipped"
                     checked={showSkipped}
                     onCheckedChange={setShowSkipped}
                   />
-                  <Label htmlFor="season-pack-show-skipped" className="text-xs">{t("seasonPackRuns.showSkipped")}</Label>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
                   <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />

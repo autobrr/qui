@@ -696,8 +696,8 @@
       "description": "扫描下载目录并识别孤立文件以进行清理。",
       "noLocalAccess": "无本地访问权限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
-      "remoteLimits": "删除和自动清理暂时无法在远程实例上运行。",
-      "remoteNoIdentity": "qui 也无法判断两个路径是否指向同一文件，因此可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。",
+      "remoteLimits": "在远程实例上删除和自动清理需要文件标识，只有服务器允许 qui 运行 GNU find 和 stat 时才能读取。",
+      "remoteNoIdentity": "此远程实例不允许这样做，因此 qui 无法判断两个路径是否指向同一文件，可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。此处的扫描只能预览和导出，不能删除。",
       "on": "开",
       "off": "关",
       "summaryGrace": "宽限期 {{grace}} 分钟",
@@ -708,7 +708,7 @@
       "cancel": "取消",
       "autoCleanupEnabled": "自动清理已启用（≤{{max}} 个文件）",
       "autoCleanupDisabled": "自动清理已禁用",
-      "autoCleanupRemote": "远程实例不自动清理",
+      "autoCleanupRemote": "此远程实例不自动清理",
       "pathsIgnored_other": " · {{count}} 个路径已忽略",
       "scanNow": "立即扫描",
       "configure": "配置",
@@ -764,7 +764,7 @@
       "exportCSV": "导出 CSV",
       "close": "关闭",
       "deleteItems": "删除",
-      "remoteDeleteUnavailable": "此扫描在远程实例上进行，远程实例暂不支持删除。请导出列表，然后自行在服务器上删除这些文件。",
+      "remoteDeleteUnavailable": "此扫描无法删除，因为远程实例不提供文件标识，或扫描未能读取每个文件的标识。请导出列表，然后自行在服务器上删除这些文件。",
       "statusLabels": {
         "pending": "等待中",
         "deleted": "已删除",
@@ -1744,11 +1744,9 @@
       "lastBackup": "上次备份",
       "loading": "加载中...",
       "progress": "{{current}}/{{total}} 个种子（{{percentage}}%）",
-      "status": "状态：{{status}}",
       "noBackupsYet": "暂无备份",
       "nextScheduledBackup": "下次计划备份",
       "loadingSchedule": "正在加载计划...",
-      "instance": "实例",
       "automaticBackupsOff": "此实例的自动备份已关闭。",
       "enableCadenceToSchedule": "请至少启用一个自动频率以计划备份。",
       "currentlyRunning": "备份正在运行中。",
@@ -1772,6 +1770,7 @@
       "schedule": {
         "title": "自动频率",
         "description": "每小时、每天、每周和每月运行在上一次备份完成且间隔已过后开始。全部关闭则仅手动触发备份。",
+        "keep": "保留",
         "hourly": "每小时",
         "hourlyDescription": "较旧的每小时快照被清除前保留的数量。",
         "hourlyTooltip": "当备份已启用且距上次运行已过至少一小时时，大约每小时运行一次。",
@@ -1790,8 +1789,7 @@
         "saveChanges": "保存更改",
         "saveAll": "保存所有实例的更改",
         "requiresCadence": "请在保存前至少选择一个频率（每小时、每天、每周或每月）。",
-        "waitForCapabilities": "请等待实例能力检查完成后再保存到所有实例。",
-        "changesApplyImmediately": "保存后更改将立即应用于后续备份。"
+        "waitForCapabilities": "请等待实例能力检查完成后再保存到所有实例。"
       }
     },
     "restore": {

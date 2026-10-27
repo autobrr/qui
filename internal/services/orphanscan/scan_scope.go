@@ -5,11 +5,10 @@ package orphanscan
 
 import (
 	"context"
-	"fmt"
+	"slices"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // scanScope carries the opt-in settings that widen a run. The zero value is the
@@ -59,7 +58,8 @@ func (s scanScope) withPersistedRoots(roots []string) scanScope {
 }
 
 // declaredScanRoots resolves the extra roots a scope asks for, along with the
-// category destinations the abandoned-directory pass must protect.
+// category destinations, download folders and monitored folders the
+// abandoned-directory pass must protect.
 //
 // A scope that cannot be resolved is an error, never a quieter scan: falling
 // back to torrent-derived roots would report a clean result over a narrower tree
@@ -69,36 +69,23 @@ func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, in
 		return nil, nil, nil
 	}
 
-	// Categories inherit from the default save path, so it is needed whenever
-	// they are. One preferences read covers both.
-	prefs, err := s.sync.GetAppPreferences(ctx, instanceID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
-	}
-	defaultSavePath, err := validDefaultSavePath(d, prefs.SavePath)
+	folders, err := s.sync.InstanceFolders(ctx, d, instanceID)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	if scope.DefaultSavePath {
-		roots = append(roots, defaultSavePath)
+		roots = append(roots, folders.DefaultSavePath)
 	}
-
 	if scope.needsCategories() {
-		// Only category resolution needs the nesting state, and answering it
-		// costs a WebAPI version request.
-		var rule qbittorrent.CategoryPathRule
-		rule, err = s.sync.CategoryPathRule(ctx, instanceID)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		categoryPaths, err = s.categoryPaths(ctx, d, instanceID, defaultSavePath, rule)
-		if err != nil {
-			return nil, nil, err
-		}
 		if scope.CategoryPaths {
-			roots = append(roots, categoryPaths...)
+			roots = append(roots, folders.CategorySaveFolders...)
+		}
+		// qBittorrent downloads into these again, and stops watching a
+		// monitored folder that is removed, so they are protected, but they
+		// are not scan roots.
+		categoryPaths = slices.Concat(folders.CategorySaveFolders, folders.DownloadFolders, folders.MonitoredFolders)
+		if folders.DownloadPath != "" {
+			categoryPaths = append(categoryPaths, folders.DownloadPath)
 		}
 	}
 

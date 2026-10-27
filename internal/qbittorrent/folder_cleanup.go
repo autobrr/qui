@@ -27,9 +27,6 @@ const (
 	// checked, since each check costs round trips per torrent over SSH.
 	folderCleanupRemoteTick = 30 * time.Second
 	folderCleanupDeadline   = 2 * time.Minute
-	// folderCleanupVersionTTL is how long the worker reuses an instance's
-	// category nesting support, which costs a request to read.
-	folderCleanupVersionTTL = time.Minute
 	// folderCleanupProxyPrepareBudget bounds the snapshot a proxied request
 	// waits on before it is sent, well inside the timeouts clients use.
 	folderCleanupProxyPrepareBudget = 5 * time.Second
@@ -65,10 +62,6 @@ type FolderCleanup struct {
 	prepareBudget      time.Duration
 	proxyPrepareBudget time.Duration
 
-	// nesting holds what each instance's qBittorrent version says about
-	// category nesting, read and written by the worker alone.
-	nesting map[int]nestingMemo
-
 	mu      sync.Mutex
 	pending []*pendingFolder
 	held    int
@@ -88,11 +81,9 @@ type folderView interface {
 	liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
 	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error)
-	// stopFolderInputs reads the preferences with a request.
-	stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error)
-	// categoryNesting refreshes qBittorrent's capabilities with a request,
-	// so the worker keeps its answer for folderCleanupVersionTTL.
-	categoryNesting(ctx context.Context, instanceID int) (nestingSupport, error)
+	// InstanceFolders reads the preferences and the categories with
+	// requests.
+	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (InstanceFolders, error)
 	// hintRefresh asks for one sync, for a torrent the cache still shows
 	// where the snapshot left it, or for an item about to reach its
 	// deadline.
@@ -103,19 +94,6 @@ type folderView interface {
 
 type ignoreMatcher interface {
 	IgnoredPathMatcher(ctx context.Context, instanceID int, d fsops.PathDialect) (func(path string) bool, error)
-}
-
-// stopInputs is what qBittorrent reports for the stop folders it owns.
-type stopInputs struct {
-	DefaultSavePath string
-	TempPath        string
-	TempPathEnabled bool
-	Categories      map[string]qbt.Category
-	// UseSubcategories is the use_subcategories preference as read.
-	UseSubcategories bool
-	// ScanDirs are qBittorrent's monitored folders, each with where it saves
-	// the torrents it adds.
-	ScanDirs qbt.MonitoredFolders
 }
 
 // folderLayout says how a torrent's content sits under its save path.
@@ -149,24 +127,6 @@ type folderSnapshot struct {
 	// shows a new content path, rather than until the row is gone, since the
 	// move may not happen at all.
 	Move bool
-}
-
-// nestingSupport is what an instance's qBittorrent version says about
-// category save paths, the half of SyncManager.CategoryPathRule that costs a request.
-type nestingSupport struct {
-	// Nests: an empty category save path can resolve under the parent
-	// category's save path (qBittorrent 5.0+).
-	Nests bool
-	// Always: qBittorrent 5.2+ dropped use_subcategories and always nests.
-	Always bool
-	// FileName and Platform go to CategoryPathRule.
-	FileName bool
-	Platform string
-}
-
-type nestingMemo struct {
-	nesting nestingSupport
-	at      time.Time
 }
 
 // pendingFolder is a snapshot reduced to the folders it can touch, so the queue
@@ -223,6 +183,10 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 		proxyPrepareBudget: folderCleanupProxyPrepareBudget,
 	}
 }
+
+// SetTickForTest sets how often the worker checks its queue. Call it before
+// Start. Product code does not call it.
+func (c *FolderCleanup) SetTickForTest(tick time.Duration) { c.tick = tick }
 
 // Start runs the one worker until ctx ends or Stop is called.
 func (c *FolderCleanup) Start(ctx context.Context) {
@@ -623,7 +587,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 
 	// The usual first check after a delete finds the torrent's own row still
 	// cached. That alone decides it waits, so the scope, a full read of the
-	// cached torrents and a preferences request, is built only for the rest.
+	// cached torrents and two requests, is built only for the rest.
 	hashes := make([]string, len(ready))
 	for i, item := range ready {
 		hashes[i] = item.snap.Hash

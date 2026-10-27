@@ -25,15 +25,15 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick is the worker tick in the rig. It stays well above the 200 ms
-// debounced sync after a write: a hint on every tick closer than that would
-// keep postponing the sync the worker waits on.
-const rigTick = 500 * time.Millisecond
+// rigTick is the worker tick in the rig. It stays above the 200 ms debounced
+// sync after a write: a hint on every tick closer than that would keep
+// postponing the sync the worker waits on.
+const rigTick = 250 * time.Millisecond
 
 // rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
 // removed by mistake is gone by the time requireKept looks, even when the
 // worker first waits a tick for the sync to drop the torrent's row. In the
-// rig a removal lands about 0.5 s after the request.
+// rig a removal lands about 0.3 s after the request.
 const rigKeptWait = 2*rigTick + 500*time.Millisecond
 
 const (
@@ -177,11 +177,10 @@ func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
 		return map[string]int{
 			"liveTorrents": count(func() error { _, err := r.sm.liveTorrents(ctx, r.instanceID); return err }),
 			"ownRows":      count(func() error { _, err := r.sm.ownRows(ctx, r.instanceID, hashes); return err }),
-			"stopFolderInputs": count(func() error {
-				_, err := r.sm.stopFolderInputs(ctx, r.instanceID)
+			"InstanceFolders": count(func() error {
+				_, err := r.sm.InstanceFolders(ctx, fsops.HostPaths, r.instanceID)
 				return err
 			}),
-			"categoryNesting": count(func() error { _, err := r.sm.categoryNesting(ctx, r.instanceID); return err }),
 		}
 	}
 	require.Equal(t, requests(hashA), requests(hashA, hashB, hashC))
@@ -492,6 +491,7 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 			client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
 			require.NoError(t, err)
 			before := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+			syncs := r.stub.Syncs()
 
 			require.NoError(t, tc.op(r))
 			require.Eventually(t, func() bool {
@@ -499,7 +499,7 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 				return row.SavePath != before.SavePath && row.ContentPath == before.ContentPath
 			}, 5*time.Second, 20*time.Millisecond, "the cache must show the new save path with the old content path")
 			// Let the second sync after the request land before the files move.
-			time.Sleep(300 * time.Millisecond)
+			require.Eventually(t, func() bool { return r.stub.Syncs() >= syncs+2 }, 5*time.Second, 10*time.Millisecond)
 
 			r.stub.FinishMoves()
 			r.requireGone(tc.left)
@@ -682,7 +682,8 @@ func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 
 // hungBackend is a mount where a Stat under hang returns only once release is
 // closed, whatever its context, as os.Stat does on a hung NFS mount. stats
-// counts every Stat that reached it.
+// counts every Stat that reached it, and hung waits for the hung ones to
+// return.
 type hungBackend struct {
 	fsops.Backend
 	hang    string
@@ -690,6 +691,7 @@ type hungBackend struct {
 	release chan struct{}
 	stats   atomic.Int32
 	inside  atomic.Int32
+	hung    sync.WaitGroup
 }
 
 func (b *hungBackend) unhang() {
@@ -705,6 +707,8 @@ func (b *hungBackend) unhang() {
 func (b *hungBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	b.stats.Add(1)
 	if strings.HasPrefix(p, b.hang) {
+		b.hung.Add(1)
+		defer b.hung.Done()
 		b.inside.Add(1)
 		defer b.inside.Add(-1)
 		b.mu.Lock()
@@ -771,7 +775,7 @@ func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
 			require.EqualValues(t, 1, backend.inside.Load(), "hashB's Stat is still hung")
 
 			backend.unhang()
-			require.Eventually(t, func() bool { return backend.inside.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+			backend.hung.Wait()
 			for _, snap := range batch.snaps {
 				require.Equal(t, snap.Hash == hashA, snap.ContentExisted, snap.Hash)
 			}

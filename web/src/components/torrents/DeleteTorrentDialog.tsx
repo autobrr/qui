@@ -126,8 +126,6 @@ export function DeleteTorrentDialog({
             deleteCrossSeeds={deleteCrossSeeds}
             onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
             onSearch={crossSeedWarning.search}
-            totalToCheck={crossSeedWarning.totalToCheck}
-            checkedCount={crossSeedWarning.checkedCount}
           />
         )}
         {showBlockCrossSeeds && (

@@ -4,7 +4,7 @@
  */
 
 import { useSyncStream } from "@/contexts/SyncStreamContext"
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { api } from "@/lib/api"
 import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -47,7 +47,7 @@ export function useActiveTaskCount(instanceId: number | null, enabled: boolean) 
     queryKey: ["active-task-count", activeInstanceId],
     queryFn: () => api.getActiveTaskCount(activeInstanceId as number),
     enabled: useFallback,
-    refetchInterval: useFallback ? 30000 : false,
+    refetchInterval: useFallback ? streamFallbackPollInterval(streamState, 30000) : false,
     refetchIntervalInBackground: true,
   })
 

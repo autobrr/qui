@@ -814,33 +814,37 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
 	t.Parallel()
 
-	syncer := &bulkActionRetrySyncer{
-		maps: []map[string]qbt.Torrent{
-			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
-		},
-		blockSyncUntilDone: true,
-	}
+	synctest.Test(t, func(t *testing.T) {
+		syncer := &bulkActionRetrySyncer{
+			maps: []map[string]qbt.Torrent{
+				{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+			},
+			blockSyncUntilDone: true,
+		}
 
-	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
+		err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
 
-	require.ErrorIs(t, err, errPostAddRecheckNotReady)
-	require.Equal(t, 1, syncer.syncCalls)
-	require.LessOrEqual(t, syncer.mapCalls, 2)
+		require.ErrorIs(t, err, errPostAddRecheckNotReady)
+		require.Equal(t, 1, syncer.syncCalls)
+		require.LessOrEqual(t, syncer.mapCalls, 2)
+	})
 }
 
 func TestWaitForPostAddRecheckReadyChecksSyncThatEndsAtTheDeadline(t *testing.T) {
 	t.Parallel()
 
-	syncer := &bulkActionRetrySyncer{
-		maps:               []map[string]qbt.Torrent{{"abc": {Hash: "abc", State: qbt.TorrentStateStoppedUp}}},
-		syncDoneAtDeadline: true,
-	}
+	synctest.Test(t, func(t *testing.T) {
+		syncer := &bulkActionRetrySyncer{
+			maps:               []map[string]qbt.Torrent{{"abc": {Hash: "abc", State: qbt.TorrentStateStoppedUp}}},
+			syncDoneAtDeadline: true,
+		}
 
-	// The overall budget equals the sync timeout, so both deadlines pass together.
-	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, 50*time.Millisecond)
+		// The overall budget equals the sync timeout, so both deadlines pass together.
+		err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, 50*time.Millisecond)
 
-	require.NoError(t, err)
-	require.Equal(t, 1, syncer.mapCalls)
+		require.NoError(t, err)
+		require.Equal(t, 1, syncer.mapCalls)
+	})
 }
 
 func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
@@ -1577,7 +1581,9 @@ type bulkActionRetrySyncer struct {
 	syncCalls          int
 	mapCalls           int
 	blockSyncUntilDone bool
-	// syncDoneAtDeadline blocks Sync until its context ends, then reports success.
+	// syncDoneAtDeadline blocks Sync until its context ends, then reports
+	// success. Run it in a synctest bubble: Sync lets the deadlines that pass at
+	// the same instant land before it returns.
 	syncDoneAtDeadline bool
 }
 
@@ -1589,6 +1595,7 @@ func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 	}
 	if s.syncDoneAtDeadline {
 		<-ctx.Done()
+		synctest.Wait()
 		return nil
 	}
 	if len(s.mapsAfterSync) > 0 {
@@ -2184,7 +2191,8 @@ func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial
 	callCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancel()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
 	require.NotNil(t, resp)
@@ -2195,7 +2203,10 @@ func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial
 // caller cancellation surfaces as an error, not a fabricated partial-success 200. Only a
 // deadline (an unreachable instance) degrades to partial results (adversarial review of #2096).
 func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -2220,11 +2231,12 @@ func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
 	// Cancel while inst1's health probe is in flight so the loop observes a genuine
 	// caller cancellation rather than the shared-deadline timeout.
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-arrived
 		cancel()
 	}()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
 	assert.Nil(t, resp)
@@ -2234,7 +2246,10 @@ func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
 // top-of-loop check can't: a single (last) instance whose fetch is interrupted by caller
 // cancellation must return the error, not a masked partial-success 200 (review of #2096).
 func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -2255,11 +2270,12 @@ func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *
 	callCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-arrived
 		cancel()
 	}()
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+	// The stream read: a poll skips these clients, because they have no data.
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
 	assert.Nil(t, resp)
@@ -2268,75 +2284,67 @@ func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *
 func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing.T) {
 	t.Parallel()
 
-	var maindataCalls atomic.Int32
-	firstSyncStarted := make(chan struct{})
-	releaseFirstSync := make(chan struct{})
-	var startedOnce sync.Once
+	// A go-qbittorrent sync manager starts a cache goroutine that never ends,
+	// so it must not start inside the bubble.
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	qbtSync := qbtClient.NewSyncManager(qbt.DefaultSyncOptions())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/sync/maindata":
-			if maindataCalls.Add(1) == 1 {
-				startedOnce.Do(func() { close(firstSyncStarted) })
-				<-releaseFirstSync
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		firstSyncStarted := make(chan struct{})
+		releaseFirstSync := make(chan struct{})
+
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				if maindataCalls.Add(1) == 1 {
+					close(firstSyncStarted)
+					<-releaseFirstSync
+				}
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
 			}
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.16.0"))
-		default:
-			http.NotFound(w, r)
+		}))
+
+		client := &Client{
+			Client:      qbtClient,
+			syncManager: qbtSync,
 		}
-	}))
-	defer srv.Close()
 
-	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
-	syncOpts := qbt.DefaultSyncOptions()
-	syncOpts.DynamicSync = true
-	client := &Client{
-		Client:      qbtClient,
-		syncManager: qbtClient.NewSyncManager(syncOpts),
-	}
+		sm := &SyncManager{
+			syncDebounceDelay:     time.Millisecond,
+			syncDebounceMinJitter: time.Millisecond,
+		}
 
-	sm := &SyncManager{
-		syncDebounceDelay:     time.Millisecond,
-		syncDebounceMinJitter: time.Millisecond,
-	}
+		// A periodic-style sync that started BEFORE the mutation and is still in
+		// flight when the debounced post-modification sync fires.
+		leaderDone := make(chan struct{})
+		go func() {
+			defer close(leaderDone)
+			_ = client.GetSyncManager().Sync(context.Background())
+		}()
 
-	// A periodic-style sync that started BEFORE the mutation and is still in
-	// flight when the debounced post-modification sync fires.
-	leaderDone := make(chan struct{})
-	go func() {
-		defer close(leaderDone)
-		_ = client.GetSyncManager().Sync(context.Background())
-	}()
+		<-firstSyncStarted
 
-	select {
-	case <-firstSyncStarted:
-	case <-time.After(time.Second):
-		t.Fatal("leader sync never started")
-	}
+		// The mutation happens now. Its debounced sync joins the in-flight leader
+		// via go-qbt's singleflight and inherits the pre-mutation snapshot.
+		sm.syncAfterModification(1, client, "test")
 
-	// The mutation happens now. Its debounced sync joins the in-flight leader
-	// via go-qbt's singleflight and inherits the pre-mutation snapshot.
-	sm.syncAfterModification(1, client, "test")
+		// Let the debounced timer (1ms delay + 1ms jitter) fire and join the
+		// in-flight leader before the leader is released.
+		time.Sleep(100 * time.Millisecond)
+		close(releaseFirstSync)
+		<-leaderDone
 
-	// Let the debounced timer (1ms delay + 1ms jitter) fire and join the
-	// in-flight leader before the leader is released.
-	time.Sleep(100 * time.Millisecond)
-	close(releaseFirstSync)
-
-	select {
-	case <-leaderDone:
-	case <-time.After(time.Second):
-		t.Fatal("leader sync never finished")
-	}
-
-	// The post-modification sync must issue a maindata fetch that STARTS after
-	// the mutation; the collapsed leader's data predates it.
-	require.Eventually(t, func() bool {
-		return maindataCalls.Load() >= 2
-	}, time.Second, 5*time.Millisecond,
-		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+		// The post-modification sync must issue a maindata fetch that STARTS after
+		// the mutation; the collapsed leader's data predates it.
+		synctest.Wait()
+		require.GreaterOrEqual(t, maindataCalls.Load(), int32(2),
+			"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+	})
 }
 
 // debouncedSyncTimes records when each debounced sync runs. With no client
@@ -3230,76 +3238,71 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 	t.Parallel()
 
-	var maindataCalls atomic.Int32
-	leaderReceived := make(chan struct{})
-	releaseLeader := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/sync/maindata":
-			switch maindataCalls.Add(1) {
-			case 1:
-				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
-			case 2:
-				// The leader reached the server before bb22 was added.
-				close(leaderReceived)
-				<-releaseLeader
-				_, _ = w.Write([]byte(`{"rid":2}`))
-			default:
-				_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
-			}
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.16.0"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer srv.Close()
-
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	ctx := t.Context()
-	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	// The go-qbittorrent and qui sync managers start cache goroutines that never
+	// end, so they must not start inside the bubble.
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
 	client := &Client{
 		Client:      qbtClient,
-		instanceID:  inst.ID,
+		instanceID:  1,
 		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
-	require.NoError(t, client.syncManager.Sync(ctx))
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 
-	pool.mu.Lock()
-	pool.clients[inst.ID] = client
-	pool.mu.Unlock()
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		leaderReceived := make(chan struct{})
+		releaseLeader := make(chan struct{})
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				switch maindataCalls.Add(1) {
+				case 1:
+					_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
+				case 2:
+					// The leader reached the server before bb22 was added.
+					close(leaderReceived)
+					<-releaseLeader
+					_, _ = w.Write([]byte(`{"rid":2}`))
+				default:
+					_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
+				}
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
 
-	leaderDone := make(chan error, 1)
-	go func() { leaderDone <- client.syncManager.Sync(ctx) }()
-	<-leaderReceived
+		ctx := t.Context()
+		require.NoError(t, client.syncManager.Sync(ctx))
 
-	type result struct {
-		torrents []qbt.Torrent
-		err      error
-	}
-	readDone := make(chan result, 1)
-	go func() {
-		torrents, err := NewSyncManager(pool, nil).GetTorrentsFresh(ctx, inst.ID, qbt.TorrentFilterOptions{})
-		readDone <- result{torrents, err}
-	}()
-	// Give the read time to join the blocked leader before it returns.
-	time.Sleep(100 * time.Millisecond)
-	close(releaseLeader)
+		leaderDone := make(chan error, 1)
+		go func() { leaderDone <- client.syncManager.Sync(ctx) }()
+		<-leaderReceived
 
-	require.NoError(t, <-leaderDone)
-	res := <-readDone
-	require.NoError(t, res.err)
-	hashes := make([]string, 0, len(res.torrents))
-	for _, torrent := range res.torrents {
-		hashes = append(hashes, torrent.Hash)
-	}
-	require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
+		type result struct {
+			torrents []qbt.Torrent
+			err      error
+		}
+		readDone := make(chan result, 1)
+		go func() {
+			torrents, err := sm.GetTorrentsFresh(ctx, 1, qbt.TorrentFilterOptions{})
+			readDone <- result{torrents, err}
+		}()
+		// Let the read join the blocked leader before it returns.
+		synctest.Wait()
+		close(releaseLeader)
+
+		require.NoError(t, <-leaderDone)
+		res := <-readDone
+		require.NoError(t, res.err)
+		hashes := make([]string, 0, len(res.torrents))
+		for _, torrent := range res.torrents {
+			hashes = append(hashes, torrent.Hash)
+		}
+		require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
+	})
 }
 
 // Automation rules delete on what GetAllTorrents returns, so a pass must not
@@ -3307,59 +3310,52 @@ func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 	t.Parallel()
 
-	var maindataCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/sync/maindata":
-			if maindataCalls.Add(1) == 1 {
-				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"keep"}}}`))
-				return
-			}
-			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":""}}}`))
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.16.0"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer srv.Close()
-
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	ctx := t.Context()
-	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	// The go-qbittorrent and qui sync managers start cache goroutines that never
+	// end, so they must not start inside the bubble.
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
 	client := &Client{
 		Client:            qbtClient,
-		instanceID:        inst.ID,
+		instanceID:        1,
 		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
 	}
 	client.updateHealthStatus(true)
-	require.NoError(t, client.syncManager.Sync(ctx))
+	syncManager := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 
-	pool.mu.Lock()
-	pool.clients[inst.ID] = client
-	pool.mu.Unlock()
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				if maindataCalls.Add(1) == 1 {
+					_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"keep"}}}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":""}}}`))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
 
-	syncManager := NewSyncManager(pool, nil)
+		ctx := t.Context()
+		require.NoError(t, client.syncManager.Sync(ctx))
 
-	torrents, err := syncManager.GetAllTorrents(ctx, inst.ID)
-	require.NoError(t, err)
-	require.Len(t, torrents, 1)
-	require.Equal(t, "keep", torrents[0].Tags)
-	require.Equal(t, int32(1), maindataCalls.Load(), "a warm cache must not cost a request")
+		torrents, err := syncManager.GetAllTorrents(ctx, 1)
+		require.NoError(t, err)
+		require.Len(t, torrents, 1)
+		require.Equal(t, "keep", torrents[0].Tags)
+		require.Equal(t, int32(1), maindataCalls.Load(), "a warm cache must not cost a request")
 
-	time.Sleep(torrentResponseFreshWindow + 100*time.Millisecond)
+		time.Sleep(torrentResponseFreshWindow + 100*time.Millisecond)
 
-	torrents, err = syncManager.GetAllTorrents(ctx, inst.ID)
-	require.NoError(t, err)
-	require.Len(t, torrents, 1)
-	require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")
-	require.Equal(t, int32(2), maindataCalls.Load())
+		torrents, err = syncManager.GetAllTorrents(ctx, 1)
+		require.NoError(t, err)
+		require.Len(t, torrents, 1)
+		require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")
+		require.Equal(t, int32(2), maindataCalls.Load())
+	})
 }
 
 // Add Tags rejects on a cache miss, so a torrent added outside qui since the
@@ -3466,72 +3462,64 @@ func TestSetTagsFallbackRemovesTagsAddedSinceTheLastSync(t *testing.T) {
 	}
 }
 
-// Directory scan starts one ResumeWhenComplete poller per injected torrent.
+// Each ResumeWhenComplete call starts its own poller, for example one per backup restore.
 // The pollers must share the sync instead of each fetching maindata on its own
 // schedule.
 func TestResumeWhenCompletePollersShareSync(t *testing.T) {
 	t.Parallel()
 
-	const (
-		pollers  = 20
-		interval = 50 * time.Millisecond
-		timeout  = 500 * time.Millisecond
-	)
-
-	torrents := make([]string, 0, pollers)
-	hashes := make([]string, 0, pollers)
-	for i := range pollers {
-		hash := fmt.Sprintf("%040x", i+1)
-		hashes = append(hashes, hash)
-		torrents = append(torrents, fmt.Sprintf(`%q: {"name":"t%d", "state":"checkingUP", "amount_left": 0}`, hash, i))
-	}
-	maindata := `{"rid":1,"full_update":true,"torrents":{` + strings.Join(torrents, ",") + `}}`
-
-	var maindataCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/sync/maindata":
-			maindataCalls.Add(1)
-			_, _ = w.Write([]byte(maindata))
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.16.0"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer srv.Close()
-
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	ctx := t.Context()
-	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	// The go-qbittorrent and qui sync managers start cache goroutines that never
+	// end, so they must not start inside the bubble.
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
 	client := &Client{
 		Client:      qbtClient,
-		instanceID:  inst.ID,
+		instanceID:  1,
 		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 
-	pool.mu.Lock()
-	pool.clients[inst.ID] = client
-	pool.mu.Unlock()
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			pollers  = 20
+			interval = 50 * time.Millisecond
+			timeout  = 500 * time.Millisecond
+		)
 
-	sm := NewSyncManager(pool, nil)
-	// Directory scan injects torrents one by one, so the pollers tick out of step.
-	for _, hash := range hashes {
-		sm.ResumeWhenComplete(inst.ID, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: interval, Timeout: timeout})
-		time.Sleep(interval / pollers)
-	}
+		torrents := make([]string, 0, pollers)
+		hashes := make([]string, 0, pollers)
+		for i := range pollers {
+			hash := fmt.Sprintf("%040x", i+1)
+			hashes = append(hashes, hash)
+			torrents = append(torrents, fmt.Sprintf(`%q: {"name":"t%d", "state":"checkingUP", "amount_left": 0}`, hash, i))
+		}
+		maindata := `{"rid":1,"full_update":true,"torrents":{` + strings.Join(torrents, ",") + `}}`
 
-	time.Sleep(timeout + 100*time.Millisecond)
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				maindataCalls.Add(1)
+				_, _ = w.Write([]byte(maindata))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
 
-	// About one fetch per interval; one per poller per interval would be ~200.
-	require.LessOrEqual(t, int(maindataCalls.Load()), 3*int(timeout/interval))
-	require.GreaterOrEqual(t, int(maindataCalls.Load()), 3)
+		// Directory scan injects torrents one by one, so the pollers tick out of step.
+		for _, hash := range hashes {
+			sm.ResumeWhenComplete(1, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: interval, Timeout: timeout})
+			time.Sleep(interval / pollers)
+		}
+
+		time.Sleep(timeout + 100*time.Millisecond)
+
+		// About one fetch per interval; one per poller per interval would be ~200.
+		require.LessOrEqual(t, int(maindataCalls.Load()), 3*int(timeout/interval))
+		require.GreaterOrEqual(t, int(maindataCalls.Load()), 3)
+	})
 }
 
 func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
@@ -3540,52 +3528,51 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 	const hash = "0000000000000000000000000000000000000001"
 	maindata := `{"rid":1,"full_update":true,"torrents":{"` + hash + `": {"name":"t", "state":"stoppedUP", "amount_left": 0}}}`
 
-	var maindataCalls atomic.Int32
-	var callsAtResume atomic.Int32
-	callsAtResume.Store(-1)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/sync/maindata":
-			// A slow maindata makes the poller's next tick see a sync younger than the interval.
-			time.Sleep(30 * time.Millisecond)
-			maindataCalls.Add(1)
-			_, _ = w.Write([]byte(maindata))
-		case "/api/v2/torrents/start", "/api/v2/torrents/resume":
-			callsAtResume.CompareAndSwap(-1, maindataCalls.Load())
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.16.0"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer srv.Close()
-
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	inst, err := pool.instanceStore.Create(t.Context(), "mock", srv.URL, "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	// The go-qbittorrent and qui sync managers and the optimistic update cache
+	// start goroutines that never end, so they must not start inside the bubble.
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
 	client := &Client{
 		Client:            qbtClient,
-		instanceID:        inst.ID,
+		instanceID:        1,
 		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](ttlcache.SetDefaultTTL(30 * time.Second)),
 	}
 	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 
-	pool.mu.Lock()
-	pool.clients[inst.ID] = client
-	pool.mu.Unlock()
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 2 * time.Second
+		var maindataCalls atomic.Int32
+		var callsAtResume atomic.Int32
+		callsAtResume.Store(-1)
+		resumed := make(chan struct{})
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				// A slow maindata makes the poller's next tick see a sync younger than the interval.
+				time.Sleep(30 * time.Millisecond)
+				maindataCalls.Add(1)
+				_, _ = w.Write([]byte(maindata))
+			case "/api/v2/torrents/start", "/api/v2/torrents/resume":
+				if callsAtResume.CompareAndSwap(-1, maindataCalls.Load()) {
+					close(resumed)
+				}
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
 
-	// A sync from before the call, like the cache before a directory scan recheck, must not count as a poll.
-	require.NoError(t, client.syncManager.Sync(t.Context()))
-	callsBefore := int(maindataCalls.Load())
+		// A sync from before the call, like the cache before a directory scan recheck, must not count as a poll.
+		require.NoError(t, client.syncManager.Sync(t.Context()))
+		callsBefore := int(maindataCalls.Load())
 
-	sm := NewSyncManager(pool, nil)
-	sm.ResumeWhenComplete(inst.ID, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: 100 * time.Millisecond, Timeout: 2 * time.Second})
+		sm.ResumeWhenComplete(1, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: 100 * time.Millisecond, Timeout: timeout})
+		// Let the poller end before the bubble does.
+		t.Cleanup(func() { time.Sleep(timeout) })
 
-	require.Eventually(t, func() bool { return callsAtResume.Load() >= 0 }, 3*time.Second, 10*time.Millisecond)
-	require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
+		<-resumed
+		require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
+	})
 }

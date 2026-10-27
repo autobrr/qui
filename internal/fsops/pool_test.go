@@ -49,6 +49,7 @@ func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, erro
 	return false, nil
 }
 func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Mkdir(context.Context, string, fs.FileMode) error    { return nil }
 func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
 	return nil
 }
@@ -187,18 +188,10 @@ func TestPool_RequireGrantsByMode(t *testing.T) {
 		capability  models.FilesystemCapability
 		wantBackend Backend
 	}{
-		{1, models.CapabilityRead, local},
-		{1, models.CapabilityIdentity, local},
-		{1, models.CapabilityWrite, local},
+		// TestFilesystemCapabilitiesOf in models holds the full capability matrix.
 		{1, models.CapabilityContent, local},
 		{2, models.CapabilityRead, nil},
-		{2, models.CapabilityIdentity, nil},
-		{2, models.CapabilityWrite, nil},
-		{2, models.CapabilityContent, nil},
-		{3, models.CapabilityRead, remote},
-		{3, models.CapabilityIdentity, nil},
 		{3, models.CapabilityWrite, remote},
-		{3, models.CapabilityContent, nil},
 	} {
 		store := &fakeInstanceStore{instances: instances}
 		pool := NewPoolWithRemote(store, local, remoteFactory(remote))

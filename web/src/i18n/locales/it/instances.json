@@ -714,8 +714,8 @@
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
       "noLocalAccess": "Nessun accesso locale",
       "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
-      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote.",
-      "remoteNoIdentity": "Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
+      "remoteLimits": "L'eliminazione e la pulizia automatica su un'istanza remota richiedono l'identità dei file, che qui può leggere solo se il server gli consente di eseguire GNU find e stat.",
+      "remoteNoIdentity": "Questa istanza remota non lo consente, quindi qui non riconosce quando due percorsi sono lo stesso file e un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa. Le scansioni qui si possono visualizzare ed esportare, ma non eliminare.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolleranza {{grace}}min",
@@ -727,7 +727,7 @@
       "cancel": "Annulla",
       "autoCleanupEnabled": "Pulizia automatica abilitata (≤{{max}} file)",
       "autoCleanupDisabled": "Pulizia automatica disabilitata",
-      "autoCleanupRemote": "Nessuna pulizia automatica sulle istanze remote",
+      "autoCleanupRemote": "Nessuna pulizia automatica su questa istanza remota",
       "pathsIgnored_one": " · {{count}} percorso ignorato",
       "pathsIgnored_other": " · {{count}} percorsi ignorati",
       "scanNow": "Scansiona ora",
@@ -788,7 +788,7 @@
       "exportCSV": "Esporta CSV",
       "close": "Chiudi",
       "deleteItems": "Elimina",
-      "remoteDeleteUnavailable": "Questa scansione è stata eseguita su un'istanza remota, dove l'eliminazione non è ancora supportata. Esporta l'elenco per rimuovere tu stesso i file sul server.",
+      "remoteDeleteUnavailable": "Questa scansione non può eliminare, perché l'istanza remota non fornisce l'identità dei file o la scansione non è riuscita a leggerla per ogni file. Esporta l'elenco per rimuovere tu stesso i file sul server.",
       "toast": {
         "deletionStarted": "Eliminazione avviata",
         "deletionDescription": "I file orfani e le cartelle abbandonate sono in fase di rimozione",
@@ -1766,11 +1766,9 @@
       "lastBackup": "Ultimo backup",
       "loading": "Caricamento...",
       "progress": "{{current}} di {{total}} torrent ({{percentage}}%)",
-      "status": "Stato: {{status}}",
       "noBackupsYet": "Nessun backup",
       "nextScheduledBackup": "Prossimo backup pianificato",
       "loadingSchedule": "Caricamento della pianificazione...",
-      "instance": "Istanza",
       "automaticBackupsOff": "I backup automatici sono disattivati per questa istanza.",
       "enableCadenceToSchedule": "Abilita almeno una cadenza automatica per pianificare i backup.",
       "currentlyRunning": "Il backup è attualmente in esecuzione.",
@@ -1794,6 +1792,7 @@
       "schedule": {
         "title": "Cadenze automatiche",
         "description": "Le esecuzioni orarie, giornaliere, settimanali e mensili iniziano dopo che il backup precedente è terminato e il loro intervallo è trascorso. Lasciale tutte disattivate se attivi i backup solo manualmente.",
+        "keep": "Mantieni",
         "hourly": "Ogni ora",
         "hourlyDescription": "Quanti snapshot orari conservare prima che i più vecchi vengano eliminati.",
         "hourlyTooltip": "Viene eseguito circa una volta all'ora quando i backup sono abilitati ed è trascorsa almeno un'ora dall'ultima esecuzione.",
@@ -1812,8 +1811,7 @@
         "saveChanges": "Salva modifiche",
         "saveAll": "Salva le modifiche su tutte le istanze",
         "requiresCadence": "Seleziona almeno una cadenza (oraria, giornaliera, settimanale o mensile) prima di salvare.",
-        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze.",
-        "changesApplyImmediately": "Le modifiche si applicano ai backup futuri non appena salvi."
+        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze."
       }
     },
     "restore": {
