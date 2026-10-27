@@ -117,10 +117,28 @@ func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
+	// The connection event goes out, and the init write fails.
+	topics, ok := manager.onSession(&erroringResponseWriter{okFlushes: 1}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+}
+
+func TestOnSessionAbortsWhenConnectionWriteFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	ctx := sessionContext(t, manager, "failing-connection")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
 	topics, ok := manager.onSession(&erroringResponseWriter{}, req)
 
 	require.False(t, ok)
 	require.Nil(t, topics)
+	require.Zero(t, manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load(), "no init write follows the failed connection event")
 }
 
 func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
@@ -133,13 +151,13 @@ func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
-	topics, ok := manager.onSession(&flushErrorResponseWriter{}, req)
+	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)
 
 	require.False(t, ok)
 	require.Nil(t, topics)
-	require.Equal(t, uint64(0), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
 	require.Equal(t, uint64(1), manager.eventsDropped.Load())
-	requireSSEPayloadFlushLog(t, logs.String(), streamEventConnection)
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
 }
 
 func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
@@ -150,7 +168,7 @@ func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 
 	ctx := sessionContext(t, manager, "failing-buffered-flush")
 
-	rw := &flushErrorResponseWriter{}
+	rw := &flushErrorResponseWriter{okFlushes: 1}
 	bw := newBufferedSessionWriter(rw, http.NewResponseController(rw), streamWriteTimeout, func() {})
 	t.Cleanup(bw.Close)
 
@@ -162,9 +180,26 @@ func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 	require.False(t, ok)
 	require.Nil(t, topics)
 	require.False(t, bw.buffered.Load())
-	require.Equal(t, uint64(0), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
 	require.Equal(t, uint64(1), manager.eventsDropped.Load())
-	requireSSEPayloadFlushLog(t, logs.String(), streamEventConnection)
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+}
+
+func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true))
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventHeartbeat)
 }
 
 func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
@@ -243,11 +278,12 @@ func quoteJSONString(s string) string {
 	return fmt.Sprintf("%q", s)
 }
 
-// erroringResponseWriter is a fake socket whose Write always fails, used to drive
-// the drain goroutine's write-error drop path — the mechanism that drops a stuck-
-// then-erroring client when its rolling streamWriteTimeout deadline fires.
+// erroringResponseWriter is a fake socket whose writes fail after okFlushes
+// flushes. With no okFlushes it drives the drain goroutine's write-error drop
+// path, which drops a client whose rolling streamWriteTimeout deadline fires.
 type erroringResponseWriter struct {
-	header http.Header
+	header    http.Header
+	okFlushes int
 }
 
 func (w *erroringResponseWriter) Header() http.Header {
@@ -257,16 +293,21 @@ func (w *erroringResponseWriter) Header() http.Header {
 	return w.header
 }
 
-func (w *erroringResponseWriter) Write([]byte) (int, error) {
+func (w *erroringResponseWriter) Write(p []byte) (int, error) {
+	if w.okFlushes > 0 {
+		return len(p), nil
+	}
 	return 0, errors.New("socket write failed")
 }
 
 func (w *erroringResponseWriter) WriteHeader(int) {}
 
-func (w *erroringResponseWriter) Flush() {}
+func (w *erroringResponseWriter) Flush() { w.okFlushes-- }
 
+// flushErrorResponseWriter fails each flush after the first okFlushes.
 type flushErrorResponseWriter struct {
-	header http.Header
+	header    http.Header
+	okFlushes int
 }
 
 func (w *flushErrorResponseWriter) Header() http.Header {
@@ -283,8 +324,15 @@ func (w *flushErrorResponseWriter) Write(p []byte) (int, error) {
 func (w *flushErrorResponseWriter) WriteHeader(int) {}
 
 func (w *flushErrorResponseWriter) Flush() error {
+	if w.okFlushes > 0 {
+		w.okFlushes--
+		return nil
+	}
 	return errors.New("socket flush failed")
 }
+
+// FlushError lets http.ResponseController reach Flush.
+func (w *flushErrorResponseWriter) FlushError() error { return w.Flush() }
 
 // TestDrainDropsOnWriteError covers the drain goroutine's error path (distinct
 // from the Flush queue-overflow drop): when a queued socket write fails, the
