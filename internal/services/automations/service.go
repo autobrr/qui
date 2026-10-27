@@ -1521,7 +1521,7 @@ func (s *Service) buildMatchPreviewResult(
 
 // PreviewTagRule returns torrents whose tags would change under the given
 // rule's tag actions. Actions flagged with includeCrossSeeds also pull in
-// cross-seed siblings (same content + save path group), reported via IsCrossSeed.
+// cross-seed siblings (torrents that share a file on disk), reported via IsCrossSeed.
 func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
@@ -2055,10 +2055,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			torrentByHash[t.Hash] = t
 		}
 	}
-
-	// Expand pending tag decisions onto cross-seed siblings before the run plan
-	// below, so dry-run and live execution see identical tag changes.
-	expandTagStatesForCrossSeeds(states, ruleByID, crossSeeds)
 
 	deleteHashesByMode := make(map[string][]string)
 	for _, hash := range deletions.order {

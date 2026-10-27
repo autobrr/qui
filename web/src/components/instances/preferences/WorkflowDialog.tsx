@@ -1676,7 +1676,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [])
 
-  // Check if current form state represents a delete or category rule (both need previews)
+  // Delete, category and tag rules need previews
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
   // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)

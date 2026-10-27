@@ -119,6 +119,8 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
 	}
+	// Injected sibling states go through the same delete skips below.
+	expandTagStatesForCrossSeeds(states, in.ruleByID, in.crossSeeds)
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {
