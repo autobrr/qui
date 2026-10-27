@@ -529,7 +529,6 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 
 		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
-			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
 			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
@@ -630,39 +629,6 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 	}
 
 	RespondJSON(w, http.StatusOK, torrentInfo)
-}
-
-// GetAsyncFilteringStatus godoc
-// @Summary Get async filtering status for a torrent
-// @Description Returns the current status of async indexer filtering for a torrent, including whether content filtering has completed
-// @Tags cross-seed
-// @Produce json
-// @Param instanceID path int true "Instance ID"
-// @Param hash path string true "Torrent hash"
-// @Success 200 {object} crossseed.AsyncIndexerFilteringState
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/cross-seed/torrents/{instanceID}/{hash}/async-status [get]
-func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *http.Request) {
-	instanceID, hash, ok := parseTorrentParams(w, r)
-	if !ok {
-		return
-	}
-
-	filteringState, err := h.service.GetAsyncFilteringStatus(r.Context(), instanceID, hash)
-	if err != nil {
-		status := mapCrossSeedErrorStatus(err)
-		log.Error().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get async filtering status")
-		RespondError(w, status, err.Error())
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, filteringState)
 }
 
 // GetLocalMatches godoc

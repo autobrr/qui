@@ -257,6 +257,10 @@ func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 
 func (c *Client) request(ctx context.Context, method, endpoint string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
+		if ctx.Err() == nil {
+			// Wait fails at once when the queue would pass the deadline of ctx.
+			err = fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+		}
 		return nil, 0, fmt.Errorf("rate limit wait failed: %w", err)
 	}
 	reqURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(c.baseURL, "/"), endpoint)
@@ -337,6 +341,8 @@ func isAccessDeniedText(text string) bool {
 	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
+// SearchByHash looks up one hash. The Gazelle torrent action takes one hash per
+// call and browse has no hash param, so each legacy flag costs one more request.
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
 	params := url.Values{}
 	params.Set("hash", strings.ToUpper(hash))

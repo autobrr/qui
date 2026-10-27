@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
-
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type directoryReadCounter struct {
@@ -57,12 +56,12 @@ func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
 			backdate(t, dir)
 
 			backend := &directoryReadCounter{Backend: newTestBackend()}
-			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(), nil, time.Hour, backend)
+			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), time.Hour, backend, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			backend.reads = 0
-			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, time.Hour, backend)
+			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), time.Hour, backend)
 			if len(got) != tt.wantDirs || backend.reads != tt.wantReads {
 				t.Fatalf("directories = %v, reads = %d; want %d directories and %d reads", got, backend.reads, tt.wantDirs, tt.wantReads)
 			}
@@ -97,12 +96,12 @@ func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePat
 	t.Helper()
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), ignorePaths, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, ignorePaths, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, ignorePaths, categoryPaths, 0, backend)
+	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, categoryPaths, newTestProtected(t, fsops.HostPaths, ignorePaths, nil), 0, backend)
 	paths := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		if !c.IsAbandonedDir {
@@ -136,7 +135,7 @@ func TestAbandonedDirs_EmptyTreeIsRemovedDeepestFirst(t *testing.T) {
 	// before the one that contains it, so each is empty when its turn comes.
 	for i, dir := range got {
 		for _, earlier := range got[:i] {
-			if isPathUnderNormalized(normalizePath(dir), normalizePath(earlier)) {
+			if isPathUnderNormalized(fsops.HostPaths, fsops.NormalizePath(fsops.HostPaths, dir), fsops.NormalizePath(fsops.HostPaths, earlier)) {
 				t.Fatalf("%q is listed after its own parent %q", dir, earlier)
 			}
 		}
@@ -174,16 +173,16 @@ func TestAbandonedDirs_DirectoryHoldingAKeptFileIsKept(t *testing.T) {
 	mkdirs(t, root, "gone")
 
 	backend := newTestBackend()
-	tfm := NewTorrentFileMap()
-	tfm.Add(normalizePath(owned))
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, owned))
 
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
 	got := make([]string, 0, len(dirs))
-	for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+	for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend) {
 		got = append(got, c.Path)
 	}
 
@@ -222,19 +221,19 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 			backup := filepath.Join(bdmv, "BACKUP")
 			mkdirs(t, root, filepath.Join("Feature", "BDMV", "BACKUP"))
 
-			tfm := NewTorrentFileMap()
+			tfm := NewTorrentFileMap(fsops.HostPaths)
 			if tt.owned != "" {
-				tfm.Add(normalizePath(filepath.Join(bdmv, tt.owned)))
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, filepath.Join(bdmv, tt.owned)))
 			}
 
 			backend := newTestBackend()
-			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 			if err != nil {
 				t.Fatalf("walk: %v", err)
 			}
 
 			got := make([]string, 0, len(dirs))
-			for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+			for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend) {
 				got = append(got, c.Path)
 			}
 			if slices.Contains(got, backup) != tt.wantBackup {
@@ -242,7 +241,7 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 			}
 			if tt.owned == "" {
 				for _, c := range got {
-					if c == filepath.Join(root, "Feature") || isPathUnderNormalized(normalizePath(c), normalizePath(filepath.Join(root, "Feature"))) {
+					if c == filepath.Join(root, "Feature") || isPathUnderNormalized(fsops.HostPaths, fsops.NormalizePath(fsops.HostPaths, c), fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "Feature"))) {
 						t.Fatalf("%q is inside the deleted unit and must not be listed separately: %v", c, got)
 					}
 				}
@@ -262,12 +261,12 @@ func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
 	writeFile(t, filepath.Join(nested, "stale.mkv"))
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root, nested}, nil, nil, 0, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root, nested}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend)
 	if len(got) != 0 {
 		t.Fatalf("a nested scan root must be kept even when it holds only orphans, got %v", got)
 	}
@@ -294,12 +293,12 @@ func TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks(t *testing.T) {
 	}
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend)
 	if len(got) != 0 {
 		t.Fatalf("a directory still holding the symlink must be kept, got %v", got)
 	}
@@ -369,187 +368,57 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	root := mkdirs(t, t.TempDir(), "fresh")
 	backend := newTestBackend()
 
-	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
+	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), nil, []string{root}, nil, nil, time.Hour, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), nil, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), time.Hour, backend)
 	if len(got) != 0 {
 		t.Fatalf("a directory younger than the grace period must be held, got %v", got)
 	}
 }
 
-func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
+// qBittorrent downloads into the download path and each category's download
+// folder again, so the abandoned-directory pass protects them, but they are not
+// scan roots. The category save folders are both.
+func TestDeclaredScanRoots_ProtectsTheDownloadFolders(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
-	archive := filepath.Join(base, "archive")
-
-	tests := []struct {
-		name             string
-		useSubcategories bool
-		categories       map[string]qbt.Category
-		want             []string
-	}{
-		{
-			name:       "absolute save path is used as-is",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: archive}},
-			want:       []string{archive},
-		},
-		{
-			name: "a category with no save path lands under the default save path",
-			// qBittorrent reports an empty savePath for a category that inherits.
-			categories: map[string]qbt.Category{"tv": {Name: "tv", SavePath: ""}},
-			want:       []string{filepath.Join(defaultSavePath, "tv")},
-		},
-		{
-			name:       "a relative save path is taken against the default save path",
-			categories: map[string]qbt.Category{"music": {Name: "music", SavePath: filepath.Join("sorted", "audio")}},
-			want:       []string{filepath.Join(defaultSavePath, "sorted", "audio")},
-		},
-		{
-			name:       "an explicit dot uses the default save path",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: "."}},
-			want:       []string{defaultSavePath},
-		},
-		{
-			name:       "spaces in an explicit save path are preserved",
-			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: " archive "}},
-			want:       []string{filepath.Join(defaultSavePath, " archive ")},
-		},
-		{
-			name:             "a child inherits an explicit dot destination",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: "."},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{defaultSavePath, filepath.Join(defaultSavePath, "hd")},
-		},
-		{
-			name:             "an inheriting subcategory follows its parent, not the default save path",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: archive},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(archive, "hd")},
-		},
-		{
-			name:             "nested inheritance walks the whole parent chain",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"a":     {Name: "a", SavePath: archive},
-				"a/b":   {Name: "a/b", SavePath: ""},
-				"a/b/c": {Name: "a/b/c", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(archive, "b"), filepath.Join(archive, "b", "c")},
-		},
-		{
-			name: "a name qBittorrent cannot use as a directory is converted",
-			// qBittorrent accepts "movies:hd" and creates "movies hd" for it.
-			categories: map[string]qbt.Category{"movies:hd": {Name: "movies:hd", SavePath: ""}},
-			want:       []string{filepath.Join(defaultSavePath, "movies hd")},
-		},
-		{
-			name: "a run of invalid characters collapses into one space",
-			// Utils::Fs::toValidPath replaces [:?"*<>|]+ , so the run is one pad.
-			categories: map[string]qbt.Category{`films:?"x`: {Name: `films:?"x`}},
-			want:       []string{filepath.Join(defaultSavePath, "films x")},
-		},
-		{
-			name:       "a backslash is left alone, since toValidPath does not replace it",
-			categories: map[string]qbt.Category{`a\b`: {Name: `a\b`}},
-			want:       []string{filepath.Join(defaultSavePath, `a\b`)},
-		},
-		{
-			name:             "only the last segment is converted when nesting",
-			useSubcategories: true,
-			categories: map[string]qbt.Category{
-				"movies":     {Name: "movies", SavePath: archive},
-				"movies/h:d": {Name: "movies/h:d"},
-			},
-			want: []string{archive, filepath.Join(archive, "h d")},
-		},
-		{
-			name:             "with subcategories off the whole name is a path under the default save path",
-			useSubcategories: false,
-			categories: map[string]qbt.Category{
-				"movies":    {Name: "movies", SavePath: archive},
-				"movies/hd": {Name: "movies/hd", SavePath: ""},
-			},
-			want: []string{archive, filepath.Join(defaultSavePath, "movies", "hd")},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-				return tt.categories, nil
-			}
-
-			got, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
-			if err != nil {
-				t.Fatalf("categoryPaths: %v", err)
-			}
-
-			want := slices.Clone(tt.want)
-			slices.Sort(want)
-			slices.Sort(got)
-			if !slices.Equal(got, want) {
-				t.Fatalf("categoryPaths = %v, want %v", got, want)
-			}
-		})
-	}
-}
-
-// TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState covers both nesting
-// states through the one accessor. Reading the use_subcategories preference
-// directly would be wrong on qBittorrent 5.2, which dropped it and always
-// inherits through the parent, so the absent field decodes as false.
-func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	defaultSavePath := filepath.Join(base, "torrents")
-	archive := filepath.Join(base, "archive")
+	tv := filepath.Join(defaultSavePath, "tv")
+	tempPath := filepath.Join(base, "incomplete")
+	fast := filepath.Join(base, "fast", "tv")
 
 	for _, tc := range []struct {
-		name                 string
-		subcategoriesEnabled bool
-		want                 string
+		name         string
+		downloadPath string
+		want         []string
 	}{
-		{name: "nesting enabled follows the parent category", subcategoriesEnabled: true, want: filepath.Join(archive, "hd")},
-		{name: "nesting disabled keeps the whole name under the default save path", want: filepath.Join(defaultSavePath, "movies", "hd")},
+		{name: "download path on", downloadPath: tempPath, want: []string{tv, fast, tempPath}},
+		{name: "download path off", want: []string{tv, fast}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) {
-				return tc.subcategoriesEnabled, nil
-			}
-			stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-				return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-			}
-			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-				return map[string]qbt.Category{
-					"movies":    {Name: "movies", SavePath: archive},
-					"movies/hd": {Name: "movies/hd", SavePath: ""},
-				}, nil
-			}
+			stubSync(svc).folders(qbittorrent.InstanceFolders{
+				DefaultSavePath:     defaultSavePath,
+				DownloadPath:        tc.downloadPath,
+				CategorySaveFolders: []string{tv},
+				DownloadFolders:     []string{fast},
+			})
 
-			_, protected, err := svc.declaredScanRoots(context.Background(), 1, scanScope{AbandonedDirs: true})
+			roots, protected, err := svc.declaredScanRoots(t.Context(), fsops.HostPaths, 1, scanScope{CategoryPaths: true, AbandonedDirs: true})
 			if err != nil {
 				t.Fatalf("declaredScanRoots: %v", err)
 			}
-			if !slices.Contains(protected, tc.want) {
-				t.Fatalf("protected = %v, want %q", protected, tc.want)
+			if !slices.Equal(roots, []string{tv}) {
+				t.Fatalf("roots = %v, want only the category save folder", roots)
+			}
+			if !slices.Equal(protected, tc.want) {
+				t.Fatalf("protected = %v, want %v", protected, tc.want)
 			}
 		})
 	}

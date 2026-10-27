@@ -4,14 +4,13 @@
 package sse
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"hash/fnv"
 	"maps"
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -63,29 +62,23 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 
 	// Nil edge-triggered fields mean "no update", not "clear". Reconstruct the
 	// complete snapshot represented by this frame before retaining it for joiners.
-	// Explicit JSON null remains non-nil and therefore still clears preferences.
 	snapshot := *resp
 	detachSnapshotRows(&snapshot)
-	if g.baselineSnapshot != nil {
-		if snapshot.AppPreferences == nil {
-			snapshot.AppPreferences = g.baselineSnapshot.AppPreferences
-		}
-		if snapshot.Counts == nil {
-			snapshot.Counts = g.baselineSnapshot.Counts
-		}
+	if g.baselineSnapshot != nil && snapshot.Counts == nil {
+		snapshot.Counts = g.baselineSnapshot.Counts
 	}
 
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
-	var prevPrefs json.RawMessage
 	var prevCounts *qbittorrent.TorrentCounts
 	if g.baselineSnapshot != nil {
-		prevPrefs = g.baselineSnapshot.AppPreferences
 		prevCounts = g.baselineSnapshot.Counts
 	}
 	g.baselineFP = newFP
 	g.baselineOrder = order
 	g.baselineSnapshot = &snapshot
+	g.rebuildFailed = false
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	if forceFull {
@@ -101,13 +94,6 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// replaces the row slice with just the added/changed rows. Aggregate pointers are
 	// shared read-only.
 	deltaResp := *resp
-
-	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
-	if bytes.Equal(snapshot.AppPreferences, prevPrefs) {
-		deltaResp.AppPreferences = nil
-	} else {
-		deltaResp.AppPreferences = snapshot.AppPreferences
-	}
 
 	// Several KB per tick on an instance with many categories, tags and trackers,
 	// and unchanged whenever the library is; the client keeps its cached copy.
@@ -137,6 +123,69 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		Type:    streamEventDelta,
 		Data:    &deltaResp,
 		Delta:   delta,
+		Meta:    meta,
+		Version: new(g.version),
+	}
+}
+
+// buildServerStatePayload sends a new server state with the rows and counts of the
+// last frame, as a delta with no changed rows. A nil serverState keeps the server
+// state of the last frame, for an idle tick. It returns nil when the view must
+// be rebuilt: the group has no baseline yet, the last rebuild failed, or the
+// subcategory mode changed, which changes the category counts.
+func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	prev := g.baselineSnapshot
+	if prev == nil || g.rebuildFailed {
+		return nil
+	}
+	if serverState == nil {
+		serverState = prev.ServerState
+	} else if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+		return nil
+	}
+
+	snapshot := *prev
+	snapshot.ServerState = serverState
+	snapshot.InstanceMeta = instanceMeta
+	snapshot.ActiveTaskCount = activeTaskCount
+	// The tick comes from a successful sync, so the rows are fresh again.
+	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
+	return g.resendBaselineLocked(snapshot, meta)
+}
+
+// buildIdlePayload sends the last frame of a cross-instance view again, as a delta
+// with no changed rows. It returns nil when the view must be rebuilt: the group
+// has no baseline yet, or the last rebuild failed.
+func (g *subscriptionGroup) buildIdlePayload(meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	if g.baselineSnapshot == nil || g.rebuildFailed {
+		return nil
+	}
+	return g.resendBaselineLocked(*g.baselineSnapshot, meta)
+}
+
+// resendBaselineLocked keeps snapshot as the baseline and returns it as a delta
+// with no changed rows. The caller holds baselineMu.
+func (g *subscriptionGroup) resendBaselineLocked(snapshot qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
+	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
+	baseVersion := g.version
+	g.version.Minor++
+
+	deltaResp := snapshot
+	deltaResp.Torrents = nil
+	deltaResp.CrossInstanceTorrents = nil
+	deltaResp.Counts = nil
+
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   &StreamDelta{BaseVersion: baseVersion},
 		Meta:    meta,
 		Version: new(g.version),
 	}
@@ -178,6 +227,7 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	snapshot := *resp
 	detachSnapshotRows(&snapshot)
 	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	return &StreamPayload{

@@ -46,7 +46,7 @@
     "tasksForInstance": "Úlohy pro instanci",
     "settingsForInstance": "Nastavení pro instanci",
     "clearSearch": "Vymazat hledání",
-    "searchTorrents": "Hledat torrenty... ({{shortcutKey}})",
+    "searchTorrents": "Hledat torrenty...",
     "globPattern": "Vzorové hledání...",
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Hledá název, kategorii a tagy",
     "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
     "smartSearchAuto": "Automaticky hledá po 500ms pauze",
+    "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
@@ -158,7 +159,6 @@
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
-    "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
   },
   "pwaUpdate": {
@@ -192,8 +192,7 @@
     "trigger": "Více informací"
   },
   "numberInput": {
-    "unlimited": "Neomezené",
-    "useUnlimited": " (použij -1 pro neomezené)"
+    "unlimited": "Neomezené"
   },
   "dateTime": {
     "na": "N/A",
@@ -225,6 +224,25 @@
       "year_few": "{{count}} roky",
       "year_other": "{{count}} let"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Podpořit qui",

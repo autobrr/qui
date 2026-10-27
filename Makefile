@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -48,7 +48,7 @@ themes-fetch:
 	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
 		rm -rf .themes-temp && \
 		git clone --depth=1 --filter=blob:none --sparse \
-			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
+			https://x-access-token:$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
 		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
 		mkdir -p internal/themes/assets/premium && \
 		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
@@ -187,8 +187,38 @@ gofix-check-changed:
 		rm -f "$$tmp"; \
 		echo "go fix check clean."
 
-# Local pre-commit gate: fmt and gofix on changed files, then lint
-precommit: fmt gofix-changed lint
+# Fail on mojibake: UTF-8 text that an editor read as cp1252 and saved again.
+# Example: an em dash becomes "â€”" (PR #3082). Each UTF-8 lead byte becomes a
+# lead character, and each continuation byte becomes a character from
+# MOJIBAKE_CONT. The pattern requires the full count of continuation characters
+# for each lead (1, 2 or 3), so real text such as Czech "íž" does not match.
+# It is an alternation, so it matches the same bytes in every locale.
+# The last seven entries of MOJIBAKE_CONT are invisible: a non-breaking space
+# (U+00A0), a soft hyphen (U+00AD), and the C1 controls U+0081, U+008D, U+008F,
+# U+0090 and U+009D. Windows decodes the five bytes that cp1252 leaves undefined
+# to these controls.
+# MOJIBAKE_LEAD2 holds only the leads for Latin-1, Latin Extended-A, Greek and
+# Cyrillic. The other 2-byte leads are real letters such as "ß" and "É", and
+# real text such as "Spaß…" would match.
+# The Makefile holds the pattern, so it is excluded, together with the lockfiles.
+MOJIBAKE_CONT = (€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­|||||)
+MOJIBAKE_LEAD2 = (Â|Ã|Ä|Å|Î|Ï|Ð|Ñ)
+MOJIBAKE_LEAD3 = (à|á|â|ã|ä|å|æ|ç|è|é|ê|ë|ì|í|î|ï)
+MOJIBAKE_LEAD4 = (ð|ñ|ò|ó|ô)
+MOJIBAKE_RE = $(MOJIBAKE_LEAD2)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD3)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD4)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)
+
+check-mojibake:
+	@if git grep -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
+		echo "Mojibake found. Restore the original UTF-8 characters."; \
+		exit 1; \
+	fi
+
+# Write the generated files: the automation rule JSON reference in the docs and the query builder field table
+generate:
+	go run ./internal/automationsgen
+
+# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -204,6 +234,10 @@ lint-full:
 	golangci-lint run --timeout=10m
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
+
+# Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
+lint-ratchet:
+	go run ./scripts/ratchet -base $$(git merge-base HEAD develop)
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:
@@ -264,6 +298,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
+	@echo "  make lint-ratchet   - Check that the lint ratchet allowlist only shrinks"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
@@ -271,7 +306,8 @@ help:
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
-	@echo "  make precommit      - Run local pre-commit gate (fmt + gofix + lint)"
+	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

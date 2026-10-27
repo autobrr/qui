@@ -162,14 +162,14 @@ function SwitchSetting({
   description?: string
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    <div className="flex items-center justify-between gap-3">
       <div className="space-y-0.5">
         <Label className="text-sm font-medium">{label}</Label>
         {description && (
           <p className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   )
 }

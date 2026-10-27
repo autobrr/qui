@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -37,11 +36,9 @@ type healthChecker interface {
 
 // syncReader is the slice of the sync manager an orphan scan reads. ADR 0005.
 type syncReader interface {
-	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error)
+	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
 
 type clientReadiness interface {
@@ -81,9 +78,11 @@ type Service struct {
 
 	activityPublisher activity.Publisher
 
-	// Per-instance mutex to prevent overlapping scans
+	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
-	mu         sync.Mutex // protects instanceMu map
+	// Per-instance mutex around run creation only, never held during a scan
+	triggerMu map[int]*sync.Mutex
+	mu        sync.Mutex // protects instanceMu and triggerMu maps
 
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
@@ -112,6 +111,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		backendPool:       backendPool,
 		activityPublisher: activity.NopPublisher{},
 		instanceMu:        make(map[int]*sync.Mutex),
+		triggerMu:         make(map[int]*sync.Mutex),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
 }
@@ -140,34 +140,13 @@ func (s *Service) emitRun(instanceID int, runID int64) {
 	})
 }
 
-// validDefaultSavePath checks the default save path qBittorrent reported so it
-// can serve as a scan root. Files sitting directly in it are invisible to a
-// torrent-derived root set.
-//
-// A path that cannot be used is an error rather than an empty root: silently
-// falling back to torrent-derived roots would report a clean scan over a
-// narrower tree than the user asked for (discussion #2365).
-func validDefaultSavePath(reported string) (string, error) {
-	savePath := filepath.Clean(reported)
-	if savePath == "." {
-		return "", errors.New("qBittorrent reported an empty default save path")
-	}
-	if !filepath.IsAbs(savePath) {
-		return "", fmt.Errorf("qBittorrent default save path %q is not absolute", savePath)
-	}
-	return savePath, nil
-}
-
-// walkForScope walks one root, collecting directory candidates only when the
-// run will actually use them.
-func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
-	gracePeriod time.Duration, backend fsops.Backend, collectDirs bool,
+// walkForScope walks one root into the run's keys, collecting directory
+// candidates only when the run will actually use them.
+func walkForScope(ctx context.Context, root string, protected *protectedPaths,
+	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	if !collectDirs {
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
-		return orphans, nil, err
-	}
-	return walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, backend)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, collectDirs, keys)
+	return orphans, dirs, err
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -180,16 +159,16 @@ func isMissingRoot(err error) bool {
 
 // rootsNoTorrentPointsAt returns the declared roots that no torrent save path
 // already covers. Their absence is expected, so it is not worth reporting.
-func rootsNoTorrentPointsAt(declared, derived []string) []string {
+func rootsNoTorrentPointsAt(d fsops.PathDialect, declared, derived []string) []string {
 	fromTorrent := make(map[string]struct{}, len(derived))
 	for _, root := range derived {
-		fromTorrent[filepath.Clean(root)] = struct{}{}
+		fromTorrent[d.Clean(root)] = struct{}{}
 	}
 
 	var only []string
 	for _, root := range declared {
-		if _, ok := fromTorrent[filepath.Clean(root)]; !ok {
-			only = append(only, filepath.Clean(root))
+		if _, ok := fromTorrent[d.Clean(root)]; !ok {
+			only = append(only, d.Clean(root))
 		}
 	}
 	return only
@@ -200,6 +179,7 @@ func rootsNoTorrentPointsAt(declared, derived []string) []string {
 // unmounted save path nested under a walked parent reads as a clean scan
 // (discussion #2483).
 func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, expectedAbsent map[string]struct{}, backend fsops.Backend) (errs, missing []string) {
+	d := backend.Paths()
 	walked := make(map[string]struct{}, len(walkRoots))
 	for _, root := range walkRoots {
 		walked[root] = struct{}{}
@@ -213,7 +193,7 @@ func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string,
 		switch {
 		case err == nil:
 		case isMissingRoot(err):
-			if _, expected := expectedAbsent[filepath.Clean(root)]; expected {
+			if _, expected := expectedAbsent[d.Clean(root)]; expected {
 				continue
 			}
 			missing = append(missing, fmt.Sprintf("%s: %v", root, err))
@@ -228,32 +208,25 @@ func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string,
 // an ancestor and its descendants are not walked twice. Callers keep the full
 // set for run.ScanPaths; only the walk is narrowed.
 func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Backend) []string {
+	d := backend.Paths()
 	cleaned := make([]string, len(roots))
 	for i, root := range roots {
-		cleaned[i] = filepath.Clean(root)
+		cleaned[i] = d.Clean(root)
 	}
 
 	pruned := make([]string, 0, len(roots))
 	for i, root := range roots {
+		// A walk skips a symlink below its root, so one that is a root of its
+		// own is walked on its own.
+		if info, err := backend.Lstat(ctx, cleaned[i]); err == nil && info.IsSymlink {
+			pruned = append(pruned, root)
+			continue
+		}
 		covered := false
 		for j := range roots {
 			// Keep case-distinct trees: a folded match does not prove walk coverage.
-			if !isPathUnderNormalized(cleaned[i], cleaned[j]) {
-				continue
-			}
-			covered = true
-			// WalkDir skips symlinks, including a root that is itself a symlink.
-			for dir := filepath.Dir(cleaned[i]); ; dir = filepath.Dir(dir) {
-				info, err := backend.Lstat(ctx, dir)
-				if err != nil || !info.IsDir || info.IsSymlink {
-					covered = false
-					break
-				}
-				if dir == cleaned[j] {
-					break
-				}
-			}
-			if covered {
+			if isPathUnderNormalized(d, cleaned[i], cleaned[j]) && walkReaches(ctx, backend, cleaned[j], cleaned[i]) {
+				covered = true
 				break
 			}
 		}
@@ -264,15 +237,36 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 	return pruned
 }
 
-func scanRootsFromTorrents(torrents []qbt.Torrent) []string {
+// walkReaches reports whether the walk of cover reaches below, a path under it.
+// WalkDir skips symlinks, so every directory on the way must be a real one.
+func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string) bool {
+	d := backend.Paths()
+	for dir := d.Dir(below); ; dir = d.Dir(dir) {
+		info, err := backend.Lstat(ctx, dir)
+		if err != nil || !info.IsDir || info.IsSymlink {
+			return false
+		}
+		// Dir of \\host\share\x is \\host\share\, but a root given as
+		// \\host\share keeps no separator through Clean.
+		if dir == cover || dir == cover+d.Separator() {
+			return true
+		}
+		// Dir of \\host\share never reaches a share-less \\host\.
+		if d.Dir(dir) == dir {
+			return false
+		}
+	}
+}
+
+func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
 	scanRoots := make(map[string]struct{})
 	for i := range torrents {
-		addAbsoluteScanRoot(scanRoots, torrents[i].SavePath)
+		addAbsoluteScanRoot(d, scanRoots, torrents[i].SavePath)
 
 		// Auto TMM can rewrite save_path to a category root without moving the
 		// payload. content_path still points at the real file/folder on disk, and
 		// using it directly is enough for conservative overlap detection.
-		addAbsoluteScanRoot(scanRoots, torrents[i].ContentPath)
+		addAbsoluteScanRoot(d, scanRoots, torrents[i].ContentPath)
 	}
 
 	roots := make([]string, 0, len(scanRoots))
@@ -282,22 +276,22 @@ func scanRootsFromTorrents(torrents []qbt.Torrent) []string {
 	return roots
 }
 
-func scanRootsOverlap(a, b []string) bool {
+func scanRootsOverlap(d fsops.PathDialect, a, b []string) bool {
 	if len(a) == 0 || len(b) == 0 {
 		return false
 	}
 
 	for _, ra := range a {
-		na := normalizePath(ra)
+		na := fsops.NormalizePath(d, ra)
 		if na == "" {
 			continue
 		}
 		for _, rb := range b {
-			nb := normalizePath(rb)
+			nb := fsops.NormalizePath(d, rb)
 			if nb == "" {
 				continue
 			}
-			if na == nb || isPathUnderNormalized(na, nb) || isPathUnderNormalized(nb, na) {
+			if na == nb || isPathUnderNormalized(d, na, nb) || isPathUnderNormalized(d, nb, na) {
 				return true
 			}
 		}
@@ -454,22 +448,23 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 	}
 }
 
-func (s *Service) getInstanceMutex(instanceID int) *sync.Mutex {
+func (s *Service) getInstanceMutex(locks map[int]*sync.Mutex, instanceID int) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.instanceMu[instanceID] == nil {
-		s.instanceMu[instanceID] = &sync.Mutex{}
+	if locks[instanceID] == nil {
+		locks[instanceID] = &sync.Mutex{}
 	}
-	return s.instanceMu[instanceID]
+	return locks[instanceID]
 }
 
 // TriggerScan starts a new orphan scan for an instance.
 // Returns the run ID or an error if a scan is already in progress.
 func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	// Atomically check for active runs and create a new one.
-	// This avoids TOCTOU races between HasActiveRun and CreateRun,
-	// and avoids mutex deadlocks when a goroutine is stuck in a blocking call.
+	// On Postgres at READ COMMITTED, concurrent inserts each pass the store's NOT EXISTS check.
+	mu := s.getInstanceMutex(s.triggerMu, instanceID)
+	mu.Lock()
 	runID, err := s.store.CreateRunIfNoActive(ctx, instanceID, triggeredBy)
+	mu.Unlock()
 	if errors.Is(err, models.ErrRunAlreadyActive) {
 		return 0, ErrScanInProgress
 	}
@@ -583,11 +578,14 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 		return ErrFilesystemModeChanged
 	}
 	// Refused before the lock and without touching the run, so the preview stays reviewable.
-	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+	// A remote run is refused by its recorded mode, not only by capabilities: with
+	// Write (#2942) and the exec tier's Identity both present, the capability gate
+	// alone would admit it. Remote deletes land with #3236.
+	if run.FilesystemMode == models.FilesystemModeRemote || !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
 		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
 	}
 
-	mu := s.getInstanceMutex(instanceID)
+	mu := s.getInstanceMutex(s.instanceMu, instanceID)
 	if !mu.TryLock() {
 		return ErrScanInProgress
 	}
@@ -609,6 +607,19 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}()
 
 	return nil
+}
+
+// PathDialect is the path grammar of the backend instanceID is scanned through.
+// Resolve builds a remote backend without dialing it.
+func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDialect, error) {
+	if s.backendPool == nil {
+		return nil, errors.New("backend pool not configured")
+	}
+	backend, _, err := s.backendPool.Resolve(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return backend.Paths(), nil
 }
 
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
@@ -687,6 +698,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
+	d := backend.Paths()
+
 	// Build file map
 	scope := scopeFromSettings(settings)
 	result, err := s.buildFileMap(ctx, instance, backend, scope)
@@ -707,7 +720,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// A save path that is not mounted on the qui host would otherwise fail the
 	// run on lstat, with no way for the user to exclude it (issue #2483).
 	rootsBeforeIgnore := len(scanRoots)
-	scanRoots = filterCoveredScanRoots(scanRoots, settings.IgnorePaths)
+	scanRoots = filterCoveredScanRoots(d, scanRoots, settings.IgnorePaths)
+	// Ignoring a symlinked save path is how a user keeps it, so its files must
+	// still protect their twins at the target.
+	ignoredLinks := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
 
 	log.Info().
 		Int("files", tfm.Len()).
@@ -716,7 +732,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		Msg("orphanscan: built file map")
 
 	var scanWarnings []string
-	if skippedRoots := filterCoveredScanRoots(result.skippedRoots, settings.IgnorePaths); len(skippedRoots) > 0 {
+	if skippedRoots := filterCoveredScanRoots(d, result.skippedRoots, settings.IgnorePaths); len(skippedRoots) > 0 {
 		warnMsg := fmt.Sprintf(
 			"Skipped %d scan path(s) because qBittorrent had transitional torrents with unavailable file lists:\n%s",
 			len(skippedRoots),
@@ -744,10 +760,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	allIgnorePaths := scanIgnorePaths(ctx, settings.IgnorePaths, scanRoots, result, backend)
+	allIgnorePaths := scanIgnorePaths(ctx, settings.IgnorePaths, scanRoots, result, backend, instance)
 
-	// Normalize ignore paths
-	ignorePaths, err := NormalizeIgnorePaths(allIgnorePaths)
+	protected, err := newProtectedPaths(d, allIgnorePaths, tfm)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
@@ -756,6 +771,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
+	protected.setScanRoots(scanRoots)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
@@ -776,6 +792,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	var orphanOnlyDirs []AbandonedDir
 	anyRootScanned := false
+	keys := newFileKeys()
 
 	for _, root := range walkRoots {
 		if ctx.Err() != nil {
@@ -783,7 +800,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, dirs, err := walkForScope(ctx, root, tfm, ignorePaths, gracePeriod, backend, scope.AbandonedDirs)
+		orphans, dirs, err := walkForScope(ctx, root, protected, gracePeriod, backend, instance, scope.AbandonedDirs, keys)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -791,7 +808,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			if isMissingRoot(err) {
 				log.Debug().Err(err).Str("root", root).Msg("orphanscan: scan root is not on disk")
-				if _, expected := expectedAbsent[filepath.Clean(root)]; !expected {
+				if _, expected := expectedAbsent[d.Clean(root)]; !expected {
 					missingRoots = append(missingRoots, fmt.Sprintf("%s: %v", root, err))
 				}
 				continue
@@ -806,7 +823,25 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	allOrphans = dedupeOrphans(allOrphans)
+	for _, root := range ignoredLinks {
+		if err := recordInUse(ctx, root, protected, backend, instance, keys); err != nil {
+			if ctx.Err() != nil {
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			}
+			// Ignored paths are often unmounted (#2483), so a missing target is
+			// no walk error. Any other error can leave the twins of its files
+			// listed at the target, so the run must not clean up by itself.
+			if isMissingRoot(err) {
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: ignored symlinked save path is not on disk")
+				continue
+			}
+			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
+			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
+		}
+	}
+
+	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
 	maxFiles := settings.MaxFilesPerRun
 	if maxFiles <= 0 {
 		maxFiles = DefaultSettings().MaxFilesPerRun
@@ -815,9 +850,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// Files rank first. If they already exceed the cap, no directory can enter
 	// the preview. At the cap, still check directories to set Truncated correctly.
 	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, result.categoryPaths, protected, gracePeriod, backend)
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
-		allOrphans = dedupeOrphans(append(allOrphans, abandoned...))
+		allOrphans = dedupeOrphans(d, append(allOrphans, abandoned...))
 	}
 
 	previewSort := strings.TrimSpace(settings.PreviewSort)
@@ -825,7 +860,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		previewSort = "size_desc"
 	}
 
-	less := truncationLess(previewSort)
+	less := truncationLess(d, previewSort)
 	sort.Slice(allOrphans, func(i, j int) bool { return less(allOrphans[i], allOrphans[j]) })
 
 	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
@@ -981,7 +1016,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 // spanning both is cyclic, because a file can sort between a directory and its
 // child under previewSort while the depth rule puts the child first, and
 // sort.Slice on a cyclic comparator returns an arbitrary order.
-func truncationLess(previewSort string) func(a, b OrphanFile) bool {
+func truncationLess(d fsops.PathDialect, previewSort string) func(a, b OrphanFile) bool {
 	return func(a, b OrphanFile) bool {
 		if a.IsAbandonedDir != b.IsAbandonedDir {
 			return !a.IsAbandonedDir
@@ -1000,8 +1035,8 @@ func truncationLess(previewSort string) func(a, b OrphanFile) bool {
 
 		switch previewSort {
 		case "directory_size_desc":
-			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
-			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
+			da := strings.ToLower(d.Clean(d.Dir(a.Path)))
+			db := strings.ToLower(d.Clean(d.Dir(b.Path)))
 			if da != db {
 				return da < db
 			}
@@ -1018,14 +1053,14 @@ func truncationLess(previewSort string) func(a, b OrphanFile) bool {
 	}
 }
 
-func dedupeOrphans(allOrphans []OrphanFile) []OrphanFile {
+func dedupeOrphans(d fsops.PathDialect, allOrphans []OrphanFile) []OrphanFile {
 	if len(allOrphans) <= 1 {
 		return allOrphans
 	}
 
 	byPath := make(map[string]OrphanFile, len(allOrphans))
 	for _, o := range allOrphans {
-		key := normalizePath(o.Path)
+		key := fsops.NormalizePath(d, o.Path)
 		existing, ok := byPath[key]
 		if !ok {
 			byPath[key] = o
@@ -1149,7 +1184,9 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// ConfirmDeletion admitted this run on the instance's mode and
 	// capabilities, but the instance can change before this goroutine runs.
-	deleteBackend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityWrite)
+	// Both capabilities go to Require so a remote instance with Write but no
+	// Identity is refused before any backend is built.
+	deleteBackend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityWrite, models.CapabilityIdentity)
 	if errors.Is(err, fsops.ErrNotCapable) {
 		log.Info().Err(err).Int64("run", runID).Msg("orphanscan: refusing deletion, filesystem access changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
@@ -1165,11 +1202,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
 	}
-	// Require(Write) alone is not enough while a backend can gain Write before Identity.
-	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
-		s.failRun(ctx, runID, instanceID, "Deleting orphan files needs write access and file identity, and this instance's filesystem access lacks one of them.")
-		return
-	}
+	d := deleteBackend.Paths()
 
 	// Settings drive both the ignore paths and the scan scope, and a thinner
 	// scope means a thinner protection map. Guessing at defaults here would
@@ -1220,13 +1253,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
 	}
-	tfm := fileMapResult.fileMap
 
-	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend)
-	ignorePaths, err := NormalizeIgnorePaths(rawIgnorePaths)
+	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend, instance)
+	// The scan refuses an ignore path that is not valid, so the delete refuses it
+	// too rather than run under a rule the preview never accepted.
+	protected, err := newProtectedPaths(d, rawIgnorePaths, fileMapResult.fileMap)
 	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
-		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
+		return
 	}
 
 	var filesDeleted int
@@ -1246,14 +1280,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 
 		// Find the scan root for this file
-		scanRoot := findScanRoot(f.FilePath, run.ScanPaths)
+		scanRoot := findScanRoot(d, f.FilePath, run.ScanPaths)
 		if scanRoot == "" {
 			s.updateFileStatus(ctx, f.ID, "failed", "no matching scan root")
 			failedDeletes++
 			continue
 		}
 
-		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, protected, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -1289,67 +1323,67 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// The protected sets are the same for every entry, so normalize them once
 	// rather than once per directory.
-	normScanRoots := normalizePaths(fileMapResult.scanRoots)
-	normCategoryPaths := normalizePaths(fileMapResult.categoryPaths)
+	normScanRoots := normalizePaths(d, fileMapResult.scanRoots)
+	normCategoryPaths := normalizePaths(d, fileMapResult.categoryPaths)
 
 	// Remove the abandoned directories the preview listed. safeDeleteEmptyDir
 	// refuses a non-empty directory, so anything that gained content since the
 	// scan is reported rather than removed.
-	for _, d := range dirEntries {
+	for _, dir := range dirEntries {
 		if ctx.Err() != nil {
 			break
 		}
 
-		scanRoot := findScanRoot(d.FilePath, run.ScanPaths)
+		scanRoot := findScanRoot(d, dir.FilePath, run.ScanPaths)
 		if scanRoot == "" {
-			s.updateFileStatus(ctx, d.ID, "failed", "no matching scan root")
+			s.updateFileStatus(ctx, dir.ID, "failed", "no matching scan root")
 			failedDeletes++
 			continue
 		}
-		if isIgnoredPath(d.FilePath, ignorePaths) {
-			s.updateFileStatus(ctx, d.ID, "skipped", "path is protected by ignore paths")
+		if protected.ignored(dir.FilePath) {
+			s.updateFileStatus(ctx, dir.ID, "skipped", "path is protected by ignore paths")
 			continue
 		}
 		// Re-check against the roots and categories as they stand now, not as
 		// the preview saw them: a category created or repointed since then makes
 		// an already-listed directory a live destination again. A scan root is a
 		// configured destination, so it stays even when empty.
-		normDir := normalizePath(d.FilePath)
+		normDir := fsops.NormalizePath(d, dir.FilePath)
 		if slices.Contains(normScanRoots, normDir) {
-			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a scan root")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a scan root")
 			continue
 		}
-		if isCategoryDestinationNormalized(normDir, normCategoryPaths) {
-			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a category destination")
+		if isCategoryDestinationNormalized(d, normDir, normCategoryPaths) {
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category, download or monitored folder")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
 		// path, and that directory is empty on disk right now.
-		if tfm.HasAnyInDir(normDir) {
-			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now used by a torrent")
+		if protected.torrentFileIn(dir.FilePath) {
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now used by a torrent")
 			continue
 		}
 
-		disp, err := safeDeleteEmptyDir(ctx, scanRoot, d.FilePath, deleteBackend)
+		disp, err := safeDeleteEmptyDir(ctx, scanRoot, dir.FilePath, deleteBackend)
 		if err != nil {
-			s.updateFileStatus(ctx, d.ID, "failed", err.Error())
-			log.Warn().Err(err).Str("path", d.FilePath).Msg("orphanscan: failed to delete abandoned directory")
+			s.updateFileStatus(ctx, dir.ID, "failed", err.Error())
+			log.Warn().Err(err).Str("path", dir.FilePath).Msg("orphanscan: failed to delete abandoned directory")
 			failedDeletes++
 			continue
 		}
 
 		switch disp {
 		case deleteDispositionSkippedMissing:
-			s.updateFileStatus(ctx, d.ID, "skipped", "directory no longer exists")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory no longer exists")
 		case deleteDispositionSkippedNotDirectory:
-			s.updateFileStatus(ctx, d.ID, "skipped", "path is no longer a directory")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "path is no longer a directory")
 		case deleteDispositionSkippedNotEmpty:
-			s.updateFileStatus(ctx, d.ID, "skipped", "directory still holds something this run did not delete")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory still holds something this run did not delete")
 		case deleteDispositionDeleted:
-			s.updateFileStatus(ctx, d.ID, "deleted", "")
+			s.updateFileStatus(ctx, dir.ID, "deleted", "")
 			foldersDeleted++
 		default:
-			s.updateFileStatus(ctx, d.ID, "failed", "unknown delete result")
+			s.updateFileStatus(ctx, dir.ID, "failed", "unknown delete result")
 			failedDeletes++
 		}
 	}
@@ -1532,83 +1566,135 @@ func sortedRoots(roots map[string]struct{}) []string {
 	return items
 }
 
-func mergeRootLists(rootLists ...[]string) []string {
+func mergeRootLists(d fsops.PathDialect, rootLists ...[]string) []string {
 	merged := make(map[string]struct{})
 	for _, roots := range rootLists {
 		for _, root := range roots {
-			merged[filepath.Clean(root)] = struct{}{}
+			merged[d.Clean(root)] = struct{}{}
 		}
 	}
 	return sortedRoots(merged)
 }
 
-func isSameOrDescendantPath(path, base string) bool {
-	nPath := normalizePath(path)
-	nBase := normalizePath(base)
-	return nPath == nBase || isPathUnderNormalized(nPath, nBase)
+func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
+	nPath := fsops.NormalizePath(d, path)
+	nBase := fsops.NormalizePath(d, base)
+	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
 }
 
-func filterCoveredScanRoots(scanRoots, covers []string) []string {
+// ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
+// symlinks.
+func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
+	var links []string
+	for _, root := range roots {
+		if slices.Contains(kept, d.Clean(root)) {
+			continue
+		}
+		if info, err := backend.Lstat(ctx, root); err == nil && info.IsSymlink {
+			links = append(links, root)
+		}
+	}
+	return links
+}
+
+func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []string {
 	filtered := make([]string, 0, len(scanRoots))
 	for _, root := range scanRoots {
 		covered := false
 		for _, cover := range covers {
-			if isSameOrDescendantPath(root, cover) {
+			// A filesystem root covers every path. Pruning with it would drop
+			// every scan root and fail the run; the walk must still ignore them.
+			if isAbsoluteFilesystemRoot(d, cover) {
+				continue
+			}
+			if isSameOrDescendantPath(d, root, cover) {
 				covered = true
 				break
 			}
 		}
 		if !covered {
-			filtered = append(filtered, filepath.Clean(root))
+			filtered = append(filtered, d.Clean(root))
 		}
 	}
 	return filtered
 }
 
-func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend) bool {
-	first = filepath.Clean(first)
-	second = filepath.Clean(second)
+// canonicalizeHash matches SyncManager's internal hash normalization.
+func canonicalizeHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+// isAbsoluteFilesystemRoot reports whether p is "/", a drive root ("C:\"), or a
+// UNC share root. Clean keeps a trailing separator on / and C:\ and on
+// \\server\share\ ; \\server\share has none, so the prefix check covers it.
+func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
+	cleaned := d.Clean(p)
+	sep := d.Separator()
+	if sep == "" || cleaned == "" {
+		return false
+	}
+	if strings.HasSuffix(cleaned, sep) {
+		return true
+	}
+	if strings.HasPrefix(cleaned, sep+sep) {
+		rest := cleaned[len(sep)*2:]
+		server, share, found := strings.Cut(rest, sep)
+		return found && server != "" && share != "" && !strings.Contains(share, sep)
+	}
+	return false
+}
+
+func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend, instance *models.Instance) bool {
+	d := backend.Paths()
+	first = d.Clean(first)
+	second = d.Clean(second)
 	if first == second {
 		return true
 	}
-	if normalizePath(first) != normalizePath(second) {
+	if fsops.NormalizePath(d, first) != fsops.NormalizePath(d, second) {
 		return false
 	}
 	firstInfo, firstErr := backend.Lstat(ctx, first)
 	secondInfo, secondErr := backend.Lstat(ctx, second)
-	return firstErr == nil && secondErr == nil && sameRootIdentity(firstInfo, secondInfo)
+	return firstErr == nil && secondErr == nil && sameRootIdentity(firstInfo, secondInfo, instance)
 }
 
-func sameRootIdentity(first, second *fsops.LstatInfo) bool {
+// sameRootIdentity compares two Lstat results from one backend, built from instance.
+func sameRootIdentity(first, second *fsops.LstatInfo, instance *models.Instance) bool {
 	return first.FileIDErr == nil && second.FileIDErr == nil &&
-		!first.FileID.IsZero() && first.FileID == second.FileID
+		fsops.SameFile(first.FileID, instance, second.FileID, instance)
 }
 
-func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string, backend fsops.Backend) []string {
+func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string, backend fsops.Backend, instance *models.Instance) []string {
+	d := backend.Paths()
+	// Taking a metadata-less torrent's save path out of the ignore list widens
+	// what a scan may delete, so identity a peer host reported never does it:
+	// only the same spelling, or an identity the kernel attested, counts.
+	trusted := instance == nil || models.FilesystemCapabilitiesOf(instance).TrustedIdentity
 	ignored := make([]string, 0, len(metadataRoots))
 	for _, metadataRoot := range metadataRoots {
-		normalizedMetadataRoot := normalizePath(metadataRoot)
+		normalizedMetadataRoot := fsops.NormalizePath(d, metadataRoot)
 		nested := false
 		for _, scanRoot := range scanRoots {
-			normalizedScanRoot := normalizePath(scanRoot)
-			if isSameRoot(ctx, metadataRoot, scanRoot, backend) {
+			normalizedScanRoot := fsops.NormalizePath(d, scanRoot)
+			if d.Clean(metadataRoot) == d.Clean(scanRoot) || (trusted && isSameRoot(ctx, metadataRoot, scanRoot, backend, instance)) {
 				nested = false
 				break
 			}
-			if isPathUnderNormalized(normalizedMetadataRoot, normalizedScanRoot) {
+			if isPathUnderNormalized(d, normalizedMetadataRoot, normalizedScanRoot) {
 				nested = true
 			}
 		}
 		if nested {
-			ignored = append(ignored, filepath.Clean(metadataRoot))
+			ignored = append(ignored, d.Clean(metadataRoot))
 		}
 	}
 	return ignored
 }
 
-func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result *buildFileMapResult, backend fsops.Backend) []string {
+func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result *buildFileMapResult, backend fsops.Backend, instance *models.Instance) []string {
 	ignored := append(append([]string(nil), configured...), result.skippedRoots...)
-	return append(ignored, metadataIgnoreRoots(ctx, scanRoots, result.metadataRoots, backend)...)
+	return append(ignored, metadataIgnoreRoots(ctx, scanRoots, result.metadataRoots, backend, instance)...)
 }
 
 // dedupeCaseVariantRoots drops a scan root when an earlier root differs from it
@@ -1618,22 +1704,33 @@ func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result
 // silently stop scanning a second, genuinely different directory on a
 // case-sensitive filesystem.
 // Roots are compared in the given order; the first spelling wins.
+// A root whose cleaned path equals an earlier root is always dropped, even on a
+// backend that cannot report file identity (SFTP), since it is the same path.
 //
 // Backend.Lstat, never Stat: a symlink that differs from its target only by
 // case would look like the same directory through Stat, and dropping the real
 // directory in favour of the symlink would scan nothing at all.
-func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.Backend) []string {
+func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.Backend, instance *models.Instance) []string {
 	if len(roots) < 2 {
 		return roots
 	}
 
+	d := backend.Paths()
 	kept := make([]string, 0, len(roots))
 	seen := make(map[string]*fsops.LstatInfo, len(roots))
+	exact := make(map[string]struct{}, len(roots))
 	for _, root := range roots {
-		norm := normalizePath(root)
+		cleaned := d.Clean(root)
+		if _, ok := exact[cleaned]; ok {
+			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that repeats an earlier root")
+			continue
+		}
+		exact[cleaned] = struct{}{}
+
+		norm := fsops.NormalizePath(d, root)
 		info, _ := backend.Lstat(ctx, root) // nil info on error
 
-		if prev, ok := seen[norm]; ok && prev != nil && info != nil && sameRootIdentity(prev, info) {
+		if prev, ok := seen[norm]; ok && prev != nil && info != nil && sameRootIdentity(prev, info, instance) {
 			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that is the same directory as an earlier root")
 			continue
 		}
@@ -1646,9 +1743,9 @@ func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.B
 	return kept
 }
 
-func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
-	root = filepath.Clean(root)
-	if root == "" || !filepath.IsAbs(root) {
+func addAbsoluteScanRoot(d fsops.PathDialect, scanRoots map[string]struct{}, root string) {
+	root = d.Clean(root)
+	if root == "" || !d.IsAbs(root) {
 		return
 	}
 	scanRoots[root] = struct{}{}
@@ -1675,43 +1772,44 @@ func torrentRootFolder(files qbt.TorrentFiles) string {
 	return rootFolder
 }
 
-func actualSavePathFromContentPath(savePath, contentPath string, files qbt.TorrentFiles) string {
-	savePath = filepath.Clean(savePath)
-	contentPath = filepath.Clean(contentPath)
-	if contentPath == "" || !filepath.IsAbs(contentPath) || len(files) == 0 {
+func actualSavePathFromContentPath(d fsops.PathDialect, savePath, contentPath string, files qbt.TorrentFiles) string {
+	savePath = d.Clean(savePath)
+	contentPath = d.Clean(contentPath)
+	if contentPath == "" || !d.IsAbs(contentPath) || len(files) == 0 {
 		return ""
 	}
-	if savePath != "" && filepath.IsAbs(savePath) && contentPath == savePath {
+	if savePath != "" && d.IsAbs(savePath) && contentPath == savePath {
 		return savePath
 	}
 
+	sep := d.Separator()
 	var actualSavePath string
 	if len(files) == 1 {
-		firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
-		actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+		firstFileName := d.Clean(d.FromSlash(files[0].Name))
+		actualSavePath = strings.TrimSuffix(contentPath, sep+firstFileName)
 		if actualSavePath == "" || actualSavePath == contentPath {
-			actualSavePath = filepath.Dir(contentPath)
+			actualSavePath = d.Dir(contentPath)
 		}
 	} else {
 		rootFolder := torrentRootFolder(files)
 		if rootFolder == "" {
 			actualSavePath = contentPath
 		} else {
-			actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+filepath.FromSlash(rootFolder))
+			actualSavePath = strings.TrimSuffix(contentPath, sep+d.FromSlash(rootFolder))
 			if actualSavePath == "" || actualSavePath == contentPath {
-				firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
-				actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+				firstFileName := d.Clean(d.FromSlash(files[0].Name))
+				actualSavePath = strings.TrimSuffix(contentPath, sep+firstFileName)
 				if actualSavePath == "" || actualSavePath == contentPath {
-					actualSavePath = filepath.Dir(contentPath)
+					actualSavePath = d.Dir(contentPath)
 				}
 			}
 		}
 	}
-	if actualSavePath == "" || !filepath.IsAbs(actualSavePath) {
+	if actualSavePath == "" || !d.IsAbs(actualSavePath) {
 		return ""
 	}
 
-	return filepath.Clean(actualSavePath)
+	return d.Clean(actualSavePath)
 }
 
 // buildFileMapResult contains the file map plus metadata for storage
@@ -1728,8 +1826,8 @@ type buildFileMapResult struct {
 	torrentCount      int
 }
 
-func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
-	tfm := NewTorrentFileMap()
+func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
+	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
 	metadataRoots := make(map[string]struct{})
@@ -1737,8 +1835,8 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 	for i := range torrents {
 		torrent := torrents[i]
-		savePath := filepath.Clean(torrent.SavePath)
-		hasAbsSavePath := savePath != "" && filepath.IsAbs(savePath)
+		savePath := d.Clean(torrent.SavePath)
+		hasAbsSavePath := savePath != "" && d.IsAbs(savePath)
 		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
 		hasFiles := ok && len(files) > 0
 
@@ -1767,16 +1865,16 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 		scanRoots[savePath] = struct{}{}
 		for _, f := range files {
-			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
+			tfm.Add(fsops.NormalizePath(d, d.Join(savePath, d.FromSlash(f.Name))))
 		}
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
-		actualSavePath := actualSavePathFromContentPath(savePath, torrent.ContentPath, files)
+		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
 		if actualSavePath != "" && actualSavePath != savePath {
 			scanRoots[actualSavePath] = struct{}{}
 			for _, f := range files {
-				tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
+				tfm.Add(fsops.NormalizePath(d, d.Join(actualSavePath, d.FromSlash(f.Name))))
 			}
 		}
 	}
@@ -1786,7 +1884,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}
 
 	skippedRootList := sortedRoots(skippedRoots)
-	scanRootList := filterCoveredScanRoots(sortedRoots(scanRoots), skippedRootList)
+	scanRootList := filterCoveredScanRoots(d, sortedRoots(scanRoots), skippedRootList)
 
 	return &buildFileMapResult{
 		fileMap:       tfm,
@@ -1835,7 +1933,7 @@ func overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
 	return "", false
 }
 
-func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {
+func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialect, instanceID int, timeout time.Duration) ([]string, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -1850,16 +1948,16 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, ti
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
-	return scanRootsFromTorrents(torrents), nil
+	return scanRootsFromTorrents(d, torrents), nil
 }
 
-func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID int) (roots []string, source string, err error) {
-	roots, err = s.buildInstanceScanRoots(ctx, instanceID, 15*time.Second)
+func (s *Service) instanceScanRootsForOverlap(ctx context.Context, d fsops.PathDialect, instanceID int) (roots []string, source string, err error) {
+	roots, err = s.buildInstanceScanRoots(ctx, d, instanceID, 15*time.Second)
 	if err == nil {
 		return roots, "live", nil
 	}
@@ -1875,7 +1973,10 @@ func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID in
 	return lastRun.ScanPaths, "last_completed_run", nil
 }
 
-func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, timeout time.Duration, backend fsops.Backend) (*buildFileMapResult, error) {
+// buildInstanceFileMap reads instanceID's torrents and checks their roots through
+// backend, which was built from scanned. A peer walk passes the peer's ID with the
+// scanning instance's backend, so identities are scoped to the filesystem read.
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scanned *models.Instance, timeout time.Duration, backend fsops.Backend) (*buildFileMapResult, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -1890,7 +1991,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -1901,11 +2002,11 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
-	result, err := buildFileMapFromTorrents(torrents, filesByHash)
+	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash)
 	if err != nil {
 		return nil, err
 	}
-	result.scanRoots = dedupeCaseVariantRoots(ctx, result.scanRoots, backend)
+	result.scanRoots = dedupeCaseVariantRoots(ctx, result.scanRoots, backend, scanned)
 	return result, nil
 }
 
@@ -1915,24 +2016,25 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 // filesystem seeds under them stay protected.
 func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, backend fsops.Backend, scope scanScope) (*buildFileMapResult, error) {
 	instanceID := scanned.ID
-	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute, backend)
+	d := backend.Paths()
+	result, err := s.buildInstanceFileMap(ctx, instanceID, scanned, 5*time.Minute, backend)
 	if err != nil {
 		return nil, err
 	}
 
-	extraRoots, categoryPaths, err := s.declaredScanRoots(ctx, instanceID, scope)
+	extraRoots, categoryPaths, err := s.declaredScanRoots(ctx, d, instanceID, scope)
 	if err != nil {
 		return nil, err
 	}
 	result.categoryPaths = categoryPaths
-	result.declaredOnlyRoots = rootsNoTorrentPointsAt(extraRoots, result.scanRoots)
+	result.declaredOnlyRoots = rootsNoTorrentPointsAt(d, extraRoots, result.scanRoots)
 	// Deletion stays bounded by the roots the run recorded, so those roots must
 	// take part in overlap detection even when the settings behind them have
 	// since changed. Without this a file another instance picked up after the
 	// preview would be missing from the protection map.
 	extraRoots = append(extraRoots, scope.PersistedRoots...)
 	if len(extraRoots) > 0 {
-		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend)
+		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend, scanned)
 	}
 
 	candidates, err := s.getOverlapCandidateInstances(ctx, scanned)
@@ -1941,7 +2043,7 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 	}
 	for _, inst := range candidates {
 		peer, _ := overlapPeer(scanned, inst)
-		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, inst.ID)
+		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, d, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(
 				"could not determine scan roots for other %s (id=%d name=%q): %w",
@@ -1949,25 +2051,25 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			)
 		}
 
-		if !scanRootsOverlap(result.scanRoots, otherRoots) {
-			confirmedRoots, err := s.buildInstanceScanRoots(ctx, inst.ID, 90*time.Second)
+		if !scanRootsOverlap(d, result.scanRoots, otherRoots) {
+			confirmedRoots, err := s.buildInstanceScanRoots(ctx, d, inst.ID, 90*time.Second)
 			if err != nil {
 				return nil, fmt.Errorf("could not confirm non-overlapping scan roots for other %s (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 			}
-			if !scanRootsOverlap(result.scanRoots, confirmedRoots) {
+			if !scanRootsOverlap(d, result.scanRoots, confirmedRoots) {
 				continue
 			}
 		}
 
-		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute, backend)
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, scanned, 2*time.Minute, backend)
 		if err != nil {
 			return nil, fmt.Errorf("overlapping %s unavailable (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 		}
 
 		added := result.fileMap.MergeFrom(otherResult.fileMap)
-		result.skippedRoots = mergeRootLists(result.skippedRoots, otherResult.skippedRoots)
-		result.metadataRoots = mergeRootLists(result.metadataRoots, otherResult.metadataRoots)
-		result.scanRoots = filterCoveredScanRoots(result.scanRoots, result.skippedRoots)
+		result.skippedRoots = mergeRootLists(d, result.skippedRoots, otherResult.skippedRoots)
+		result.metadataRoots = mergeRootLists(d, result.metadataRoots, otherResult.metadataRoots)
+		result.scanRoots = filterCoveredScanRoots(d, result.scanRoots, result.skippedRoots)
 		log.Debug().
 			Int("instance", inst.ID).
 			Int("filesAdded", added).
@@ -1987,17 +2089,18 @@ func torrentHashes(torrents []qbt.Torrent) []string {
 }
 
 // findScanRoot finds the scan root that contains the given path.
-func findScanRoot(path string, scanRoots []string) string {
-	nPath := normalizePath(path)
+func findScanRoot(d fsops.PathDialect, path string, scanRoots []string) string {
+	nPath := fsops.NormalizePath(d, path)
 
 	longest := ""
 	for _, root := range scanRoots {
-		nRoot := normalizePath(root)
-		if len(nPath) < len(nRoot) || nPath[:len(nRoot)] != nRoot {
+		nRoot := fsops.NormalizePath(d, root)
+		// A filesystem root is not a delete boundary. That includes a UNC share
+		// root, which Clean can leave without a trailing separator.
+		if nPath != nRoot && isAbsoluteFilesystemRoot(d, nRoot) {
 			continue
 		}
-		// Ensure it's at a path boundary.
-		if len(nPath) > len(nRoot) && nPath[len(nRoot)] != filepath.Separator {
+		if nPath != nRoot && !isPathUnderNormalized(d, nPath, nRoot) {
 			continue
 		}
 		if len(root) > len(longest) {

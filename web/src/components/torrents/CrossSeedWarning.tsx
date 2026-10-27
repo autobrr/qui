@@ -23,8 +23,6 @@ interface CrossSeedWarningProps {
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
   onSearch: () => void
-  totalToCheck: number
-  checkedCount: number
   className?: string
 }
 
@@ -49,8 +47,6 @@ export function CrossSeedWarning({
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
   onSearch,
-  totalToCheck,
-  checkedCount,
   className,
 }: CrossSeedWarningProps) {
   const { t } = useTranslation("torrents")
@@ -103,14 +99,12 @@ export function CrossSeedWarning({
     )
   }
 
-  // Searching state - show progress
+  // Searching state
   if (searchState === "searching") {
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>
-          {totalToCheck > 1? t("crossSeedWarning.searchingProgress", { checked: checkedCount, total: totalToCheck }): t("crossSeedWarning.searching")}
-        </span>
+        <span>{t("crossSeedWarning.searching")}</span>
       </div>
     )
   }

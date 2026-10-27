@@ -1642,9 +1642,10 @@ paths:
         are in `data.torrents` or `data.cross_instance_torrents`, respectively.
         The other `data` fields follow the torrent list response.
 
-        In a delta, omitted `counts` and `preferences` retain their previous
-        values. Explicit `preferences: null` clears preferences. Omitted
+        In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
+        When a sync changes only the server state, the delta has no changed
+        rows and no order, and it carries the new `serverState`.
 
         `stream-error` contains an `error` message and optional retry metadata.
         `heartbeat` keeps the connection alive. Neither advances the data version.
@@ -1655,12 +1656,14 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, and `filters`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
-            same fields as the torrent list filters.
+            same fields as the torrent list filters. If `summary` is true, the
+            frames carry the totals, stats, counts, and server state of the view,
+            but no rows. `summary` needs a single `instanceId`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -1753,10 +1756,6 @@ paths:
                     type: integer
                   limit:
                     type: integer
-                  preferences:
-                    type: object
-                    nullable: true
-                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -2797,6 +2796,93 @@ paths:
                               type: string
                               description: Canonical peer address.
 
+  /api/instances/{instanceID}/torrents/delete-cross-seeds:
+    post:
+      tags:
+        - Torrents
+      summary: Find the cross-seeds that a delete affects
+      description: Returns the torrents that share files with the selected torrents and that a delete with files affects, on the instance of each selected torrent. The selected torrents are not in the result. The request takes the selection of a bulk action, so a selectAll request checks every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific torrent hashes to check. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: Check all torrents that match the filters, search, and exclusions.
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instances of the unified scope.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                search:
+                  type: string
+                  description: Search query used when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
+                excludeTargets:
+                  type: array
+                  description: Instance and hash pairs to exclude when selectAll is true.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+      responses:
+        '200':
+          description: The affected torrents. matchType is content_path, hardlink, or reflink.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
+        '400':
+          description: Invalid selection
+        '409':
+          description: Instance is disabled
+        '500':
+          description: A file list or a link check could not be read
+        '503':
+          description: Not all instances of the unified scope could be read
   /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:
@@ -3237,22 +3323,33 @@ paths:
       tags:
         - Instances
       summary: Get instance preferences
-      description: Get qBittorrent instance preferences/settings
+      description: |
+        Get the preference catalog view of the qBittorrent preferences. The list holds
+        each preference that this qBittorrent sent and that qui shows, in display order.
+        A preference is left out when its libtorrent or platform gate does not match the
+        qBittorrent build. The view never holds the qBittorrent API key.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
-          description: Instance preferences
+          description: Preference fields
           content:
             application/json:
               schema:
-                type: object
-                description: qBittorrent preferences object with various settings
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
     patch:
       tags:
         - Instances
       summary: Update instance preferences
-      description: Update qBittorrent instance preferences/settings
+      description: |
+        Write only the changed preferences. The server rejects the whole patch, and sends
+        nothing to qBittorrent, when a key is unknown, read-only, or not shown, or when a
+        value has the wrong type. It does not check ranges. The server accepts a key that the
+        GET view leaves out because qBittorrent did not send it, or because its libtorrent
+        or platform gate does not match. qBittorrent ignores or stores that value, and the
+        value has no effect.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -3261,10 +3358,69 @@ paths:
           application/json:
             schema:
               type: object
-              description: Partial preferences object with settings to update
+              description: The changed preferences, keyed by the qBittorrent preference key.
+              additionalProperties: true
       responses:
         '200':
-          description: Preferences updated successfully
+          description: Preferences saved. The body is the new view.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
+        '400':
+          description: The patch has a rejected key or value. The body names the key and the reason.
+        '500':
+          description: The save failed in qBittorrent.
+
+  /api/instances/{instanceID}/preferences/test-email:
+    post:
+      tags:
+        - Instances
+      summary: Send a test email
+      description: |
+        Ask qBittorrent to send a test email with its saved email notification settings.
+        qBittorrent sends nothing when email notification is off. A success means only that
+        qBittorrent queued the email, not that the email went out. qBittorrent writes SMTP
+        errors to its log. Requires qBittorrent 5.0 or later (WebAPI 2.11.2); see
+        `supportsTestEmail` in the instance capabilities.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '204':
+          description: qBittorrent queued the test email.
+        '400':
+          description: Invalid instance ID, or the qBittorrent version is older than 5.0.
+        '500':
+          description: qBittorrent did not accept the request.
+
+  /api/instances/{instanceID}/network-binding:
+    get:
+      tags:
+        - Instances
+      summary: Get the network binding options
+      description: |
+        List the network interfaces that qBittorrent can bind to, each with its IP addresses.
+        "Any interface" comes first. When qBittorrent does not list the saved interface or the
+        saved address, the list holds it with `available` false. The saved address is in the
+        list of the saved interface. The values `""`, `0.0.0.0`, and `::` mean all addresses,
+        all IPv4 addresses, and all IPv6 addresses, and are not in the address lists.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Network interfaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NetworkBindingInterface'
+        '400':
+          description: Invalid instance ID.
+        '500':
+          description: qBittorrent did not list the interfaces or the addresses.
 
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
@@ -4178,14 +4334,14 @@ paths:
         '404':
           description: Directory not found
         '409':
-          description: A scan is already in progress
+          description: A full scan is already queued or in progress. A webhook scan in progress does not block a manual scan.
         '500':
           description: Failed to start scan
     delete:
       tags:
         - Dir Scan
       summary: Cancel a directory scan
-      description: Cancels the currently running scan for the given directory, if any
+      description: Cancels every queued and running scan of the given directory, full scans and webhook scans
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4324,7 +4480,7 @@ paths:
         '404':
           description: No enabled directory matched the provided path
         '409':
-          description: Request conflicts with directory state, such as ambiguous path matches or an active scan
+          description: More than one enabled directory matches the path
         '500':
           description: Failed to start scan
 
@@ -4333,7 +4489,10 @@ paths:
       tags:
         - Dir Scan
       summary: Get directory scan status
-      description: Returns the status of the active scan run or the most recent run (or idle)
+      description: |
+        Returns the queued and running scan runs of the directory. A directory can have a full scan
+        and a webhook scan in progress at the same time. If no run is queued or running, the list holds
+        the most recent run. A directory without runs returns an empty list.
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4342,9 +4501,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/DirScanRun'
-                  - $ref: '#/components/schemas/DirScanIdleStatus'
+                $ref: '#/components/schemas/DirScanStatus'
         '404':
           description: Directory not found
         '500':
@@ -5311,27 +5468,6 @@ paths:
           description: Invalid parameters
         '500':
           description: Failed to analyze torrent
-
-  /api/cross-seed/torrents/{instanceID}/{hash}/async-status:
-    get:
-      tags:
-        - Cross-Seed
-      summary: Get async filtering status
-      description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
-      parameters:
-        - $ref: '#/components/parameters/instanceID'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Current async filtering state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AsyncIndexerFilteringState'
-        '400':
-          description: Invalid parameters
-        '500':
-          description: Failed to get filtering status
 
   /api/cross-seed/torrents/{instanceID}/{hash}/search:
     post:
@@ -7129,15 +7265,18 @@ components:
 
     FilesystemCapabilities:
       type: object
-      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
-      required: [read, identity, write, content]
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find and stat.
+      required: [read, identity, trustedIdentity, write, content]
       properties:
         read:
           type: boolean
           description: qui can list, stat, and walk paths.
         identity:
           type: boolean
-          description: qui trusts file identity (device and inode) to find hardlinks.
+          description: qui reads file identity (device and inode) to find hardlinks, for matching and deduplication.
+        trustedIdentity:
+          type: boolean
+          description: The file identity comes from the qui host's own kernel, so it can add torrents to a delete, as the include-hardlinks delete option and the hardlink scope conditions do. Only a local instance has it.
         write:
           type: boolean
           description: qui can create and remove hardlink and reflink trees.
@@ -7239,6 +7378,94 @@ components:
           type: string
           description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
+    PreferenceField:
+      type: object
+      description: One qBittorrent preference in the preference catalog view.
+      required:
+        - key
+        - value
+        - tab
+        - section
+        - control
+      properties:
+        key:
+          type: string
+          description: The qBittorrent preference key.
+        value:
+          description: The value that qBittorrent sent, in the wire unit.
+        tab:
+          type: string
+          enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]
+        section:
+          type: string
+          description: The section of the tab.
+        control:
+          type: string
+          enum: [switch, number, text, password, select, path, list, watchFolders]
+        wireUnit:
+          type: string
+          description: The unit of the value, for example B/s.
+        displayUnit:
+          type: string
+          description: The unit that qui shows, for example KiB/s.
+        optionSource:
+          type: string
+          enum: [fixed, pathAutocomplete, networkInterfaces, interfaceAddresses]
+          description: |
+            Where the options come from. A select with `networkInterfaces` or
+            `interfaceAddresses` gets its options from the network binding route.
+        options:
+          type: array
+          description: The values of a select with a fixed option list that this build supports.
+          items: {}
+        dependsOn:
+          type: string
+          description: The switch preference that enables this field.
+        readOnly:
+          type: boolean
+          description: True when a user cannot change the preference in qui.
+        reason:
+          type: string
+          description: Why the preference is read-only.
+
+    NetworkBindingInterface:
+      type: object
+      description: |
+        One network interface that qBittorrent can bind to. The interface with the empty
+        value is "Any interface", and its addresses are the addresses of all interfaces.
+      required:
+        - name
+        - value
+        - available
+        - addresses
+      properties:
+        name:
+          type: string
+          description: |
+            The readable name of the interface. Empty for "Any interface". For a saved
+            interface that is not available, the name comes from `current_interface_name`
+            (qBittorrent 4.6 and later), else it is the value.
+        value:
+          type: string
+          description: The system name, the value of `current_network_interface`.
+        available:
+          type: boolean
+          description: False for a saved interface that qBittorrent does not list.
+        addresses:
+          type: array
+          items:
+            type: object
+            required:
+              - address
+              - available
+            properties:
+              address:
+                type: string
+                description: An IP address, the value of `current_interface_address`.
+              available:
+                type: boolean
+                description: False for a saved address that qBittorrent does not list for this interface.
+
     InstanceCapabilities:
       type: object
       properties:
@@ -7278,6 +7505,21 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsTorrentTmpPath:
+          type: boolean
+          description: Whether the instance accepts a temporary download path when a torrent is added (WebAPI 2.8.4+).
+        supportsPathAutocomplete:
+          type: boolean
+          description: Whether the instance can list folders for path autocomplete (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsTestEmail:
+          type: boolean
+          description: Whether the instance can send a test email (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsFreeSpacePathSource:
+          type: boolean
+          description: Whether qui can read the free space of a path on its own host. False when qui runs on Windows.
+        supportsSetRSSFeedURL:
+          type: boolean
+          description: Whether the instance can change the URL of an RSS feed (WebAPI 2.9.1+).
         supportsShareLimitsAction:
           type: boolean
           description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).
@@ -7580,6 +7822,12 @@ components:
           type: string
         savePath:
           type: string
+        download_path:
+          description: The category's own download path option, from qBittorrent 4.4. Left out when the category inherits it, false when it is turned off, and the path when it is on. qBittorrent resolves an empty or relative path itself. On qBittorrent 5.1 and earlier a change back to inherit can take until the next full sync to show.
+          oneOf:
+            - type: boolean
+              enum: [false]
+            - type: string
 
     LogSettings:
       type: object
@@ -7780,6 +8028,7 @@ components:
         - version
         - updateAvailable
         - selfUpdate
+        - selfUpdateUnavailableReason
         - restart
       properties:
         version:
@@ -7798,6 +8047,11 @@ components:
           type: boolean
           description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
           example: true
+        selfUpdateUnavailableReason:
+          type: string
+          enum: ["", container, disabled, development, directory]
+          description: The first blocker for Self-update, in container, configuration, release build, and binary directory order. Empty when Self-update is available.
+          example: container
         restart:
           type: boolean
           description: Whether qui can restart itself. False in an app container.
@@ -8886,41 +9140,12 @@ components:
           type: array
           items:
             type: string
-        content_filtering_completed:
-          type: boolean
-          nullable: true
         disc_layout:
           type: boolean
           description: True if this torrent contains disc-based media (Blu-ray/DVD)
         disc_marker:
           type: string
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
-
-    AsyncIndexerFilteringState:
-      type: object
-      properties:
-        capabilities_completed:
-          type: boolean
-        content_completed:
-          type: boolean
-        capability_indexers:
-          type: array
-          items:
-            type: integer
-        filtered_indexers:
-          type: array
-          items:
-            type: integer
-        excluded_indexers:
-          type: object
-          additionalProperties:
-            type: string
-        content_matches:
-          type: array
-          items:
-            type: string
-        error:
-          type: string
 
     CrossSeedTorrentSearchRequest:
       type: object
@@ -9014,6 +9239,12 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        gazelle_timed_out:
+          type: boolean
+          description: Set when a RED/OPS lookup did not answer in time. The results hold the Torznab matches and the matches of each RED/OPS site that answered.
+        torznab_failed:
+          type: boolean
+          description: Set when the Torznab search failed and the results come only from RED/OPS.
         decisionTrace:
           $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
 
@@ -10202,15 +10433,15 @@ components:
         - directoryPath
         - scanRoot
 
-    DirScanIdleStatus:
+    DirScanStatus:
       type: object
       properties:
-        status:
-          type: string
-          enum:
-            - idle
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirScanRun'
       required:
-        - status
+        - runs
 
     WarningResponse:
       type: object
@@ -10328,6 +10559,10 @@ components:
           type: string
         skip_checking:
           type: boolean
+          description: Legacy name of seed_mode. qui returns the same value in both fields.
+        seed_mode:
+          type: boolean
+          description: Skip the hash check. If a request has both fields, seed_mode is used.
         upload_limit:
           type: integer
         download_limit:
@@ -10338,6 +10573,10 @@ components:
           type: integer
         share_limit_action:
           type: string
+        share_limits_mode:
+          type: string
+          enum: [Default, MatchAny, MatchAll]
+          description: Default uses the global share limits mode. qBittorrent 5.3 and later.
         ratio_limit:
           type: number
           format: double

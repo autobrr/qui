@@ -10,7 +10,7 @@
 // reason: a 401 outside /auth/me sends the app to /login.
 
 import type { TorrentFilters } from "@/types/torrents"
-import { CAPABILITIES, PREFERENCES, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
+import { CAPABILITIES, PREFERENCE_VIEW, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
 
 // The built-in themes the Go registry embeds, so the picker and the default
 // look match a real install. Name and id follow internal/themes/registry.go.
@@ -102,12 +102,12 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/filter-views", () => json([]))
   on("GET", "/tracker-icons", () => json({}))
   on("GET", "/license/licensed", () => json({ licensed: false }))
-  on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, restart: false }))
+  on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, selfUpdateUnavailableReason: "development", restart: false }))
   on("GET", "/version/latest", () => json(null))
 
   on("GET", "/instances", () => json(store.instanceResponses()))
   on("GET", "/instances/:instanceId/capabilities", () => json(CAPABILITIES))
-  on("GET", "/instances/:instanceId/preferences", () => json(PREFERENCES))
+  on("GET", "/instances/:instanceId/preferences", () => json(PREFERENCE_VIEW))
   on("GET", "/instances/:instanceId/transfer-info", ({ params }) => {
     const s = store.instance(id(params))?.serverState
     return json(s ? {
@@ -211,6 +211,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/instances/:instanceId/torrents/:hash/webseeds", () => json([]))
   on("GET", "/instances/:instanceId/torrents/:hash/disc-scans", () => json([]))
   on("GET", "/cross-seed/torrents/:instanceId/:hash/local-matches", () => json([]))
+  on("POST", "/instances/:instanceId/torrents/delete-cross-seeds", () => json({ matches: [] }))
 
   const upsertCategory: Handler = async ({ params, request }) => {
     const body = await bodyJSON<{ name?: string; savePath?: string }>(request)

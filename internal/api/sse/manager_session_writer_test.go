@@ -313,20 +313,11 @@ func TestDrainDropsOnWriteError(t *testing.T) {
 	require.NoError(t, err)
 	bw.Flush() // enqueue; drain dequeues, the socket write errors -> drop + return
 
-	require.Eventually(t, func() bool {
-		return cancelCalls.Load() == 1 && bw.failed.Load()
-	}, time.Second, 5*time.Millisecond, "drain must drop the session when the socket write errors")
+	receive(t, bw.done, "the drain goroutine to exit")
+	require.Equal(t, int32(1), cancelCalls.Load(), "drain must drop the session when the socket write errors")
+	require.True(t, bw.failed.Load(), "drain must mark the session failed when the socket write errors")
 
-	// The drain goroutine must have exited; Close returns without hanging.
-	done := make(chan struct{})
-	go func() {
-		bw.Close()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Close did not return; drain goroutine leaked after a write error")
-	}
+	// The drain goroutine has exited, so Close returns at once.
+	bw.Close()
 	require.Equal(t, int32(1), cancelCalls.Load(), "cancel must fire exactly once")
 }

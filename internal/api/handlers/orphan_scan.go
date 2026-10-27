@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,7 +41,7 @@ func NewOrphanScanHandler(store *models.OrphanScanStore, instanceStore *models.I
 func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
 			return false
 		}
@@ -221,7 +220,18 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 
 	// Validate and normalize ignore paths
 	if len(settings.IgnorePaths) > 0 {
-		normalized, err := orphanscan.NormalizeIgnorePaths(settings.IgnorePaths)
+		if h.service == nil {
+			RespondError(w, http.StatusServiceUnavailable, "Orphan scan service not available")
+			return
+		}
+		// Checked in the grammar of the instance's backend, which is how the scan reads them.
+		dialect, err := h.service.PathDialect(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to resolve the instance's filesystem")
+			RespondError(w, http.StatusInternalServerError, "Failed to resolve the instance's filesystem access")
+			return
+		}
+		normalized, err := orphanscan.NormalizeIgnorePaths(dialect, settings.IgnorePaths)
 		if err != nil {
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return

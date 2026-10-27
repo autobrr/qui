@@ -10,11 +10,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -54,6 +56,35 @@ func TestOrphanScanSettings_CategoryPathsRequireDefaultSavePath(t *testing.T) {
 			require.Equal(t, step.want, stored.ScanCategoryPaths)
 		})
 	}
+}
+
+// Ignore paths are checked in the grammar of the instance's backend, so a remote
+// instance takes a slash path on any host.
+func TestOrphanScanSettings_IgnorePathsUseTheBackendDialect(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "orphan-scan-ignore-dialect")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+		return remotebackend.New(nil, inst)
+	})
+	service := orphanscan.NewService(orphanscan.DefaultConfig(), instances, store, nil, nil, pool)
+	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
+
+	remote := newOrphanScanInstance(t, instances, models.FilesystemModeRemote)
+	resp := httptest.NewRecorder()
+	url := fmt.Sprintf("/api/instances/%d/orphan-scan/settings", remote.ID)
+	router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), http.MethodPut, url, strings.NewReader(`{"ignorePaths":["//data/skip/"]}`)))
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	stored, err := store.GetSettings(t.Context(), remote.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/data/skip"}, stored.IgnorePaths)
+
+	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
+	resp = httptest.NewRecorder()
+	url = fmt.Sprintf("/api/instances/%d/orphan-scan/settings", local.ID)
+	router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), http.MethodPut, url, strings.NewReader(`{"ignorePaths":["data/skip"]}`)))
+	require.Equal(t, http.StatusBadRequest, resp.Code, resp.Body.String())
 }
 
 func newOrphanScanInstance(t *testing.T, instances *models.InstanceStore, mode models.FilesystemMode) *models.Instance {
@@ -116,6 +147,30 @@ func TestOrphanScan_RoutesAdmitLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
+func TestOrphanScan_RoutesAnswerNotFoundForUnknownInstance(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "orphan-scan-unknown-instance")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	router := newOrphanScanRouter(NewOrphanScanHandler(models.NewOrphanScanStore(db), instances, nil))
+
+	for _, route := range []struct{ method, path, body string }{
+		{http.MethodGet, "/settings", ""},
+		{http.MethodPut, "/settings", "{}"},
+		{http.MethodPost, "/scan", ""},
+		{http.MethodGet, "/runs", ""},
+		{http.MethodGet, "/runs/999", ""},
+		{http.MethodPost, "/runs/999/confirm", ""},
+		{http.MethodDelete, "/runs/999", ""},
+	} {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), route.method, "/api/instances/404/orphan-scan"+route.path, strings.NewReader(route.body)))
+			require.Equal(t, http.StatusNotFound, resp.Code, resp.Body.String())
+			require.JSONEq(t, `{"error":"Instance not found"}`, resp.Body.String())
+		})
+	}
+}
+
 func TestOrphanScan_ConfirmConflictsNameTheirReason(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "orphan-scan-confirm-conflicts")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -161,6 +216,8 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, err)
 	store := models.NewOrphanScanStore(db)
 	service := orphanscan.NewService(orphanscan.DefaultConfig(), instances, store, nil, nil, nil)
+	hub, events := newActivityHub(t)
+	service.SetActivityPublisher(hub)
 	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
 
 	previewWithFiles := func(instanceID int, mode models.FilesystemMode) int64 {
@@ -193,7 +250,7 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, json.Unmarshal(accepted.Body.Bytes(), &body))
 	require.Equal(t, "canceled", status(oldRemote))
 	// The service has no backend pool, so the new run fails fast. Wait for it before the database closes.
-	require.Eventually(t, func() bool { return status(body.RunID) == "failed" }, 5*time.Second, 10*time.Millisecond)
+	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 
 	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
 	oldLocal := previewWithFiles(local.ID, models.FilesystemModeLocal)
