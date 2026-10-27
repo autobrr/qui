@@ -1313,11 +1313,11 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
 			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
-			// The scan already stored IdentityIncompleteMessage, which says what to do instead.
-			warning := run.ErrorMessage
-			if !strings.Contains(warning, IdentityIncompleteMessage) {
-				warning = strings.TrimSpace(warning + "\n\n" + AutoCleanupNoIdentityMessage)
+			reason := AutoCleanupNoIdentityMessage
+			if strings.Contains(run.ErrorMessage, IdentityIncompleteMessage) {
+				reason = AutoCleanupSkippedMessage
 			}
+			warning := strings.TrimSpace(run.ErrorMessage + "\n\n" + reason)
 			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
 				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
 				return

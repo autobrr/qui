@@ -41,6 +41,10 @@ const RemoteNoIdentityMessage = "This remote instance can delete orphan files on
 // automatic cleanup skipped for the same reason.
 const AutoCleanupNoIdentityMessage = "Automatic cleanup did not run, because this remote instance does not report file identity or the scan could not read it for every file. Review the preview instead."
 
+// AutoCleanupSkippedMessage is added instead when the run already holds
+// IdentityIncompleteMessage, which gives the reason and what to do.
+const AutoCleanupSkippedMessage = "Automatic cleanup did not run."
+
 // IdentityIncompleteMessage is the warning on a remote run whose walk did not
 // read every file's identity.
 const IdentityIncompleteMessage = "This preview cannot be deleted, because the scan did not read a file identity for every file. The remote server's find failed or was refused, a folder held more entries than find lists at once, files changed while it ran, or the walk stopped early. Without an identity for every file, a second path to a torrent's file can look like an orphan. Export the list, or run a new scan."
