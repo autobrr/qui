@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,6 +26,35 @@ import (
 // A torrent added paused, with skip checking off, stays at progress 0 until the
 // target is asked to recheck. Without that recheck, verification times out.
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
+	result := runPausedExport(t, http.StatusOK)
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Empty(t, result.deleteFiles)
+}
+
+// A failed recheck request fails the export and removes the torrent from the
+// target, keeping its files, so it does not block the next export.
+func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
+	result := runPausedExport(t, http.StatusInternalServerError)
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
+	require.True(t, strings.HasPrefix(result.activities[0].Reason, "Recheck on target failed:"), result.activities[0].Reason)
+	require.Equal(t, []string{"false"}, result.deleteFiles)
+}
+
+type pausedExportResult struct {
+	activities  []*models.AutomationActivity
+	rechecks    atomic.Int32
+	deleteFiles []string
+}
+
+// runPausedExport exports one torrent paused, with skip checking off, to a target
+// that answers recheck requests with recheckStatus.
+func runPausedExport(t *testing.T, recheckStatus int) *pausedExportResult {
+	t.Helper()
 	prevAttempts := exportVerifyMaxAttempts
 	prevInterval := exportVerifyPollInterval
 	exportVerifyMaxAttempts = 6
@@ -34,8 +65,9 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 	})
 
 	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	var rechecked atomic.Bool
-	var rechecks, deletes atomic.Int32
+	var added, rechecked atomic.Bool
+	var deleteMu sync.Mutex
+	result := &pausedExportResult{}
 
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -62,22 +94,32 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.10.0"))
 		case "/api/v2/sync/maindata":
+			w.Header().Set("Content-Type", "application/json")
+			if !added.Load() {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+				return
+			}
 			state, progress := "stoppedDL", "0"
 			if rechecked.Load() {
 				state, progress = "stoppedUP", "1"
 			}
-			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Export Sample","progress":%s,"state":"%s"}}}`, hash, progress, state)
 		case "/api/v2/torrents/add":
+			added.Store(true)
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/torrents/recheck":
-			rechecked.Store(true)
-			rechecks.Add(1)
-			w.WriteHeader(http.StatusOK)
+			result.rechecks.Add(1)
+			if recheckStatus == http.StatusOK {
+				rechecked.Store(true)
+			}
+			w.WriteHeader(recheckStatus)
 		case "/api/v2/torrents/delete":
-			deletes.Add(1)
+			_ = r.ParseForm()
+			deleteMu.Lock()
+			result.deleteFiles = append(result.deleteFiles, r.PostForm.Get("deleteFiles"))
+			deleteMu.Unlock()
 			w.WriteHeader(http.StatusOK)
 		default:
 			w.WriteHeader(http.StatusOK)
@@ -116,12 +158,8 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 		ruleName: "export paused recheck",
 	}})
 
-	var activities []*models.AutomationActivity
 	for activity := range ch {
-		activities = append(activities, activity)
+		result.activities = append(result.activities, activity)
 	}
-	require.Len(t, activities, 1)
-	require.Equal(t, models.ActivityOutcomeSuccess, activities[0].Outcome)
-	require.Equal(t, int32(1), rechecks.Load())
-	require.Zero(t, deletes.Load())
+	return result
 }

@@ -4958,6 +4958,14 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
 					return
 				}
+
+				// The recheck retry detaches from ctx, so it can succeed after the export deadline.
+				// Verify and clean up under a fresh deadline rather than the expired one.
+				if ctx.Err() != nil {
+					var lateCancel context.CancelFunc
+					ctx, lateCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+					defer lateCancel()
+				}
 			}
 
 			// 4. Post-add verification: confirm torrent is healthy on target
