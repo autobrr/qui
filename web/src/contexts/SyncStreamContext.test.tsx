@@ -1982,6 +1982,41 @@ describe("subscription changes on an open stream", () => {
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
   })
 
+  it("gives the first init its grace after the connection event", () => {
+    function Root() {
+      useSyncStream(MAIN, {})
+      return null
+    }
+    act(() => {
+      render(<Root />, { wrapper: TestProviders })
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+    act(() => {
+      source.emitOpen()
+      source.emit("connection", { type: "connection", connectionId: "qui-conn-7" })
+    })
+    act(() => {
+      vi.advanceTimersByTime(INITIAL_GRACE - 1)
+    })
+    expect(source.closed).toBe(false)
+  })
+
+  it("sends the views that changed to the new server connection after a native retry", async () => {
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
+    const { source, select } = renderTableWithDetails()
+    select("aaa")
+    await settle()
+    change.mockClear()
+
+    // The browser retried the same URL, which lists only the main view.
+    act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
+    await settle()
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(change).toHaveBeenLastCalledWith("qui-conn-8", [expect.objectContaining({ key: createStreamKey(details("aaa")) })], [])
+    expect(MockEventSource.instances).toEqual([source])
+  })
+
   it("lists the current views in the URL of the stream after a reconnect", async () => {
     vi.spyOn(api, "changeStreamSubscriptions").mockResolvedValue(undefined)
     const { source, select } = renderTableWithDetails()

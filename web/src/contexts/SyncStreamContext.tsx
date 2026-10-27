@@ -186,7 +186,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
-  const reopenRef = useRef<() => void>(() => {})
+  const ensureConnectionRef = useRef<(options?: { preserveState?: boolean; force?: boolean }) => void>(() => {})
   const requestRecoveryRef = useRef<(key: string) => void>(() => {})
   // Re-armable handle to the live connection's stale watchdog. openConnection owns
   // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
@@ -529,7 +529,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           } catch (err) {
             if (connectionRef.current.source === source) {
               console.warn("Stream subscription change failed, reopening the stream:", err)
-              reopenRef.current()
+              ensureConnectionRef.current({ preserveState: true, force: true })
             }
           }
         })
@@ -822,8 +822,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
 
+      // The connection event comes before the first init, so it keeps the init grace.
       const connectionHandler = (event: MessageEvent | Event) => {
-        connectionRef.current.firstEventSeen = true
         resetStaleTimer()
         const rawData = "data" in event && typeof event.data === "string" ? event.data.trim() : ""
         if (rawData.length === 0) {
@@ -831,7 +831,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
         try {
           const payload = JSON.parse(rawData) as { connectionId?: string }
-          connectionRef.current.connectionId = payload.connectionId || undefined
+          const conn = connectionRef.current
+          const retried = conn.connectionId !== undefined
+          conn.connectionId = payload.connectionId || undefined
+          if (retried) {
+            // A native retry gets a new server connection with the views in the
+            // URL, so send it the views that changed since the source opened.
+            conn.streams = normalized
+            conn.signature = signature
+            ensureConnectionRef.current({ preserveState: true })
+          }
         } catch (parseErr) {
           console.error("Failed to parse SSE connection payload JSON:", parseErr)
         }
@@ -951,7 +960,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     },
     [clearConnectionRetryState, closeConnection, notifyAllStateSubscribers, openConnection]
   )
-  reopenRef.current = () => ensureConnection({ preserveState: true, force: true })
+  ensureConnectionRef.current = ensureConnection
 
   const queueConnectionUpdate = useCallback(
     (options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}) => {
