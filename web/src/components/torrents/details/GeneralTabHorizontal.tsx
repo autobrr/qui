@@ -8,12 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { api } from "@/lib/api"
+import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent, TorrentProperties } from "@/types"
-import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2 } from "lucide-react"
 import { memo, useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -66,13 +65,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   const isChecking = torrent.state?.includes("checking") ?? false
   const needsPieceStates = isDownloading || isChecking
 
-  const { data: pieceStates, isLoading: loadingPieces } = useQuery({
-    queryKey: ["torrent-piece-states", instanceId, torrent.hash],
-    queryFn: () => api.getTorrentPieceStates(instanceId, torrent.hash),
-    enabled: instanceId != null && !!torrent.hash && needsPieceStates,
-    staleTime: 3000,
-    refetchInterval: needsPieceStates ? 5000 : false,
-  })
+  const { data: pieceStates, isLoading: loadingPieces } = useTorrentDetailTab(instanceId, needsPieceStates ? torrent.hash : null, "pieces")
 
   // Calculate pieces stats from actual piece states when available (more accurate than properties)
   const piecesStats = useMemo(() => {

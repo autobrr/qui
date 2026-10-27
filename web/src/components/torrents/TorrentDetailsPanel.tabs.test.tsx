@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { SortedPeer, Torrent, TorrentProperties, WebSeed } from "@/types"
+import type { SortedPeer, Torrent, TorrentFile, TorrentProperties, WebSeed } from "@/types"
 import { makeTorrent } from "@/test/mockTorrent"
 import { TorrentDetailsPanel } from "./TorrentDetailsPanel"
 
@@ -24,6 +24,11 @@ const mocks = vi.hoisted(() => ({
     },
     peers: {
       data: { peers: {}, sorted_peers: [{ key: "1" }, { key: "2" }, { key: "3" }] as SortedPeer[] },
+      isLoading: false,
+      error: null,
+    },
+    content: {
+      data: [{ index: 0, name: "Show.S01/a.mkv", size: 1, progress: 0.5, priority: 1 }, { index: 1, name: "Show.S01/b.mkv", size: 1, progress: 1, priority: 1 }] as TorrentFile[],
       isLoading: false,
       error: null,
     },
@@ -61,7 +66,7 @@ vi.mock("./details", () => ({
   ),
   CrossSeedTable: () => null,
   PeersTable: ({ peers }: { peers?: SortedPeer[] }) => <div data-testid="peers">{peers?.length}</div>,
-  TorrentFileTable: () => null,
+  TorrentFileTable: ({ files }: { files: TorrentFile[] }) => <div data-testid="content">{files.map(file => file.name).join(",")}</div>,
   TrackerContextMenu: () => null,
   TrackersTable: () => null,
   WebSeedsTable: ({ webseeds }: { webseeds?: WebSeed[] }) => <div data-testid="webseeds">{webseeds?.map(seed => seed.url).join(",")}</div>,
@@ -105,6 +110,11 @@ describe("TorrentDetailsPanel tabs", () => {
   it("shows the peers from the hook", async () => {
     const { findByTestId } = renderPanel({ initialTab: "peers", layout: "horizontal" })
     expect((await findByTestId("peers")).textContent).toBe("3")
+  })
+
+  it("shows the files from the hook", async () => {
+    const { findByTestId } = renderPanel({ initialTab: "content", layout: "horizontal" })
+    expect((await findByTestId("content")).textContent).toBe("Show.S01/a.mkv,Show.S01/b.mkv")
   })
 
   it("shows the HTTP sources from the hook", async () => {

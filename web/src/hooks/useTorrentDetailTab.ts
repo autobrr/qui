@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useSyncStream } from "@/contexts/SyncStreamContext"
+import { useSyncStream, type StreamState } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { resolveStreamRow } from "@/lib/torrent-utils"
-import type { SortedPeersResponse, Torrent, TorrentProperties, TorrentStreamPayload, WebSeed } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { useCallback, useMemo, useState } from "react"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentProperties, TorrentStreamPayload, WebSeed } from "@/types"
+import { focusManager, useQuery } from "@tanstack/react-query"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 
 export interface GeneralTabData {
   // The live row from the stream, or from the fallback poll. Null until one arrives.
@@ -19,6 +19,8 @@ export interface GeneralTabData {
 
 interface TabData {
   general: GeneralTabData
+  content: TorrentFile[]
+  pieces: number[]
   peers: SortedPeersResponse
   webseeds: WebSeed[]
 }
@@ -31,14 +33,40 @@ export interface TorrentDetailTabResult<T extends TorrentDetailTab> {
   error: Error | null
 }
 
+interface TabQuery {
+  key: string
+  staleTime: number
+  refetchInterval: number | false
+  fetch: (instanceId: number, hash: string, refresh: boolean) => Promise<unknown>
+  // reloadGap makes the tab reload on a change of progress or state in the
+  // live row, not sooner than the gap after the last fetch. The tab then
+  // polls at refetchInterval only while the torrent is checking or the stream
+  // is not usable.
+  reloadGap?: (data: unknown) => number
+}
+
 // Each query keeps the key it had in the panel, so the panel mutations that
-// invalidate "torrent-peers" still reach it. React Query pauses each interval
-// while the page is hidden (refetchIntervalInBackground is off).
-const TAB_QUERIES = {
-  general: { key: "torrent-properties", staleTime: 30000, refetchInterval: false, fetch: (instanceId: number, hash: string) => api.getTorrentProperties(instanceId, hash) },
-  peers: { key: "torrent-peers", staleTime: 0, refetchInterval: 2000, fetch: (instanceId: number, hash: string) => api.getTorrentPeers(instanceId, hash) },
-  webseeds: { key: "torrent-webseeds", staleTime: 30000, refetchInterval: false, fetch: (instanceId: number, hash: string) => api.getTorrentWebSeeds(instanceId, hash) },
-} as const
+// invalidate "torrent-peers" and "torrent-files" still reach it. React Query
+// pauses each interval while the page is hidden (refetchIntervalInBackground
+// is off).
+const TAB_QUERIES: Record<TorrentDetailTab, TabQuery> = {
+  general: { key: "torrent-properties", staleTime: 30000, refetchInterval: false, fetch: (instanceId, hash) => api.getTorrentProperties(instanceId, hash) },
+  // Each torrents/files call blocks qBittorrent for a time that grows with the
+  // file count, so the gap is the file count ÷ 1,000 seconds, from 5 s to 30 s.
+  // refresh bypasses the 5-minute file cache of qui.
+  content: {
+    key: "torrent-files",
+    staleTime: 3000,
+    refetchInterval: 3000,
+    fetch: (instanceId, hash, refresh) => api.getTorrentFiles(instanceId, hash, { refresh }),
+    reloadGap: data => Math.min(30000, Math.max(5000, (data as TorrentFile[] | undefined)?.length ?? 0)),
+  },
+  pieces: { key: "torrent-piece-states", staleTime: 3000, refetchInterval: 5000, fetch: (instanceId, hash) => api.getTorrentPieceStates(instanceId, hash), reloadGap: () => 5000 },
+  peers: { key: "torrent-peers", staleTime: 0, refetchInterval: 2000, fetch: (instanceId, hash) => api.getTorrentPeers(instanceId, hash) },
+  webseeds: { key: "torrent-webseeds", staleTime: 30000, refetchInterval: false, fetch: (instanceId, hash) => api.getTorrentWebSeeds(instanceId, hash) },
+}
+
+const CHECKING_STATES: ReadonlySet<string> = new Set(["checkingDL", "checkingUP", "checkingResumeData"])
 
 // useTorrentDetailTab owns when a details tab fetches. A null hash fetches
 // nothing: the panel passes null before it is ready, and for a tab that must
@@ -52,15 +80,56 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   liveHash: string | null = hash
 ): TorrentDetailTabResult<T> {
   const tabQuery = TAB_QUERIES[tab]
-  const row = useLiveRow(instanceId, tab === "general" ? liveHash : null, hash !== null)
+  const { row, streamState } = useLiveRow(instanceId, tab === "general" || tabQuery.reloadGap ? liveHash : null, hash !== null)
+  const streamUsable = isStreamUsable(streamState)
+  // While a torrent is checking, Content and the piece bar poll at their old
+  // interval, and Content bypasses the file cache.
+  const checking = CHECKING_STATES.has(row?.state ?? "")
+  const rowKey = tabQuery.reloadGap && row ? reloadKey(row) : null
+  // The queryFn records the row each fetch saw, and takes the cache bypass
+  // that a reload asks for.
+  const fetchedKey = useRef<string | null>(null)
+  const bypassCache = useRef(false)
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
-    queryFn: () => tabQuery.fetch(instanceId, hash!),
+    queryFn: () => {
+      fetchedKey.current = rowKey
+      const refresh = bypassCache.current || checking
+      bypassCache.current = false
+      return tabQuery.fetch(instanceId, hash!, refresh)
+    },
     enabled: hash !== null,
     staleTime: tabQuery.staleTime,
     gcTime: 5 * 60 * 1000,
-    refetchInterval: tabQuery.refetchInterval,
+    refetchInterval: !tabQuery.reloadGap ? tabQuery.refetchInterval
+      : !streamUsable ? streamFallbackPollInterval(streamState, tabQuery.refetchInterval || 0)
+        : checking ? tabQuery.refetchInterval : false,
+    // A reload tab that becomes visible again reloads only on a row change.
+    refetchOnWindowFocus: !tabQuery.reloadGap,
   })
+
+  const visible = useSyncExternalStore(subscribeFocus, () => focusManager.isFocused())
+  const gap = tabQuery.reloadGap?.(query.data) ?? 0
+  const lastFetch = Math.max(query.dataUpdatedAt, query.errorUpdatedAt)
+  const { isFetching, refetch } = query
+  useEffect(() => {
+    if (hash === null || rowKey === null) {
+      return
+    }
+    // A fetch before the first row cannot tell a change, so it takes this row.
+    if (fetchedKey.current === null) {
+      fetchedKey.current = rowKey
+      return
+    }
+    if (!streamUsable || checking || !visible || isFetching || rowKey === fetchedKey.current) {
+      return
+    }
+    const timer = setTimeout(() => {
+      bypassCache.current = true
+      void refetch()
+    }, Math.max(0, lastFetch + gap - Date.now()))
+    return () => clearTimeout(timer)
+  }, [checking, gap, hash, isFetching, lastFetch, refetch, rowKey, streamUsable, visible])
 
   const properties = query.data as TorrentProperties | undefined
   const general = useMemo<GeneralTabData>(
@@ -73,6 +142,18 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
     isLoading: query.isLoading,
     error: query.error,
   }
+}
+
+function subscribeFocus(onChange: () => void): () => void {
+  return focusManager.subscribe(onChange)
+}
+
+// reloadKey changes when the row shows a change of progress or state. A
+// complete torrent goes between uploading and stalledUP while it seeds, and
+// its files do not change, so for it only a check counts.
+function reloadKey(row: Torrent): string {
+  const state = row.progress < 1 || CHECKING_STATES.has(row.state) ? row.state : "complete"
+  return `${row.progress}|${state}`
 }
 
 // mergeLiveRow puts the values of the live row over the properties that load
@@ -101,7 +182,7 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
 // useLiveRow follows the one-row stream view of the torrent. While the stream
 // is not usable and the panel is ready, it polls the row at the stream
 // fallback interval.
-function useLiveRow(instanceId: number, hash: string | null, ready: boolean): Torrent | null {
+function useLiveRow(instanceId: number, hash: string | null, ready: boolean): { row: Torrent | null; streamState: StreamState } {
   const streamParams = useMemo(() => hash === null ? null : {
     instanceId,
     page: 0,
@@ -153,5 +234,5 @@ function useLiveRow(instanceId: number, hash: string | null, ready: boolean): To
   })
 
   const streamRow = streamUsable && snapshot?.instanceId === instanceId && snapshot.hash === hash ? snapshot.row : null
-  return streamRow ?? polledRow ?? null
+  return { row: streamRow ?? polledRow ?? null, streamState }
 }

@@ -199,26 +199,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
 
-  // Fetch torrent files
-  // Bypass cache during recheck so progress bars update in real-time
-  const currentState = displayTorrent?.state
-  const isChecking = !!currentState && ["checkingDL", "checkingUP", "checkingResumeData"].includes(currentState)
-  const { data: files, isLoading: loadingFiles } = useQuery({
-    queryKey: ["torrent-files", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash, { refresh: isChecking }),
-    enabled: !!torrent && isReady && isContentTabActive,
-    staleTime: 3000,
-    gcTime: 5 * 60 * 1000,
-    refetchInterval: () => {
-      if (!isContentTabActive) return false
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        return 3000
-      }
-      return false
-    },
-    refetchOnWindowFocus: isContentTabActive,
-    refetchOnReconnect: isContentTabActive,
-  })
+  const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")
 
   const setFilePriorityMutation = useMutation<void, unknown, { indices: number[]; priority: number; hash: string }>({
     mutationFn: async ({ indices, priority, hash }) => {
