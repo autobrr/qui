@@ -3829,7 +3829,7 @@ func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleBy
 	}
 	sort.Strings(triggerHashes)
 
-	exp := tagExpansion{states: states, rulePos: rulePositions(ruleByID), injectedPos: make(map[tagInjectionKey]int)}
+	exp := tagExpansion{states: states, rulePos: rulePositions(ruleByID), injected: make(map[tagInjectionKey]tagInjection)}
 	for _, hash := range triggerHashes {
 		state := states[hash]
 		for _, tag := range slices.Sorted(maps.Keys(state.tagExpandByTag)) {
@@ -3868,14 +3868,20 @@ type tagInjectionKey struct {
 	tag  string
 }
 
-// tagExpansion injects tag decisions into sibling states. injectedPos holds
-// the sibling tag decisions injected (or canceled as no-ops) by expansion,
-// with the injecting rule's position. It distinguishes them from a sibling's
-// own evaluated decisions, which a different rule's expansion never overrides.
+// tagInjection is a sibling tag decision injected (or canceled as a no-op) by
+// expansion: the injecting rule's position and the injected action.
+type tagInjection struct {
+	pos    int
+	action string
+}
+
+// tagExpansion injects tag decisions into sibling states. injected
+// distinguishes them from a sibling's own evaluated decisions, which a
+// different rule's expansion never overrides.
 type tagExpansion struct {
-	states      map[string]*torrentDesiredState
-	rulePos     map[int]int
-	injectedPos map[tagInjectionKey]int
+	states   map[string]*torrentDesiredState
+	rulePos  map[int]int
+	injected map[tagInjectionKey]tagInjection
 }
 
 func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpandIntent) {
@@ -3891,27 +3897,34 @@ func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpa
 		e.states[sibTorrent.Hash] = sibState
 	}
 	key := tagInjectionKey{hash: sibTorrent.Hash, tag: tag}
-	pos, wasInjected := e.injectedPos[key]
-	if wasInjected && e.rulePos[intent.rule.id] < pos {
+	pos := e.rulePos[intent.rule.id]
+	prev, wasInjected := e.injected[key]
+	if wasInjected && pos < prev.pos {
 		return // a later rule's expansion already decided this tag
 	}
-	if existing, hasOwn := sibState.tagActions[tag]; hasOwn && !wasInjected {
-		if sibState.tagRuleByTag[tag].id != intent.rule.id {
-			return // sibling's own decision from another rule wins
+	if wasInjected && pos == prev.pos && prev.action == "add" && intent.action == "remove" {
+		return // same-rule conflicts resolve add-over-remove
+	}
+	if ownRule, hasOwn := sibState.tagRuleByTag[tag]; hasOwn && !wasInjected {
+		if ownRule.id != intent.rule.id {
+			return // sibling's own decision from another rule wins, a no-op one too
 		}
-		if existing == intent.action || intent.action == "remove" {
+		if sibState.tagActions[tag] == intent.action || intent.action == "remove" {
 			return // same-rule conflicts resolve add-over-remove
 		}
 	}
-	e.injectedPos[key] = e.rulePos[intent.rule.id]
+	e.injected[key] = tagInjection{pos: pos, action: intent.action}
 
 	// Skip changes the sibling's current tags already satisfy, so no-op
 	// siblings don't land in tagChanges and inflate activity counts. Managed
 	// reset is the exception: the tag is wholesale-deleted in the client
-	// first, so its re-adds are real changes. A canceled entry stays canceled:
-	// the winning decision is "leave as is".
+	// first, so its re-adds are real changes, also for a later rule's add
+	// after an earlier reset re-add. A canceled entry stays canceled: the
+	// winning decision is "leave as is".
 	_, sibHasTag := sibState.currentTags[tag]
-	if intent.resetFromClient {
+	_, resetPending := sibState.tagResetTags[tag]
+	reset := intent.resetFromClient || resetPending
+	if reset {
 		sibHasTag = false
 	}
 	if (intent.action == "add") == sibHasTag {
@@ -3921,7 +3934,7 @@ func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpa
 	}
 	sibState.tagActions[tag] = intent.action
 	sibState.tagRuleByTag[tag] = intent.rule
-	markTagReset(sibState, tag, intent.resetFromClient && intent.action == "add")
+	markTagReset(sibState, tag, reset && intent.action == "add")
 }
 
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied

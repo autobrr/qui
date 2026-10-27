@@ -739,8 +739,19 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
 	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
 	// As category: a group whose file check did not complete gets no decision,
-	// so the copies never diverge.
+	// so the copies never diverge. A managed reset deletes the tag from every
+	// torrent first, so such a torrent keeps the tags it has.
 	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		if resetFromClient && rule != nil {
+			for _, managedTag := range tagsToManage {
+				_, hasTag := state.currentTags[managedTag]
+				if _, pending := state.tagActions[managedTag]; hasTag && !pending {
+					state.tagActions[managedTag] = "add"
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+					markTagReset(state, managedTag, true)
+				}
+			}
+		}
 		return false
 	}
 
@@ -799,6 +810,14 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 			if matchesCondition {
 				assert = action
 			}
+		} else if rule != nil && len(crossSeeds[torrent.Hash]) > 1 &&
+			(assert != "" || (tagMode != models.TagModeAdd && tagMode != models.TagModeRemove)) {
+			// A no-op decision (full mode always decides) still owns the tag:
+			// another rule's expansion must not override it, or the copy
+			// flips on every other run.
+			if _, decided := state.tagRuleByTag[managedTag]; !decided {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
 		}
 		// A later rule's decision without expansion clears earlier intent (last rule wins).
 		if assert == "" || !expandCrossSeeds || rule == nil {
@@ -846,6 +865,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
 		len(state.tagExpandByTag) > 0 ||
+		len(state.tagRuleByTag) > 0 ||
 		state.category != nil ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||

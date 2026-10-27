@@ -655,10 +655,17 @@ export function WorkflowsOverview() {
     return getRuleTagActions(rule).some(action => action?.enabled)
   }
 
-  // Handle toggle - show preview when enabling delete or category rules
+  // The condition of the action that the preview runs, for its columns
+  const previewCondition = (rule: Automation) => {
+    if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
+    if (isCategoryRule(rule)) return rule.conditions?.category?.condition
+    return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
+  }
+
+  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
-      // Enabling a delete or category rule - show preview first
+      // Enabling a delete, category, or tag rule - show preview first
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
@@ -1622,7 +1629,7 @@ export function WorkflowsOverview() {
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition ?? enableConfirm.rule.conditions?.tags?.find(action => action?.enabled && action?.condition)?.condition ?? enableConfirm.rule.conditions?.tag?.condition) : null}
+        condition={enableConfirm ? previewCondition(enableConfirm.rule) : null}
         onConfirm={confirmEnableRule}
         previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}
