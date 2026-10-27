@@ -82,7 +82,14 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	policy announcementMatchPolicy,
 ) announcementCandidateDecision {
 	if candidateSize <= 0 || positiveExactSize(searchSourceSize(source), candidateSize) {
-		return s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
+		result := s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
+		// The webhook decides before any file comparison, so HYBRID stays strict.
+		if result.decision.Class == searchCandidateClassHybridTolerance {
+			result.decision.Accepted = false
+			result.decision.Class = searchCandidateClassRejected
+			result.decision.RejectReason = result.decision.StrictMismatchReason
+		}
+		return result
 	}
 
 	input := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)

@@ -8161,7 +8161,7 @@ func searchCandidateClassPriority(class searchCandidateClass) int {
 		return 4
 	case searchCandidateClassWebSourceRelabel:
 		return 3
-	case searchCandidateClassExactSizeFallback:
+	case searchCandidateClassExactSizeFallback, searchCandidateClassHybridTolerance:
 		return 2
 	case searchCandidateClassTitleRescue:
 		return 1

@@ -132,6 +132,34 @@ func corpusPackWithSpecial(dir string) qbt.TorrentFiles {
 	return append(files, qbt.TorrentFile{Name: dir + "/Kaiju Squad (2020) - S00E01 - Special (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv", Size: 3 * corpusEpisodeSize})
 }
 
+// corpusHybridExtrasSize is 2% of a pack: inside the size tolerance, never an
+// exact size.
+const corpusHybridExtrasSize = corpusPackSize / 50
+
+// corpusPackWithExtras is a pack of ten episodes plus an Extras folder.
+func corpusPackWithExtras(dir string) qbt.TorrentFiles {
+	return append(corpusPackFiles(dir, "Kaiju.Squad.S01E%02d.1080p.BluRay.x264-GRP"),
+		qbt.TorrentFile{Name: dir + "/Extras/Kaiju.Squad.NCOP.1080p.BluRay.x264-GRP.mkv", Size: corpusHybridExtrasSize})
+}
+
+// corpusResized gives each file of files the same size.
+func corpusResized(files qbt.TorrentFiles, size int64) qbt.TorrentFiles {
+	for i := range files {
+		files[i].Size = size
+	}
+	return files
+}
+
+// hybridSearchOnlyDifferences lists the differences of a row whose only name difference is
+// a HYBRID tag on one side, inside the size tolerance.
+func hybridSearchOnlyDifferences() map[matchPath]corpusDifference {
+	differences := make(map[matchPath]corpusDifference)
+	for _, path := range []matchPath{pathLocalMatches, pathPrefilter, pathCrossMatch, pathDedup, pathWebhook} {
+		differences[path] = allowedDifference(corpusNoMatch, reasonOnlySearchComparesFiles)
+	}
+	return differences
+}
+
 // corpusEpisodeWithNFO is an episode with an NFO file, so its total size is not
 // equal to the bare episode. Local matches then cannot rescue the title, and
 // the name rules alone decide.
@@ -157,14 +185,15 @@ func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpus
 }
 
 const (
-	reasonNoAlternateTitles = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
-	reasonNoEpisodeMap      = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
-	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonDedupNoRelabel    = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
-	reasonDedupNoExactSize  = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
-	reasonRetitledSameSizes = "Local matches and the Batch matcher pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
-	reasonDedupNoSizes      = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
-	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
+	reasonNoAlternateTitles       = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoEpisodeMap            = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoTitleRescue           = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
+	reasonDedupNoRelabel          = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
+	reasonDedupNoExactSize        = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
+	reasonRetitledSameSizes       = "Local matches and the Batch matcher pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonDedupNoSizes            = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
+	reasonNumeralSameSize         = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
+	reasonOnlySearchComparesFiles = "Only search and apply compare files before deciding."
 )
 
 var corpusRows = []corpusRow{
@@ -819,6 +848,92 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusNoMatch,
+	},
+	{
+		name:           "one-sided HYBRID within the size tolerance, extra folder on the source",
+		source:         "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:      "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		sourceSize:     corpusPackSize + corpusHybridExtrasSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackWithExtras("Kaiju.Squad.S01.1080p.BluRay.x264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.HYBRID.x264-GRP"),
+		want:           corpusMatch,
+		differences:    hybridSearchOnlyDifferences(),
+	},
+	{
+		name:           "one-sided HYBRID within the size tolerance, different file sizes",
+		source:         "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:      "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize - corpusHybridExtrasSize,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.x264-GRP"),
+		candidateFiles: corpusResized(corpusPackFiles("Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP", "Kaiju.Squad.S01E%02d.1080p.BluRay.HYBRID.x264-GRP"), corpusEpisodeSize-corpusHybridExtrasSize/10),
+		// The release names decide here. The file comparison after the download
+		// rejects the pair, because the episode sizes differ.
+		want:        corpusMatch,
+		differences: hybridSearchOnlyDifferences(),
+	},
+	{
+		name:          "one-sided HYBRID outside the size tolerance",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize * 9 / 10,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "one-sided HYBRID with an exact size",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize,
+		want:          corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
+		},
+	},
+	{
+		name:          "one-sided HYBRID with an exact size and no group",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize,
+		want:          corpusMatch,
+		differences:   hybridSearchOnlyDifferences(),
+	},
+	{
+		name:          "HYBRID against IMAX within the size tolerance",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize - corpusHybridExtrasSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// Strict matching fails on HYBRID first here, so search runs the HYBRID
+		// tolerance, and IMAX must still reject the pair.
+		name:          "HYBRID against IMAX within the size tolerance, HYBRID on the source",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize - corpusHybridExtrasSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "one-sided IMAX within the size tolerance",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize - corpusHybridExtrasSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:          "one-sided HYBRID and a codec difference within the size tolerance",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x265-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize - corpusHybridExtrasSize,
+		want:          corpusNoMatch,
 	},
 }
 

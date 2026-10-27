@@ -6,6 +6,7 @@ package crossseed
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 
@@ -28,6 +29,10 @@ const (
 	// or a season or episode number that keeps the same pack-or-episode shape.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 	searchCandidateClassTitleRescue       searchCandidateClass = "title-rescue"
+	// searchCandidateClassHybridTolerance means a HYBRID tag on one side was the
+	// only strict difference and the reported sizes are within the size
+	// tolerance. The file comparison after the download decides.
+	searchCandidateClassHybridTolerance searchCandidateClass = "hybrid-tolerance"
 )
 
 // searchSizeEvidence describes size evidence available before a candidate
@@ -147,18 +152,20 @@ const (
 // classifySearchCandidate asks the Match verdict about one search result and
 // adds the score and the provenance that apply keeps.
 func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
-	verdict := m.matchVerdict(input.Source, input.Candidate, matchEvidence{
+	evidence := matchEvidence{
 		SourceSize:      input.SourceSize,
 		CandidateSize:   input.CandidateSize,
 		SourceTitles:    input.SourceTitles,
 		CandidateTitles: input.CandidateTitles,
 		EpisodeMap:      input.EpisodeMap,
-	}, matchPolicy{
+	}
+	policy := matchPolicy{
 		TitleRescue:                input.RescueTitleMismatches,
 		IndividualEpisodes:         input.FindIndividualEpisodes,
 		SizeTolerancePercent:       input.TolerancePercent,
 		AllowMissingCandidateGroup: input.AllowMissingCandidateGroup,
-	})
+	}
+	verdict := m.hybridToleranceVerdict(input, evidence, policy, m.matchVerdict(input.Source, input.Candidate, evidence, policy))
 	decision := searchCandidateDecision{
 		Class:                 searchCandidateClassRejected,
 		SizeEvidence:          classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
@@ -171,6 +178,9 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	if verdict.Class == searchCandidateClassExactSizeFallback {
 		decision.RelaxedDifferences = verdict.relaxedFields()
 		decision.Relaxed = verdict.Relaxed
+	}
+	if verdict.Class == searchCandidateClassHybridTolerance {
+		decision.RelaxedDifferences = []string{"variant"}
 	}
 	if !verdict.Matched {
 		return decision
@@ -211,6 +221,8 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 			decision.Score += sizeEvidenceStrictScoreBonus
 			decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict metadata; " + decision.MatchReason
 		}
+	case searchCandidateClassHybridTolerance:
+		decision.MatchReason = "one-sided HYBRID within size tolerance; " + decision.MatchReason
 	case searchCandidateClassRejected:
 	}
 	if verdict.MappedEpisode != "" {
@@ -218,6 +230,42 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	}
 
 	return decision
+}
+
+// hybridToleranceVerdict lets search pass a pair whose only strict difference
+// is a HYBRID tag on one side, when the reported sizes are within the size
+// tolerance. The file comparison after the download decides. Any other strict
+// difference, IMAX included, still rejects the pair. Only search asks for this
+// verdict, so the other Match paths keep HYBRID strict.
+func (m matcher) hybridToleranceVerdict(input searchCandidateInput, evidence matchEvidence, policy matchPolicy, verdict matchVerdict) matchVerdict {
+	// isSizeWithinTolerance accepts two zero sizes, so require positive sizes.
+	if verdict.Class != searchCandidateClassRejected || verdict.Strict.reason() != "HYBRID" ||
+		input.SourceSize <= 0 || input.CandidateSize <= 0 {
+		return verdict
+	}
+	hybrid := m.matchVerdict(withoutHybrid(input.Source), withoutHybrid(input.Candidate), evidence, policy)
+	if hybrid.Class != searchCandidateClassStrict {
+		return verdict
+	}
+	// The second verdict checks the size tolerance, and skips it where a strict
+	// match skips it.
+	if hybrid.SizeRejected {
+		gap := math.Abs(float64(input.CandidateSize-input.SourceSize)) / float64(input.SourceSize) * 100
+		verdict.RejectReason = fmt.Sprintf("%s (size differs by %.2f%%)", verdict.Strict.reason(), gap)
+		return verdict
+	}
+	hybrid.Class = searchCandidateClassHybridTolerance
+	hybrid.Strict = verdict.Strict
+	return hybrid
+}
+
+func withoutHybrid(read namedRelease) namedRelease {
+	release := *read.release
+	release.Other = slices.DeleteFunc(slices.Clone(release.Other), func(value string) bool {
+		return variantValueMatches(normalizeVariant(value), "HYBRID")
+	})
+	read.release = &release
+	return read
 }
 
 // applyEpisodeMap rewrites the seasonless side of a mixed-scheme pair to the
@@ -385,6 +433,10 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local
 		return false
 	}
 	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
+	if decision.Class == searchCandidateClassHybridTolerance {
+		// The download can keep or drop the HYBRID tag that search let pass.
+		listing, download = withoutHybrid(listing), withoutHybrid(download)
+	}
 	// The download can name the local torrent or another title of the show that
 	// search resolved. Only the download is held against those titles, so a
 	// listing that matches its own alias cannot admit a download of another show.
