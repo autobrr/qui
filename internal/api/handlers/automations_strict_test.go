@@ -27,7 +27,7 @@ func TestAutomationStrictDecode(t *testing.T) {
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
 	store := models.NewAutomationStore(db)
-	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{})
+	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{}, nil)
 	instanceID := strconv.Itoa(instance.ID)
 
 	existing, err := store.Create(t.Context(), &models.Automation{

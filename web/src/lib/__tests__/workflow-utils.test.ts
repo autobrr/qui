@@ -194,6 +194,20 @@ describe("toEditInput", () => {
     expect(result).not.toHaveProperty("id")
   })
 
+  it("round-trips a queue position action through the JSON editor unchanged", () => {
+    const queueConditions: ActionConditions = {
+      schemaVersion: "1",
+      queuePosition: {
+        enabled: true,
+        position: "bottom",
+        condition: { field: "STATE", operator: "EQUAL", value: "downloading" },
+      },
+    }
+    const rule = makeAutomation({ conditions: queueConditions })
+    const parsed = parseImportJSON(toExportJSON(toExportFormat(rule)))
+    expect(toEditInput(rule, parsed.data!).conditions).toEqual(queueConditions)
+  })
+
   it("passes unknown top-level keys through to the backend", () => {
     const result = toEditInput(makeAutomation(), { name: "x", trackerPattern: "*", conditions, notfy: false })
     expect(result).toHaveProperty("notfy", false)

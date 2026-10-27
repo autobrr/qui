@@ -47,7 +47,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	}`
 
 	t.Run("returns 503 when service is unavailable", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+		handler := NewAutomationHandler(nil, nil, nil, nil, nil, nil)
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest(validPayload))
@@ -56,7 +56,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 
 	t.Run("returns 400 on invalid JSON payload", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{})
+		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{}, nil)
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest("{"))
@@ -65,7 +65,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 
 	t.Run("runs dry-run and returns accepted status", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{})
+		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{}, nil)
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest(validPayload))
@@ -83,7 +83,7 @@ func TestAutomationTrackerPattern(t *testing.T) {
 	require.NoError(t, err)
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
-	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, nil, nil, nil)
+	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, nil, nil, nil, nil)
 	instanceID := strconv.Itoa(instance.ID)
 
 	serve := func(method, ruleID, body string, fn http.HandlerFunc) *httptest.ResponseRecorder {

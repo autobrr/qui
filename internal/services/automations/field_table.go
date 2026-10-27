@@ -61,6 +61,9 @@ var ContentLayouts = []string{"Original", "Subfolder", "NoSubfolder"}
 // TagModes are the values of tags[].mode.
 var TagModes = []string{models.TagModeFull, models.TagModeAdd, models.TagModeRemove}
 
+// QueuePositions are the values of queuePosition.position.
+var QueuePositions = []string{models.QueuePositionTop, models.QueuePositionBottom}
+
 // DeleteModes are the values of delete.mode. An empty value means 'delete'.
 var DeleteModes = []string{models.DeleteModeKeepFiles, models.DeleteModeWithFiles, models.DeleteModeWithFilesPreserveCrossSeeds, models.DeleteModeWithFilesIncludeCrossSeeds}
 

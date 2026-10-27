@@ -251,6 +251,7 @@ func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
 		conditionFromResumeAction(conditions.Resume),
 		conditionFromRecheckAction(conditions.Recheck),
 		conditionFromReannounceAction(conditions.Reannounce),
+		conditionFromQueuePositionAction(conditions.QueuePosition),
 		conditionFromDeleteAction(conditions.Delete),
 		conditionFromCategoryAction(conditions.Category),
 		conditionFromMoveAction(conditions.Move),
@@ -314,6 +315,13 @@ func conditionFromRecheckAction(action *models.RecheckAction) *models.RuleCondit
 }
 
 func conditionFromReannounceAction(action *models.ReannounceAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromQueuePositionAction(action *models.QueuePositionAction) *models.RuleCondition {
 	if action == nil || !action.Enabled {
 		return nil
 	}

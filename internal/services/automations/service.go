@@ -67,6 +67,8 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionResumed:             "Resumed torrents",
 	models.ActivityActionRechecked:           "Rechecked torrents",
 	models.ActivityActionReannounced:         "Reannounced torrents",
+	models.ActivityActionQueueTopped:         "Moved to top of queue",
+	models.ActivityActionQueueBottomed:       "Moved to bottom of queue",
 	models.ActivityActionMoved:               "Moved torrents",
 	models.ActivityActionExportedToInstance:  "Export to instance",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
@@ -1888,6 +1890,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("resumeNoMatch", stats.ResumeConditionNotMet).
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
+			Int("queuePositionNoMatch", stats.QueuePositionConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
 			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
@@ -2277,6 +2280,60 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
 			} else if s.activityRuns != nil {
 				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute queue position moves; batches must go out in planned order to keep relative order
+	for _, move := range []struct {
+		batches        [][]string
+		bulkAction     string
+		activityAction string
+	}{
+		{plan.queueTop, "topPriority", models.ActivityActionQueueTopped},
+		{plan.queueBottom, "bottomPriority", models.ActivityActionQueueBottomed},
+	} {
+		movedHashes := make([]string, 0)
+		for _, batch := range move.batches {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, move.bulkAction); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Str("action", move.bulkAction).Msg("automations: queue position action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Str("action", move.bulkAction).Msg("automations: moved torrents in queue")
+				movedHashes = append(movedHashes, batch...)
+			}
+		}
+		if len(movedHashes) == 0 {
+			continue
+		}
+
+		detailsJSON, err := json.Marshal(map[string]int{"count": len(movedHashes)})
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to encode queue position activity")
+			continue
+		}
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     move.activityAction,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, len(movedHashes))
+		summary.recordRuleCounts(
+			move.activityAction,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(movedHashes, plan.queueRules),
+		)
+		summary.addTorrentSamples(collectTorrentNamesForHashes(movedHashes, torrentByHash), 3)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record queue position activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(movedHashes, torrentByHash, s.syncManager)
 				if len(items) > 0 {
 					s.activityRuns.Put(activityID, instanceID, items)
 				}
@@ -4257,6 +4314,8 @@ func (s *Service) recordDryRunActivities(
 		{action: models.ActivityActionResumed, hashes: plan.resume.hashes},
 		{action: models.ActivityActionRechecked, hashes: plan.recheck.hashes},
 		{action: models.ActivityActionReannounced, hashes: plan.reannounce.hashes},
+		{action: models.ActivityActionQueueTopped, hashes: slices.Concat(plan.queueTop...)},
+		{action: models.ActivityActionQueueBottomed, hashes: slices.Concat(plan.queueBottom...)},
 		{action: models.ActivityActionAutoManaged, hashes: slices.Concat(plan.autoManage.byTarget[true], plan.autoManage.byTarget[false])},
 	} {
 		if len(a.hashes) == 0 {

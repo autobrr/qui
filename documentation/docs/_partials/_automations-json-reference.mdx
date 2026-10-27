@@ -29,6 +29,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `resume` | object |  | Resume matching torrents. See `conditions.resume`. |
 | `recheck` | object |  | Force a recheck of matching torrents. See `conditions.recheck`. |
 | `reannounce` | object |  | Force a reannounce of matching torrents. See `conditions.reannounce`. |
+| `queuePosition` | object |  | Move matching downloading torrents to the top or the bottom of the queue. Needs torrent queueing on the instance. See `conditions.queuePosition`. |
 | `delete` | object |  | Delete matching torrents. A rule with `delete` has no other action. See `conditions.delete`. |
 | `tags` | array of object |  | Tag actions. Each entry manages its own set of tags. See `conditions.tags[]`. |
 | `category` | object |  | Set the category of matching torrents. See `conditions.category`. |
@@ -99,6 +100,14 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.queuePosition`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `position` | string | `top`, `bottom` | Where matching downloading torrents go in the queue. |
 | `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
 
 ### `conditions.delete`

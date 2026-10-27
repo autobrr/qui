@@ -164,6 +164,10 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		return ruleError("External program action requires a valid program selection")
 	}
 
+	if err := conditions.QueuePosition.Validate(); err != nil {
+		return ruleError("Queue position must be 'top' or 'bottom'")
+	}
+
 	return nil
 }
 

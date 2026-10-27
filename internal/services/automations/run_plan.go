@@ -26,6 +26,9 @@ type runPlan struct {
 	resume         plannedTorrents
 	recheck        plannedTorrents
 	reannounce     plannedTorrents
+	queueTop       [][]string // topPriority batches, in send order
+	queueBottom    [][]string // bottomPriority batches, in send order
+	queueRules     map[string]ruleRef
 	autoManage     plannedAction[bool] // true turns automatic torrent management on
 	tags           map[string]*tagChange
 	category       plannedAction[string] // by category, with the group members and cross-seeds
@@ -119,6 +122,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
 	}
+	var queueMoves []queueMoveInput
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {
@@ -131,6 +135,13 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		torrent := torrentByHash[hash]
 
 		planSpeedAndState(&plan, hash, torrent, state)
+		if state.queuePosition != "" {
+			queueMoves = append(queueMoves, queueMoveInput{Hash: hash, TargetPosition: state.queuePosition, CurrentPriority: torrent.Priority})
+			if plan.queueRules == nil {
+				plan.queueRules = make(map[string]ruleRef)
+			}
+			plan.queueRules[hash] = state.queuePositionRule
+		}
 		planShareLimits(&plan.shareLimits, hash, torrent, state)
 
 		if change := plannedTagChange(state); change != nil {
@@ -160,6 +171,9 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
 	plan.move = s.planMoves(ctx, in, moveTriggers)
+	if len(queueMoves) > 0 {
+		plan.queueTop, plan.queueBottom = s.planQueuePositionMoves(ctx, in.instanceID, queueMoves, in.torrents)
+	}
 	return plan
 }
 

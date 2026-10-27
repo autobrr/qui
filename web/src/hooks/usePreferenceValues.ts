@@ -47,6 +47,11 @@ export function useQueueLimits(instanceId: number | undefined, options?: Prefere
   }
 }
 
+// Preferences that are still loading or failed to load count as on.
+export function useQueueingEnabled(instanceId: number | undefined, options?: PreferenceOptions): boolean {
+  return useInstancePreferences(instanceId, options).preferences?.queueing_enabled !== false
+}
+
 export function useAddTorrentPreferences(instanceId: number | undefined, options?: PreferenceOptions) {
   const { preferences } = useInstancePreferences(instanceId, options)
   return useMemo(() => ({

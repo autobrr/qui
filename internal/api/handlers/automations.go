@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
@@ -26,15 +27,17 @@ type AutomationHandler struct {
 	instanceStore        *models.InstanceStore
 	externalProgramStore *models.ExternalProgramStore
 	service              *automations.Service
+	syncManager          *qbittorrent.SyncManager
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service, syncManager *qbittorrent.SyncManager) *AutomationHandler {
 	return &AutomationHandler{
 		store:                store,
 		activityStore:        activityStore,
 		instanceStore:        instanceStore,
 		externalProgramStore: externalProgramStore,
 		service:              service,
+		syncManager:          syncManager,
 	}
 }
 
@@ -351,7 +354,30 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
+	if status, msg := h.checkQueueingForQueuePosition(ctx, instanceID, payload); status != 0 {
+		return nil, status, msg
+	}
+
 	return payload, 0, ""
+}
+
+// checkQueueingForQueuePosition rejects an enabled queue position action on an enabled rule while
+// the instance has qBittorrent queueing turned off, since every move would be a no-op. A disabled
+// rule skips the preference read so it can be turned off after queueing is.
+func (h *AutomationHandler) checkQueueingForQueuePosition(ctx context.Context, instanceID int, payload *AutomationPayload) (int, string) {
+	action := payload.Conditions.QueuePosition
+	if action == nil || !action.Enabled || (payload.Enabled != nil && !*payload.Enabled) {
+		return 0, ""
+	}
+	prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to read queueing preference for validation")
+		return http.StatusInternalServerError, "Failed to read the instance's queueing setting"
+	}
+	if !prefs.QueueingEnabled {
+		return http.StatusBadRequest, "Queue position needs torrent queueing. Enable queueing in the instance's qBittorrent settings, or remove the queue position action."
+	}
+	return 0, ""
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {

@@ -53,6 +53,7 @@ var keyValues = map[string][]string{
 	"DeleteAction.groupId":                 automations.BuiltinGroupIDs,
 	"DeleteAction.atomic":                  {"all"},
 	"TagAction.mode":                       automations.TagModes,
+	"QueuePositionAction.position":         automations.QueuePositions,
 	"CategoryAction.groupId":               automations.BuiltinGroupIDs,
 	"MoveAction.groupId":                   automations.BuiltinGroupIDs,
 	"MoveAction.atomic":                    {"all"},
