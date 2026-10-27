@@ -2469,60 +2469,18 @@ func TestProcessTorrents_Tag_IncludeCrossSeeds_RecordsExpansionIntent(t *testing
 	}
 }
 
-func TestProcessTorrents_Tag_FullMode_AlreadyTaggedMatchRecordsAssertIntent(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
-	// Steady state: the copy matches and already carries the tag. No local
-	// change is needed, but the expansion intent must still be recorded so
-	// full-mode removals on non-matching siblings get canceled (any-match-wins).
-	torrents := []qbt.Torrent{
-		{
-			Hash: "abc123",
-			Name: "Matching Torrent",
-			Tags: "managed",
-		},
-	}
-
-	rule := &models.Automation{
-		ID:             7,
-		Enabled:        true,
-		Name:           "Managed cross-seed tag",
-		TrackerPattern: "*",
-		Conditions: &models.ActionConditions{
-			SchemaVersion: "1",
-			Tags: []*models.TagAction{{
-				Enabled:           true,
-				Tags:              []string{"managed"},
-				Mode:              models.TagModeFull,
-				IncludeCrossSeeds: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldName,
-					Operator: models.OperatorContains,
-					Value:    "Matching",
-				},
-			}},
-		},
-	}
-
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
-	state, ok := states["abc123"]
-	require.True(t, ok, "expected intent-only state to be kept")
-	require.NotContains(t, state.tagActions, "managed", "no local change for an already-correct copy")
-	require.Equal(t, tagExpandIntent{
-		rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
-		action: "add",
-	}, state.tagExpandByTag["managed"])
-}
-
-func TestProcessTorrents_Tag_AddRemoveMode_SteadyStateRecordsAssertIntent(t *testing.T) {
-	// A cross-seed copy added after the first run must still receive the
-	// decision, so steady state asserts the mode's action across siblings.
+func TestProcessTorrents_Tag_SteadyStateRecordsAssertIntent(t *testing.T) {
+	// The copy matches and already has the wanted tags. No local change is
+	// needed, but the expansion intent is still recorded: a cross-seed copy
+	// added after the first run must still receive the decision, and in full
+	// mode it cancels the removals on non-matching siblings (any match wins).
 	tests := []struct {
 		name       string
 		mode       string
 		currentTag string
 		want       string
 	}{
+		{name: "full mode already tagged", mode: models.TagModeFull, currentTag: "managed", want: "add"},
 		{name: "add mode already tagged", mode: models.TagModeAdd, currentTag: "managed", want: "add"},
 		{name: "remove mode already untagged", mode: models.TagModeRemove, currentTag: "", want: "remove"},
 	}

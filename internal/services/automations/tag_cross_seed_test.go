@@ -5,6 +5,8 @@ package automations
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -46,84 +48,88 @@ func crossSeedGroupsForTest(torrents []qbt.Torrent) crossSeedGroups {
 	return buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
 
-func TestExpandTagStatesForCrossSeeds_AddPropagatesToSiblings(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{Hash: "trigger", Name: "Silver.Lantern.Chronicle.S02.1080p.BluRay-GRPB", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
-		{Hash: "sibling", Name: "Silver Lantern Chronicle S2 (BD 1080p)", SavePath: "/data", ContentPath: "/data/show", Tags: "keep-me"},
+func TestExpandTagStatesForCrossSeeds_PropagatesToSiblings(t *testing.T) {
+	tests := []struct {
+		name                     string
+		mode                     string
+		triggerTags, siblingTags string
+		wantAdd, wantRemove      []string
+		wantDesired              []string
+	}{
+		{name: "add", mode: models.TagModeAdd, triggerTags: "abcd", siblingTags: "keep-me", wantAdd: []string{"managed"}, wantDesired: []string{"keep-me", "managed"}},
+		{name: "remove", mode: models.TagModeRemove, triggerTags: "managed", siblingTags: "managed,keep-me", wantRemove: []string{"managed"}, wantDesired: []string{"keep-me"}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "trigger", Name: "Silver.Lantern.Chronicle.S02.1080p.BluRay-GRPB", SavePath: "/data", ContentPath: "/data/show", Tags: tt.triggerTags},
+				{Hash: "sibling", Name: "Silver Lantern Chronicle S2 (BD 1080p)", SavePath: "/data", ContentPath: "/data/show", Tags: tt.siblingTags},
+			}
 
-	rule := tagExpansionRule(&models.TagAction{
-		Enabled:           true,
-		Tags:              []string{"managed"},
-		Mode:              models.TagModeAdd,
-		IncludeCrossSeeds: true,
-	})
-	ref := ruleRef{id: 1, name: "Tag rule"}
+			rule := tagExpansionRule(&models.TagAction{
+				Enabled:           true,
+				Tags:              []string{"managed"},
+				Mode:              tt.mode,
+				IncludeCrossSeeds: true,
+			})
+			ref := ruleRef{id: 1, name: "Tag rule"}
 
-	states := map[string]*torrentDesiredState{
-		"trigger": {
-			hash:           "trigger",
-			currentTags:    parseTorrentTags("abcd"),
-			tagActions:     map[string]string{"managed": "add"},
-			tagRuleByTag:   map[string]ruleRef{"managed": ref},
-			tagExpandByTag: map[string]tagExpandIntent{"managed": {rule: ref, action: "add"}},
-		},
+			states := map[string]*torrentDesiredState{
+				"trigger": {
+					hash:           "trigger",
+					currentTags:    parseTorrentTags(tt.triggerTags),
+					tagActions:     map[string]string{"managed": tt.mode},
+					tagRuleByTag:   map[string]ruleRef{"managed": ref},
+					tagExpandByTag: map[string]tagExpandIntent{"managed": {rule: ref, action: tt.mode}},
+				},
+			}
+
+			expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
+
+			sib, ok := states["sibling"]
+			require.True(t, ok, "expected sibling state to be created")
+			assert.Equal(t, tt.mode, sib.tagActions["managed"])
+			assert.Equal(t, ref, sib.tagRuleByTag["managed"], "expected rule attribution on sibling")
+			require.Contains(t, sib.currentTags, "keep-me", "sibling state must be seeded with its own current tags")
+
+			// The diff loop must produce a per-sibling desired set that keeps unrelated
+			// tags (SetTorrentTags replaces the whole list).
+			sibChange := buildTagChangesForTest(states)["sibling"]
+			require.NotNil(t, sibChange)
+			assert.ElementsMatch(t, tt.wantAdd, sibChange.toAdd)
+			assert.ElementsMatch(t, tt.wantRemove, sibChange.toRemove)
+			assert.ElementsMatch(t, tt.wantDesired, slices.Collect(maps.Keys(sibChange.desired)), "unrelated sibling tags must not be clobbered")
+		})
 	}
-
-	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
-
-	sib, ok := states["sibling"]
-	require.True(t, ok, "expected sibling state to be created")
-	assert.Equal(t, "add", sib.tagActions["managed"])
-	assert.Equal(t, ref, sib.tagRuleByTag["managed"], "expected rule attribution on sibling")
-	require.Contains(t, sib.currentTags, "keep-me", "sibling state must be seeded with its own current tags")
-
-	// The diff loop must produce a per-sibling desired set that keeps unrelated
-	// tags (SetTorrentTags replaces the whole list).
-	changes := buildTagChangesForTest(states)
-	sibChange := changes["sibling"]
-	require.NotNil(t, sibChange)
-	assert.ElementsMatch(t, []string{"managed"}, sibChange.toAdd)
-	assert.Contains(t, sibChange.desired, "keep-me", "unrelated sibling tags must not be clobbered")
-	assert.Contains(t, sibChange.desired, "managed")
 }
 
-func TestExpandTagStatesForCrossSeeds_RemovePropagatesToSiblings(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{Hash: "trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
-		{Hash: "sibling", SavePath: "/data", ContentPath: "/data/show", Tags: "managed,keep-me"},
-	}
+// A tag rule with includeCrossSeeds tags the cross-seed of a matching torrent, in the live run and the dry run.
+func TestApplyRules_TagIncludeCrossSeedsTagsEachCopy(t *testing.T) {
+	const (
+		x    = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		y    = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		name = "Example.Show.S01E01.1080p.WEB-DL-GRP"
+	)
+	// Same name, different hash: X and Y are cross-seeds. Only X matches the rule.
+	torrents := []stubTorrent{{x, name, "mv", ""}, {y, name, "", ""}}
+	rule := tagExpansionRule(&models.TagAction{Enabled: true, Tags: []string{"moved"}, Mode: models.TagModeAdd, IncludeCrossSeeds: true, Condition: tagsContain("mv")})
+	want := map[string][]string{"tag": {x, y}}
 
-	rule := tagExpansionRule(&models.TagAction{
-		Enabled:           true,
-		Tags:              []string{"managed"},
-		Mode:              models.TagModeRemove,
-		IncludeCrossSeeds: true,
+	t.Run("live run", func(t *testing.T) {
+		svc, instanceID, stub := newWriteStubService(t, torrents)
+		_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
+		require.NoError(t, err)
+		require.Equal(t, want, stub.writes())
 	})
-	ref := ruleRef{id: 1, name: "Tag rule"}
-
-	states := map[string]*torrentDesiredState{
-		"trigger": {
-			hash:           "trigger",
-			currentTags:    parseTorrentTags("managed"),
-			tagActions:     map[string]string{"managed": "remove"},
-			tagRuleByTag:   map[string]ruleRef{"managed": ref},
-			tagExpandByTag: map[string]tagExpandIntent{"managed": {rule: ref, action: "remove"}},
-		},
-	}
-
-	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
-
-	sib, ok := states["sibling"]
-	require.True(t, ok, "expected sibling state to be created")
-	assert.Equal(t, "remove", sib.tagActions["managed"])
-
-	changes := buildTagChangesForTest(states)
-	sibChange := changes["sibling"]
-	require.NotNil(t, sibChange)
-	assert.ElementsMatch(t, []string{"managed"}, sibChange.toRemove)
-	assert.NotContains(t, sibChange.desired, "managed")
-	assert.Contains(t, sibChange.desired, "keep-me", "unrelated sibling tags must not be clobbered")
+	t.Run("dry run", func(t *testing.T) {
+		svc, instanceID, stub := newWriteStubService(t, torrents)
+		dryRunRule := *rule
+		dryRunRule.DryRun = true
+		activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&dryRunRule}, true)
+		require.NoError(t, err)
+		require.Equal(t, want, dryRunActivityHashes(t, svc, instanceID, activities))
+		require.Empty(t, stub.writes())
+	})
 }
 
 func TestExpandTagStatesForCrossSeeds_SiblingOtherRuleDecisionWins(t *testing.T) {
