@@ -26,7 +26,7 @@ import (
 // A torrent added paused, with skip checking off, stays at progress 0 until the
 // target is asked to recheck. Without that recheck, verification times out.
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
-	result := runPausedExport(t, http.StatusOK)
+	result := runPausedExport(t, true, false, http.StatusOK)
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome)
@@ -37,12 +37,35 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 // A failed recheck request fails the export and removes the torrent from the
 // target, keeping its files, so it does not block the next export.
 func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
-	result := runPausedExport(t, http.StatusInternalServerError)
+	result := runPausedExport(t, true, false, http.StatusInternalServerError)
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
 	require.True(t, strings.HasPrefix(result.activities[0].Reason, "Recheck on target failed:"), result.activities[0].Reason)
 	require.Equal(t, []string{"false"}, result.deleteFiles)
+}
+
+// Only a paused add with skip checking off needs the recheck; every other
+// combination exports without asking the target to recheck.
+func TestExecuteExportToInstance_NoRecheckWhenNotNeeded(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		paused       bool
+		skipChecking bool
+	}{
+		{"paused, skip checking", true, true},
+		{"started, skip checking", false, true},
+		{"started, checking", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := runPausedExport(t, tc.paused, tc.skipChecking, http.StatusOK)
+
+			require.Len(t, result.activities, 1)
+			require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome)
+			require.Equal(t, int32(0), result.rechecks.Load())
+			require.Empty(t, result.deleteFiles)
+		})
+	}
 }
 
 type pausedExportResult struct {
@@ -51,9 +74,11 @@ type pausedExportResult struct {
 	deleteFiles []string
 }
 
-// runPausedExport exports one torrent paused, with skip checking off, to a target
-// that answers recheck requests with recheckStatus.
-func runPausedExport(t *testing.T, recheckStatus int) *pausedExportResult {
+// runPausedExport exports one torrent with the given paused and skip checking
+// settings to a target that answers recheck requests with recheckStatus. The
+// target reports the torrent complete right after the add, except for a paused
+// add with skip checking off, which stays at progress 0 until it is rechecked.
+func runPausedExport(t *testing.T, paused, skipChecking bool, recheckStatus int) *pausedExportResult {
 	t.Helper()
 	prevAttempts := exportVerifyMaxAttempts
 	prevInterval := exportVerifyPollInterval
@@ -100,7 +125,7 @@ func runPausedExport(t *testing.T, recheckStatus int) *pausedExportResult {
 				return
 			}
 			state, progress := "stoppedDL", "0"
-			if rechecked.Load() {
+			if rechecked.Load() || !paused || skipChecking {
 				state, progress = "stoppedUP", "1"
 			}
 			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Export Sample","progress":%s,"state":"%s"}}}`, hash, progress, state)
@@ -141,7 +166,6 @@ func runPausedExport(t *testing.T, recheckStatus int) *pausedExportResult {
 	t.Cleanup(func() { _ = clientPool.Close() })
 
 	svc := NewService(Config{}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, qbittorrent.NewSyncManager(clientPool, nil), nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	skipChecking := false
 	ch := svc.executeExportToInstance(t.Context(), sourceInstance.ID, []pendingExportToInstance{{
 		hash: hash,
 		torrent: qbt.Torrent{
@@ -151,7 +175,7 @@ func runPausedExport(t *testing.T, recheckStatus int) *pausedExportResult {
 		action: &models.ExportToInstanceAction{
 			Enabled:          true,
 			TargetInstanceID: targetInstance.ID,
-			Paused:           true,
+			Paused:           paused,
 			SkipChecking:     &skipChecking,
 		},
 		ruleID:   1,
