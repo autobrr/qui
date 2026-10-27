@@ -6,7 +6,7 @@ package sse
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"net/http"
 	"testing"
@@ -67,14 +67,27 @@ func openChangeStream(t *testing.T, manager *StreamManager, payload []map[string
 // change sends a subscription change and returns the status code.
 func (s *changeStream) change(t *testing.T, body map[string]any) int {
 	t.Helper()
+	status, err := s.post(t.Context(), body)
+	require.NoError(t, err)
+	return status
+}
+
+// post sends a subscription change. It makes no assertions, so a goroutine can call it.
+func (s *changeStream) post(ctx context.Context, body map[string]any) (int, error) {
 	raw, err := json.Marshal(body)
-	require.NoError(t, err)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://qui.test/stream/subscriptions", bytes.NewReader(raw))
-	require.NoError(t, err)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://qui.test/stream/subscriptions", bytes.NewReader(raw))
+	if err != nil {
+		return 0, err
+	}
 	resp, err := s.transport.RoundTrip(req)
-	require.NoError(t, err)
+	if err != nil {
+		return 0, err
+	}
 	_ = resp.Body.Close()
-	return resp.StatusCode
+	return resp.StatusCode, nil
 }
 
 // dataFrames reads the stream for d and returns the event types of the data
@@ -230,17 +243,24 @@ func TestSubscriptionChangeBeforeSessionSubscribes(t *testing.T) {
 		provider.torrentsGate = nil
 		provider.mu.Unlock()
 
-		status := make(chan int, 1)
+		type result struct {
+			status int
+			err    error
+		}
+		done := make(chan result, 1)
 		go func() {
-			status <- stream.change(t, map[string]any{
+			status, err := stream.post(t.Context(), map[string]any{
 				"connectionId": stream.connectionID,
 				"add":          []map[string]any{detailsStream(instanceID, "details", "aaa")},
 			})
+			done <- result{status, err}
 		}()
 		synctest.Wait()
 		close(gate)
 
-		require.Equal(t, http.StatusNoContent, <-status)
+		res := <-done
+		require.NoError(t, res.err)
+		require.Equal(t, http.StatusNoContent, res.status)
 		frames := stream.dataFrames(t, time.Second)
 		require.Equal(t, []string{streamEventInit}, frames["details"])
 	})
