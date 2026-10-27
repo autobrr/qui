@@ -45,6 +45,9 @@ func (s *Service) buildDirectCommand(ctx context.Context, program *models.Extern
 func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
 	cmd := cmdCommand(ctx, "/k", program.Path, args)
 	cmd.SysProcAttr.CreationFlags = windows.CREATE_NEW_CONSOLE
+	// Nil streams would connect the shell to NUL. Null handles let it use the new console instead.
+	console := os.NewFile(0, "console")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = console, console, console
 	return cmd, executionPolicy{releaseOnStart: true}
 }
 
