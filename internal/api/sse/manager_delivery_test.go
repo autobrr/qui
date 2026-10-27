@@ -718,9 +718,9 @@ func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
 	require.Greater(t, provider.crossInstanceCalls, builds, "a combined view must rebuild on a server-state tick")
 }
 
-// TestServeCoalescesBurstOfUpdates verifies that a rapid burst of HandleMainData
-// calls collapses into far fewer torrent builds than events while still
-// delivering at least one update to the connected subscriber.
+// TestServeCoalescesBurstOfUpdates verifies that a rapid burst of sync updates
+// collapses into far fewer torrent builds than events while still delivering at
+// least one update to the connected subscriber.
 func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -746,9 +746,13 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	builds := provider.signalBuilds()
 	release := provider.gateTorrentBuilds()
 
+	// HandleMainData queues each update from its own goroutine, so on a busy
+	// runner a late update starts a new build after the release. Queue the burst
+	// here instead, so all of it is in the queue before the test releases the
+	// first build.
 	const burst = 50
 	for i := range burst {
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: int64(i)})
+		manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, RID: int64(i), IncludeCounts: true})
 	}
 
 	// Wait for the first coalesced build to start (it is now parked on the gate).
