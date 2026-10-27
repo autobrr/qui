@@ -16,6 +16,11 @@
     "security": "Sicherheit",
     "logs": "Protokolle"
   },
+  "nav": {
+    "general": "Allgemein",
+    "connections": "Verbindungen",
+    "access": "Zugriff"
+  },
   "language": {
     "cardTitle": "Sprache",
     "cardDescription": "Wähle deine bevorzugte Anzeigesprache"
@@ -421,10 +426,6 @@
       "loadingDescription": "Verfügbare Designs werden geladen...",
       "description": "Wähle aus den verfügbaren Designs. Premium-Designs erfordern eine gültige Lizenz.",
       "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
-      "freeBadge": "Kostenlos",
-      "freeThemes": "Kostenlose Designs",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Premium-Designs",
       "notLoaded": "Premium-Designs nicht geladen",
       "notLoadedDescription": "Konfiguriere",
       "notLoadedAnd": "und führe aus",
@@ -444,7 +445,7 @@
       "managementTitle": "Lizenzverwaltung",
       "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
       "providers": {
-        "dodoPortal": "Dodo-Portal"
+        "licensePortal": "Lizenzportal"
       },
       "status": {
         "unlockTitle": "Premium-Designs freischalten",
@@ -452,7 +453,9 @@
         "activeTitle": "Premium-Zugang aktiv",
         "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Premium-Designs",
         "activationRequiredTitle": "Lizenzaktivierung erforderlich",
-        "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden"
+        "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden",
+        "offlineTitle": "Lizenzdienst nicht erreichbar",
+        "offlineDescription": "qui konnte den Lizenzdienst 7 Tage lang nicht erreichen, daher sind die Premium-Designs gesperrt. qui prüft beim Start und einmal am Tag. Die Designs werden wieder freigeschaltet, sobald der Dienst antwortet. Du musst die Lizenz nicht neu aktivieren."
       },
       "portalHelp": {
         "prefix": "Kaufe über DodoPayments und gib hier deinen Lizenzschlüssel ein. Falls du den Schlüssel verlierst, kannst du ihn wiederherstellen über das",
@@ -474,10 +477,31 @@
       },
       "details": {
         "productAdded": "{{productName}} • Hinzugefügt {{date}}",
-        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}",
+        "statusLabels": {
+          "invalid": "Ungültig",
+          "offline": "Offline",
+          "unknown": "Unbekannt"
+        }
       },
       "invalid": {
-        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktuell aktiv ist."
+        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du das Aktivierungslimit erreichst, gehe zu <portal>licenses.getqui.com</portal>, registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast, und deaktiviere unter Machine Instances ein Gerät, das du nicht mehr nutzt."
+      },
+      "errors": {
+        "expired": "Dein Lizenzschlüssel ist abgelaufen.",
+        "notActive": "Dieser Lizenzschlüssel ist nicht mehr aktiv.",
+        "invalid": "Dieser Lizenzschlüssel ist ungültig.",
+        "notFound": "Der eingegebene Lizenzschlüssel ist ungültig.",
+        "databaseCopied": "Diese Lizenz wurde auf einem anderen Gerät aktiviert. Die Datenbank wurde anscheinend kopiert.",
+        "conditionsMismatch": "Der Lizenzschlüssel erfüllt die erforderlichen Bedingungen nicht.",
+        "activationLimit": "Das Aktivierungslimit der Lizenz ist erreicht. Gehe zu <portal>licenses.getqui.com</portal> und registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast. Öffne Machine Instances, deaktiviere ein Gerät, das du nicht mehr nutzt, und versuche es dann erneut.",
+        "limitReached": "Das Aktivierungslimit der Lizenz ist erreicht.",
+        "usageLimit": "Das Nutzungslimit der Lizenz ist überschritten.",
+        "unreachable": "Der Lizenzdienst ist nicht erreichbar. Bitte versuche es gleich noch einmal.",
+        "tooManyAttempts": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.",
+        "rateLimited": "Bitte warte, bevor du es erneut versuchst.",
+        "generic": "Der Lizenzschlüssel konnte nicht überprüft werden. Bitte versuche es erneut.",
+        "deleteFailed": "Die Lizenz konnte nicht entfernt werden. Bitte versuche es erneut."
       },
       "actions": {
         "addLicense": "Lizenz hinzufügen",
@@ -490,7 +514,7 @@
         "activate": "Lizenz aktivieren",
         "validating": "Wird überprüft...",
         "openDodoCheckout": "DodoPayments-Checkout öffnen",
-        "openDodoPortal": "Dodo-Portal öffnen"
+        "openLicensePortal": "Lizenzportal öffnen"
       },
       "deleteDialog": {
         "title": "Lizenz entfernen?",
@@ -530,7 +554,7 @@
           },
           "findLicenseKey": {
             "title": "Finde deinen Lizenzschlüssel",
-            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Dodo-Kundenportal wiederherstellen."
+            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Lizenzportal wiederherstellen."
           },
           "activateLicense": {
             "title": "Aktiviere deine Lizenz",
@@ -541,16 +565,13 @@
       "copiedVerify": "Verifizierungsbefehl kopiert",
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
-        "activationSuccess": "Lizenz erfolgreich aktiviert!",
         "activationSuccessPremium": "Premium-Zugang aktiviert! Vielen Dank!",
         "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Premium-Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
         "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Premium-Lizenzschlüssel hinzu, sobald du bereit bist.",
         "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
         "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
-        "removedFromMachine": "Lizenz von diesem Gerät entfernt",
-        "refreshedAll": "Alle Lizenzen erfolgreich aktualisiert",
-        "refreshFailed": "Lizenzen konnten nicht aktualisiert werden"
+        "removedFromMachine": "Lizenz von diesem Gerät entfernt"
       }
     },
     "custom": {
@@ -559,12 +580,22 @@
       "lockedTitle": "Eigene Themes sind eine Premium-Funktion",
       "lockedDescription": "Schalte Premium frei, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
       "unlockCta": "Premium freischalten",
-      "directoryLabel": "Themes-Verzeichnis",
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
       "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
       "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
+    },
+    "layout": {
+      "mobileSplit": "Eigenes Theme für das mobile Layout",
+      "mobileSplitHelp": "Das mobile Layout (ein Fenster unter 768 px Breite) und das Desktop-Layout behalten jeweils ihr eigenes Theme, ihren Modus und ihre Variante. Diese Einstellung gilt für jeden Browser.",
+      "localOnly": "Theme dieses Browsers lokal halten",
+      "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
+      "changesMobile": "Ändert das mobile Theme",
+      "changesDesktop": "Ändert das Desktop-Theme",
+      "changesLocal": "Ändert nur das Theme dieses Browsers. Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
+      "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
+      "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }
   },
   "arrInstances": {
@@ -662,10 +693,6 @@
   },
   "indexers": {
     "title": "Torznab Indexer",
-    "addIndexer": "Indexer hinzufügen",
-    "autodiscoverProwlarr": "Automatisch aus Prowlarr erkennen",
-    "noIndexers": "Noch keine Indexer konfiguriert.",
-    "noIndexersDescription": "Füge einen Torznab-kompatiblen Indexer hinzu, um automatische Cross-Seed-Suchen zu aktivieren.",
     "deleteIndexer": "Indexer löschen",
     "deleteIndexerDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleteAllIndexers": "Alle Indexer löschen",
@@ -674,8 +701,6 @@
       "loadFailed": "Indexer konnten nicht geladen werden",
       "deletedSuccess": "Indexer gelöscht",
       "deleteFailed": "Indexer konnte nicht gelöscht werden",
-      "allDeletedSuccess": "Alle Indexer gelöscht",
-      "allDeletedFailed": "Es konnten nicht alle Indexer gelöscht werden",
       "deleteAllSuccess": "Alle {{count}} Indexer gelöscht",
       "deleteAllPartial": "{{success}} Indexer gelöscht, {{failed}} fehlgeschlagen: {{names}}",
       "testSuccess": "Verbindungstest erfolgreich",
@@ -821,7 +846,6 @@
         "importSuccess": "Erfolg: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} mit Warnungen)",
         "moreWarnings": "...und {{count}} weitere Warnungen",
-        "importErrors": "{{details}}",
         "moreErrors": "...und {{count}} weitere Fehler",
         "created": "{{count}} erstellt",
         "updated": "{{count}} aktualisiert",
@@ -882,10 +906,6 @@
     },
     "activity": {
       "title": "Scheduler-Aktivität",
-      "idle": "Inaktiv",
-      "queueLength": "Warteschlange",
-      "workers": "Worker",
-      "cooldown": "Cooldown",
       "running": "Läuft",
       "queued": "In Warteschlange",
       "rateLimited": "Rate-limitiert",
@@ -997,6 +1017,68 @@
         "upToDateDetail": "Neueste Version läuft",
         "notCheckedYet": "Noch nicht geprüft",
         "lastChecked": "Zuletzt geprüft {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Neu starten",
+      "confirmTitle": "qui neu starten?",
+      "confirmDescription": "qui fährt wie bei einem normalen Stopp herunter und startet dann erneut. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "confirm": "Neu starten",
+      "overlay": {
+        "restartingTitle": "qui wird neu gestartet…",
+        "restartingDetail": "Die Seite lädt neu, sobald qui wieder antwortet.",
+        "slowTitle": "qui hat noch nicht geantwortet",
+        "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "Unterstützung wird geprüft",
+        "checkingDescription": "Es wird geprüft, ob qui dieses Update installieren kann.",
+        "failedTitle": "Update-Unterstützung konnte nicht geprüft werden",
+        "failedDescription": "Es konnte nicht geprüft werden, ob die Selbstaktualisierung verfügbar ist.",
+        "retryDescription": "Wiederholen Sie die Prüfung, bevor Sie das Update installieren.",
+        "retry": "Erneut versuchen"
+      },
+      "unavailable": {
+        "description": "Die automatische Installation ist für diese Einrichtung nicht verfügbar.",
+        "nextStep": "So aktualisieren Sie qui",
+        "guide": "Update-Anleitung",
+        "container": {
+          "reason": "qui läuft in einem Container. Updates erfolgen über das Container-Image.",
+          "step": "Laden Sie das neue qui-Image herunter und erstellen Sie den Container mit Ihrer vorhandenen Konfiguration und Ihren Datenvolumes neu."
+        },
+        "disabled": {
+          "reason": "Die Selbstaktualisierung ist in der qui-Konfiguration deaktiviert.",
+          "step": "Aktualisieren Sie qui mit dem Paketmanager oder der Installationsmethode, die Sie für die Installation verwendet haben."
+        },
+        "development": {
+          "reason": "Dieser qui-Build ist kein Release-Build. Die automatische Installation erfordert einen Release-Build.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch ein offizielles Release oder einen neuen Build und starten Sie qui erneut."
+        },
+        "directory": {
+          "reason": "qui kann nicht auf das Verzeichnis seiner Binärdatei zugreifen oder darin schreiben.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch das neue Release mit einem Konto mit Schreibzugriff und starten Sie qui erneut."
+        }
+      },
+      "button": "Update installieren",
+      "confirmTitle": "Update installieren?",
+      "confirmDescription": "qui lädt die neue Version herunter, prüft ihre Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Die Seite lädt neu, sobald qui wieder da ist.",
+      "runningWork": "Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet.",
+      "currentVersion": "Aktuelle Version",
+      "targetVersion": "Neue Version",
+      "releaseNotes": "Release Notes",
+      "confirm": "Update installieren",
+      "overlay": {
+        "notAppliedTitle": "Update wurde nicht angewendet",
+        "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "installedTitle": "qui wurde aktualisiert",
+        "installedDetail": "Lade die Seite neu, um die neue Version zu öffnen.",
+        "reload": "Seite neu laden",
+        "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback lade die alte Version manuell herunter.",
+        "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",
+        "rollbackLabel": "Rollback-Befehl",
+        "rollbackDocs": "Schritte für das Rollback"
       }
     },
     "runtime": {

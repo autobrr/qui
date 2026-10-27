@@ -123,7 +123,7 @@ Update qui to the latest release:
 ./qui update
 ```
 
-This command replaces the qui binary in place. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
+This command replaces the qui binary in place. It keeps the previous binary as `qui-v<old version>.bak` (`qui-v<old version>.bak.exe` on Windows) in the same directory, deletes older backups, and prints the command that restores the backup. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
 
 ## Migrate From Other Torrent Clients
 

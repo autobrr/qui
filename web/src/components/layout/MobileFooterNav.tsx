@@ -25,7 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getThemeById, isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -38,6 +38,7 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
@@ -112,7 +113,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
-  const { isSelectionMode } = useTorrentSelection()
+  const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
@@ -136,6 +137,16 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+  const updateItemLabel = updateInfo && (
+    <>
+      <Download className="h-4 w-4" />
+      <div className="flex flex-col">
+        <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
+        <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
+      </div>
+    </>
+  )
 
   const activeInstances = useMemo(() => {
     if (!instances) {
@@ -417,18 +428,8 @@ export function MobileFooterNav() {
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
-                  <a
-                    href={updateInfo.html_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
-                  >
-                    <Download className="h-4 w-4" />
-                    <div className="flex flex-col">
-                      <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
-                      <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
-                    </div>
-                  </a>
+                  {/* Settings holds the Install update button. */}
+                  <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -563,7 +564,7 @@ export function MobileFooterNav() {
               <DropdownMenuItem asChild key={link.href}>
                 <a href={link.href} target="_top" className="flex items-center gap-2">
                   <link.icon className="h-4 w-4" />
-                  {link.label}
+                  {t(link.labelKey)}
                 </a>
               </DropdownMenuItem>
             ))}

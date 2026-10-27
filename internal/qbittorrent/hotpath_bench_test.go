@@ -171,7 +171,7 @@ func BenchmarkHotCounts(b *testing.B) {
 	torrents := benchTorrents(benchSize)
 
 	for b.Loop() {
-		_, _, _ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
 	}
 }
 
@@ -200,7 +200,7 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 	client := &Client{instanceID: 1, trackerExclusions: make(map[string]map[string]struct{})}
 
 	for b.Loop() {
-		_, _, _ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, false, false)
 	}
 }
 
@@ -224,7 +224,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
 
 	page := torrents[:300]
 	views := make([]TorrentView, len(page))
@@ -233,12 +233,11 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	}
 
 	response := &TorrentResponse{
-		Torrents:       views,
-		Total:          len(torrents),
-		Counts:         counts,
-		Stats:          sm.calculateStats(torrents),
-		HasMore:        true,
-		AppPreferences: json.RawMessage(`{"announce_ip":"203.0.113.7"}`),
+		Torrents: views,
+		Total:    len(torrents),
+		Counts:   counts,
+		Stats:    sm.calculateStats(torrents),
+		HasMore:  true,
 	}
 
 	b.ResetTimer()
@@ -262,13 +261,11 @@ func BenchmarkHotSort(b *testing.B) {
 		name string
 		run  func(t []qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrentsByNameCaseInsensitive(t, false) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrentsByStatusWithTrackerHealth(t, false, true, nil) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrentsByTracker(t, false) }},
-		{"added_on", func(t []qbt.Torrent) {
-			sm.sortTorrentsByTimestamp(t, false, func(x qbt.Torrent) int64 { return x.AddedOn })
-		}},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrentsByETA(t, false) }},
+		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
+		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, nil) }},
+		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
+		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
+		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {

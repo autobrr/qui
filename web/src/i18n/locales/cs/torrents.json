@@ -15,7 +15,9 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} vybrán - Hromadné akce jsou dostupné",
+    "ariaLabel_one": "Vybrán {{count}} torrent - Hromadné akce jsou dostupné",
+    "ariaLabel_few": "Vybrány {{count}} torrenty - Hromadné akce jsou dostupné",
+    "ariaLabel_other": "Vybráno {{count}} torrentů - Hromadné akce jsou dostupné",
     "resume": "Obnovit",
     "pause": "Pozastavit",
     "forceRecheck": "Vynutit opětovné ověření",
@@ -102,7 +104,18 @@
     "totalSize": "Celková velikost: {{size}}",
     "blockCrossSeeds": "Blokovat křížová sdílení infohashů (zabránit opětovnému přidání)",
     "cancel": "Zrušit",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "titleSelectAll_one": "Smazat {{count}} torrent, který odpovídá filtru?",
+    "titleSelectAll_few": "Smazat {{count}} torrenty, které odpovídají filtru?",
+    "titleSelectAll_other": "Smazat {{count}} torrentů, které odpovídají filtru?",
+    "selectAllNotice": "Výběr všech je zapnutý. Tato akce smaže vybrané torrenty, které odpovídají aktuálnímu filtru.",
+    "notLoaded_one": "{{count}} z nich není načten v tabulce.",
+    "notLoaded_few": "{{count}} z nich nejsou načteny v tabulce.",
+    "notLoaded_other": "{{count}} z nich není načteno v tabulce.",
+    "andMore": "a {{more}} dalších",
+    "deleteCount_one": "Smazat {{count}} torrent",
+    "deleteCount_few": "Smazat {{count}} torrenty",
+    "deleteCount_other": "Smazat {{count}} torrentů"
   },
   "deleteFilesPreference": {
     "label": "Také smazat soubory z disku",
@@ -122,7 +135,6 @@
       "check": "Zkontrolovat"
     },
     "searching": "Hledání křížového sdílení",
-    "searchingProgress": "Hledání křížového sdílení ({{checked}}/{{total}})",
     "error": "Nepodařilo se zkontrolovat křížová sdílení",
     "retry": "Zkusit znovu",
     "noCrossSeeds": "Nenalezena žádná křížová sdílení",
@@ -476,6 +488,9 @@
       "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
       "uploadLimit": "Nastavit uploadovací limit (KB/s)",
       "downloadLimit": "Nastavit downloadovací limit (KB/s)",
+      "selectValue": "Vybrat hodnotu",
+      "wasMixed": "(bylo smíšené)",
+      "unresolvedMixed": "Vyberte hodnoty pro všechny smíšené pole před použitím",
       "cancel": "Zrušit",
       "setting": "Nastavuji...",
       "confirm": "Použít limity"
@@ -580,7 +595,6 @@
     "renameFolder": "Přejmenovat složku",
     "download": "Stáhnout",
     "mediaInfo": "MediaInfo",
-    "toggle": "Přepnout",
     "selectFileForDownload": "Vybrat soubor pro stahování",
     "skipFileDownload": "Přeskakovat stahování souboru",
     "selectAllFilesIn": "Vybrat všechny soubory v {{name}}",
@@ -728,22 +742,34 @@
     "deleteEmptyCategories": {
       "title": "Odstranit prázdné kategorie",
       "noEmpty": "Nejsou žádné prázdné kategorie k odstranění.",
-      "confirm": "Jste si jisti, že chcete odstranit {{count}} prázdné kategorie{{plural}}? Tato akce nemůže být vrácena.",
+      "confirm_one": "Jste si jisti, že chcete odstranit {{count}} prázdnou kategorii? Tato akce nemůže být vrácena.",
+      "confirm_few": "Jste si jisti, že chcete odstranit {{count}} prázdné kategorie? Tato akce nemůže být vrácena.",
+      "confirm_other": "Jste si jisti, že chcete odstranit {{count}} prázdných kategorií? Tato akce nemůže být vrácena.",
       "cancel": "Zrušit",
-      "remove": "Odstranit {{count}} prázdné kategorie{{plural}}",
+      "remove_one": "Odstranit {{count}} prázdnou kategorii",
+      "remove_few": "Odstranit {{count}} prázdné kategorie",
+      "remove_other": "Odstranit {{count}} prázdných kategorií",
       "toast": {
-        "success": "Odstraněno {{count}} prázdných kategorií{{plural}}",
+        "success_one": "Odstraněna {{count}} prázdná kategorie",
+        "success_few": "Odstraněny {{count}} prázdné kategorie",
+        "success_other": "Odstraněno {{count}} prázdných kategorií",
         "error": "Nepodařilo se odstranit prázdné kategorie"
       }
     },
     "deleteUnusedTags": {
       "title": "Smazat nepoužité tagy",
       "noUnused": "Nejsou žádné nepoužité tagy k smazání.",
-      "confirm": "Jste si jisti, že chcete smazat {{count}} nepoužité tagy{{plural}}? Tato akce nemůže být vrácena.",
+      "confirm_one": "Jste si jisti, že chcete smazat {{count}} nepoužitý tag? Tato akce nemůže být vrácena.",
+      "confirm_few": "Jste si jisti, že chcete smazat {{count}} nepoužité tagy? Tato akce nemůže být vrácena.",
+      "confirm_other": "Jste si jisti, že chcete smazat {{count}} nepoužitých tagů? Tato akce nemůže být vrácena.",
       "cancel": "Zrušit",
-      "delete": "Smazat {{count}} nepoužité tagy{{plural}}",
+      "delete_one": "Smazat {{count}} nepoužitý tag",
+      "delete_few": "Smazat {{count}} nepoužité tagy",
+      "delete_other": "Smazat {{count}} nepoužitých tagů",
       "toast": {
-        "success": "Smazáno {{count}} nepoužitých tagů{{plural}}",
+        "success_one": "Smazán {{count}} nepoužitý tag",
+        "success_few": "Smazány {{count}} nepoužité tagy",
+        "success_other": "Smazáno {{count}} nepoužitých tagů",
         "error": "Nepodařilo se smazat nepoužité tagy"
       }
     }
@@ -761,18 +787,19 @@
     "partialResults": "Částečné výsledky - některé indexery neodpověděly",
     "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
     "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
+    "gazelleTimedOut": "RED/OPS neodpověděl včas",
+    "torznabFailed": "Hledání přes Torznab selhalo - zobrazeny jsou pouze výsledky z RED/OPS",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",
+    "gazelleOnlySearch": "Hledání se dotazuje jen stránek RED/OPS, které mají klíč API.",
     "capabilityNote": "Poznámka o schopnostech",
     "capabilityDescription": "Tyto indexery nemají požadované schopnosti/kategorie pro tento torrent a budou přeskočeny serverem:",
-    "contentFilteringInProgress": "Filtrování obsahu probíhá",
-    "analyzingContent": "Analýza existujícího obsahu...",
     "smartFilteringActive": "Inteligentní filtrování je aktivní",
-    "indexersFiltered": "{{count}} indexer{{plural}} filtrováno",
-    "contentFilteringDescription": "Kontrola vašich existujících torrentů na duplikáty a vyloučení redundantních trackerů. To pomáhá předejít stahování stejného obsahu několikrát.",
+    "indexersFiltered_one": "{{count}} indexer odfiltrován",
+    "indexersFiltered_few": "{{count}} indexery odfiltrovány",
+    "indexersFiltered_other": "{{count}} indexerů odfiltrováno",
     "excludedDescription": "Už stahujete tuto verzi z těchto trackerů, takže jsou vyloučeny z hledání.",
-    "noContentDuplicates": "Filtrování obsahu dokončeno. Žádné duplikáty nebyly nalezeny na vašich povolených trackerech.",
     "searchingIndexers": "Hledání indexerů…",
     "noMatchesFound": "Žádné shody nebyly nalezeny ve vašem hledání.",
     "selectReleasesToAdd": "Vyberte verze, které chcete přidat",
@@ -821,7 +848,6 @@
       "selectAllIndexers": "Vybrat vše",
       "clearSelection": "Vymazat výběr",
       "search": "Hledat",
-      "filtering": "Filtrování…",
       "searching": "Hledání",
       "noneSelected": "Žádné vybrané",
       "enabledIndexers": "{{count}} povolených {{suffix}}",
@@ -861,6 +887,26 @@
     "setConditions": "Nastavte podmínky pro filtrování tohoto sloupce",
     "operation": "Operace",
     "selectOperation": "Vybrat operaci",
+    "operations": {
+      "equalTo": "Rovná se",
+      "notEqualTo": "Nerovná se",
+      "greaterThan": "Větší než",
+      "greaterThanOrEqual": "Větší nebo rovno",
+      "lessThan": "Menší než",
+      "lessThanOrEqual": "Menší nebo rovno",
+      "between": "Je mezi",
+      "equals": "Rovná se",
+      "notEquals": "Nerovná se",
+      "contains": "Obsahuje",
+      "doesNotContain": "Neobsahuje",
+      "startsWith": "Začíná",
+      "endsWith": "Končí",
+      "on": "Dne",
+      "after": "Po",
+      "before": "Před",
+      "is": "Je",
+      "isNot": "Není"
+    },
     "value": "Hodnota",
     "from": "Od",
     "to": "Do",
@@ -900,6 +946,11 @@
       "checking": "Kontrola",
       "moving": "Přesouvání"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Nenalezen žádný torrent",
+    "noFilterMatches": "Aktuálním filtrům neodpovídá žádný torrent",
+    "noSearchMatches": "Aktuálnímu hledání neodpovídá žádný torrent"
   },
   "filterSidebar": {
     "views": {
@@ -952,18 +1003,15 @@
     "uncategorized": "Nekategorizované",
     "tags": "Tagy",
     "trackers": "Trackery",
-    "customExpression": "Vlastní výraz",
     "untagged": "Bez tagu",
     "noTracker": "Bez trackeru",
     "hideEmpty": "Skrýt prázdné",
     "showEmpty": "Zobrazit prázdné",
-    "showHidden": "Zobrazit {{count}} skrytých",
     "searchCategories": "Hledat kategorie",
     "searchTags": "Hledat tagy",
     "searchTrackers": "Hledat trackery",
     "noCategoriesFound": "Nebyly nalezeny žádné kategorie odpovídající \"{{query}}\"",
     "noTagsFound": "Nebyly nalezeny žádné tagy odpovídající \"{{query}}\"",
-    "hiddenMatchSearch": "{{count}} skrytých shod odpovídajících hledání",
     "createTag": "Vytvořit tag",
     "createCategory": "Vytvořit kategorii",
     "createSubcategory": "Vytvořit podkategorii",
@@ -1012,7 +1060,7 @@
       "unregistered": "Neregistrované",
       "trackerDown": "Tracker je nedostupný",
       "crossSeeds": "Křížové sdílení",
-      "trackerError": "Tracker chyba"
+      "trackerError": "Chyba trackeru"
     }
   },
   "statusBar": {
@@ -1103,10 +1151,10 @@
       "trackerUpdated": "Tracker URL úspěšně aktualizována",
       "trackerUpdateFailed": "Nepodařilo se aktualizovat tracker",
       "fileRenamed": "Soubor přejmenován úspěšně",
-      "fileRenameFailed": "Nepodařilo se přejmenovat soubor",
       "folderRenamed": "Složka přejmenována úspěšně",
-      "folderRenameFailed": "Nepodařilo se přejmenovat složku",
-      "deletedTorrents": "Smazány {{count}} torrenty{{plural}}",
+      "deletedTorrents_one": "Smazán {{count}} torrent",
+      "deletedTorrents_few": "Smazány {{count}} torrenty",
+      "deletedTorrents_other": "Smazáno {{count}} torrentů",
       "deletedTorrent": "Smazán torrent: {{name}}",
       "deleteFailed": "Nepodařilo se smazat: {{error}}"
     },
@@ -1255,24 +1303,17 @@
     "network": "Síť",
     "seeds": "Seedy",
     "peers": "Peerové",
-    "downSpeed": "Rychlost stahování",
-    "upSpeed": "Rychlost odesílání",
     "downLimit": "Limit stahování",
     "upLimit": "Limit odesílání",
-    "connections": "Připojení",
     "time": "Čas",
     "addedOn": "Přidáno",
     "completedOn": "Dokončeno",
-    "lastActivity": "Poslední aktivita",
-    "lastSeen": "Naposledy viděno",
-    "eta": "Očekávaná doba do dokončení",
     "timeActive": "Aktivní čas",
     "seedingTime": "Čas seedování",
     "limits": "Limity",
     "ratioLimit": "Limit poměru",
     "seedingTimeLimit": "Limit času seedování",
     "inactiveSeedingLimit": "Limit neaktivního seedování",
-    "info": "Info",
     "pieceSize": "Velikost části",
     "pieces": "Části",
     "createdOn": "Vytvořeno",
@@ -1281,7 +1322,6 @@
   "trackersTable": {
     "status": "Stav",
     "tracker": "Tracker",
-    "tier": "Úroveň",
     "seeds": "Seedy",
     "leeches": "Stahovatelé",
     "downloaded": "Stáhnuto",
@@ -1300,7 +1340,6 @@
     "upSpeed": "Rychlost odesílání",
     "downloaded": "Stáhnuto",
     "uploaded": "Odesláno",
-    "relevance": "Relevance",
     "copyIpAddress": "Kopírovat adresu",
     "banPeer": "Zakázat peer",
     "noPeersConnected": "Žádné peerové připojení",
@@ -1322,7 +1361,9 @@
     "url": "URL",
     "noHttpSources": "Žádné HTTP zdroje",
     "searchUrls": "Hledat URL...",
-    "httpSources": "{{count}} HTTP source{{plural}}",
+    "httpSources_one": "{{count}} HTTP zdroj",
+    "httpSources_few": "{{count}} HTTP zdroje",
+    "httpSources_other": "{{count}} HTTP zdrojů",
     "filteredCount": "{{filtered}} of {{total}}",
     "copyUrl": "Kopírovat URL",
     "toast": {
@@ -1333,7 +1374,9 @@
     "expandAll": "Rozbalit vše",
     "collapseAll": "Sbalit vše",
     "searchFiles": "Hledat soubory...",
-    "fileCount": "{{count}} soubor{{plural}}",
+    "fileCount_one": "{{count}} soubor",
+    "fileCount_few": "{{count}} soubory",
+    "fileCount_other": "{{count}} souborů",
     "filteredCount": "{{filtered}} z {{total}}",
     "noFiles": "Žádné soubory",
     "headers": {
@@ -1367,11 +1410,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",
@@ -1395,6 +1433,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
     "toast": {
       "savePathCopied": "Složka pro uložení zkopírována",
       "copyFailed": "Kopírování selhalo"
@@ -1549,25 +1588,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "shareLimit": {
-      "title": "Nastavení limitů sdílení pro {{count}} torrent(y)",
-      "description": "Nastavte limity seedování pro vybrané torrenty. Všechny tři pole budou použity.",
-      "setRatioLimit": "Nastavit limit poměru",
-      "setSeedingTimeLimit": "Nastavit limit času seedování (minut)",
-      "setInactiveSeedingLimit": "Nastavit limit neaktivního seedování (minut)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
-    "speedLimit": {
-      "title": "Nastavení limitů rychlosti pro {{count}} torrent(y)",
-      "description": "Nastavte limity rychlosti uploadu a downloadu v KB/s. Vypněte, aby se použily globální limity.",
-      "setUploadLimit": "Nastavit uploadovací limit (KB/s)",
-      "setDownloadLimit": "Nastavit downloadovací limit (KB/s)",
-      "cancel": "Zrušit",
-      "setting": "Nastavování...",
-      "applyLimits": "Použít limity"
-    },
     "ratio": "Poměr:"
   },
   "tableView": {
@@ -1586,7 +1606,16 @@
   "sort": {
     "label": "Řadit",
     "ascending": "vzestupně",
-    "descending": "sestupně"
+    "descending": "sestupně",
+    "options": {
+      "addedOn": "Nedávno přidané",
+      "downloadLimit": "Limit stahování",
+      "uploadLimit": "Limit odesílání",
+      "sessionDownloaded": "Staženo (současná relace)",
+      "sessionUploaded": "Nahráno (současná relace)",
+      "lastSeenComplete": "Naposledy dokončeno",
+      "reannounceIn": "Opětovné oznámení"
+    }
   },
   "tableColumns": {
     "selectAll": "Vybrat torrent",
@@ -1602,7 +1631,6 @@
     "size": "Velikost",
     "totalSize": "Celková velikost",
     "progress": "Postup",
-    "state": "Stav",
     "seeds": "Seedů",
     "peers": "Peerů",
     "downSpeed": "Rychlost stahování",
@@ -1613,7 +1641,7 @@
     "category": "Kategorie",
     "tags": "Tagy",
     "addedOn": "Přidáno",
-    "completedOn": "Dokončeno",
+    "completedOn": "Dokončeno dne",
     "trackerUrl": "URL trackeru",
     "downLimit": "Limit stahování",
     "upLimit": "Limit odesílání",
@@ -1637,7 +1665,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
-    "trackerError": "Tracker chyba",
+    "trackerError": "Chyba trackeru",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"
@@ -1645,6 +1673,7 @@
   "stateLabels": {
     "downloading": "Stahování",
     "metaDL": "Načítání metadat",
+    "forcedMetaDL": "(F) Načítání metadat",
     "allocating": "Přidělování",
     "stalledDL": "Pozastavené stahování",
     "queuedDL": "Ve frontě",
@@ -1662,8 +1691,10 @@
     "error": "Chyba",
     "missingFiles": "Chybějící soubory",
     "checkingResumeData": "Kontrola obnovovacích dat",
-    "moving": "Přesouvání"
+    "moving": "Přesouvání",
+    "unknown": "Neznámý"
   },
+  "stateLabelFallback": "Nerozpoznáno",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

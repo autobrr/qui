@@ -52,6 +52,7 @@ import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
+import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
@@ -330,15 +331,7 @@ function isRunSummary(event: AutomationActivity): boolean {
     || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
-interface WorkflowsOverviewProps {
-  expandedInstances?: string[]
-  onExpandedInstancesChange?: (values: string[]) => void
-}
-
-export function WorkflowsOverview({
-  expandedInstances: controlledExpanded,
-  onExpandedInstancesChange,
-}: WorkflowsOverviewProps) {
+export function WorkflowsOverview() {
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
@@ -361,12 +354,7 @@ export function WorkflowsOverview({
     })
   )
 
-  // Internal state for standalone usage
-  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
-
-  // Use controlled props if provided, otherwise internal state
-  const expandedInstances = controlledExpanded ?? internalExpanded
-  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
@@ -499,7 +487,6 @@ export function WorkflowsOverview({
       const payload = {
         name: rule.name,
         trackerPattern: rule.trackerPattern,
-        trackerDomains: rule.trackerDomains ?? parseTrackerDomains(rule),
         conditions: rule.conditions,
         freeSpaceSource: rule.freeSpaceSource,
         enabled: true,
@@ -866,7 +853,7 @@ export function WorkflowsOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.workflowsOverview.noInstancesDescription")}
           </CardDescription>
@@ -879,7 +866,7 @@ export function WorkflowsOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1469,13 +1456,9 @@ export function WorkflowsOverview({
                                                 const [type, limitKiB] = key.split(":")
                                                 const numKiB = Number(limitKiB)
                                                 // 0 = Unlimited in qBittorrent per-torrent speed limits
-                                                let label: string
-                                                if (numKiB === 0) {
-                                                  label = t("preferences.workflowsOverview.unlimited")
-                                                } else {
-                                                  const limitMiB = numKiB / 1024
-                                                  label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
-                                                }
+                                                const label = numKiB === 0
+                                                  ? t("preferences.workflowsOverview.unlimited")
+                                                  : formatSpeedWithUnit(numKiB * 1024, "bytes")
                                                 return (
                                                   <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
                                                     {type === "upload" ? "↑" : "↓"} {label} ({count})
@@ -1682,7 +1665,7 @@ export function WorkflowsOverview({
               }}
             />
             {importError && (
-              <p className="text-sm text-destructive">{importError}</p>
+              <p className="text-sm text-destructive whitespace-pre-line">{importError}</p>
             )}
           </div>
           <DialogFooter>

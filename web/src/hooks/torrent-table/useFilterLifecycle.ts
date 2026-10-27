@@ -4,6 +4,7 @@
  */
 
 import type { ColumnFilter } from "@/lib/column-filter-utils"
+import { EMPTY_SIDEBAR_FILTERS } from "@/lib/filter-views"
 import type { TorrentFilters } from "@/types"
 import type { Virtualizer } from "@tanstack/react-virtual"
 import { useCallback, useEffect, useLayoutEffect, useState, type Dispatch, type SetStateAction } from "react"
@@ -92,17 +93,7 @@ export function useFilterLifecycle({
 
       // Only clear parent filters if clearing all (not just columns)
       if (filterLifecycleState === "clearing-all") {
-        const emptyFilters: TorrentFilters = {
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: [],
-        }
-        onFilterChange?.(emptyFilters)
+        onFilterChange?.(EMPTY_SIDEBAR_FILTERS)
       }
 
       // Transition to cleared state

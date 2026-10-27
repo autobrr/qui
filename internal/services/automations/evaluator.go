@@ -41,16 +41,20 @@ type FreeSpaceSourceState struct {
 	FreeSpace int64
 	// SpaceToClear is the cumulative disk space that will be freed by deletions.
 	SpaceToClear int64
-	// FilesToClear tracks cross-seed keys already counted to avoid double-counting.
-	FilesToClear map[crossSeedKey]struct{}
+	// FilesToClear is non-nil while the rule projects freed space.
+	FilesToClear map[string]int64
+	// FileBytesToClear counts selected files by resolved path for ordinary file deletes.
+	FileBytesToClear map[string]int64
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
 	CrossSeedHashesToClear map[string]struct{}
-	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
-	HardlinkSignaturesToClear map[string]struct{}
 }
 
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
+	// The deletion projection uses the same snapshot and hardlink index as execution.
+	torrentsByHash map[string]qbt.Torrent
+	hardlinkIndex  *HardlinkIndex
+
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
@@ -66,14 +70,21 @@ type EvalContext struct {
 	HasMissingFilesByHash map[string]bool
 	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
 	HasSkippedFilesByHash map[string]bool
-	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
-	InstanceHasLocalAccess bool
+	// InstanceCanRead gates the missing-files field.
+	InstanceCanRead bool
+	// InstanceHasTrustedIdentity gates the hardlink fields, hardlink grouping
+	// and includeHardlinks. Each of them can add torrents to a delete, so a
+	// remote instance, whose identity only its host asserts, never reads them
+	// as known.
+	InstanceHasTrustedIdentity bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
 	SpaceToClear int64
-	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
-	FilesToClear map[crossSeedKey]struct{}
+	// FilesToClear is non-nil while the active rule projects freed space for the "free space" condition.
+	FilesToClear map[string]int64
+	// FileBytesToClear holds the active rule's selected file sizes by resolved path.
+	FileBytesToClear map[string]int64
 	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
 	CrossSeedFilesByHash map[string]qbt.TorrentFiles
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).
@@ -81,12 +92,6 @@ type EvalContext struct {
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
 	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
-	// DeleteSafeHardlinkSignatureByHash maps torrent hash to its hardlink signature for torrents whose
-	// hardlinks stay fully inside qBittorrent. Used only by delete/include-hardlinks FREE_SPACE dedupe.
-	DeleteSafeHardlinkSignatureByHash map[string]string
-	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
-	// Torrents with the same signature share physical files and should only be counted once.
-	HardlinkSignaturesToClear map[string]struct{}
 	// FreeSpaceStates maps rule keys to their projection state.
 	// Rule keys are "sourceKey|rule:<id>" where sourceKey is "qbt" or "path:/some/path".
 	// Each rule gets its own state to prevent interference between rules with different thresholds.
@@ -114,7 +119,7 @@ type EvalContext struct {
 	CrossInstanceSeedingHashSet map[string]struct{}
 
 	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
-	// (same content path, different hash) on the same instance.
+	// (same data, decided per file) on the same instance.
 	SameInstanceCrossSeedHashSet map[string]struct{}
 	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
 	// seeding (Progress >= 1.0) on the same instance.
@@ -122,6 +127,17 @@ type EvalContext struct {
 	// SameInstanceCrossSeedTagsByHash maps a torrent hash to the raw Tags strings of
 	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
 	SameInstanceCrossSeedTagsByHash map[string][]string
+	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
+	// instance that share at least one file on disk with it (self excluded).
+	// Built when a delete, move, or category action groups cross-seeds;
+	// buildCrossSeedGroups reads it.
+	SameInstanceContentByHash map[string][]string
+	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
+	// whose cross-seed checks on that side are incomplete for this run.
+	// Only confirmed positive existence or seeding values remain known, so a
+	// rule that tests for "no cross-seed" cannot act on a read error.
+	SameInstanceCrossSeedUnknown map[string]struct{}
+	CrossInstanceUnknown         map[string]struct{}
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
@@ -384,30 +400,10 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 	return result, true
 }
 
-func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
-	switch field {
-	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles:
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-	case FieldSeasonPackStatus:
-		return ctx != nil && ctx.SeasonPackSet != nil
-	case FieldSeasonPackStatusAnyInstance:
-		return ctx != nil && ctx.SeasonPackSetAnyInstance != nil
-	default:
-		return true
-	}
-
-	var known bool
-	switch field {
-	case FieldHardlinkScope:
-		_, known = ctx.HardlinkScopeByHash[hash]
-	case FieldHardlinkScopeCross:
-		_, known = ctx.HardlinkCrossScopeByHash[hash]
-	case FieldHasMissingFiles:
-		_, known = ctx.HasMissingFilesByHash[hash]
-	}
-	return known
+func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
+	capabilities := models.FilesystemCapabilitiesOf(instance)
+	ctx.InstanceCanRead = capabilities.Read
+	ctx.InstanceHasTrustedIdentity = capabilities.TrustedIdentity
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.
@@ -851,7 +847,9 @@ func compareString(value string, cond *RuleCondition) bool {
 }
 
 // compareTrackers matches TRACKER and TRACKERS against every tracker the torrent
-// announces to: qBittorrent empties the primary tracker field when none work.
+// announces to. The qBittorrent tracker field holds the last tracker that answered,
+// so it can name a tracker that is down now. When no tracker answered yet, the field
+// is empty before qBittorrent 5.1 and holds the first tracker in the list from 5.1.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
@@ -1315,8 +1313,8 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 		ctx.FreeSpace = math.MaxInt64
 		ctx.SpaceToClear = 0
 		ctx.FilesToClear = nil
+		ctx.FileBytesToClear = nil
 		ctx.CrossSeedHashesToClear = nil
-		ctx.HardlinkSignaturesToClear = nil
 		ctx.ActiveFreeSpaceSource = ""
 		return
 	}
@@ -1324,8 +1322,8 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 	ctx.FreeSpace = state.FreeSpace
 	ctx.SpaceToClear = state.SpaceToClear
 	ctx.FilesToClear = state.FilesToClear
+	ctx.FileBytesToClear = state.FileBytesToClear
 	ctx.CrossSeedHashesToClear = state.CrossSeedHashesToClear
-	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
 	ctx.ActiveFreeSpaceSource = sourceKey
 }
 
@@ -1343,6 +1341,6 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 
 	state.SpaceToClear = ctx.SpaceToClear
 	state.FilesToClear = ctx.FilesToClear
+	state.FileBytesToClear = ctx.FileBytesToClear
 	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
-	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

@@ -47,8 +47,12 @@ export function usePatchCrossSeedSettings() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: CrossSeedAutomationSettingsPatch) => api.patchCrossSeedSettings(payload),
-    onSuccess: (data) => {
-      toast.success(t("toast.settingsUpdated"))
+    onSuccess: ({ warning, ...data }) => {
+      if (warning) {
+        toast.warning(t("toast.settingsSavedKeyUnchecked"), { description: warning })
+      } else {
+        toast.success(t("toast.settingsUpdated"))
+      }
       queryClient.setQueryData(CROSS_SEED_SETTINGS_KEY, data)
       void queryClient.refetchQueries({ queryKey: CROSS_SEED_STATUS_KEY })
     },

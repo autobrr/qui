@@ -37,3 +37,11 @@ export function filterViewsEqual(a: Partial<TorrentFilters> | undefined, b: Part
   // ponytail: key order is fixed by toViewFilters, so stringify is a safe deep compare
   return JSON.stringify(toViewFilters(a)) === JSON.stringify(toViewFilters(b))
 }
+
+/** The selection after the user clears every sidebar filter. */
+export const EMPTY_SIDEBAR_FILTERS: TorrentFilters = toViewFilters(undefined)
+
+/** Reports whether any sidebar filter is set. A blank expression filters nothing. */
+export function hasSidebarFilters(filters: Partial<TorrentFilters>): boolean {
+  return FILTER_ARRAY_KEYS.some(key => (filters[key]?.length ?? 0) > 0) || Boolean(filters.expr?.trim())
+}

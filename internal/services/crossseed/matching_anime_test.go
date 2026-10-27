@@ -194,7 +194,7 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {
@@ -253,7 +253,7 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 			description: "same checksum should match",
 		},
 		{
-			name: "source has sum, candidate does not - should not match",
+			name: "source has sum, candidate does not - should match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -267,8 +267,8 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 				Episode: 11,
 				Site:    "SubsPlease",
 			},
-			wantMatch:   false,
-			description: "candidate must have matching checksum when source has one",
+			wantMatch:   true,
+			description: "a checksum on one name only is not enforced",
 		},
 		{
 			name: "candidate has sum, source does not - should match",
@@ -309,7 +309,7 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {
@@ -351,7 +351,7 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Site:       "AnoZu",
 	}
 
-	// Source without checksum can match candidate with or without checksum
+	// A checksum on one name only is not enforced, in either direction
 	subsPleaseNoSum := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,
@@ -360,15 +360,15 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Site:       "SubsPlease",
 	}
 
-	require.False(t, s.releasesMatch(&subsPlease, &anoZu, false),
+	require.False(t, s.strictCompare(&subsPlease, &anoZu, false).matched(),
 		"SubsPlease and AnoZu are different fansub groups - should NOT match")
 
-	require.True(t, s.releasesMatch(&subsPlease, &subsPleaseMatchingSum, false),
+	require.True(t, s.strictCompare(&subsPlease, &subsPleaseMatchingSum, false).matched(),
 		"same SubsPlease release with matching checksum should match")
 
-	require.False(t, s.releasesMatch(&subsPlease, &subsPleaseNoSum, false),
-		"source has checksum so candidate must have matching checksum")
+	require.True(t, s.strictCompare(&subsPlease, &subsPleaseNoSum, false).matched(),
+		"source with checksum can match candidate without checksum")
 
-	require.True(t, s.releasesMatch(&subsPleaseNoSum, &subsPlease, false),
+	require.True(t, s.strictCompare(&subsPleaseNoSum, &subsPlease, false).matched(),
 		"source without checksum can match candidate with checksum")
 }

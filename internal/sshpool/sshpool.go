@@ -18,25 +18,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/models"
 )
 
-// dialTimeout bounds the TCP connect, and then the whole life of the
-// connection: the handshake and the probe that follows it. A user is waiting on
-// the response, so it is short enough to fail the page rather than hold the
-// request open on a host that answers the connect and then stalls.
+// dialTimeout bounds the TCP connect and the handshake always, and — on a
+// one-shot connection, where the deadline is left in place — the probe that
+// follows it too. A user is waiting on the response, so it is short enough to
+// fail the page rather than hold the request open on a host that answers the
+// connect and then stalls.
 const dialTimeout = 15 * time.Second
 
 // credentialSource is the part of the instance store the dialer needs.
 type credentialSource interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
+	SetSSHTier(ctx context.Context, instanceID int, tier models.SSHTier) error
 }
 
-// Dialer opens one-shot SSH connections. There is no pool yet: every call
-// dials, does its work and closes.
+// Dialer opens SSH connections: one-shot ones for Test and Confirm, and the
+// long-lived ones Pool keeps through Connect.
 type Dialer struct {
 	creds   credentialSource
 	timeout time.Duration
@@ -71,11 +75,18 @@ type Report struct {
 
 // Capabilities is what the server lets us do, probed read-only.
 type Capabilities struct {
-	SFTP        bool
-	Statvfs     bool
-	Hardlink    bool
-	Limits      bool
-	Exec        bool
+	SFTP     bool
+	Statvfs  bool
+	Hardlink bool
+	Limits   bool
+	Exec     bool
+	// POSIXShell is a login shell that reads a single-quoted word the POSIX
+	// way. Every remote command is quoted for that shell, so a shell that
+	// treats a quote differently (fish escapes a closing quote with the
+	// backslash before it, tcsh rejects a newline inside a quote and reads the
+	// next line as a new command) could run a path as a command, and gets no
+	// exec tier.
+	POSIXShell  bool
 	GNUUserland bool
 }
 
@@ -134,7 +145,7 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		return matchKey(key, pinned)
 	}
 
-	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(pinned))
+	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(pinned), false)
 	if err != nil {
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
@@ -160,7 +171,7 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		status = StatusPinned
 	}
 
-	capabilities, err := probe(ctx, client)
+	capabilities, err := probe(ctx, client, d.timeout)
 	if err != nil {
 		// The probe sees a closed socket either way; the caller's own reason
 		// is the one to report.
@@ -176,26 +187,65 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 // Confirm dials the instance and succeeds only if the host presents hostKey, so
 // the caller can pin the key the user was shown rather than whatever the host
 // offers at pin time. hostKey is in SSH wire format, the form the pin column
-// holds.
-func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) error {
+// holds. It then probes the host, on the key it just verified, so the caller
+// can store the tier with the pin.
+func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) (*Capabilities, error) {
 	expected, err := ssh.ParsePublicKey(hostKey)
 	if err != nil {
-		return fmt.Errorf("parse host key: %w", err)
+		return nil, fmt.Errorf("parse host key: %w", err)
 	}
 
+	client, err := d.dialExpecting(ctx, inst, expected, false)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	capabilities, err := probe(ctx, client, d.timeout)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// The handshake verified the key, which is what a pin records. A host
+		// whose session channels misbehave is still one the user may pin; the
+		// tier stays unknown until a connect probes it.
+		log.Debug().Err(err).Int("instanceID", inst.ID).Msg("sshpool: host key confirmed, exec probe got no answer")
+		return nil, nil
+	}
+	return capabilities, nil
+}
+
+// ErrPinUnusable marks the errors Connect raises before it dials, when the
+// stored pin is missing or will not decrypt or parse. The pool dials only rows
+// in remote mode, which carry a pin, so there it means a pin that will not
+// decrypt or parse. That lasts until the pin changes, which is why the pool
+// tells it apart from a host that is merely down.
+var ErrPinUnusable = errors.New("host key pin is unusable")
+
+// Connect opens a long-lived connection to a host whose key is already pinned.
+// A background connection has no first contact and nobody to confirm one, so
+// unpinned and unreadable both refuse rather than trust what the host presents.
+func (d *Dialer) Connect(ctx context.Context, inst *models.Instance) (*ssh.Client, error) {
+	pin, err := d.creds.GetHostKeyPin(inst)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPinUnusable, err)
+	}
+
+	expected, err := ssh.ParsePublicKey(pin)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse pinned host key: %w", ErrPinUnusable, err)
+	}
+
+	return d.dialExpecting(ctx, inst, expected, true)
+}
+
+// dialExpecting dials and succeeds only if the host presents expected.
+func (d *Dialer) dialExpecting(ctx context.Context, inst *models.Instance, expected ssh.PublicKey, keepOpen bool) (*ssh.Client, error) {
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		return matchKey(key, expected)
 	}
 
-	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(expected))
-	if err != nil {
-		return err
-	}
-
-	// The key was verified during the handshake; a failed teardown is not a
-	// failed confirmation.
-	_ = client.Close()
-	return nil
+	return d.dial(ctx, inst, callback, hostKeyAlgorithms(expected), keepOpen)
 }
 
 func matchKey(presented, expected ssh.PublicKey) error {
@@ -243,7 +293,7 @@ func preferHostKeyAlgorithms(preferred ...string) []string {
 	return algorithms
 }
 
-func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.HostKeyCallback, algorithms []string) (*ssh.Client, error) {
+func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.HostKeyCallback, algorithms []string, keepOpen bool) (*ssh.Client, error) {
 	key, err := d.creds.GetDecryptedSSHKey(inst)
 	if err != nil {
 		return nil, fmt.Errorf("read ssh key: %w", err)
@@ -262,8 +312,8 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 
 	// ssh.ClientConfig.Timeout would buy nothing here: x/crypto reads it only
 	// in ssh.Dial, which this code does not use. One deadline on the socket
-	// bounds the handshake and then everything the caller runs over the
-	// connection, which is sound only because these connections are one-shot.
+	// bounds the handshake; keepOpen decides whether it stays on afterwards and
+	// bounds the caller's work too, which is sound only on a one-shot dial.
 	_ = conn.SetDeadline(time.Now().Add(d.timeout))
 
 	config := &ssh.ClientConfig{
@@ -301,6 +351,9 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 		if result.err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("%w: ssh handshake with %s: %w", ErrConnect, addr, result.err)
+		}
+		if keepOpen {
+			_ = conn.SetDeadline(time.Time{})
 		}
 		return result.client, nil
 	}

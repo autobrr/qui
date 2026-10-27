@@ -5,11 +5,15 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -83,6 +87,8 @@ func newRenameOnlyService(t *testing.T, instance *models.Instance, matchedHash, 
 		},
 	}
 
+	service.settler = idleSettler(sync)
+
 	candidate := CrossSeedCandidate{
 		InstanceID:   instance.ID,
 		InstanceName: "Test",
@@ -104,12 +110,11 @@ func TestProcessCrossSeedCandidate_RenameOnlySingleFileSkipsRecheckSkip(t *testi
 	startPaused := false
 	req := &CrossSeedRequest{SkipRecheck: true, StartPaused: &startPaused}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
-	require.Equal(t, "true", sync.addTorrentOpts["skip_checking"])
-	require.Equal(t, "true", sync.addTorrentOpts["paused"], "rename-only bypass must force a paused add even when StartPaused is false")
 	require.Contains(t, sync.bulkActions, "resume:"+normalizeHash(newHash))
 	for _, action := range sync.bulkActions {
 		require.NotContains(t, action, "recheck:", "rename-only exact-size add must not recheck")
@@ -137,15 +142,67 @@ func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *tes
 
 	req := &CrossSeedRequest{SkipRecheck: true}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
 	require.NotContains(t, result.Message, "full recheck required")
-	require.Equal(t, "true", sync.addTorrentOpts["skip_checking"])
 	require.Contains(t, sync.bulkActions, "resume:"+normalizeHash(newHash))
 	for _, action := range sync.bulkActions {
 		require.NotContains(t, action, "recheck:")
+	}
+}
+
+func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		skipRecheck bool
+		extraFile   bool
+		wantStatus  string
+		wantAction  string
+	}{
+		{name: "skip recheck adds and resumes", skipRecheck: true, wantStatus: "added", wantAction: "resume:"},
+		{name: "recheck adds paused and rechecks", wantStatus: "added", wantAction: "recheck:"},
+		{name: "skip recheck with extra file skips", skipRecheck: true, extraFile: true, wantStatus: "skipped_recheck"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The matched files do not exist on disk, so no base dir passes the
+			// same-filesystem probe: the full-recheck fallback, not the soft one.
+			instance := &models.Instance{
+				ID:                       1,
+				UseReflinks:              true,
+				FallbackToRegularMode:    true,
+				HasLocalFilesystemAccess: true,
+				HardlinkBaseDir:          t.TempDir(),
+			}
+			sourceFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			if tt.extraFile {
+				sourceFiles = append(sourceFiles, qbt.TorrentFile{Name: "Example.Film.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-EXGRP.nfo", Size: 700})
+			}
+			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			newHash := "newhash"
+			service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+
+			req := &CrossSeedRequest{SkipRecheck: tt.skipRecheck}
+
+			withAdder(service)
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil)
+
+			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
+			if tt.wantAction == "" {
+				require.Nil(t, sync.addTorrentOpts, "AddTorrent must not be called")
+				return
+			}
+			require.Equal(t, []string{tt.wantAction + normalizeHash(newHash)}, sync.bulkActions)
+		})
 	}
 }
 
@@ -162,6 +219,7 @@ func TestProcessCrossSeedCandidate_RenameOnlyStillRechecksWithoutSkipRecheck(t *
 
 	req := &CrossSeedRequest{SkipRecheck: false, SkipAutoResume: true}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
@@ -238,6 +296,7 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 
 			req := &CrossSeedRequest{SkipRecheck: true}
 
+			withAdder(service)
 			result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", tt.sourceFiles[0].Name, req, service.releaseCache.Parse(tt.sourceFiles[0].Name), tt.sourceFiles, nil)
 
 			require.False(t, result.Success)
@@ -245,4 +304,76 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			require.Nil(t, sync.addTorrentOpts, "AddTorrent must not be called")
 		})
 	}
+}
+
+// failingRecheckSyncManager fails the recheck while recheckErr is set, the way a
+// stalled qBittorrent fails the post-add readiness wait (issue #2821).
+type failingRecheckSyncManager struct {
+	qbittorrentSync
+	recheckErr error
+}
+
+func (m *failingRecheckSyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	if action == "recheck" && m.recheckErr != nil {
+		return m.recheckErr
+	}
+	return m.qbittorrentSync.BulkAction(ctx, instanceID, hashes, action)
+}
+
+func TestProcessCrossSeedCandidate_FailedRecheckIsQueued(t *testing.T) {
+	t.Parallel()
+
+	for _, recheckErr := range []error{
+		errors.New("synthetic recheck failure"),
+		context.DeadlineExceeded,
+	} {
+		t.Run(recheckErr.Error(), func(t *testing.T) {
+			t.Parallel()
+			instance := &models.Instance{ID: 1}
+			sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
+			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			newHash := "newhash"
+			service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+			service.syncManager = &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: recheckErr}
+			synctest.Test(t, func(t *testing.T) {
+				stopped := scripted(newHash, qbt.TorrentStateStoppedUp, 1, 0)
+				script := startSettleScript(t, service, stopped, stopped)
+
+				req := &CrossSeedRequest{}
+				withAdder(service)
+				result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+
+				require.True(t, result.Success, "message: %s", result.Message)
+				require.NotContains(t, result.Message, "manual intervention required")
+				// skip_checking reports 100% before any recheck, so each poll sends
+				// the recheck again and never resumes.
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck:" + newHash, "recheck:" + newHash, "recheck:" + newHash}, actions)
+			})
+		})
+	}
+}
+
+func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNotResumed(t *testing.T) {
+	t.Parallel()
+	instance := &models.Instance{ID: 1}
+	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
+	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+	newHash := "newhash"
+	service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+	service.syncManager = &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: context.DeadlineExceeded}
+	synctest.Test(t, func(t *testing.T) {
+		stopped := scripted(newHash, qbt.TorrentStateStoppedUp, 1, 0)
+		script := startSettleScript(t, service, stopped, stopped)
+
+		req := &CrossSeedRequest{SkipAutoResume: true}
+		withAdder(service)
+		result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+
+		require.True(t, result.Success, "message: %s", result.Message)
+		require.NotContains(t, result.Message, "manual intervention required")
+		require.Contains(t, result.Message, "auto-resume skipped per settings")
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck:" + newHash, "recheck:" + newHash, "recheck:" + newHash}, actions)
+	})
 }

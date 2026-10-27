@@ -43,6 +43,7 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			withAdder(service)
 			response, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes.Bytes()),
 				TargetInstanceIDs:            []int{1},
@@ -50,7 +51,7 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 				StartPaused:                  new(true),
 				SkipAutoResume:               true,
 				SkipPieceBoundarySafetyCheck: true,
-				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SourceInstanceID: 1, SourceHash: "source"},
+				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name, SourceInstanceID: 1, SourceHash: "source"},
 			})
 			require.NoError(t, err)
 			require.True(t, response.Success, "identical complete game files must apply: %+v", response.Results)

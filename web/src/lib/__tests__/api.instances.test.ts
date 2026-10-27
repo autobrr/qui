@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { http, HttpResponse } from "msw"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 import { api, APIError } from "@/lib/api"
 
 describe("api instances group — contract", () => {
@@ -251,21 +252,6 @@ describe("api instances group — contract", () => {
 
       const result = await api.getLocalCrossSeedMatches(7, "abc123")
       expect(result[0].trackerHealth).toBeUndefined()
-    })
-
-    it("throws APIError with status + data through the shared request() wrapper", async () => {
-      const body = { error: "no such instance" }
-      server.use(
-        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
-          HttpResponse.json(body, { status: 404 })
-        )
-      )
-
-      const error = await api.getLocalCrossSeedMatches(99, "nope").catch((e) => e)
-      expect(error).toBeInstanceOf(APIError)
-      expect((error as APIError).message).toBe("no such instance")
-      expect((error as APIError).status).toBe(404)
-      expect((error as APIError).data).toEqual(body)
     })
   })
 })

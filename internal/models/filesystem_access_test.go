@@ -50,3 +50,43 @@ func TestFilesystemAccessMode(t *testing.T) {
 		})
 	}
 }
+
+func TestFilesystemCapabilitiesOf(t *testing.T) {
+	t.Parallel()
+
+	remote := &Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	localWithSSH := *remote
+	localWithSSH.HasLocalFilesystemAccess = true
+	remoteExec := *remote
+	remoteExec.SSHTier = SSHTierExec
+	localWithExecTier := remoteExec
+	localWithExecTier.HasLocalFilesystemAccess = true
+
+	all := FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true}
+	tests := []struct {
+		name string
+		inst *Instance
+		want FilesystemCapabilities
+	}{
+		{"local", &Instance{HasLocalFilesystemAccess: true}, all},
+		{"local with SSH credentials", &localWithSSH, all},
+		{"local with an exec tier", &localWithExecTier, all},
+		{"remote sftp tier", remote, FilesystemCapabilities{Read: true, Write: true}},
+		// Peer identity serves matching and dedup, never a local-only trust.
+		{"remote exec tier", &remoteExec, FilesystemCapabilities{Read: true, Identity: true, Write: true}},
+		{"none", &Instance{}, FilesystemCapabilities{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := FilesystemCapabilitiesOf(tt.inst)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, got.Read, got.Has(CapabilityRead))
+			assert.Equal(t, got.Identity, got.Has(CapabilityIdentity))
+			assert.Equal(t, got.TrustedIdentity, got.Has(CapabilityTrustedIdentity))
+			assert.Equal(t, got.Write, got.Has(CapabilityWrite))
+			assert.Equal(t, got.Content, got.Has(CapabilityContent))
+		})
+	}
+}

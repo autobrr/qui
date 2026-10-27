@@ -56,9 +56,9 @@ const SYNCED_KEYS = new Set<string>([
   TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
+  "qui-log-levels",
 ])
 const SYNCED_PREFIXES = [
-  "qui-start-paused-instance-",
   "qui-cross-seed-blocklist-",
   // "qui-filters-" covers "qui-filters-global" and the per-instance keys.
   "qui-column-visibility:",
@@ -86,8 +86,16 @@ export function readRaw(key: string): string | null {
   }
 }
 
-function writeLocal(key: string, raw: string): boolean {
+// Marks a value that a tab copied from the server into the shared
+// localStorage, so another tab's flush does not push it back as an edit.
+// Local-only: the prefix matches no synced key.
+const SERVER_COPY_PREFIX = "qui-client-settings-server-copy:"
+
+function writeLocal(key: string, raw: string, fromServer = false): boolean {
   try {
+    // Mark before value, so another tab never reads a server copy without its mark.
+    if (fromServer) localStorage.setItem(SERVER_COPY_PREFIX + key, "1")
+    else localStorage.removeItem(SERVER_COPY_PREFIX + key)
     localStorage.setItem(key, raw)
   } catch (error) {
     console.error("Failed to write client setting to localStorage:", error)
@@ -194,16 +202,20 @@ async function flushPending(): Promise<void> {
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-    // a newer value from another tab is copied from the shared localStorage.
+    // a newer edit from another tab is copied from the shared localStorage.
+    // A server copy is not an edit: pushing it back can be one write old, and
+    // two tabs then flip the value forever (#3424).
     for (const [key, raw] of Object.entries(batch)) {
       const latest = readRaw(key)
-      if (latest !== null && latest !== raw) {
+      if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
         pending.set(key, latest)
         flushRequestedInFlight = true
       } else if (pending.get(key) === raw) pending.delete(key)
     }
     persistPending()
   } catch (error) {
+    // No self-retry, on purpose: a failed batch stays pending until the next write
+    // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
     console.error("Failed to push client settings:", error)
   } finally {
     flushInFlight = false
@@ -244,7 +256,7 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
   for (const [key, raw] of Object.entries(settings)) {
     if (pending.has(key)) continue
     if (readRaw(key) === raw) continue
-    if (writeLocal(key, raw)) changed.push(key)
+    if (writeLocal(key, raw, true)) changed.push(key)
   }
   return changed
 }
@@ -373,6 +385,9 @@ export function useClientSetting<T>(
   const valueRef = useRef(value)
   valueRef.current = value
 
+  // valueRef changes only on render, so two functional updates of one key in the
+  // same tick both read the old value and the last one wins. Nothing writes on
+  // mount: corrupt stored JSON renders as the default until the first edit.
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(valueRef.current) : next

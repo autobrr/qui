@@ -27,17 +27,6 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
-  // Async filtering status
-  contentFilteringCompleted?: boolean
-}
-
-export interface AsyncIndexerFilteringState {
-  capabilitiesCompleted: boolean
-  contentCompleted: boolean
-  capabilityIndexers: number[]
-  filteredIndexers: number[]
-  excludedIndexers: Record<number, string>
-  contentMatches: string[]
 }
 
 export interface CrossSeedInstanceResult {
@@ -119,6 +108,8 @@ export interface CrossSeedTorrentSearchResponse {
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
+  gazelleTimedOut?: boolean
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
 
@@ -248,8 +239,6 @@ export interface CategoryMappingRule {
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
-  startPaused: boolean
-  category?: string | null
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -316,8 +305,6 @@ export interface CrossSeedAutomationSettings {
 export interface CrossSeedAutomationSettingsPatch {
   enabled?: boolean
   runIntervalMinutes?: number
-  startPaused?: boolean
-  category?: string | null
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -34,14 +35,14 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 
 	rig := &trackerHealthRig{sink: &mockSyncEventSink{}}
 	rig.status.Store(int32(qbt.TrackerStatusNotWorking))
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
 			_, _ = io.WriteString(w, "Ok.")
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, "2.11.4")
 		case "/api/v2/sync/maindata":
-			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}}}`,
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}},"trackers":{"https://tracker.example.invalid/announce":[%[1]q]}}`,
 				trackerHealthTestHash, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 		case "/api/v2/torrents/info":
 			rig.infoFetches.Add(1)
@@ -54,12 +55,15 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 		default:
 			http.NotFound(w, r)
 		}
-	}))
+	})
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
+	// Later requests skip the network, so a synctest bubble can advance its clock.
+	serveInProcess(client.Client, handler)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
 	require.True(t, client.supportsTrackerInclude())
 
@@ -116,29 +120,48 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 	rig.sm.trackerHealthRefresh = time.Hour
 	rig.sm.trackerHealthKickSettle = 100 * time.Millisecond
 	rig.sm.trackerHealthKickInterval = 500 * time.Millisecond
-	rig.sm.StartTrackerHealthRefresh(1)
-	t.Cleanup(func() { rig.sm.StopTrackerHealthRefresh(1) })
 
-	passes := func() int { return len(rig.sink.getTrackerHealthUpdates()) }
-	require.Eventually(t, func() bool { return passes() == 1 }, 2*time.Second, 5*time.Millisecond, "initial pass")
-	require.True(t, rig.unhealthy())
+	synctest.Test(t, func(t *testing.T) {
+		rig.sm.StartTrackerHealthRefresh(1)
+		t.Cleanup(func() {
+			rig.sm.StopTrackerHealthRefresh(1)
+			// The clock of the go-qbittorrent tracker cache resets itself from a
+			// goroutine after a sleep of a quarter of the 5-minute cache TTL
+			// (trackerCacheTTL). Let it end before the bubble does.
+			time.Sleep(5 * time.Minute)
+		})
 
-	rig.status.Store(int32(qbt.TrackerStatusOK))
-	rig.sm.KickTrackerHealthRefresh(1)
-	time.Sleep(60 * time.Millisecond)
-	lastKick := time.Now()
-	rig.sm.KickTrackerHealthRefresh(1)
-	require.Eventually(t, func() bool { return passes() == 2 }, 2*time.Second, 5*time.Millisecond, "a kick runs a pass")
-	require.GreaterOrEqual(t, time.Since(lastKick), 100*time.Millisecond, "every kick gets the full settle delay")
-	require.False(t, rig.unhealthy(), "the kicked pass sees the new status")
+		// Each pass on qBittorrent 5.1 fetches the library once.
+		passes := func() int { return int(rig.infoFetches.Load()) }
+		synctest.Wait()
+		require.Equal(t, 1, passes(), "initial pass")
+		require.True(t, rig.unhealthy(), "initial pass")
 
-	// A burst inside the interval coalesces into one pass at the interval's end,
-	// which starts when the previous kicked pass started.
-	for range 5 {
+		rig.status.Store(int32(qbt.TrackerStatusOK))
 		rig.sm.KickTrackerHealthRefresh(1)
-	}
-	require.Eventually(t, func() bool { return passes() == 3 }, 2*time.Second, 5*time.Millisecond, "a burst runs one more pass")
-	require.GreaterOrEqual(t, time.Since(lastKick), 600*time.Millisecond, "kicked passes wait for the interval")
-	time.Sleep(700 * time.Millisecond)
-	require.Equal(t, 3, passes(), "the burst ran exactly one pass")
+		time.Sleep(60 * time.Millisecond)
+		rig.sm.KickTrackerHealthRefresh(1)
+		time.Sleep(99 * time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, 1, passes(), "every kick gets the full settle delay")
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, 2, passes(), "a kick runs a pass")
+		require.False(t, rig.unhealthy(), "the kicked pass sees the new status")
+
+		// A burst inside the interval coalesces into one pass at the interval's end,
+		// which starts when the previous kicked pass started.
+		for range 5 {
+			rig.sm.KickTrackerHealthRefresh(1)
+		}
+		time.Sleep(499 * time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, 2, passes(), "kicked passes wait for the interval")
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, 3, passes(), "a burst runs one more pass")
+		time.Sleep(700 * time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, 3, passes(), "the burst ran exactly one pass")
+	})
 }

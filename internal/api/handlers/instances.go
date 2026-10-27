@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/sshpool"
 )
@@ -32,9 +33,43 @@ type InstancesHandler struct {
 	syncManager     *internalqbittorrent.SyncManager
 	reannounceSvc   *reannounce.Service
 	sshDialer       *sshpool.Dialer
+	// sshPool is told when what a connection depends on changes; sshDialer
+	// stays separate so ssh-test never consults the pool's memo.
+	sshPool *sshpool.Pool
+	// orphanScan keeps orphan scan runs bound to the SSH server they walked.
+	// Nil in tests that do not need it.
+	orphanScan orphanScanGuard
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer) *InstancesHandler {
+type orphanScanGuard interface {
+	ChangeSSH(ctx context.Context, instanceID int, change func() error) error
+}
+
+// SetOrphanScan wires the orphan scan service in. A server built without one
+// leaves the guard off.
+func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
+	if s != nil {
+		h.orphanScan = s
+	}
+}
+
+// sshChangeDuringDeletionMessage is the 409 body for an SSH change refused
+// with orphanscan.ErrDeletionInProgress.
+const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
+
+// changeSSH runs change, which stores new SSH settings and invalidates the
+// pooled connection, through the orphan scan service: it refuses the change
+// while a deletion runs, since the deletion redials with the stored settings,
+// and fails the instance's remote previews after it. The invalidation belongs
+// inside change, since a scan reads the instance under the same lock.
+func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
+	if h.orphanScan == nil {
+		return change()
+	}
+	return h.orphanScan.ChangeSSH(ctx, instanceID, change)
+}
+
+func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore:   instanceStore,
 		reannounceStore: reannounceStore,
@@ -43,6 +78,7 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 		syncManager:     syncManager,
 		reannounceSvc:   svc,
 		sshDialer:       sshDialer,
+		sshPool:         sshPool,
 	}
 }
 
@@ -274,6 +310,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				SSHUsername:              instances[i].SSHUsername,
 				SSHHostKeyPinned:         instances[i].SSHHostKeyEncrypted != "",
 				FilesystemMode:           string(models.FilesystemAccessMode(instances[i])),
+				Capabilities:             models.FilesystemCapabilitiesOf(instances[i]),
 				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
@@ -330,6 +367,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		SSHUsername:              instance.SSHUsername,
 		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
 		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
+		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 
 		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
@@ -377,6 +415,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		SSHUsername:              instance.SSHUsername,
 		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
 		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
+		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 	}
 }
 
@@ -504,6 +543,7 @@ type InstanceResponse struct {
 	SSHUsername              string                            `json:"sshUsername,omitempty"`
 	SSHHostKeyPinned         bool                              `json:"sshHostKeyPinned"`
 	FilesystemMode           string                            `json:"filesystemMode"`
+	Capabilities             models.FilesystemCapabilities     `json:"capabilities"`
 	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
 }
 
@@ -750,10 +790,14 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate hardlink/reflink settings
-	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
+	effective := *existingInstance
 	if req.HasLocalFilesystemAccess != nil {
-		effectiveLocalAccess = *req.HasLocalFilesystemAccess
+		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
 	}
+	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
+	// No backend reflinks over sftp, so reflink mode stays a local-only choice
+	// even though a remote instance has Write (#2942).
+	canReflink := canWrite && models.FilesystemAccessMode(&effective) == models.FilesystemModeLocal
 	effectiveUseHardlinks := existingInstance.UseHardlinks
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
@@ -774,7 +818,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseHardlinks {
-		if !effectiveLocalAccess {
+		if !canWrite {
 			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
 			return
 		}
@@ -785,7 +829,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseReflinks {
-		if !effectiveLocalAccess {
+		if !canReflink {
 			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
 			return
 		}
@@ -816,8 +860,15 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
+	// Drop the old client, backoff, and errors so the new settings are tried at once
 	h.clientPool.RemoveClient(instanceID)
+	h.clientPool.ResetFailureTracking(instanceID) //nolint:contextcheck // the error clear has its own timeout and must outlive a cancelled request
+	// The local access flag decides whether the instance is in remote mode,
+	// and the ssh pool only rereads the row when it dials. Any other edit
+	// leaves the session alone, since Invalidate cuts reads in flight.
+	if models.FilesystemAccessMode(existingInstance) != models.FilesystemAccessMode(instance) {
+		h.sshPool.Invalidate(instanceID)
+	}
 
 	var settings *models.InstanceReannounceSettings
 	if req.ReannounceSettings != nil {
@@ -863,6 +914,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
+	h.sshPool.Remove(instanceID)
 
 	response := DeleteInstanceResponse{
 		Message: "Instance deleted successfully",

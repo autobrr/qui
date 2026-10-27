@@ -4,6 +4,11 @@
     "description": "Automatisierungsdienste auf Instanz-Ebene, verwaltet von qui.",
     "noInstances": "Noch keine Instanzen konfiguriert. Füge in den Einstellungen eine hinzu, um Dienste zu nutzen."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Reannounce",
+    "orphanScan": "Orphan-Scan"
+  },
   "queryBuilder": {
     "noConditions": "Keine Bedingungen",
     "matchesAllTorrents": "Trifft auf alle Torrents zu (abhängig von der Tracker-Auswahl).",
@@ -29,10 +34,12 @@
     "selectState": "Status auswählen",
     "selectScope": "Bereich auswählen",
     "selectTrackerStatus": "Status auswählen",
+    "selectContentType": "Inhaltstyp auswählen",
     "true": "Wahr",
     "false": "Falsch",
     "selectCategory": "Kategorie auswählen",
     "uncategorized": "Ohne Kategorie",
+    "customContentType": "{{value}} (nicht unterstützt)",
     "regexEnabled": "Regex aktiviert",
     "enableRegex": "Regex aktivieren",
     "selectField": "Feld auswählen",
@@ -109,6 +116,7 @@
       "RATIO": "Ratio",
       "RATIO_LIMIT": "Ratio-Limit",
       "MAX_RATIO": "Max. Ratio",
+      "UPLOADED_OVER_SIZE": "Hochgeladen / Größe",
       "PROGRESS": "Fortschritt",
       "AVAILABILITY": "Verfügbarkeit",
       "POPULARITY": "Beliebtheit",
@@ -120,7 +128,7 @@
       "NUM_LEECHS": "Aktive Leecher",
       "NUM_COMPLETE": "Seeder gesamt",
       "NUM_INCOMPLETE": "Leecher gesamt",
-      "TRACKERS_COUNT": "Tracker",
+      "TRACKERS_COUNT": "Anzahl Tracker",
       "PRIORITY": "Warteschlangen-Priorität",
       "GROUP_SIZE": "Gruppengröße",
       "PRIVATE": "Privat",
@@ -140,7 +148,8 @@
       "CROSS_SEED_TAGS": "Cross-Seed-Tags",
       "SEASON_PACK_STATUS": "Staffelpaket-Status",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Staffelpaket-Status (beliebige Instanz)",
-      "HARDLINK_SCOPE": "Hardlink-Bereich"
+      "HARDLINK_SCOPE": "Hardlink-Bereich",
+      "HARDLINK_SCOPE_CROSS": "Hardlink-Bereich (instanzübergreifend)"
     },
     "fieldGroups": {
       "Identity": "Identität",
@@ -185,6 +194,7 @@
       "stalled_downloading": "Download stehengeblieben",
       "errored": "Fehler",
       "tracker_down": "Tracker offline",
+      "tracker_error": "Tracker-Fehler",
       "checking": "Wird geprüft",
       "checkingResumeData": "Wiederaufnahmedaten werden geprüft",
       "moving": "Wird verschoben",
@@ -213,12 +223,12 @@
     "durationUnits": {
       "minutes": "Minuten",
       "hours": "Stunden",
-      "days": "Tage",
-      "seconds": "Sekunden"
+      "days": "Tage"
     },
     "capabilityReasons": {
       "trackerHealth": "Erfordert qBittorrent 5.1+",
-      "localFilesystemAccess": "Erfordert Zugriff auf lokales Dateisystem"
+      "localFilesystemAccess": "Erfordert Zugriff auf lokales Dateisystem",
+      "remoteInstance": "Nicht verfügbar auf Remote-Instanzen"
     }
   }
 }

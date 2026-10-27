@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstances } from "@/hooks/useInstances"
 import { DEFAULT_REANNOUNCE_SETTINGS, instanceUrlSchema } from "@/lib/instance-validation"
-import { formatErrorMessage } from "@/lib/utils"
+import { formatErrorMessage } from "@/lib/format-error-message"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useEffect, useRef, useState } from "react"
@@ -88,7 +88,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
       // If basic auth is enabled, only include basicPassword if it's not the redacted placeholder
       if (data.basicPassword === "<redacted>") {
         // Don't send basicPassword at all - this preserves existing password
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { basicPassword, ...dataWithoutPassword } = data
         submitData = dataWithoutPassword
       } else {
@@ -119,7 +118,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         apiKey: "",
       }
       if (submitData.password === "") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, ...rest } = submitData
         submitData = rest
       }
@@ -132,7 +130,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         password: "",
       }
       if (submitData.apiKey === "" || submitData.apiKey === "<redacted>") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { apiKey, ...rest } = submitData
         submitData = rest
       }

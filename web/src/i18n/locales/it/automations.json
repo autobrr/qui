@@ -4,6 +4,11 @@
     "description": "Servizi di automazione a livello di istanza gestiti da qui.",
     "noInstances": "Nessuna istanza configurata. Aggiungine una in Impostazioni per usare i servizi."
   },
+  "tabs": {
+    "workflows": "Workflow",
+    "reannounce": "Riannuncia",
+    "orphanScan": "Scansione orfani"
+  },
   "queryBuilder": {
     "noConditions": "Nessuna condizione",
     "matchesAllTorrents": "Corrisponde a tutti i torrent (in base alla selezione del tracker).",
@@ -29,10 +34,12 @@
     "selectState": "Seleziona uno stato",
     "selectScope": "Seleziona un ambito",
     "selectTrackerStatus": "Seleziona uno stato",
+    "selectContentType": "Seleziona un tipo di contenuto",
     "true": "Vero",
     "false": "Falso",
     "selectCategory": "Seleziona una categoria",
     "uncategorized": "Senza categoria",
+    "customContentType": "{{value}} (non supportato)",
     "regexEnabled": "Regex abilitata",
     "enableRegex": "Abilita regex",
     "selectField": "Seleziona un campo",
@@ -109,6 +116,7 @@
       "RATIO": "Rapporto",
       "RATIO_LIMIT": "Limite del rapporto",
       "MAX_RATIO": "Rapporto massimo",
+      "UPLOADED_OVER_SIZE": "Caricato / Dimensione",
       "PROGRESS": "Avanzamento",
       "AVAILABILITY": "Disponibilità",
       "POPULARITY": "Popolarità",
@@ -120,7 +128,7 @@
       "NUM_LEECHS": "Leecher attivi",
       "NUM_COMPLETE": "Seeder totali",
       "NUM_INCOMPLETE": "Leecher totali",
-      "TRACKERS_COUNT": "Tracker",
+      "TRACKERS_COUNT": "Numero di tracker",
       "PRIORITY": "Priorità in coda",
       "GROUP_SIZE": "Dimensione del gruppo",
       "PRIVATE": "Privato",
@@ -140,7 +148,8 @@
       "CROSS_SEED_TAGS": "Tag dei cross-seed",
       "SEASON_PACK_STATUS": "Stato del pacchetto stagione",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Stato del pacchetto stagione (qualsiasi istanza)",
-      "HARDLINK_SCOPE": "Ambito hardlink"
+      "HARDLINK_SCOPE": "Ambito hardlink",
+      "HARDLINK_SCOPE_CROSS": "Ambito hardlink (multi-istanza)"
     },
     "fieldGroups": {
       "Identity": "Identità",
@@ -185,6 +194,7 @@
       "stalled_downloading": "In stallo (download)",
       "errored": "Errore",
       "tracker_down": "Tracker offline",
+      "tracker_error": "Errore tracker",
       "checking": "Verifica in corso",
       "checkingResumeData": "Verifica dati di ripresa",
       "moving": "Spostamento in corso",
@@ -213,12 +223,12 @@
     "durationUnits": {
       "minutes": "minuti",
       "hours": "ore",
-      "days": "giorni",
-      "seconds": "secondi"
+      "days": "giorni"
     },
     "capabilityReasons": {
       "trackerHealth": "Richiede qBittorrent 5.1+",
-      "localFilesystemAccess": "Richiede l'accesso al filesystem locale"
+      "localFilesystemAccess": "Richiede l'accesso al filesystem locale",
+      "remoteInstance": "Non disponibile sulle istanze remote"
     }
   }
 }

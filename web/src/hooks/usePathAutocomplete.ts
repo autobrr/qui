@@ -105,10 +105,6 @@ export function usePathAutocomplete(
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           skipHighlightResetRef.current = true;
           setDismissed(false);
-        } else if (e.key === "Escape") {
-          setHighlightedIndex(-1);
-          setDismissed(true);
-          return;
         } else {
           return;
         }
@@ -140,10 +136,6 @@ export function usePathAutocomplete(
             selectSuggestion(suggestions[highlightedIndex]);
           }
           // Otherwise let Tab proceed for normal form navigation
-          break;
-        case "Escape":
-          setHighlightedIndex(-1);
-          setDismissed(true);
           break;
         default:
           return;
@@ -184,6 +176,9 @@ export function usePathAutocomplete(
   // Dismiss on any pointer interaction outside the input and the list. Blur
   // cannot do this because the suggestion buttons prevent it. A pointerdown on
   // the list itself (for example its scrollbar) keeps it open.
+  // Escape closes only the list. A Radix dialog listens for Escape on the
+  // document in the capture phase, before the input sees the key, so the
+  // listener sits on the window, which the event reaches first.
   useEffect(() => {
     if (!showSuggestions) return;
     const onPointerDown = (e: Event) => {
@@ -191,8 +186,18 @@ export function usePathAutocomplete(
       if (inputRef.current?.contains(target) || listRef.current?.contains(target)) return;
       setDismissed(true);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setHighlightedIndex(-1);
+      setDismissed(true);
+    };
     document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
   }, [showSuggestions]);
 
   return {

@@ -5,12 +5,20 @@ package automations
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestPlanQueueMoves(t *testing.T) {
@@ -290,4 +298,70 @@ func TestApplyRuleDryRun_QueuePositionMatchesLiveRun(t *testing.T) {
 				runHashes(drySvc, dryInstanceID, dryActivities[0].ID))
 		})
 	}
+}
+
+// qbitStub is a minimal qBittorrent WebUI that serves fixed torrents and records every POST.
+type qbitStub struct {
+	torrents        string // sync/maindata "torrents" object
+	queueingEnabled bool
+
+	mu    sync.Mutex
+	posts []string // "<path> <hashes>"
+}
+
+func (q *qbitStub) postsTo(path string) []string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var matched []string
+	for _, p := range q.posts {
+		if after, ok := strings.CutPrefix(p, path+" "); ok {
+			matched = append(matched, after)
+		}
+	}
+	return matched
+}
+
+// newStubQbitService boots a Service against stub.
+func newStubQbitService(t *testing.T, stub *qbitStub) (*Service, int) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path != "/api/v2/auth/login" {
+			_ = r.ParseForm()
+			stub.mu.Lock()
+			stub.posts = append(stub.posts, r.URL.Path+" "+r.PostForm.Get("hashes"))
+			stub.mu.Unlock()
+		}
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.10.0"))
+		case "/api/v2/app/preferences":
+			_, _ = fmt.Fprintf(w, `{"queueing_enabled":%t}`, stub.queueingEnabled)
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + stub.torrents + `}`))
+		case "/api/v2/torrents/files":
+			_, _ = w.Write([]byte(`[]`))
+		case "/api/v2/torrents/topPrio", "/api/v2/torrents/bottomPrio", "/api/v2/torrents/stop", "/api/v2/torrents/pause":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(t.Context(), "parity", server.URL, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
+
+	svc := NewService(Config{ApplyTimeout: 10 * time.Second}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	return svc, instance.ID
 }

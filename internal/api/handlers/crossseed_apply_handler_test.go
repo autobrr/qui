@@ -241,6 +241,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 	setServiceField(t, svc, "instanceStore", instanceStore)
 	setServiceField(t, svc, "syncManager", syncManager)
+	setServiceField(t, svc, "adder", crossseed.NewAdder(syncManager, nil, nil, nil, nil))
 	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
 	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return &models.CrossSeedAutomationSettings{
@@ -295,4 +296,32 @@ func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
 	handler.AutobrrApply(resp, req)
 
 	require.Equal(t, http.StatusOK, resp.Code)
+}
+
+func TestManualMatchApplyFailsWhenSettingsReadFails(t *testing.T) {
+	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
+	syncManager := &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}}
+	svc := &crossseed.Service{}
+	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
+	setServiceField(t, svc, "syncManager", syncManager)
+	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		return nil, errors.New("settings unavailable")
+	})
+
+	body, err := json.Marshal(ManualMatchApplyRequest{
+		InstanceID:  instance.ID,
+		TorrentData: createSeasonPackHandlerTorrent(t, "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", []string{"movie.mkv"}),
+		TargetHash:  "target",
+	})
+	require.NoError(t, err)
+
+	handler := &CrossSeedHandler{service: svc}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/manual/apply", bytes.NewReader(body))
+	resp := httptest.NewRecorder()
+	handler.ManualMatchApply(resp, req)
+
+	require.Equal(t, http.StatusInternalServerError, resp.Code)
+	require.Contains(t, resp.Body.String(), "Failed to load cross-seed settings")
+	require.Zero(t, syncManager.addCalls)
 }

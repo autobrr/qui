@@ -277,7 +277,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	}
 	setUnexportedField(t, clientPool, "clients", clients)
 
-	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore)
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"action":      "recheck",
 		"hashes":      []string{"shared"},
@@ -330,7 +330,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 		{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
 	})})
 
-	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore)
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"action":        "recheck",
 		"selectAll":     true,

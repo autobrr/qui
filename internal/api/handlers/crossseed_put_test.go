@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -374,4 +375,84 @@ func TestAutomationSettingsPooledPartialCompletion(t *testing.T) {
 			require.Equal(t, tt.want, stored.PooledPartialCompletionEnabled)
 		})
 	}
+}
+
+func TestAutomationSettingsPutKeepsOmittedSecrets(t *testing.T) {
+	handler, store := newTestCrossSeedHandler(t)
+
+	for _, body := range []string{
+		`{"seasonPackCoverageThreshold":0.75,"redactedApiKey":"red","orpheusApiKey":"ops","seasonPackTvdbApiKey":"tvdb","seasonPackTvdbPin":"pin"}`,
+		`{"seasonPackCoverageThreshold":0.75,"orpheusApiKey":""}`,
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(body))
+		resp := httptest.NewRecorder()
+		handler.UpdateAutomationSettings(resp, req)
+		require.Equal(t, http.StatusOK, resp.Code)
+	}
+
+	stored, err := store.GetSettings(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, domain.RedactedStr, stored.RedactedAPIKey)
+	require.Empty(t, stored.OrpheusAPIKey)
+	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBAPIKey)
+	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBPIN)
+}
+
+func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "crossseed-secret-change")
+	oldKey := make([]byte, 32)
+	newKey := make([]byte, 32)
+	newKey[0] = 1
+	oldStore, err := models.NewCrossSeedStore(db, oldKey)
+	require.NoError(t, err)
+	newStore, err := models.NewCrossSeedStore(db, newKey)
+	require.NoError(t, err)
+
+	_, err = oldStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:       true,
+		RedactedAPIKey:       "red",
+		OrpheusAPIKey:        "ops",
+		SeasonPackTVDBAPIKey: "tvdb",
+		SeasonPackTVDBPIN:    "pin",
+	})
+	require.NoError(t, err)
+
+	handler := &CrossSeedHandler{service: crossseed.NewServiceWithAutomationStore(newStore)}
+	patch := func(body string) {
+		t.Helper()
+		req := httptest.NewRequestWithContext(ctx, http.MethodPatch, "/api/cross-seed/settings", strings.NewReader(body))
+		resp := httptest.NewRecorder()
+		handler.PatchAutomationSettings(resp, req)
+		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	}
+
+	requireOldGazelleKeys := func() {
+		t.Helper()
+		for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
+			key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, want, key)
+		}
+	}
+
+	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.
+	patch(`{"runIntervalMinutes":240}`)
+	requireOldGazelleKeys()
+	tvdbKey, tvdbPin, err := oldStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "tvdb", tvdbKey)
+	require.Equal(t, "pin", tvdbPin)
+
+	// The old PIN cannot block a new key, and the new key deletes no other secret.
+	patch(`{"seasonPackTvdbApiKey":"new-tvdb"}`)
+	tvdbKey, tvdbPin, err = newStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "new-tvdb", tvdbKey)
+	require.Empty(t, tvdbPin)
+	requireOldGazelleKeys()
+	settings, err := oldStore.GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, domain.RedactedStr, settings.SeasonPackTVDBPIN)
 }

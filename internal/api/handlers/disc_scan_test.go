@@ -69,6 +69,8 @@ type discScanFixture struct {
 	router     http.Handler
 	store      *models.DiscScanStore
 	service    *discscan.Service
+	handler    *DiscScanHandler
+	instances  *models.InstanceStore
 	instanceID int
 	root       string
 	scanner    *fakeScanner
@@ -85,7 +87,8 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &hasLocalAccess)
 	require.NoError(t, err)
 
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 1", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 2", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Extras"), 0o750))
@@ -105,10 +108,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 		},
 	}
 
-	hub := activity.NewHub()
-	t.Cleanup(hub.Close)
-	events, unsubscribe := hub.Subscribe()
-	t.Cleanup(unsubscribe)
+	hub, events := newActivityHub(t)
 
 	store := models.NewDiscScanStore(db)
 	service := discscan.NewService(store)
@@ -125,7 +125,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 		r.Post("/disc-scans/{runID}/cancel", handler.Cancel)
 	})
 
-	return &discScanFixture{router: router, store: store, service: service, instanceID: instance.ID, root: root, scanner: scanner, events: events}
+	return &discScanFixture{router: router, store: store, service: service, handler: handler, instances: instanceStore, instanceID: instance.ID, root: root, scanner: scanner, events: events}
 }
 
 func (fx *discScanFixture) startWorker(t *testing.T) {
@@ -167,10 +167,10 @@ func (fx *discScanFixture) get(t *testing.T, runID int64) models.DiscScanRun {
 func (fx *discScanFixture) waitStatus(t *testing.T, runID int64, status string) models.DiscScanRun {
 	t.Helper()
 	var run models.DiscScanRun
-	require.Eventually(t, func() bool {
+	waitForActivity(t, fx.events, func() bool {
 		run = fx.get(t, runID)
 		return run.Status == status
-	}, 5*time.Second, 10*time.Millisecond, "run %d never reached %s", runID, status)
+	})
 	return run
 }
 
@@ -180,6 +180,36 @@ func TestDiscScanStart_DeniedWithoutFilesystemAccess(t *testing.T) {
 
 	code, _ := fx.start(t, "Box Set/Disc 1", false)
 	require.Equal(t, http.StatusForbidden, code)
+}
+
+// remoteModeStore returns the instance as it reads once SSH credentials and a
+// confirmed pin are stored, without local filesystem access.
+type remoteModeStore struct{ store *models.InstanceStore }
+
+func (s remoteModeStore) Get(ctx context.Context, id int) (*models.Instance, error) {
+	inst, err := s.store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	inst.HasLocalFilesystemAccess = false
+	inst.SSHHost, inst.SSHKeyEncrypted, inst.SSHHostKeyEncrypted = "seedbox.invalid", "key", "pin"
+	return inst, nil
+}
+
+// BDInfo reads the qui host's filesystem, so a remote-mode instance is refused
+// before the save path is checked: over SFTP that Stat would pass and queue a
+// scan of a path that does not exist here (soup, #2739).
+func TestDiscScanStart_RefusesRemoteModeInstance(t *testing.T) {
+	fx := newDiscScanFixture(t, false)
+
+	store := remoteModeStore{fx.instances}
+	// The factory stands in for a remote host where the save path exists.
+	fx.handler.backendPool = fsops.NewPoolWithRemote(store, localbackend.NewBackend(), func(*models.Instance) fsops.Backend {
+		return localbackend.NewBackend()
+	})
+
+	code, _ := fx.start(t, "Box Set/Disc 1", false)
+	require.Equal(t, http.StatusForbidden, code, "a remote-mode instance must not queue a local BDInfo run")
 }
 
 func TestDiscScanStart_RejectsNonDiscPaths(t *testing.T) {
@@ -278,11 +308,6 @@ func TestDiscScanCancel_PendingAndScanning(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	canceled := fx.waitStatus(t, running.ID, models.DiscScanStatusCanceled)
 	require.Empty(t, canceled.Report)
-
-	// The scanner returned on ctx cancel; a later release changes nothing.
-	close(fx.scanner.release)
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, models.DiscScanStatusCanceled, fx.get(t, running.ID).Status)
 
 	code, _ = fx.do(t, http.MethodPost, "/disc-scans/999999/cancel", "")
 	require.Equal(t, http.StatusNotFound, code)

@@ -27,12 +27,18 @@ describe("createDemoFetch", () => {
     ["GET", "/client-settings"],
     ["GET", "/filter-views"],
     ["GET", "/tracker-icons"],
+    ["GET", "/version"],
     ["GET", "/version/latest"],
   ])("%s %s answers JSON", async (method, path) => {
     const res = await fetch(`http://localhost/demo/api${path}`, { method })
     expect(res.status).toBe(200)
     expect(res.headers.get("content-type")).toBe("application/json")
     await expect(res.json()).resolves.toBeDefined()
+  })
+
+  it("offers no Restart and no Self-update", async () => {
+    const res = await fetch("http://localhost/demo/api/version")
+    await expect(res.json()).resolves.toMatchObject({ selfUpdate: false, restart: false })
   })
 
   it.each(["properties", "trackers", "files", "peers", "pieces", "webseeds"])("serves torrent %s", async (part) => {

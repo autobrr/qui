@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 func TestResolveLocalTorrentFile(t *testing.T) {
@@ -21,11 +23,17 @@ func TestResolveLocalTorrentFile(t *testing.T) {
 		ok    bool
 	}{
 		{name: "nested relative name", input: "Movie.2024/Movie.2024.mkv", want: filepath.Join(base, "Movie.2024", "Movie.2024.mkv"), ok: true},
+		{name: "dot segments inside base", input: "sub/../Movie.mkv", want: filepath.Join(base, "Movie.mkv"), ok: true},
 		// Backslash is a legal filename byte on Linux, so a name carrying one is
 		// rejected rather than rewritten into a nested path: inventing a directory
 		// here makes a file that exists read as missing, and on Windows the same
 		// name is a separator. Both shapes stay rejected on every OS.
 		{name: "backslash in a legal Linux file name", input: `AC\DC - Back In Black.mkv`},
+		// qBittorrent's WebAPI is slash-delimited on every platform (its Path type
+		// runs QDir::cleanPath, which converts native separators to "/"), so a
+		// Windows-looking nested path can only be a literal file name and is
+		// refused like any other backslash carrier. This row records that call.
+		{name: "windows-style nested path", input: `Season 01\Episode 01.mkv`},
 		{name: "backslash inside a nested legal Linux name", input: `dir/AC\DC.mkv`},
 		{name: "windows traversal", input: `..\etc\passwd`},
 		{name: "windows rooted path", input: `\evil\path`},
@@ -46,7 +54,7 @@ func TestResolveLocalTorrentFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := resolveLocalTorrentFile(base, tt.input)
+			got, ok := resolveLocalTorrentFile(fsops.HostPaths, base, tt.input)
 
 			require.Equal(t, tt.ok, ok)
 			assert.Equal(t, tt.want, got)

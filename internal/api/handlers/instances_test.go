@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,7 +50,7 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil)
+	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/capabilities", handler.GetInstanceCapabilities)
 
@@ -96,4 +98,79 @@ func TestInstanceCapabilitiesClientErrorMessagePreservesInFlightProbe(t *testing
 
 func TestInstanceCapabilitiesClientErrorMessageFallsBack(t *testing.T) {
 	require.Equal(t, "Failed to load instance capabilities", instanceCapabilitiesClientErrorMessage(errors.New("boom")))
+}
+
+func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
+	failingServer := func() (*httptest.Server, *atomic.Int32) {
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits.Add(1)
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &hits
+	}
+	oldServer, _ := failingServer()
+	stillFailingServer, stillFailingHits := failingServer()
+	workingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.15.1"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(workingServer.Close)
+
+	db := testdb.NewMigratedSQLite(t, "instance-update-backoff")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	errorStore := models.NewInstanceErrorStore(db)
+	clientPool, err := internalqbittorrent.NewClientPool(instanceStore, errorStore, 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	instance, err := instanceStore.Create(t.Context(), "instance", oldServer.URL, "admin", "password", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	router := chi.NewRouter()
+	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)
+	update := func(host string) {
+		t.Helper()
+		body := fmt.Sprintf(`{"name":"instance","host":%q,"username":"admin"}`, host)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPut, fmt.Sprintf("/api/instances/%d", instance.ID), strings.NewReader(body)))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	}
+	backoff := func(err error) time.Duration {
+		t.Helper()
+		blocker, ok := errors.AsType[*internalqbittorrent.InstanceHealthBlockerError](err)
+		require.True(t, ok, "want a health blocker, got %v", err)
+		require.Equal(t, internalqbittorrent.InstanceHealthBlockerBackoff, blocker.Kind)
+		return blocker.RetryAfter
+	}
+
+	_, err = clientPool.GetClient(t.Context(), instance.ID)
+	require.Error(t, err)
+	_, err = clientPool.GetClient(t.Context(), instance.ID)
+	oldBackoff := backoff(err)
+
+	// New settings that also fail: they are tried, and the backoff starts again
+	// from the first attempt instead of growing from the old attempt count.
+	update(stillFailingServer.URL)
+	_, err = clientPool.GetClient(t.Context(), instance.ID)
+	require.Error(t, err)
+	require.Positive(t, stillFailingHits.Load(), "the new host is tried at once")
+	_, err = clientPool.GetClient(t.Context(), instance.ID)
+	require.LessOrEqual(t, backoff(err), oldBackoff+time.Second)
+
+	update(workingServer.URL)
+	_, err = clientPool.GetClient(t.Context(), instance.ID)
+	require.NoError(t, err)
+	errs, err := errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, errs)
 }
