@@ -111,14 +111,16 @@ function useTrackersReload(instanceId: number, hash: string | null, row: Torrent
   const queryClient = useQueryClient()
   const torrentKey = `${instanceId}|${hash}`
   const trackerState = hash !== null && row?.hash === hash ? `${row.trackers_count}|${row.tracker_health ?? ""}` : null
-  const seen = useRef<{ torrentKey: string; trackerState: string } | null>(null)
+  // The last state of each torrent, so a change while another torrent was open
+  // still reloads the list on the return.
+  const seen = useRef(new Map<string, string>())
   useEffect(() => {
     if (trackerState === null) {
       return
     }
-    const last = seen.current
-    seen.current = { torrentKey, trackerState }
-    if (last?.torrentKey !== torrentKey || last.trackerState === trackerState) {
+    const last = seen.current.get(torrentKey)
+    seen.current.set(torrentKey, trackerState)
+    if (last === undefined || last === trackerState) {
       return
     }
     void queryClient.invalidateQueries({

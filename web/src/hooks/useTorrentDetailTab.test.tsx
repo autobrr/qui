@@ -246,6 +246,22 @@ describe("useTorrentDetailTab trackers", () => {
     expect(mocks.getTorrentTrackers.mock.calls).toEqual([[1, "a"], [1, "b"]])
   })
 
+  it("reloads on a return to a torrent whose Tracker health changed while another torrent was open", async () => {
+    vi.useFakeTimers()
+    const { rerender } = renderTab("trackers")
+    await advance(0)
+    sendRow({ trackers_count: 2 })
+    rerender({ instanceId: 1, hash: "b" })
+    await advance(0)
+    act(() => mocks.onMessage?.({ type: "update", data: { torrents: [makeTorrent({ hash: "b", trackers_count: 5 })], total: 1 } }))
+    // The list of a is still fresh, so the return alone does not fetch it.
+    rerender({ instanceId: 1, hash: "a" })
+    await advance(0)
+    sendRow({ trackers_count: 2, tracker_health: "unregistered" })
+    await advance(0)
+    expect(mocks.getTorrentTrackers.mock.calls).toEqual([[1, "a"], [1, "b"], [1, "a"]])
+  })
+
   it("does not fetch while the page is hidden, and reloads when it shows again", async () => {
     vi.useFakeTimers()
     renderTab("trackers")
