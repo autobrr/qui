@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -90,12 +91,21 @@ type seasonPackPlanBuild struct {
 	backend           fsops.Backend           // the backend the plan was built for; it creates the tree, and rollback must not re-resolve on a possibly-cancelled ctx
 	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
-	linkedBytes       int64
-	totalBytes        int64
-	totalFiles        int
+	// linkedFiles carries what a demotion needs per materialized path; a demotion
+	// deletes from both maps.
+	linkedFiles map[string]linkedPackFile
+	linkedBytes int64
+	totalBytes  int64
+	totalFiles  int
 	// nextBaseDir plans the next ranked base dir on the sources' filesystem after
 	// a cross-device link error. It returns nil when none is left.
 	nextBaseDir func() (*seasonPackPlanBuild, error)
+}
+
+type linkedPackFile struct {
+	target  string // on-disk link path, what a demotion removes
+	size    int64
+	episode episodeIdentity
 }
 
 type seasonPackMatchOptions struct {
@@ -473,6 +483,7 @@ func (s *Service) addSeasonPack(
 			Coverage:        float64(len(episodes)) / float64(prep.totalEpisodes),
 			LinkMode:        linkMode,
 		}
+		facts.Demote = seasonPackDemoter(prep, planBuild, torrentName, facts.SeasonPackRun)
 	}
 	added := s.adder.Add(ctx, AddRequest{
 		Check:   check,
@@ -530,6 +541,57 @@ func (s *Service) addSeasonPack(
 		Coverage:        coverage,
 		LinkMode:        linkMode,
 	}, nil
+}
+
+// seasonPackDemoter returns the settle hook that turns linked files which
+// failed their recheck into pending files: it unlinks them from the pack
+// folder, so the source keeps its data and qBittorrent downloads the file fresh,
+// then applies the apply-time coverage and piece boundary rules to the new
+// pending set and returns the resume threshold for the remaining linked bytes,
+// or the message that leaves the pack paused for review. It keeps the history
+// row's episode count current. It runs on the settle worker after the apply
+// returned, so planBuild and run are its own.
+func seasonPackDemoter(prep *seasonPackPrep, planBuild *seasonPackPlanBuild, torrentName string, run *models.SeasonPackRun) demoteFunc {
+	return func(ctx context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+		demoted := strings.Join(mismatched, ", ")
+		// An unlink failure still recounts: the files before it are gone.
+		var unlinkFailure string
+		for i, name := range mismatched {
+			file := planBuild.linkedFiles[name]
+			// The link creator skips a link another torrent made first and leaves
+			// it out of created; unlinking it breaks that torrent, and a resume
+			// would download into the shared file, so the pack stays paused.
+			if !slices.Contains(planBuild.created.Files, file.target) {
+				unlinkFailure = fmt.Sprintf("Demoted %s to pending; linked file %s belongs to another torrent, left paused to protect it", strings.Join(mismatched[:i], ", "), name)
+				break
+			}
+			if err := planBuild.backend.Remove(ctx, file.target, fsops.RemoveOptions{}); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				unlinkFailure = fmt.Sprintf("Demoted %s to pending; linked file %s could not be unlinked (%v), left paused to protect the source", strings.Join(mismatched[:i], ", "), name, err)
+				break
+			}
+			delete(planBuild.materializedPaths, name)
+			delete(planBuild.linkedFiles, name)
+			planBuild.linkedBytes -= file.size
+			log.Info().Str("torrentName", torrentName).Str("file", name).Msg("season pack: demoted linked file to a pending file after a failed recheck")
+		}
+		covered := make(map[episodeIdentity]struct{}, len(planBuild.linkedFiles))
+		for _, file := range planBuild.linkedFiles {
+			covered[file.episode] = struct{}{}
+		}
+		run.MatchedEpisodes, run.Coverage = len(covered), float64(len(covered))/float64(prep.totalEpisodes)
+		if unlinkFailure != "" {
+			return 0, nil, unlinkFailure
+		}
+		if !prep.manual && float64(len(covered)) < float64(prep.totalEpisodes)*prep.threshold {
+			return 0, nil, fmt.Sprintf("Demoted %s to pending; %d/%d episodes stay linked, below the coverage threshold, left paused for review", demoted, len(covered), prep.totalEpisodes)
+		}
+		if !prep.settings.SkipPieceBoundarySafetyCheck {
+			if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
+				return 0, nil, fmt.Sprintf("Demoted %s to pending; unsafe piece boundary with pending files (%s), left paused for review", demoted, result.Reason)
+			}
+		}
+		return seasonPackFacts(prep, planBuild).SeasonPackLinked * seasonPackResumeSlack, planBuild.materializedPaths, ""
+	}
 }
 
 // seasonPackFacts are the Add verdict facts of a planned season pack.
@@ -1624,12 +1686,15 @@ func (m matcher) buildSeasonPackPlan(
 		plan:              plan,
 		packDir:           packDir,
 		materializedPaths: make(map[string]struct{}, len(packFiles)),
+		linkedFiles:       make(map[string]linkedPackFile, len(packFiles)),
 		totalFiles:        len(packFiles),
 	}
 
 	verified := make(map[string]seasonPackLocalFile, len(localFiles))
-	for _, localFile := range localFiles {
+	episodeOf := make(map[string]episodeIdentity, len(localFiles))
+	for id, localFile := range localFiles {
 		verified[localFile.packFile] = localFile
+		episodeOf[localFile.packFile] = id
 	}
 	for _, pf := range packFiles {
 		build.totalBytes += pf.Size
@@ -1649,6 +1714,7 @@ func (m matcher) buildSeasonPackPlan(
 		}
 		plan.Files = append(plan.Files, filePlan.Files...)
 		build.materializedPaths[pf.Name] = struct{}{}
+		build.linkedFiles[pf.Name] = linkedPackFile{target: filePlan.Files[0].TargetPath, size: pf.Size, episode: episodeOf[pf.Name]}
 		build.linkedBytes += pf.Size
 	}
 

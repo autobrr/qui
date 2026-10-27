@@ -97,7 +97,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Isolation folder**: A folder that qui adds in the link directory so that the files of one torrent do not mix with the files of other torrents. _Avoid_: hash folder.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
-- **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
+- **Pending file**: A file in an added torrent that was absent at add time, or a linked file that a demotion unlinked after a failed recheck. _Avoid_: Missing file, extra file (when the download is meant).
 - **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
 - **Alignment**: The renames after an add that make the file and folder names of a torrent match the files that are already on disk. _Avoid_: content path alignment, rename alignment.
 - **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
