@@ -399,12 +399,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const { data: webseedsData, isLoading: loadingWebseeds } = useTorrentDetailTab(instanceId, readyHash, "webseeds")
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds).
+  // Before isReady the query is disabled and has no data, so wait for it.
   useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+    if (isReady && activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
       setActiveTab("general")
     }
-  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+  }, [isReady, activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({

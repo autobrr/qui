@@ -29,12 +29,14 @@ const mocks = vi.hoisted(() => ({
     },
     webseeds: { data: [{ url: "https://example.invalid/a" }, { url: "https://example.invalid/b" }] as WebSeed[], isLoading: false, error: null },
   } as Record<string, unknown>,
+  // The real hook fetches nothing for a null hash, as before the 150 ms ready delay ends.
+  noHash: { data: undefined, isLoading: false, error: null },
   capabilities: { data: {} },
   matches: { matchingTorrents: [], isLoadingMatches: false, allInstances: [] },
 }))
 
 vi.mock("@/hooks/useTorrentDetailTab", () => ({
-  useTorrentDetailTab: (_instanceId: number, _hash: string | null, tab: string) => mocks.tabs[tab],
+  useTorrentDetailTab: (_instanceId: number, hash: string | null, tab: string) => hash === null ? mocks.noHash : mocks.tabs[tab],
 }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => mocks.capabilities }))
 vi.mock("@/lib/cross-seed-utils", () => ({
@@ -102,6 +104,14 @@ describe("TorrentDetailsPanel tabs", () => {
   it("shows the HTTP sources from the hook", async () => {
     const { findByTestId } = renderPanel({ initialTab: "webseeds", layout: "horizontal" })
     expect((await findByTestId("webseeds")).textContent).toBe("https://example.invalid/a,https://example.invalid/b")
+  })
+
+  it("moves to General when the torrent has no HTTP sources", async () => {
+    const kept = mocks.tabs.webseeds
+    mocks.tabs.webseeds = { data: [], isLoading: false, error: null }
+    const { findByTestId } = renderPanel({ initialTab: "webseeds", layout: "horizontal" })
+    expect((await findByTestId("general")).textContent).toBe("0.5 37/91")
+    mocks.tabs.webseeds = kept
   })
 })
 
