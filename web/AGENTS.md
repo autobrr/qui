@@ -34,7 +34,7 @@ Frontend rules for work under `web/`. i18n and translation rules live in `web/sr
 
 ## Torrent Details Note
 
-`useTorrentDetailTab` (`web/src/hooks/useTorrentDetailTab.ts`) owns when the General, Trackers, Peers, and HTTP Sources tabs of `TorrentDetailsPanel.tsx` fetch; a new fetch rule for these tabs goes in the hook. General merges the live stream row over the properties that load one time, and polls the row only while the stream is not usable. Trackers reloads when the tracker count or the Tracker health of that row changes. Content still fetches in the panel.
+`useTorrentDetailTab` (`web/src/hooks/useTorrentDetailTab.ts`) owns when the General, Content, Trackers, Peers, and HTTP Sources tabs of `TorrentDetailsPanel.tsx` and the piece bar fetch; a new fetch rule for these goes in the hook. General merges the live stream row over the properties that load one time, and polls the row only while the stream is not usable. Content and the piece bar reload on a change of progress or state in the live row. Trackers reloads when the tracker count or the Tracker health of that row changes.
 
 `useSyncStream` listeners receive raw frames. A delta for unchanged rows carries an empty `torrents` list and the previous `total`, so a handler clears its row only on `total === 0` and keeps the previous row on an empty list.
 
