@@ -42,10 +42,17 @@ const TAB_QUERIES = {
 
 // useTorrentDetailTab owns when a details tab fetches. A null hash fetches
 // nothing: the panel passes null before it is ready, and for a tab that must
-// not fetch while it is closed.
-export function useTorrentDetailTab<T extends TorrentDetailTab>(instanceId: number, hash: string | null, tab: T): TorrentDetailTabResult<T> {
+// not fetch while it is closed. The live row of General follows liveHash,
+// which the panel passes before it is ready, so a switch between two torrents
+// moves the stream subscription in one change.
+export function useTorrentDetailTab<T extends TorrentDetailTab>(
+  instanceId: number,
+  hash: string | null,
+  tab: T,
+  liveHash: string | null = hash
+): TorrentDetailTabResult<T> {
   const tabQuery = TAB_QUERIES[tab]
-  const row = useLiveRow(instanceId, tab === "general" ? hash : null)
+  const row = useLiveRow(instanceId, tab === "general" ? liveHash : null, hash !== null)
   const query = useQuery<unknown, Error>({
     queryKey: [tabQuery.key, instanceId, hash],
     queryFn: () => tabQuery.fetch(instanceId, hash!),
@@ -92,8 +99,9 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
 }
 
 // useLiveRow follows the one-row stream view of the torrent. While the stream
-// is not usable, it polls the row at the stream fallback interval.
-function useLiveRow(instanceId: number, hash: string | null): Torrent | null {
+// is not usable and the panel is ready, it polls the row at the stream
+// fallback interval.
+function useLiveRow(instanceId: number, hash: string | null, ready: boolean): Torrent | null {
   const streamParams = useMemo(() => hash === null ? null : {
     instanceId,
     page: 0,
@@ -131,7 +139,7 @@ function useLiveRow(instanceId: number, hash: string | null): Torrent | null {
     onMessage: handleStreamPayload,
   })
   const streamUsable = isStreamUsable(streamState)
-  const shouldPoll = streamParams !== null && !streamUsable
+  const shouldPoll = ready && streamParams !== null && !streamUsable
 
   const { data: polledRow } = useQuery({
     queryKey: ["torrent-live-state", instanceId, hash],

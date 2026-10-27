@@ -23,10 +23,12 @@ const mocks = vi.hoisted(() => ({
   getTorrentPeers: vi.fn(),
   getTorrentWebSeeds: vi.fn(),
   getTorrents: vi.fn(),
+  params: [] as unknown[],
 }))
 
 vi.mock("@/contexts/SyncStreamContext", () => ({
   useSyncStream: (params: unknown, options: { onMessage: typeof mocks.onMessage }) => {
+    mocks.params.push(params)
     if (params) {
       mocks.onMessage = options.onMessage
     }
@@ -167,6 +169,21 @@ describe("useTorrentDetailTab general", () => {
     expect(result.current.data?.properties?.time_elapsed).toBe(300)
     await advance(21000)
     expect(mocks.getTorrents).toHaveBeenCalledTimes(callsAt30s)
+  })
+
+  it.each([
+    ["a usable stream", usableStream],
+    ["a disconnected stream", { ...usableStream, connected: false, error: STREAM_ERROR_DISCONNECTED }],
+  ] as const)("follows the live hash before the panel is ready and fetches nothing, with %s", async (_name, state) => {
+    vi.useFakeTimers()
+    mocks.state = state
+    mocks.params.length = 0
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    renderHook(() => useTorrentDetailTab(1, null, "general", "a"), { wrapper })
+    await advance(1000)
+    expect(mocks.params).toContainEqual(expect.objectContaining({ filters: expect.objectContaining({ hashes: ["a"] }) }))
+    expect(mocks.getTorrentProperties).not.toHaveBeenCalled()
+    expect(mocks.getTorrents).not.toHaveBeenCalled()
   })
 
   it("replaces the stream row with the polled row when the view stalls", async () => {

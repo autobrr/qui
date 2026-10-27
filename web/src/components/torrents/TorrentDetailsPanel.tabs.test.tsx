@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, render } from "@testing-library/react"
+import { cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { SortedPeer, Torrent, TorrentProperties, WebSeed } from "@/types"
@@ -33,10 +33,16 @@ const mocks = vi.hoisted(() => ({
   noHash: { data: undefined, isLoading: false, error: null },
   capabilities: { data: {} },
   matches: { matchingTorrents: [], isLoadingMatches: false, allInstances: [] },
+  liveHashes: [] as (string | null)[],
 }))
 
 vi.mock("@/hooks/useTorrentDetailTab", () => ({
-  useTorrentDetailTab: (_instanceId: number, hash: string | null, tab: string) => hash === null ? mocks.noHash : mocks.tabs[tab],
+  useTorrentDetailTab: (_instanceId: number, hash: string | null, tab: string, liveHash?: string | null) => {
+    if (tab === "general") {
+      mocks.liveHashes.push(liveHash ?? null)
+    }
+    return hash === null ? mocks.noHash : mocks.tabs[tab]
+  },
 }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => mocks.capabilities }))
 vi.mock("@/lib/cross-seed-utils", () => ({
@@ -112,6 +118,27 @@ describe("TorrentDetailsPanel tabs", () => {
     const { findByTestId } = renderPanel({ initialTab: "webseeds", layout: "horizontal" })
     expect((await findByTestId("general")).textContent).toBe("0.5 37/91")
     mocks.tabs.webseeds = kept
+  })
+})
+
+describe("TorrentDetailsPanel stream subscription", () => {
+  it("moves the live row from one torrent to the next with no gap", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = (hash: string) => (
+      <QueryClientProvider client={client}>
+        <TorrentDetailsPanel instanceId={1} torrent={makeTorrent({ hash })} layout="horizontal" onClose={vi.fn()} />
+      </QueryClientProvider>
+    )
+    mocks.liveHashes.length = 0
+    const { rerender } = render(view("a"))
+    // The live row does not wait for the 150 ms ready delay.
+    expect(mocks.liveHashes).toEqual(expect.arrayContaining(["a"]))
+    expect(mocks.liveHashes).not.toContain(null)
+
+    rerender(view("b"))
+    await waitFor(() => expect(mocks.liveHashes).toContain("b"))
+    expect(mocks.liveHashes).not.toContain(null)
+    client.clear()
   })
 })
 

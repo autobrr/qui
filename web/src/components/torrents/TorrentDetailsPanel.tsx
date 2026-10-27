@@ -137,7 +137,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
   const readyHash = torrent && isReady ? torrent.hash : null
-  const general = useTorrentDetailTab(instanceId, readyHash, "general")
+  const general = useTorrentDetailTab(instanceId, readyHash, "general", torrent?.hash ?? null)
   const properties = general.data?.properties
   const loadingProperties = general.isLoading
 
