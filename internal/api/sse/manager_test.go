@@ -32,11 +32,11 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-1",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
@@ -66,11 +66,11 @@ func TestStreamManagerHandleSyncErrorPreservesHealthBlockerStatus(t *testing.T) 
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-blocked",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
@@ -101,11 +101,11 @@ func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-backoff",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
@@ -137,11 +137,11 @@ func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-auth",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
@@ -212,11 +212,11 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 			return lastGood
 		}
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-stale",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
 			sub.id: sub,
@@ -254,11 +254,11 @@ func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testin
 			return time.Time{}
 		}
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-async-stamp",
 			options: StreamOptions{InstanceID: 42},
 			created: time.Now(),
-		}
+		})
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
 			sub.id: sub,
@@ -301,11 +301,11 @@ func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testi
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:      "subscription-unknown",
 			options: StreamOptions{InstanceID: 7},
 			created: time.Now(),
-		}
+		})
 		manager.subscriptions[sub.id] = sub
 		manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
 			sub.id: sub,
@@ -336,12 +336,12 @@ func TestStreamManagerHeartbeatPublishesEvent(t *testing.T) {
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
-	sub := &subscriptionState{
+	sub := withConn(&subscriptionState{
 		id:        "subscription-keepalive",
 		options:   StreamOptions{InstanceID: 21},
 		groupKey:  "group-keepalive",
 		clientKey: "client-keepalive",
-	}
+	})
 
 	manager.subscriptions[sub.id] = sub
 	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
@@ -774,13 +774,13 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 				subID := "sub-" + string(rune('A'+workerID)) + "-" + string(rune('0'+j%10))
 
 				// Create subscription
-				sub := &subscriptionState{
+				sub := withConn(&subscriptionState{
 					id:        subID,
 					options:   StreamOptions{InstanceID: instanceID, Page: 0, Limit: 50},
 					created:   time.Now(),
 					groupKey:  "group-" + subID,
 					clientKey: "client-" + subID,
-				}
+				})
 
 				// Register subscription
 				manager.mu.Lock()
@@ -814,13 +814,13 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 
 	// Create several active subscriptions
 	for i := 1; i <= 3; i++ {
-		sub := &subscriptionState{
+		sub := withConn(&subscriptionState{
 			id:        "sub-" + string(rune('0'+i)),
 			options:   StreamOptions{InstanceID: i, Page: 0, Limit: 50},
 			created:   time.Now(),
 			groupKey:  "group-" + string(rune('0'+i)),
 			clientKey: "client-" + string(rune('0'+i)),
-		}
+		})
 
 		manager.mu.Lock()
 		manager.subscriptions[sub.id] = sub
@@ -869,20 +869,20 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	opts := StreamOptions{InstanceID: 1, Page: 0, Limit: 50, Sort: "added_on", Order: "desc"}
 	groupKey := streamOptionsKey(opts)
 
-	sub1 := &subscriptionState{
+	sub1 := withConn(&subscriptionState{
 		id:        "sub-1",
 		options:   opts,
 		created:   time.Now(),
 		groupKey:  groupKey,
 		clientKey: "client-1",
-	}
-	sub2 := &subscriptionState{
+	})
+	sub2 := withConn(&subscriptionState{
 		id:        "sub-2",
 		options:   opts,
 		created:   time.Now(),
 		groupKey:  groupKey,
 		clientKey: "client-2",
-	}
+	})
 
 	// Create group with both subscribers
 	group := &subscriptionGroup{
@@ -957,13 +957,13 @@ func TestHandleMainData_NilData(t *testing.T) {
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
-	sub := &subscriptionState{
+	sub := withConn(&subscriptionState{
 		id:        "sub-nil-test",
 		options:   StreamOptions{InstanceID: 1},
 		created:   time.Now(),
 		groupKey:  "group-nil-test",
 		clientKey: "client-nil-test",
-	}
+	})
 
 	manager.mu.Lock()
 	manager.subscriptions[sub.id] = sub
@@ -984,13 +984,13 @@ func TestHandleSyncError_NilError(t *testing.T) {
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
-	sub := &subscriptionState{
+	sub := withConn(&subscriptionState{
 		id:        "sub-nil-err",
 		options:   StreamOptions{InstanceID: 1},
 		created:   time.Now(),
 		groupKey:  "group-nil-err",
 		clientKey: "client-nil-err",
-	}
+	})
 
 	manager.mu.Lock()
 	manager.subscriptions[sub.id] = sub
@@ -1185,23 +1185,7 @@ func TestRegisterSubscription_DuringShutdown(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to register after shutdown
-	_, err = manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "test-key")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "shutting down")
-}
-
-func TestPrepareBatch_DuringShutdown(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil)
-
-	// Start shutdown
-	err := manager.Shutdown(context.Background())
-	require.NoError(t, err)
-
-	// Attempt to prepare batch after shutdown
-	requests := []streamRequest{
-		{key: "test", options: StreamOptions{InstanceID: 1, Limit: 50}},
-	}
-	_, _, err = manager.PrepareBatch(context.Background(), requests)
+	_, err = manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "test-key", manager.openConnection(false), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "shutting down")
 }
@@ -1248,4 +1232,10 @@ func TestParseStreamRequests_Summary(t *testing.T) {
 
 	_, err = parse(map[string]any{"instanceIds": []int{1, 2}, "summary": true})
 	require.Error(t, err, "a cross-instance view has no summary")
+}
+
+// withConn puts sub on a connection of its own, with the id of sub as its topic.
+func withConn(sub *subscriptionState) *subscriptionState {
+	sub.conn = &streamConnection{id: sub.id, subs: map[string]*subscriptionState{sub.id: sub}}
+	return sub
 }

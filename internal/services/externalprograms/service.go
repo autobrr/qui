@@ -344,22 +344,6 @@ func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProg
 	return s.buildDirectCommand(ctx, program, args)
 }
 
-// buildTerminalCommand creates a command that opens in a terminal window.
-func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
-	if runtime.GOOS == "windows" {
-		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
-		cmdArgs := make([]string, 0, 6+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), executionPolicy{releaseOnStart: true, reportAfterExit: true} //nolint:gosec // intentional external program execution
-	}
-
-	// Unix/Linux: Build command string and spawn in a terminal
-	allArgs := append([]string{program.Path}, args...)
-	cmd, launcher := s.createTerminalCommand(ctx, shellJoin(allArgs))
-	return cmd, executionPolicy{releaseOnStart: launcher}
-}
-
 // shellJoin single-quotes each argument for a POSIX shell and joins them with spaces.
 func shellJoin(args []string) string {
 	quoted := make([]string, len(args))

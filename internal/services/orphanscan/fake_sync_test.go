@@ -25,6 +25,8 @@ type fakeSync struct {
 	listInstances        func(ctx context.Context) ([]*models.Instance, error)
 	getLastCompletedRun  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 	instanceFolders      func(ctx context.Context, instanceID int) (qbittorrent.InstanceFolders, error)
+	// hostKeyPins holds each instance's pinned host key by ID. A missing ID is unpinned.
+	hostKeyPins map[int][]byte
 }
 
 // folders stubs the Instance folders with a ready value.
@@ -100,4 +102,11 @@ func (f *fakeSync) InstanceFolders(ctx context.Context, _ fsops.PathDialect, ins
 		return qbittorrent.InstanceFolders{}, errNotStubbed
 	}
 	return f.instanceFolders(ctx, instanceID)
+}
+
+func (f *fakeSync) GetHostKeyPin(inst *models.Instance) ([]byte, error) {
+	if pin, ok := f.hostKeyPins[inst.ID]; ok {
+		return pin, nil
+	}
+	return nil, models.ErrSSHHostKeyNotPinned
 }

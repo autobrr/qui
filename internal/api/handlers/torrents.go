@@ -2722,9 +2722,10 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	// Calculate offset from page
 	offset := page * limit
 
-	// Get torrents from all instances with the filter expression
+	// A poll stands in for the stream, so it starts background syncs. The
+	// stream itself reads this function with WithSkipFreshData.
 	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-		qbittorrent.WithSkipFreshData(r.Context()),
+		r.Context(),
 		limit,
 		offset,
 		sort,

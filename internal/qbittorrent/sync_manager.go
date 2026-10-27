@@ -1773,7 +1773,13 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 
 // GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
 // When instanceIDs is non-empty, only the provided active instance IDs are included.
+// Without [WithSkipFreshData], each instance with data returns its cached rows
+// at once and, if they are stale, starts a background sync. An instance without
+// data gives no rows and marks the response partial, and its first sync starts
+// in the background.
 func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions, instanceIDs []int) (*TorrentResponse, error) {
+	skipFreshData := shouldSkipFreshData(ctx)
+
 	// Get all instances
 	instances, err := sm.clientPool.instanceStore.List(ctx)
 	if err != nil {
@@ -1827,6 +1833,15 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 			partialResults = true
 			break
+		}
+
+		// The checked read of an instance without data waits for its first sync.
+		if !skipFreshData {
+			if client, err := sm.clientPool.GetClientOffline(ctx, instance.ID); err != nil || client.GetLastSyncUpdate().IsZero() {
+				sm.HintMainDataRefresh(instance.ID, "unified view read") //nolint:contextcheck // the first sync must outlive this request
+				partialResults = true
+				continue
+			}
 		}
 
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
