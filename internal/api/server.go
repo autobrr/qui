@@ -481,6 +481,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Use(authMiddleware)
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
+			r.Post("/stream/subscriptions", s.streamManager.ChangeSubscriptions)
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)

@@ -1637,6 +1637,9 @@ paths:
         Subscribe to torrent views through Server-Sent Events. Each named event
         contains a JSON payload. `meta.streamKey` identifies the requested view.
 
+        The first event of a connection is `connection`. Its `connectionId`
+        names the connection for `POST /api/stream/subscriptions`.
+
         `init` and `update` contain a full snapshot in `data`. All torrent data
         events include `version`, an object with positive integer `major` and
         `minor` fields. `major` changes when the server recreates a stream group.
@@ -1694,6 +1697,9 @@ paths:
               schema:
                 type: string
               example: |
+                event: connection
+                data: {"type":"connection","connectionId":"qui-conn-1"}
+
                 event: init
                 data: {"type":"init","version":{"major":1,"minor":1},"meta":{"streamKey":"main","instanceId":1,"timestamp":"2026-09-08T12:00:00Z"},"data":{"torrents":[],"total":0}}
 
@@ -1708,6 +1714,66 @@ paths:
           description: Instance not found
         '500':
           description: Failed to prepare the stream
+        '503':
+          description: Server is shutting down
+
+  /api/stream/subscriptions:
+    post:
+      tags:
+        - Torrents
+      summary: Change the subscriptions of an open stream
+      description: |
+        Add and remove subscriptions on an open `/api/stream` connection. The
+        server removes first. An added `key` replaces the subscription with the
+        same key. Each added subscription gets an `init` event on the
+        connection before any other event of that subscription. The other
+        subscriptions of the connection get no `init`. A connection holds at
+        most 64 subscriptions. When the connection closes, the server removes
+        each of its subscriptions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - connectionId
+              properties:
+                connectionId:
+                  type: string
+                  description: The `connectionId` of the `connection` event.
+                add:
+                  type: array
+                  maxItems: 64
+                  description: Subscriptions with the same fields as an entry of the `streams` parameter of `/api/stream`.
+                  items:
+                    type: object
+                    additionalProperties: true
+                remove:
+                  type: array
+                  description: Stream keys to remove.
+                  items:
+                    type: string
+            example:
+              connectionId: qui-conn-1
+              remove: [details-a]
+              add:
+                - key: details-b
+                  instanceId: 1
+                  limit: 1
+                  filters:
+                    hashes: [bbb]
+      responses:
+        '204':
+          description: Subscriptions changed
+        '400':
+          description: Invalid change, or more than 64 subscriptions
+        '401':
+          description: Authentication required
+        '404':
+          description: Connection or instance not found
+        '500':
+          description: Failed to add the subscriptions
         '503':
           description: Server is shutting down
 
