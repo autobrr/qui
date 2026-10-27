@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,7 +41,7 @@ func NewOrphanScanHandler(store *models.OrphanScanStore, instanceStore *models.I
 func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
 			return false
 		}
@@ -455,7 +454,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
-			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for remote instances. The preview is kept.")
+			RespondError(w, http.StatusConflict, orphanscan.RemoteNoIdentityMessage)
 			return
 		}
 		if errors.Is(err, orphanscan.ErrFilesystemModeChanged) {

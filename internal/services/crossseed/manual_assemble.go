@@ -93,9 +93,11 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, collectHashes(prep.meta)); err != nil {
-		return nil, err
-	} else if found {
+	check, refusal := s.adder.Check(ctx, inst.ID, AddFacts{ManualAssembly: true}, collectHashes(prep.meta)...)
+	if refusal != nil {
+		if refusal.Status != "exists" {
+			return nil, refusal.Err
+		}
 		resp.Ready, resp.Reason = false, "already_exists"
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
@@ -107,7 +109,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 	}
 	// A cross-device retry may have moved the tree to another base dir.
 	resp.Destination = planned.build.plan.RootDir
-	result, err := s.addSeasonPack(ctx, prep, inst, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
+	result, err := s.addSeasonPack(ctx, prep, inst, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err
 	}

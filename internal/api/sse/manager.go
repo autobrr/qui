@@ -7,8 +7,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -37,8 +39,11 @@ const (
 	streamEventError     = "stream-error"
 	streamEventHeartbeat = "heartbeat"
 	streamEventActivity  = "activity"
-	defaultSyncInterval  = 2 * time.Second
-	maxSyncInterval      = 30 * time.Second
+	// streamEventConnection is the first event of a connection. It names the
+	// connection for a subscription change.
+	streamEventConnection = "connection"
+	defaultSyncInterval   = 2 * time.Second
+	maxSyncInterval       = 30 * time.Second
 	// syncTimeoutIncremental bounds a steady-state incremental /sync/maindata tick.
 	// Healthy delta updates finish well under this even on large instances, so the
 	// short budget keeps the ~2s loop snappy and frees the goroutine when qbit is
@@ -52,6 +57,10 @@ const (
 	// also uses as the deadline of a full update.
 	syncTimeoutFull   = 60 * time.Second
 	heartbeatInterval = 5 * time.Second
+	// idleFrameAfter is how long a view can go without a data frame before it gets
+	// an idle frame. It must stay below STREAM_DATA_STALE_TIMEOUT_MS (2 minutes) in
+	// web/src/contexts/SyncStreamContext.tsx.
+	idleFrameAfter = 60 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
 	// connection may request, bounding per-connection fan-out and resource use.
 	maxStreamRequests = 64
@@ -77,7 +86,7 @@ type ctxKey string
 
 const (
 	subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
-	activityTopicContextKey   ctxKey = "qui.sse.activityTopic"
+	connectionContextKey      ctxKey = "qui.sse.connection"
 	sessionWriterContextKey   ctxKey = "qui.sse.sessionWriter"
 )
 
@@ -119,6 +128,14 @@ func (o StreamOptions) instanceIDs() []int {
 type streamRequest struct {
 	key     string
 	options StreamOptions
+}
+
+// clientKey is the stream key of the request: its key, or else its options.
+func (r streamRequest) clientKey() string {
+	if r.key != "" {
+		return r.key
+	}
+	return streamOptionsKey(r.options)
 }
 
 func streamOptionsKey(opts StreamOptions) string {
@@ -166,17 +183,24 @@ type syncProvider interface {
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
 }
 
+// instanceStore is the subset of *models.InstanceStore that the StreamManager
+// depends on, so tests can run a stream without a database.
+type instanceStore interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
 //
 // Lock hierarchy (acquire in this order to prevent deadlock):
-//  1. m.mu (StreamManager.mu) - protects subscriptions, groups, loops
-//  2. group.mu (subscriptionGroup.mu) - protects pending queue state
-//  3. group.subsMu (subscriptionGroup.subsMu) - protects subscriber list
+//  1. conn.mu (streamConnection.mu) - protects the subscriptions of one connection
+//  2. m.mu (StreamManager.mu) - protects subscriptions, groups, loops
+//  3. group.mu (subscriptionGroup.mu) - protects pending queue state
+//  4. group.subsMu (subscriptionGroup.subsMu) - protects subscriber list
 type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
-	instanceDB  *models.InstanceStore
+	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
 	// stream-error meta. Defaults to an offline client-pool lookup; tests override it
@@ -186,10 +210,10 @@ type StreamManager struct {
 	// activityHub feeds qui-owned server events (backups, scans, cross-seed, etc.)
 	// onto connected SSE sessions. nil disables the activity channel entirely, in
 	// which case Serve/onSession behave exactly as before.
-	activityHub     *activity.Hub
-	activityUnsub   func()
-	activityCounter atomic.Uint64
+	activityHub   *activity.Hub
+	activityUnsub func()
 
+	nextConnectionID   uint64 // guarded by mu
 	nextSubscriptionID uint64 // guarded by mu
 	nextStreamMajor    uint64 // guarded by mu
 	closing            atomic.Bool
@@ -208,12 +232,56 @@ type StreamManager struct {
 	heartbeatLoops map[int]*heartbeatLoopState
 	syncBackoff    map[int]*backoffState
 
-	// activityTopics is the set of per-connection go-sse topics that should receive
-	// activity events (and activity heartbeats). One topic per open SSE session.
+	connections map[string]*streamConnection
+	// activityTopics is the set of connection topics that receive activity events
+	// (and activity heartbeats).
 	activityTopics map[string]struct{}
 
 	ctx    context.Context // Lifecycle root context used only for coordinated shutdown
 	cancel context.CancelFunc
+}
+
+// streamConnection is one open stream. Its id is also its go-sse topic, and
+// every subscription of the connection publishes to it. go-sse fixes the topics
+// of a session when it subscribes, so a subscription that joins later still
+// reaches the session.
+type streamConnection struct {
+	id string
+
+	mu sync.Mutex
+	// subs holds the subscriptions of the connection by id. It is nil after the
+	// connection closes.
+	subs map[string]*subscriptionState
+
+	// ready closes when go-sse subscribed the session, or the connection closed.
+	// A frame published before the subscribe is lost.
+	ready     chan struct{}
+	markReady func()
+}
+
+// subscribeHook wraps the replayer of the go-sse provider. Joe calls Replay on
+// its loop when it subscribes a session, and it handles a later publish only
+// after that, so a publish after the hook reaches the session.
+type subscribeHook struct {
+	sse.Replayer
+	subscribed func(topics []string)
+}
+
+func (h subscribeHook) Put(msg *sse.Message, topics []string) (*sse.Message, error) {
+	if h.Replayer == nil {
+		return msg, nil
+	}
+	return h.Replayer.Put(msg, topics)
+}
+
+func (h subscribeHook) Replay(sub sse.Subscription) error {
+	if h.Replayer != nil {
+		if err := h.Replayer.Replay(sub); err != nil {
+			return err
+		}
+	}
+	h.subscribed(sub.Topics)
+	return nil
 }
 
 type subscriptionState struct {
@@ -222,6 +290,10 @@ type subscriptionState struct {
 	created   time.Time
 	groupKey  string
 	clientKey string
+	conn      *streamConnection
+	// joining is true until the group processor publishes the init of a
+	// subscription that joined an open connection. Guarded by conn.mu.
+	joining bool
 }
 
 type subscriptionGroup struct {
@@ -233,6 +305,8 @@ type subscriptionGroup struct {
 	sending     bool
 	hasPending  bool
 	pendingMeta *StreamMeta
+	// joinPending asks the processor to publish the init of each joining subscriber.
+	joinPending bool
 
 	subsMu sync.RWMutex
 	subs   map[string]*subscriptionState
@@ -249,6 +323,9 @@ type subscriptionGroup struct {
 	// rebuildFailed makes the next server-state tick rebuild the view, because
 	// the baseline rows are older than the sync that the failed rebuild was for.
 	rebuildFailed bool
+	// lastFrame is when the group last sent a data frame, was created, or failed
+	// a rebuild.
+	lastFrame time.Time
 }
 
 type syncLoopState struct {
@@ -279,6 +356,8 @@ type StreamPayload struct {
 	Meta    *StreamMeta                  `json:"meta,omitempty"`
 	Version *StreamVersion               `json:"version,omitempty"`
 	Err     string                       `json:"error,omitempty"`
+	// ConnectionID is set on the connection event only.
+	ConnectionID string `json:"connectionId,omitempty"`
 }
 
 // StreamVersion is a lexicographic generation clock for one filtered stream.
@@ -330,6 +409,9 @@ type StreamMeta struct {
 	// then sends it with the rows and counts of the last frame, and does not
 	// rebuild the view.
 	serverState *qbt.ServerState
+	// idle marks a tick for a quiet view. It sends the last frame again, and does
+	// not rebuild the view. See enqueueIdleTicks.
+	idle bool
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -343,7 +425,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore *models.InstanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -354,14 +436,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &StreamManager{
-		server: &sse.Server{
-			// One shared Joe provider fans writes out serially from a single loop.
-			// Writes are now per-session buffered (see bufferedSessionWriter), so a
-			// stalled client only fills its own bounded queue and is dropped without
-			// blocking this loop; the streamWriteTimeout deadline bounds only that one
-			// client's drain rather than every session.
-			Provider: &sse.Joe{Replayer: replayer},
-		},
+		server:         &sse.Server{},
 		clientPool:     clientPool,
 		syncManager:    syncManager,
 		instanceDB:     instanceStore,
@@ -372,11 +447,18 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		syncLoops:      make(map[int]*syncLoopState),
 		heartbeatLoops: make(map[int]*heartbeatLoopState),
 		syncBackoff:    make(map[int]*backoffState),
+		connections:    make(map[string]*streamConnection),
 		activityTopics: make(map[string]struct{}),
 		ctx:            ctx,
 		cancel:         cancel,
 	}
 
+	// One shared Joe provider fans writes out serially from a single loop.
+	// Writes are now per-session buffered (see bufferedSessionWriter), so a
+	// stalled client only fills its own bounded queue and is dropped without
+	// blocking this loop; the streamWriteTimeout deadline bounds only that one
+	// client's drain rather than every session.
+	m.server.Provider = &sse.Joe{Replayer: subscribeHook{Replayer: replayer, subscribed: m.markSubscribed}}
 	m.lastSuccessfulSyncFn = m.instanceLastSuccessfulSync
 
 	m.server.OnSession = m.onSession
@@ -456,43 +538,88 @@ func (m *StreamManager) Stats() StreamStats {
 	return stats
 }
 
-// PrepareBatch registers one or more subscribers and returns a context that carries their session ids.
-func (m *StreamManager) PrepareBatch(ctx context.Context, requests []streamRequest) (context.Context, []string, error) {
-	if m.closing.Load() {
-		return ctx, nil, errors.New("stream manager shutting down")
+// openConnection registers a new stream connection. A connection with activity
+// gets activity events on its topic.
+func (m *StreamManager) openConnection(activity bool) *streamConnection {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextConnectionID++
+	ready := make(chan struct{})
+	conn := &streamConnection{
+		id:        fmt.Sprintf("qui-conn-%d", m.nextConnectionID),
+		subs:      make(map[string]*subscriptionState),
+		ready:     ready,
+		markReady: sync.OnceFunc(func() { close(ready) }),
 	}
-
-	if len(requests) == 0 {
-		return ctx, nil, errNoStreamRequests
+	m.connections[conn.id] = conn
+	if activity {
+		m.activityTopics[conn.id] = struct{}{}
 	}
-
-	ids := make([]string, 0, len(requests))
-	for _, req := range requests {
-		if len(req.options.instanceIDs()) == 0 {
-			m.unregisterMany(ids)
-			return ctx, nil, errInvalidInstanceID
-		}
-
-		clientKey := req.key
-		if clientKey == "" {
-			clientKey = streamOptionsKey(req.options)
-		}
-
-		id, err := m.registerSubscription(req.options, clientKey)
-		if err != nil {
-			m.unregisterMany(ids)
-			return ctx, nil, err
-		}
-
-		ids = append(ids, id)
-	}
-
-	return context.WithValue(ctx, subscriptionIDsContextKey, ids), ids, nil
+	return conn
 }
 
-func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey string) (string, error) {
+// markSubscribed marks each connection of the topics as ready for a change.
+func (m *StreamManager) markSubscribed(topics []string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, topic := range topics {
+		if conn := m.connections[topic]; conn != nil {
+			conn.markReady()
+		}
+	}
+}
+
+// closeConnection unregisters the connection and each of its subscriptions,
+// also the subscriptions that joined after it opened.
+func (m *StreamManager) closeConnection(conn *streamConnection) {
+	conn.mu.Lock()
+	subs := conn.subs
+	conn.subs = nil
+	conn.mu.Unlock()
+	conn.markReady()
+
+	m.mu.Lock()
+	delete(m.connections, conn.id)
+	delete(m.activityTopics, conn.id)
+	m.mu.Unlock()
+
+	for id := range subs {
+		m.Unregister(id)
+	}
+}
+
+// subscribe registers each request on the connection. A joining subscription
+// gets its init from the group processor. If one registration fails, subscribe
+// unregisters the others. The caller holds conn.mu.
+func (m *StreamManager) subscribe(conn *streamConnection, requests []streamRequest, joining bool) ([]*subscriptionState, error) {
+	subs := make([]*subscriptionState, 0, len(requests))
+	rollback := func() {
+		for _, sub := range subs {
+			delete(conn.subs, sub.id)
+			m.Unregister(sub.id)
+		}
+	}
+	for _, req := range requests {
+		if len(req.options.instanceIDs()) == 0 {
+			rollback()
+			return nil, errInvalidInstanceID
+		}
+
+		sub, err := m.registerSubscription(req.options, req.clientKey(), conn, joining)
+		if err != nil {
+			rollback()
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, nil
+}
+
+// registerSubscription adds a subscription to its group and to conn. The caller
+// holds conn.mu.
+func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey string, conn *streamConnection, joining bool) (*subscriptionState, error) {
 	if m.closing.Load() {
-		return "", errors.New("stream manager shutting down")
+		return nil, errors.New("stream manager shutting down")
 	}
 
 	m.mu.Lock()
@@ -501,7 +628,7 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 	// the drained maps and leave orphaned loop entries.
 	if m.closing.Load() {
 		m.mu.Unlock()
-		return "", errors.New("stream manager shutting down")
+		return nil, errors.New("stream manager shutting down")
 	}
 	m.nextSubscriptionID++
 	id := fmt.Sprintf("qui-session-%d", m.nextSubscriptionID)
@@ -511,7 +638,10 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 		created:   time.Now(),
 		groupKey:  streamOptionsKey(opts),
 		clientKey: clientKey,
+		conn:      conn,
+		joining:   joining,
 	}
+	conn.subs[id] = state
 	group, ok := m.groups[state.groupKey]
 	if !ok {
 		m.nextStreamMajor++
@@ -520,6 +650,8 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 			options: opts,
 			version: StreamVersion{Major: m.nextStreamMajor},
 			subs:    make(map[string]*subscriptionState),
+			// A view whose first snapshot fails gets its rebuild from an idle tick.
+			lastFrame: time.Now(),
 		}
 		m.groups[state.groupKey] = group
 	}
@@ -555,7 +687,10 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 	}
 	m.mu.Unlock()
 
-	return id, nil
+	if joining {
+		m.enqueueJoin(group)
+	}
+	return state, nil
 }
 
 // Unregister removes and cleans up a subscriber when the HTTP connection closes.
@@ -613,12 +748,6 @@ func (m *StreamManager) Unregister(id string) {
 		}
 	}
 	m.mu.Unlock()
-}
-
-func (m *StreamManager) unregisterMany(ids []string) {
-	for _, id := range ids {
-		m.Unregister(id)
-	}
 }
 
 // HandleMainData implements qbittorrent.SyncEventSink.
@@ -770,49 +899,31 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	instanceIDs := make(map[int]struct{}, len(requests))
-	for _, req := range requests {
-		// Validate every member instance, including the constituents of a
-		// multi-instance (aggregated) subscription whose InstanceID is 0.
-		for _, instanceID := range req.options.instanceIDs() {
-			instanceIDs[instanceID] = struct{}{}
-		}
+	if !m.validateInstances(w, r, requests) {
+		return
 	}
 
-	for instanceID := range instanceIDs {
-		exists, err := m.instanceExists(r.Context(), instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to check instance existence")
-			http.Error(w, "failed to validate instance", http.StatusInternalServerError)
-			return
-		}
-		if !exists {
-			http.Error(w, "instance not found", http.StatusNotFound)
-			return
-		}
-	}
-
-	ctx := r.Context()
+	conn := m.openConnection(activityRequested)
+	defer m.closeConnection(conn)
+	ctx := context.WithValue(r.Context(), connectionContextKey, conn)
 	if len(requests) > 0 {
-		preparedCtx, subscriptionIDs, err := m.PrepareBatch(ctx, requests)
+		conn.mu.Lock()
+		subs, err := m.subscribe(conn, requests, false) //nolint:contextcheck // sync loops run on the manager context and outlive the request
+		conn.mu.Unlock()
 		if err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, errInvalidInstanceID) || errors.Is(err, errNoStreamRequests) {
+			if errors.Is(err, errInvalidInstanceID) {
 				status = http.StatusBadRequest
 			}
 			log.Error().Err(err).Msg("failed to prepare SSE subscriptions")
 			http.Error(w, "failed to prepare SSE stream", status)
 			return
 		}
-		ctx = preparedCtx
-		defer m.unregisterMany(subscriptionIDs)
-	}
-
-	if activityRequested {
-		activityTopic := fmt.Sprintf("qui-activity-%d", m.activityCounter.Add(1))
-		m.registerActivityTopic(activityTopic)
-		defer m.unregisterActivityTopic(activityTopic)
-		ctx = context.WithValue(ctx, activityTopicContextKey, activityTopic)
+		ids := make([]string, len(subs))
+		for i, sub := range subs {
+			ids[i] = sub.id
+		}
+		ctx = context.WithValue(ctx, subscriptionIDsContextKey, ids)
 	}
 
 	// Disable reverse-proxy buffering and response caching so the stream
@@ -861,6 +972,116 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 
 	// ServeHTTP blocks until the client disconnects.
 	m.server.ServeHTTP(sessionWriter, req)
+}
+
+// validateInstances checks that each instance of the requests exists. It writes
+// the error response and returns false when one does not.
+func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request, requests []streamRequest) bool {
+	instanceIDs := make(map[int]struct{}, len(requests))
+	for _, req := range requests {
+		// Validate every member instance, including the constituents of a
+		// multi-instance (aggregated) subscription whose InstanceID is 0.
+		for _, instanceID := range req.options.instanceIDs() {
+			instanceIDs[instanceID] = struct{}{}
+		}
+	}
+
+	for instanceID := range instanceIDs {
+		exists, err := m.instanceExists(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to check instance existence")
+			http.Error(w, "failed to validate instance", http.StatusInternalServerError)
+			return false
+		}
+		if !exists {
+			http.Error(w, "instance not found", http.StatusNotFound)
+			return false
+		}
+	}
+	return true
+}
+
+// subscriptionChange is the body of POST /stream/subscriptions.
+type subscriptionChange struct {
+	ConnectionID string                 `json:"connectionId"`
+	Add          []streamRequestPayload `json:"add"`
+	Remove       []string               `json:"remove"`
+}
+
+// ChangeSubscriptions adds and removes subscriptions on an open connection. It
+// removes first, and an added key replaces a subscription with the same key. A
+// new subscription gets its init on the connection before any other frame, and
+// the other subscriptions get no init.
+func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Request) {
+	if m.closing.Load() {
+		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
+	var change subscriptionChange
+	if err := jsonv2.UnmarshalRead(r.Body, &change); err != nil {
+		http.Error(w, "invalid subscription change", http.StatusBadRequest)
+		return
+	}
+	requests, err := toStreamRequests(change.Add)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !m.validateInstances(w, r, requests) {
+		return
+	}
+
+	remove := make(map[string]struct{}, len(change.Remove)+len(requests))
+	for _, key := range change.Remove {
+		remove[key] = struct{}{}
+	}
+	for _, req := range requests {
+		remove[req.clientKey()] = struct{}{}
+	}
+
+	m.mu.RLock()
+	conn := m.connections[change.ConnectionID]
+	m.mu.RUnlock()
+	if conn == nil {
+		http.Error(w, "connection not found", http.StatusNotFound)
+		return
+	}
+	// The browser gets the connection id before the inits of the stream.
+	select {
+	case <-conn.ready:
+	case <-r.Context().Done():
+		return
+	}
+
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	if conn.subs == nil {
+		http.Error(w, "connection not found", http.StatusNotFound)
+		return
+	}
+
+	var removed []string
+	for id, sub := range conn.subs {
+		if _, ok := remove[sub.clientKey]; ok {
+			removed = append(removed, id)
+		}
+	}
+	if len(conn.subs)-len(removed)+len(requests) > maxStreamRequests {
+		http.Error(w, errTooManyStreamRequests.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, id := range removed {
+		delete(conn.subs, id)
+		m.Unregister(id)
+	}
+
+	if _, err := m.subscribe(conn, requests, true); err != nil { //nolint:contextcheck // sync loops run on the manager context and outlive the request
+		log.Error().Err(err).Msg("failed to add SSE subscriptions")
+		http.Error(w, "failed to add subscriptions", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // maxQueuedMessages bounds how many flushed SSE messages a single session may
@@ -1071,11 +1292,14 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		return nil, false
 	}
 
+	conn, _ := r.Context().Value(connectionContextKey).(*streamConnection)
+	if conn == nil {
+		http.Error(w, "missing connection context", http.StatusBadRequest)
+		return nil, false
+	}
 	raw, _ := r.Context().Value(subscriptionIDsContextKey).([]string)
-	activityTopic, _ := r.Context().Value(activityTopicContextKey).(string)
 
-	if len(raw) == 0 && activityTopic == "" {
-		http.Error(w, "missing subscription context", http.StatusBadRequest)
+	if !m.writePayloadToSession(w, &StreamPayload{Type: streamEventConnection, ConnectionID: conn.id}) {
 		return nil, false
 	}
 
@@ -1106,13 +1330,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		}
 	}
 
-	// Write an immediate keepalive to the activity topic's session (if any) so the
-	// HTTP response is flushed and the connection opens promptly. Without it, an
-	// activity-only connection (which has no init event) would not flush headers
-	// until the next heartbeat, delaying the client's open by up to
-	// heartbeatInterval. Written directly for the same race-free reason as the init
-	// snapshot above.
-	if activityTopic != "" {
+	// An activity-only connection has no init. The keepalive gives the browser a
+	// heartbeat at once, not after heartbeatInterval.
+	if len(raw) == 0 {
 		if !m.writeKeepaliveToSession(w) {
 			return nil, false
 		}
@@ -1127,12 +1347,7 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		sw.enableBuffering()
 	}
 
-	// Subscribe the session to its activity topic (if any) in addition to its
-	// torrent-stream topics, so activity events and activity heartbeats reach it.
-	if activityTopic == "" {
-		return raw, true
-	}
-	return append(append([]string(nil), raw...), activityTopic), true
+	return []string{conn.id}, true
 }
 
 // writeInitToSession builds the current snapshot for the group and writes it as
@@ -1144,15 +1359,7 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		return false
 	}
 
-	meta := &StreamMeta{
-		InstanceID: sub.options.InstanceID,
-		FullUpdate: true,
-		Timestamp:  time.Now(),
-		// The next tick can be minutes away when nothing changes.
-		IncludeCounts: true,
-	}
-
-	payload := m.buildGroupInitPayload(group, group.options, meta)
+	payload := m.buildGroupInitPayload(group, group.options, initMeta(group))
 	if payload == nil || m.closing.Load() {
 		return false
 	}
@@ -1347,6 +1554,72 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta)
 	go m.processGroup(group)
 }
 
+// enqueueJoin asks the group processor to publish the init of each joining
+// subscriber. The processor publishes every frame of the group, so the init
+// comes before any other frame of the new subscriber.
+func (m *StreamManager) enqueueJoin(group *subscriptionGroup) {
+	group.mu.Lock()
+	group.joinPending = true
+	if group.sending {
+		group.mu.Unlock()
+		return
+	}
+	group.sending = true
+	group.mu.Unlock()
+
+	go m.processGroup(group)
+}
+
+// enqueueIdleTicks sends an idle frame to each view of the instance that sent no
+// data frame for idleFrameAfter, when each instance of the view synced after it.
+// A view with no baseline, or whose last rebuild failed, is rebuilt in full.
+//
+// Idle frames hide a broken path between the sync and the stream manager, which
+// the 2-minute rule caught before: the view stays on the stream with old rows
+// while the syncs succeed. The risk is low. A hung sync stops the idle frames, so
+// the view still stalls.
+func (m *StreamManager) enqueueIdleTicks(instanceID int) {
+	now := time.Now()
+	for _, group := range m.groupsForInstance(instanceID) {
+		group.baselineMu.Lock()
+		lastFrame := group.lastFrame
+		group.baselineMu.Unlock()
+
+		if now.Sub(lastFrame) < idleFrameAfter || !m.syncedAfter(group.options.instanceIDs(), lastFrame) {
+			continue
+		}
+
+		group.mu.Lock()
+		// sending covers a pending tick too, and an idle tick never replaces a real one.
+		if group.sending {
+			group.mu.Unlock()
+			continue
+		}
+		group.pendingMeta = &StreamMeta{
+			InstanceID: group.options.InstanceID,
+			Timestamp:  now,
+			// A tick that has to rebuild the view sends the counts too.
+			IncludeCounts: true,
+			idle:          true,
+		}
+		group.hasPending = true
+		group.sending = true
+		group.mu.Unlock()
+
+		go m.processGroup(group)
+	}
+}
+
+// syncedAfter reports whether each instance had a successful sync after t.
+func (m *StreamManager) syncedAfter(instanceIDs []int, t time.Time) bool {
+	for _, id := range instanceIDs {
+		if !m.lastSuccessfulSyncFn(m.ctx, id).After(t) {
+			return false
+		}
+	}
+	return true
+}
+
 // processGroup drains the coalescing queue for one specific group object. It must
 // operate on the exact *subscriptionGroup that enqueueGroup flipped sending=true on,
 // not re-resolve it by key: the single-processor invariant (the sending flag) is
@@ -1363,15 +1636,23 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		}
 
 		group.mu.Lock()
-		if !group.hasPending {
+		if !group.hasPending && !group.joinPending {
 			group.sending = false
 			group.mu.Unlock()
 			return
 		}
+		joinPending, tickPending := group.joinPending, group.hasPending
 		meta := group.pendingMeta
 		opts := group.options
-		group.hasPending = false
+		group.joinPending, group.hasPending = false, false
 		group.mu.Unlock()
+
+		if joinPending {
+			m.publishJoinInits(group)
+		}
+		if !tickPending {
+			continue
+		}
 
 		subs := group.snapshotSubscribers()
 		if len(subs) == 0 {
@@ -1379,17 +1660,19 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		}
 
 		var payload *StreamPayload
+		switch {
 		// A cross-instance view carries no server state, so it rebuilds.
-		if meta.serverState != nil && !opts.isMultiInstance() {
+		case (meta.serverState != nil || meta.idle) && !opts.isMultiInstance():
 			// The same bound as a rebuild, so a stalled task count request
 			// does not hold back the speeds.
 			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.InstanceID), meta)
 			cancel()
+		case meta.idle:
+			payload = group.buildIdlePayload(meta)
 		}
-		// Every enqueued group event is a tick update (init is written synchronously
-		// in onSession, never routed here), so build an incremental update: a delta
-		// against the group baseline, or a full keyframe. See buildUpdatePayload.
+		// A tick builds an incremental update: a delta against the group baseline, or
+		// a full keyframe. See buildUpdatePayload.
 		if payload == nil {
 			payload = m.buildGroupUpdatePayload(group, opts, meta)
 		}
@@ -1405,8 +1688,37 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		}
 
 		for _, sub := range subs {
-			m.publish(sub.id, clonePayloadForSubscriber(payload, sub))
+			m.publish(sub, clonePayloadForSubscriber(payload, sub), false)
 		}
+	}
+}
+
+// publishJoinInits publishes the init of each joining subscriber of the group.
+func (m *StreamManager) publishJoinInits(group *subscriptionGroup) {
+	var payload *StreamPayload
+	for _, sub := range group.snapshotSubscribers() {
+		sub.conn.mu.Lock()
+		joining := sub.joining
+		sub.conn.mu.Unlock()
+		if !joining {
+			continue
+		}
+		if payload == nil {
+			if payload = m.buildGroupInitPayload(group, group.options, initMeta(group)); payload == nil {
+				return
+			}
+		}
+		m.publish(sub, clonePayloadForSubscriber(payload, sub), true)
+	}
+}
+
+func initMeta(group *subscriptionGroup) *StreamMeta {
+	return &StreamMeta{
+		InstanceID: group.options.InstanceID,
+		FullUpdate: true,
+		Timestamp:  time.Now(),
+		// The next tick can be minutes away when nothing changes.
+		IncludeCounts: true,
 	}
 }
 
@@ -1450,6 +1762,8 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 	if errPayload != nil {
 		group.baselineMu.Lock()
 		group.rebuildFailed = true
+		// An idle tick tries the rebuild again after idleFrameAfter, not at each heartbeat.
+		group.lastFrame = time.Now()
 		group.baselineMu.Unlock()
 		return errPayload
 	}
@@ -1569,14 +1883,12 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 // currentRetrySeconds reports the instance's current sync interval (in seconds)
 // so error events can advertise when the next refresh attempt is expected.
 func (m *StreamManager) currentRetrySeconds(instanceID int) int {
-	m.mu.RLock()
-	state, ok := m.syncBackoff[instanceID]
-	m.mu.RUnlock()
-
 	interval := defaultSyncInterval
-	if ok && state.interval > 0 {
+	m.mu.RLock()
+	if state, ok := m.syncBackoff[instanceID]; ok && state.interval > 0 {
 		interval = state.interval
 	}
+	m.mu.RUnlock()
 
 	seconds := int(interval.Round(time.Second) / time.Second)
 	if seconds <= 0 {
@@ -1680,23 +1992,30 @@ func (m *StreamManager) publishToInstance(instanceID int, payload *StreamPayload
 		return
 	}
 
-	ids := make([]string, 0, len(subscribers))
-	messages := make(map[string]*StreamPayload, len(subscribers))
-	for id, sub := range subscribers {
-		ids = append(ids, id)
-		messages[id] = clonePayloadForSubscriber(payload, sub)
-	}
+	subs := slices.Collect(maps.Values(subscribers))
 	m.mu.RUnlock()
 
-	for _, id := range ids {
-		m.publish(id, messages[id])
+	for _, sub := range subs {
+		m.publish(sub, clonePayloadForSubscriber(payload, sub), false)
 	}
 }
 
-func (m *StreamManager) publish(id string, payload *StreamPayload) {
+// publish sends payload to the connection of sub. A removed subscription gets
+// nothing. A joining subscription gets only its init until the init is out.
+// conn.mu orders the frames of a subscription with its removal, so a frame of a
+// removed subscription cannot come after the init of a new one with the same key.
+func (m *StreamManager) publish(sub *subscriptionState, payload *StreamPayload, init bool) {
 	if payload == nil {
 		return
 	}
+	conn := sub.conn
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	if conn.subs[sub.id] != sub || sub.joining != init {
+		return
+	}
+	sub.joining = false
+	id := sub.id
 
 	message := &sse.Message{
 		Type: sse.Type(payload.Type),
@@ -1723,7 +2042,7 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 		if errorBytes, marshalErr := json.Marshal(errorPayload); marshalErr == nil {
 			errMsg := &sse.Message{Type: sse.Type(streamEventError)}
 			errMsg.AppendData(string(errorBytes))
-			if pubErr := m.server.Publish(errMsg, id); pubErr != nil && !errors.Is(pubErr, sse.ErrProviderClosed) {
+			if pubErr := m.server.Publish(errMsg, conn.id); pubErr != nil && !errors.Is(pubErr, sse.ErrProviderClosed) {
 				log.Error().Err(pubErr).Str("subscriptionID", id).Msg("Failed to publish error event after marshal failure")
 			}
 		}
@@ -1732,7 +2051,7 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 
 	message.AppendData(string(encoded))
 
-	if err := m.server.Publish(message, id); err != nil {
+	if err := m.server.Publish(message, conn.id); err != nil {
 		m.eventsDropped.Add(1)
 		if !errors.Is(err, sse.ErrProviderClosed) {
 			log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to publish SSE message")
@@ -1855,24 +2174,6 @@ func (m *StreamManager) snapshotActivityTopics() []string {
 		topics = append(topics, topic)
 	}
 	return topics
-}
-
-func (m *StreamManager) registerActivityTopic(topic string) {
-	if topic == "" {
-		return
-	}
-	m.mu.Lock()
-	m.activityTopics[topic] = struct{}{}
-	m.mu.Unlock()
-}
-
-func (m *StreamManager) unregisterActivityTopic(topic string) {
-	if topic == "" {
-		return
-	}
-	m.mu.Lock()
-	delete(m.activityTopics, topic)
-	m.mu.Unlock()
 }
 
 func cloneMeta(meta *StreamMeta) *StreamMeta {
@@ -2160,6 +2461,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 				return
 			case <-timer.C:
 				m.publishHeartbeat(instanceID)
+				m.enqueueIdleTicks(instanceID) //nolint:contextcheck // a tick builds on the manager context, like every other tick
 				// Jitter each interval so per-instance heartbeats do not align into a
 				// synchronized burst through the single dispatcher.
 				timer.Reset(jitteredInterval(heartbeatInterval))
@@ -2230,7 +2532,10 @@ func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
 	if len(payloads) == 0 {
 		return nil, errNoStreamRequests
 	}
+	return toStreamRequests(payloads)
+}
 
+func toStreamRequests(payloads []streamRequestPayload) ([]streamRequest, error) {
 	// Bound the number of stream subscriptions per connection so a single
 	// authenticated request cannot fan out into an unbounded number of distinct
 	// groups (each of which spawns its own coalescing/build work per tick).

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useEffect, useRef } from "react"
 
@@ -14,17 +16,6 @@ type FilteredDataUpdate = (
   tags?: string[],
   useSubcategories?: boolean,
   supportsTrackerHealth?: boolean
-) => void
-
-type SelectionChange = (
-  selectedHashes: string[],
-  selectedTorrents: Torrent[],
-  isAllSelected: boolean,
-  totalSelectionCount: number,
-  excludeHashes: string[],
-  excludeTargets: Array<{ instanceId: number; hash: string }>,
-  selectedTotalSize: number,
-  selectionFilters?: TorrentFilters
 ) => void
 
 export interface UseTorrentTableNotificationsParams {
@@ -42,17 +33,15 @@ export interface UseTorrentTableNotificationsParams {
   // value the table/cards render from, so the parent receives a consistent flag.
   allowSubcategories: boolean
   supportsTrackerHealth: boolean
-  // onSelectionChange effect inputs
-  onSelectionChange?: SelectionChange
+  // onSelectionChange effect inputs. The table publishes null when it unmounts.
+  onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
   selectedHashes: string[]
   selectedTorrents: Torrent[]
-  isAllSelected: boolean
   effectiveSelectionCount: number
   selectAllExcludeHashes?: string[]
-  selectAllExcludedTargets: Array<{ instanceId: number; hash: string }>
+  selectAllExcludedTargets: TorrentActionTarget[]
   selectedTotalSize: number
   selectAllFilters?: TorrentFilters
-  filters?: TorrentFilters
 }
 
 /**
@@ -82,13 +71,11 @@ export function useTorrentTableNotifications({
   onSelectionChange,
   selectedHashes,
   selectedTorrents,
-  isAllSelected,
   effectiveSelectionCount,
   selectAllExcludeHashes,
   selectAllExcludedTargets,
   selectedTotalSize,
   selectAllFilters,
-  filters,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
     instanceId?: number
@@ -171,17 +158,16 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    if (onSelectionChange) {
-      onSelectionChange(
-        selectedHashes,
-        selectedTorrents,
-        isAllSelected,
-        effectiveSelectionCount,
-        selectAllExcludeHashes ?? [],
-        isAllSelected ? selectAllExcludedTargets : [],
-        selectedTotalSize,
-        selectAllFilters ?? filters
-      )
-    }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
+    onSelectionChange?.({
+      selectedHashes,
+      selectedTorrents,
+      totalSelectionCount: effectiveSelectionCount,
+      selectedTotalSize,
+      excludeHashes: selectAllExcludeHashes ?? [],
+      excludeTargets: selectAllExcludedTargets,
+      selectAllFilters,
+    })
+  }, [onSelectionChange, selectedHashes, selectedTorrents, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters])
+
+  useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

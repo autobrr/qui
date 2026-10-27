@@ -709,8 +709,8 @@
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
       "noLocalAccess": "Pas d'accès local",
       "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
-      "remoteLimits": "La suppression et le nettoyage automatique ne fonctionnent pas encore sur les instances distantes.",
-      "remoteNoIdentity": "L'application ne sait pas non plus reconnaître deux chemins menant au même fichier : un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise.",
+      "remoteLimits": "La suppression et le nettoyage automatique sur une instance distante nécessitent l'identité des fichiers, que l'application ne peut lire que si le serveur lui permet d'exécuter GNU find et stat.",
+      "remoteNoIdentity": "Cette instance distante ne le permet pas : l'application ne sait donc pas reconnaître deux chemins menant au même fichier, et un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise. Les analyses ici peuvent être consultées et exportées, mais pas supprimées.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolérance {{grace}}min",
@@ -722,7 +722,7 @@
       "cancel": "Annuler",
       "autoCleanupEnabled": "Nettoyage automatique activé (≤{{max}} fichiers)",
       "autoCleanupDisabled": "Nettoyage automatique désactivé",
-      "autoCleanupRemote": "Pas de nettoyage automatique sur les instances distantes",
+      "autoCleanupRemote": "Pas de nettoyage automatique sur cette instance distante",
       "pathsIgnored_one": " · {{count}} chemin ignoré",
       "pathsIgnored_other": " · {{count}} chemins ignorés",
       "scanNow": "Analyser maintenant",
@@ -783,7 +783,7 @@
       "exportCSV": "Exporter CSV",
       "close": "Fermer",
       "deleteItems": "Supprimer",
-      "remoteDeleteUnavailable": "Cette analyse a été faite sur une instance distante, où la suppression n'est pas encore prise en charge. Exportez la liste pour supprimer vous-même les fichiers sur le serveur.",
+      "remoteDeleteUnavailable": "Cette analyse ne peut pas supprimer, car l'instance distante ne fournit pas l'identité des fichiers ou l'analyse n'a pas pu la lire pour chaque fichier. Exportez la liste pour supprimer vous-même les fichiers sur le serveur.",
       "statusLabels": {
         "pending": "En attente",
         "deleted": "Supprimé",
@@ -1777,11 +1777,9 @@
       "lastBackup": "Dernière sauvegarde",
       "loading": "Chargement...",
       "progress": "{{current}} sur {{total}} torrents ({{percentage}}%)",
-      "status": "Statut : {{status}}",
       "noBackupsYet": "Aucune sauvegarde",
       "nextScheduledBackup": "Prochaine sauvegarde programmée",
       "loadingSchedule": "Chargement du programme...",
-      "instance": "Instance",
       "automaticBackupsOff": "Les sauvegardes automatiques sont désactivées pour cette instance.",
       "enableCadenceToSchedule": "Activez au moins une cadence automatique pour programmer des sauvegardes.",
       "currentlyRunning": "La sauvegarde est en cours d'exécution.",
@@ -1805,6 +1803,7 @@
       "schedule": {
         "title": "Cadences automatiques",
         "description": "Les exécutions horaires, quotidiennes, hebdomadaires et mensuelles commencent après la fin de la sauvegarde précédente et que leur intervalle s'est écoulé. Laissez-les toutes désactivées si vous ne déclenchez les sauvegardes que manuellement.",
+        "keep": "Conserver",
         "hourly": "Horaire",
         "hourlyDescription": "Combien de snapshots horaires conserver avant que les plus anciens ne soient élagués.",
         "hourlyTooltip": "S'exécute environ une fois par heure lorsque les sauvegardes sont activées et qu'au moins une heure s'est écoulée depuis la dernière exécution.",
@@ -1823,8 +1822,7 @@
         "saveChanges": "Enregistrer les modifications",
         "saveAll": "Enregistrer les modifications pour toutes les instances",
         "requiresCadence": "Sélectionnez au moins une cadence (horaire, quotidienne, hebdomadaire ou mensuelle) avant d'enregistrer.",
-        "waitForCapabilities": "Attendez la fin des vérifications de capacités de l'instance avant d'enregistrer pour toutes les instances.",
-        "changesApplyImmediately": "Les modifications s'appliquent aux futures sauvegardes dès que vous enregistrez."
+        "waitForCapabilities": "Attendez la fin des vérifications de capacités de l'instance avant d'enregistrer pour toutes les instances."
       }
     },
     "restore": {

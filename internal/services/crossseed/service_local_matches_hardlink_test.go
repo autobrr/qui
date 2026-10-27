@@ -113,7 +113,7 @@ func TestMatchTorrentsInInstance_HardlinkedCandidate_UpgradedToHardlink(t *testi
 		context.Background(), nil, instance,
 		[]qbittorrent.CrossInstanceTorrentView{*hardlinkTestCandidate(candidateDir)},
 		1, normalizeHash(hlSourceHash),
-		source, svc.releaseCache.Parse(source.Name),
+		source, svc.matcher().readName(source.Name),
 		strings.ToLower(normalizePath(source.ContentPath)), matchCtx,
 	)
 
@@ -237,7 +237,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 		context.Background(), nil, instance,
 		[]qbittorrent.CrossInstanceTorrentView{*hardlinkTestCandidate(candidateDir)},
 		1, normalizeHash(hlSourceHash),
-		source, svc.releaseCache.Parse(source.Name),
+		source, svc.matcher().readName(source.Name),
 		"", matchCtx,
 	)
 

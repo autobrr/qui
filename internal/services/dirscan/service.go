@@ -32,7 +32,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Config holds configuration for the directory scanner service.
@@ -78,7 +77,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
 	backendPool               *fsops.Pool
-	blocklistStore            *models.CrossSeedBlocklistStore
+	adder                     *crossseed.Adder
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -143,7 +142,7 @@ func NewService(
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 	notifier notifications.Notifier,
 	backendPool *fsops.Pool,
-	blocklistStore *models.CrossSeedBlocklistStore,
+	adder *crossseed.Adder,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -159,7 +158,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,
@@ -172,7 +171,7 @@ func NewService(
 		trackerCustomizationStore: trackerCustomizationStore,
 		notifier:                  notifier,
 		backendPool:               backendPool,
-		blocklistStore:            blocklistStore,
+		adder:                     adder,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
@@ -2256,22 +2255,17 @@ func (s *Service) tryMatchAndInject(
 		return nil
 	}
 
-	if s.blocklistStore != nil {
-		// Fails closed like the cross-seed path: an unreadable blocklist skips the match.
-		if _, blocked, err := s.blocklistStore.FindBlocked(ctx, dir.TargetInstanceID, []string{parsed.InfoHash, parsed.InfoHashV2}); err != nil {
-			l.Warn().Err(err).Str("hash", parsed.InfoHash).Msg("dirscan: failed to check cross-seed blocklist, skipping match")
-			return nil
-		} else if blocked {
-			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
-			return nil
-		}
-	}
-
-	// Check if this torrent already exists in qBittorrent
-	exists, err := s.injector.TorrentExists(ctx, dir.TargetInstanceID, parsed.InfoHash)
-	if err != nil {
-		l.Debug().Err(err).Str("hash", parsed.InfoHash).Msg("dirscan: failed to check if torrent exists")
-	} else if exists {
+	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
+	switch {
+	case refusal == nil:
+	case refusal.Status == "blocked":
+		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
+		return nil
+	case refusal.Status != "exists":
+		// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
+		l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
+		return nil
+	default:
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
 		return &searcheeMatch{
 			searchee:        searchee,
@@ -2296,6 +2290,7 @@ func (s *Service) tryMatchAndInject(
 
 	injectReq := &InjectRequest{
 		InstanceID:           dir.TargetInstanceID,
+		Check:                check,
 		TorrentBytes:         torrentData,
 		ParsedTorrent:        parsed,
 		Searchee:             searchee,
@@ -2712,12 +2707,6 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	searcheeTitle := normalizedTitleIdentity(searcheeMeta.Title)
-	candidateTitle := normalizedTitleIdentity(candidateMeta.Title)
-	if searcheeTitle == "" || candidateTitle == "" {
-		return false
-	}
-
 	if searcheeMeta.Year > 0 && candidateMeta.Year > 0 && searcheeMeta.Year != candidateMeta.Year {
 		return false
 	}
@@ -2726,7 +2715,7 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	return searcheeTitle == candidateTitle
+	return crossseed.TitlesMatch(searcheeMeta.Release, searcheeMeta.CleanedName, candidateMeta.Release, candidateMeta.CleanedName)
 }
 
 func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
@@ -2751,14 +2740,6 @@ func hasEpisodicMarkers(meta *SearcheeMetadata) bool {
 	}
 
 	return meta.Season != nil || meta.Episode != nil
-}
-
-func normalizedTitleIdentity(title string) string {
-	title = cleanForSearch(title)
-	if title == "" {
-		return ""
-	}
-	return stringutils.NormalizeForMatching(title)
 }
 
 func sampleDirScanSearcheeFiles(files []*ScannedFile, limit int) []string {

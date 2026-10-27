@@ -4,6 +4,11 @@
     "description": "Serveis d'automatització a escala d'instància gestionats per qui.",
     "noInstances": "Encara no hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir els serveis."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Reanuncia",
+    "orphanScan": "Exploració d'orfes"
+  },
   "queryBuilder": {
     "noConditions": "Cap condició",
     "matchesAllTorrents": "Coincideix amb tots els torrents (segons la selecció de trackers).",

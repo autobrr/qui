@@ -20,6 +20,7 @@ Extra labels with a role in triage:
 | `qbit-native-feature` | A control that the qBittorrent WebAPI exposes and qui lacks. Always an accepted enhancement. |
 | `external-bug` | The bug is in another program. Closed as `wontfix`. |
 | `pending-close` | Triage found a likely duplicate. If nobody comments for 1 day, the daily sweep closes the discussion as a duplicate. Until then, it takes the place of the state label. |
+| `anime` | The report is about anime, and a non-anime release would not hit the same fault. An issue created from the discussion gets the label too. |
 
 Area labels (`cross-seed`, `web`, `backend`, and more) are extra. Add the ones that fit.
 
@@ -123,6 +124,13 @@ The report lacks a detail that blocks a decision. Post this comment, add `needs-
 
 If logs would help, ask the reporter to upload them at https://bin.getqui.com and post the Paste link in a comment.
 
+If a cross-seed match bug gives no release names in its text or in a Paste, and the code does not confirm the fault, the outcome is `needs-info`. Ask for one Paste at https://bin.getqui.com with these items:
+
+- The log lines from the cross-seed search for that torrent.
+- The name of the reporter's torrent.
+- The name of the torrent that qui rejected or did not find.
+- The rejection reason from the search results.
+
 Each question must name the exact detail you need. Put everything you established into the first list, so the next pass does not repeat your work.
 
 A bug report whose code path no longer matches the report, with no fix found in merged pull requests, is also `needs-info`: ask the reporter to retest on the current release and name that release. A report that still matches the code is a confirmed bug and goes to `ready-for-agent` or `ready-for-human`. The daily sweep closes a `needs-info` discussion if nobody answers in 30 days.
@@ -168,7 +176,7 @@ In the local session that reads the logs, prove the cause with a live run before
 
 Every confirmed `bug` becomes an issue, in `ready-for-agent` or in `ready-for-human`. The issue becomes the only open thread for the work:
 
-1. Run `create-issue <state> <title> <brief>`, where `<state>` is `ready-for-agent` or `ready-for-human`. The command labels the issue with the state and prints the issue URL.
+1. Run `create-issue <state> <title> <brief> [<label>...]`, where `<state>` is `ready-for-agent` or `ready-for-human`. If the discussion has `anime`, pass it as an extra label. The command labels the issue and prints the issue URL.
 2. Post one comment: the disclaimer line, then `Tracked in <issue URL>.`
 3. Add the same state label to the discussion. Remove `needs-triage` and `needs-confirmation`.
 4. Run `close RESOLVED`.

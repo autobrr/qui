@@ -4,15 +4,16 @@
  */
 
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
-import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedWarning, type CrossSeedSelectAllScope } from "@/hooks/useCrossSeedWarning"
 import { anyTorrentHasTag } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useMemo } from "react"
 
 export interface UseCrossSeedOrchestrationParams {
   instanceId: number
-  instanceName: string
   contextTorrents: Torrent[]
+  /** Set in Select all mode, with the scope that the delete sends. */
+  selectAll?: CrossSeedSelectAllScope
   blockCrossSeeds: boolean
 }
 
@@ -23,14 +24,14 @@ export interface UseCrossSeedOrchestrationParams {
  */
 export function useCrossSeedOrchestration({
   instanceId,
-  instanceName,
   contextTorrents,
+  selectAll,
   blockCrossSeeds,
 }: UseCrossSeedOrchestrationParams) {
   const crossSeedWarning = useCrossSeedWarning({
     instanceId,
-    instanceName,
     torrents: contextTorrents,
+    selectAll,
   })
   const hasCrossSeedTag = useMemo(
     () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),

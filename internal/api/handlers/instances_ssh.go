@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/sshpool"
 )
 
@@ -96,8 +97,17 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	if err := h.instanceStore.SetSSHCredentials(r.Context(), instanceID, req.Host, req.Port, req.Username, req.PrivateKey); err != nil {
+	err = h.changeSSH(r.Context(), instanceID, func() error {
+		if err := h.instanceStore.SetSSHCredentials(r.Context(), instanceID, req.Host, req.Port, req.Username, req.PrivateKey); err != nil {
+			return err
+		}
+		h.sshPool.Invalidate(instanceID)
+		return nil
+	})
+	if err != nil {
 		switch {
+		case errors.Is(err, orphanscan.ErrDeletionInProgress):
+			RespondError(w, http.StatusConflict, sshChangeDuringDeletionMessage)
 		case errors.Is(err, models.ErrInstanceNotFound):
 			RespondError(w, http.StatusNotFound, "Instance not found")
 		case errors.Is(err, models.ErrInvalidSSHCredentials):
@@ -112,7 +122,6 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	h.sshPool.Invalidate(instanceID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -147,17 +156,26 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := h.instanceStore.ClearSSHCredentials(r.Context(), instanceID); err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
-			RespondError(w, http.StatusNotFound, "Instance not found")
-			return
+	err = h.changeSSH(r.Context(), instanceID, func() error {
+		if err := h.instanceStore.ClearSSHCredentials(r.Context(), instanceID); err != nil {
+			return err
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to clear SSH credentials")
-		RespondError(w, http.StatusInternalServerError, "Failed to clear SSH credentials")
+		h.sshPool.Invalidate(instanceID)
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, orphanscan.ErrDeletionInProgress):
+			RespondError(w, http.StatusConflict, sshChangeDuringDeletionMessage)
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+		default:
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to clear SSH credentials")
+			RespondError(w, http.StatusInternalServerError, "Failed to clear SSH credentials")
+		}
 		return
 	}
 
-	h.sshPool.Invalidate(instanceID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -292,13 +310,35 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	pin := h.instanceStore.SetHostKeyPin
-	if replace {
-		pin = h.instanceStore.ReplaceHostKeyPin
+	store := func() error {
+		pin := h.instanceStore.SetHostKeyPin
+		if replace {
+			pin = h.instanceStore.ReplaceHostKeyPin
+		}
+		if err := pin(r.Context(), instance.ID, instance.SSHHost, instance.SSHPort, hostKey); err != nil {
+			return err
+		}
+		// The pin wrote sftp. A probe that got no answer leaves it there, and
+		// the next connect probes again.
+		if capabilities != nil {
+			h.storeSSHTier(r.Context(), instance.ID, capabilities)
+		}
+		// A refusal memoised against the old pin ends here; the next dial
+		// checks the host against the pin the user just confirmed.
+		h.sshPool.Invalidate(instance.ID)
+		return nil
 	}
-
-	if err := pin(r.Context(), instance.ID, instance.SSHHost, instance.SSHPort, hostKey); err != nil {
+	// Only a replace goes through changeSSH: a first pin has no remote preview
+	// or deletion behind it. The dial above stays outside its lock.
+	if replace {
+		err = h.changeSSH(r.Context(), instance.ID, store)
+	} else {
+		err = store()
+	}
+	if err != nil {
 		switch {
+		case errors.Is(err, orphanscan.ErrDeletionInProgress):
+			RespondError(w, http.StatusConflict, sshChangeDuringDeletionMessage)
 		case errors.Is(err, models.ErrInstanceNotFound):
 			RespondError(w, http.StatusNotFound, "Instance not found")
 		case errors.Is(err, models.ErrSSHHostKeyAlreadyPinned),
@@ -311,15 +351,7 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		}
 		return
 	}
-	// The pin wrote sftp. A probe that got no answer leaves it there, and the
-	// next connect probes again.
-	if capabilities != nil {
-		h.storeSSHTier(r.Context(), instance.ID, capabilities)
-	}
 
-	// A refusal memoised against the old pin ends here; the next dial checks
-	// the host against the pin the user just confirmed.
-	h.sshPool.Invalidate(instance.ID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 

@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -33,7 +36,8 @@ type orphanOnlyFixture struct {
 type orphanOnlyOptions struct {
 	gracePeriodMinutes int
 	maxFilesPerRun     int
-	categories         func(defaultSavePath string) map[string]qbt.Category
+	categoryFolders    func(defaultSavePath string) []string
+	monitoredFolders   func(defaultSavePath string) []string
 	// torrentFileName is the seeded torrent's file, slash-delimited the way
 	// qBittorrent reports it.
 	torrentFileName string
@@ -41,6 +45,14 @@ type orphanOnlyOptions struct {
 	// path that can auto-clean; autoCleanupMaxFiles turns auto-cleanup on.
 	scheduled           bool
 	autoCleanupMaxFiles int
+	scanCategoryPaths   bool
+	wrapBackend         func(b fsops.Backend, defaultSavePath string) fsops.Backend
+	// savePath is the seeded torrent's save path, mydata/ below defaultSavePath
+	// when nil.
+	savePath    func(defaultSavePath string) string
+	ignorePaths func(defaultSavePath string) []string
+	// events, when set, gets the notifications of the service.
+	events chan notifications.Event
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -51,6 +63,9 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
+	if opts.savePath != nil {
+		torrentSavePath = opts.savePath(defaultSavePath)
+	}
 
 	torrentFileName := opts.torrentFileName
 	if torrentFileName == "" {
@@ -68,7 +83,15 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	require.NoError(t, err)
 
 	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	var backend fsops.Backend = local.NewBackend()
+	if opts.wrapBackend != nil {
+		backend = opts.wrapBackend(backend, defaultSavePath)
+	}
+	var notifier notifications.Notifier
+	if opts.events != nil {
+		notifier = scanNotifier{events: opts.events}
+	}
+	svc := NewService(DefaultConfig(), nil, store, nil, notifier, fsops.NewPool(stubInstanceGetter{}, backend))
 	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
@@ -81,16 +104,14 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: torrentFileName, Size: 1}}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
+	folders := qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath}
+	if opts.categoryFolders != nil {
+		folders.CategorySaveFolders = opts.categoryFolders(defaultSavePath)
 	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		if opts.categories != nil {
-			return opts.categories(defaultSavePath), nil
-		}
-		return map[string]qbt.Category{}, nil
+	if opts.monitoredFolders != nil {
+		folders.MonitoredFolders = opts.monitoredFolders(defaultSavePath)
 	}
+	stubSync(svc).folders(folders)
 
 	maxFiles := opts.maxFilesPerRun
 	if maxFiles == 0 {
@@ -100,16 +121,21 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	if autoCleanupMaxFiles == 0 {
 		autoCleanupMaxFiles = 100
 	}
+	ignorePaths := []string{}
+	if opts.ignorePaths != nil {
+		ignorePaths = opts.ignorePaths(defaultSavePath)
+	}
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		GracePeriodMinutes:  opts.gracePeriodMinutes,
-		IgnorePaths:         []string{},
+		IgnorePaths:         ignorePaths,
 		ScanIntervalHours:   24,
 		PreviewSort:         "size_desc",
 		MaxFilesPerRun:      maxFiles,
 		AutoCleanupEnabled:  opts.autoCleanupMaxFiles > 0,
 		AutoCleanupMaxFiles: autoCleanupMaxFiles,
 		ScanDefaultSavePath: true,
+		ScanCategoryPaths:   opts.scanCategoryPaths,
 		DeleteAbandonedDirs: true,
 	})
 	require.NoError(t, err)
@@ -199,6 +225,70 @@ func TestExecuteScan_PreviewsParentOfDiscWithMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, run.FilesDeleted)
 	require.Equal(t, 1, run.FoldersDeleted)
+}
+
+// qBittorrent stops watching a monitored folder that is removed, until it
+// restarts. An empty monitored folder, the folder that holds it, and an empty
+// custom save path of a monitored folder all stay.
+func TestExecuteScan_KeepsTheMonitoredFolders(t *testing.T) {
+	var watchParent, watch, watchSaves, leftover string
+	opts := orphanOnlyOptions{
+		monitoredFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "watch", "tv"), filepath.Join(defaultSavePath, "watch-saves")}
+		},
+	}
+	f := newOrphanOnlyFixture(t, "orphanscan-monitored-folders", opts, func(defaultSavePath string) {
+		watchParent = filepath.Join(defaultSavePath, "watch")
+		watch = filepath.Join(watchParent, "tv")
+		watchSaves = filepath.Join(defaultSavePath, "watch-saves")
+		leftover = filepath.Join(defaultSavePath, "leftover")
+		for _, dir := range []string{watch, watchSaves, leftover} {
+			require.NoError(t, os.MkdirAll(dir, 0o750))
+		}
+	})
+
+	require.Equal(t, []string{leftover}, f.previewedDirs(t))
+
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.NoDirExists(t, leftover)
+	require.DirExists(t, watch)
+	require.DirExists(t, watchParent)
+	require.DirExists(t, watchSaves)
+}
+
+// A category folder no torrent uses yet is a scan root of its own inside the
+// default save path. The outer walk must not take it as a disc unit, whose
+// delete is refused: its disc and loose orphans are listed and removed, and
+// the folder stays.
+func TestExecuteScan_DeletesTheDiscInsideANestedScanRoot(t *testing.T) {
+	var movies, disc, loose string
+	opts := orphanOnlyOptions{
+		scanCategoryPaths: true,
+		categoryFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "movies")}
+		},
+	}
+	f := newOrphanOnlyFixture(t, "orphanscan-disc-in-nested-root", opts, func(defaultSavePath string) {
+		movies = filepath.Join(defaultSavePath, "movies")
+		disc = filepath.Join(movies, "BDMV")
+		loose = filepath.Join(movies, "readme.txt")
+		writeFile(t, filepath.Join(disc, "STREAM", "00001.m2ts"))
+		writeFile(t, filepath.Join(disc, "index.bdmv"))
+		writeFile(t, loose)
+	})
+
+	files, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
+	require.NoError(t, err)
+	listed := make([]string, 0, len(files))
+	for _, file := range files {
+		listed = append(listed, file.FilePath)
+	}
+	require.ElementsMatch(t, []string{disc, loose}, listed)
+
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.NoDirExists(t, disc)
+	require.NoFileExists(t, loose)
+	require.DirExists(t, movies)
 }
 
 func TestExecuteScan_DirectoryBeyondExactFileCapMarksRunTruncated(t *testing.T) {
@@ -327,12 +417,8 @@ func TestExecuteScan_KeepsDirectoryWhoseOrphansTheCapDropped(t *testing.T) {
 func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) {
 	var orphanInCategory string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-categories", orphanOnlyOptions{
-		categories: func(defaultSavePath string) map[string]qbt.Category {
-			return map[string]qbt.Category{
-				"movies": {Name: "movies", SavePath: filepath.Join(defaultSavePath, "movies")},
-				// Inherits, so its destination is defaultSavePath/tv.
-				"tv": {Name: "tv", SavePath: ""},
-			}
+		categoryFolders: func(defaultSavePath string) []string {
+			return []string{filepath.Join(defaultSavePath, "movies"), filepath.Join(defaultSavePath, "tv")}
 		},
 	}, func(defaultSavePath string) {
 		category := filepath.Join(defaultSavePath, "movies")
@@ -407,9 +493,11 @@ func TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed(t *testing.
 // a threshold the settings describe as a file count.
 func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T) {
 	var orphans, dirs []string
+	events := make(chan notifications.Event, 1)
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-autocleanup", orphanOnlyOptions{
 		scheduled:           true,
 		autoCleanupMaxFiles: 2,
+		events:              events,
 	}, func(defaultSavePath string) {
 		for _, name := range []string{"one", "two"} {
 			dir := filepath.Join(defaultSavePath, name)
@@ -418,10 +506,13 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 			writeFile(t, orphans[len(orphans)-1])
 		}
 	})
-	require.Eventually(t, func() bool {
-		run, err := f.store.GetRun(t.Context(), f.runID)
-		return err == nil && run.Status == "completed"
-	}, 10*time.Second, 50*time.Millisecond, "two orphan files are within a threshold of two, whatever their directories add")
+	// A preview sends no notification, so the first one is the cleanup's.
+	select {
+	case event := <-events:
+		require.Equal(t, notifications.EventOrphanScanCompleted, event.Type, "run error: %s", event.ErrorMessage)
+	case <-time.After(10 * time.Second):
+		t.Fatal("two orphan files are within a threshold of two, whatever their directories add")
+	}
 
 	// Two files and two directories: four entries, two of them files.
 	entries, err := f.store.ListFiles(t.Context(), f.runID, 100, 0, "size_desc")
@@ -433,5 +524,91 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 	}
 	for _, dir := range dirs {
 		require.NoDirExists(t, dir)
+	}
+}
+
+// vanishDuringWalkBackend removes gone when the walk of root emits its first
+// entry below root, as a folder deleted during the scan does.
+type vanishDuringWalkBackend struct {
+	fsops.Backend
+	root, gone string
+}
+
+func (b vanishDuringWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil || root != b.root {
+		return ch, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		removed := false
+		for entry := range ch {
+			if !removed && entry.Path != root {
+				removed = true
+				_ = os.RemoveAll(b.gone)
+			}
+			out <- entry
+		}
+	}()
+	return out, nil
+}
+
+// A folder can vanish while the scan walks its root, for example when a
+// torrent is removed with its files. The walk goes on: the root's other
+// orphans are listed, and the torrent's file that the walk reaches later still
+// protects its hardlink in another root.
+func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
+	for _, category := range []string{"aaa", "zzz"} {
+		t.Run(category, func(t *testing.T) {
+			var gone, mirror, junk string
+			var fill []string
+			opts := orphanOnlyOptions{
+				scanCategoryPaths: true,
+				categoryFolders: func(defaultSavePath string) []string {
+					return []string{filepath.Join(filepath.Dir(defaultSavePath), category)}
+				},
+				wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
+					return vanishDuringWalkBackend{Backend: b, root: defaultSavePath, gone: gone}
+				},
+			}
+			f := newOrphanOnlyFixture(t, "orphanscan-vanished-folder-"+category, opts, func(defaultSavePath string) {
+				// More files than the walk buffers, so the walk is still in
+				// aa-fill when ab-gone is removed.
+				for i := range 128 {
+					path := filepath.Join(defaultSavePath, "aa-fill", fmt.Sprintf("%03d.mkv", i))
+					writeFile(t, path)
+					fill = append(fill, path)
+				}
+				gone = filepath.Join(defaultSavePath, "ab-gone")
+				writeFile(t, filepath.Join(gone, "x.mkv"))
+
+				categoryRoot := filepath.Join(filepath.Dir(defaultSavePath), category)
+				mirror = filepath.Join(categoryRoot, "mirror", "owned.mkv")
+				junk = filepath.Join(categoryRoot, "junk.mkv")
+				require.NoError(t, os.MkdirAll(filepath.Dir(mirror), 0o750))
+				require.NoError(t, os.Link(filepath.Join(defaultSavePath, "mydata", "owned.mkv"), mirror))
+				writeFile(t, junk)
+			})
+			require.NoDirExists(t, gone)
+
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			require.False(t, run.Partial, "run message: %s", run.ErrorMessage)
+
+			files, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
+			require.NoError(t, err)
+			listed := make([]string, 0, len(files))
+			for _, file := range files {
+				listed = append(listed, file.FilePath)
+			}
+			require.Subset(t, listed, append(fill, junk), "the root with the vanished folder was dropped")
+			require.NotContains(t, listed, mirror)
+			require.NotContains(t, listed, filepath.Dir(mirror))
+
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+			require.FileExists(t, mirror)
+			require.FileExists(t, f.ownedFile)
+		})
 	}
 }

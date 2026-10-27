@@ -32,7 +32,7 @@ import { getStatusBadgeProps, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from 
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
-import type { CellContext, HeaderContext, RowSelectionState } from "@tanstack/react-table"
+import type { CellContext } from "@tanstack/react-table"
 import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
 import {
   AlertCircle,
@@ -310,18 +310,14 @@ export type TableViewMode = "normal" | "dense" | "compact"
 
 interface CreateColumnsParams {
   incognitoMode: boolean
-  selectionEnhancers?: {
-    shiftPressedRef: { current: boolean }
-    lastSelectedIndexRef: { current: number | null }
-    customSelectAll?: {
-      onSelectAll: (checked: boolean) => void
-      isAllSelected: boolean
-      isIndeterminate: boolean
-    }
-    onRowSelection?: (selectionIdentity: string, checked: boolean, rowId?: string) => void
-    getSelectionIdentity?: (torrent: Torrent) => string
-    isAllSelected?: boolean
-    excludedFromSelectAll?: Set<string>
+  // The selection column shows only when this is set.
+  selection?: {
+    onSelectAll: () => void
+    isAllChecked: boolean
+    isIndeterminate: boolean
+    isSelected: (torrent: Torrent) => boolean
+    onCheckboxPointerDown: (event: React.PointerEvent<HTMLElement>) => void
+    onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
   }
   speedUnit?: SpeedUnit
   trackerIcons?: Record<string, string>
@@ -331,12 +327,11 @@ interface CreateColumnsParams {
   showInstanceColumn?: boolean
   viewMode?: TableViewMode
   trackerCustomizationLookup?: TrackerCustomizationLookup
-  includeSelectionColumn?: boolean
 }
 
 export const createColumns = ({
   incognitoMode,
-  selectionEnhancers,
+  selection,
   speedUnit = "bytes",
   trackerIcons,
   formatTimestamp = formatStoredTimestamp,
@@ -345,7 +340,6 @@ export const createColumns = ({
   showInstanceColumn = false,
   viewMode = "normal",
   trackerCustomizationLookup,
-  includeSelectionColumn = true,
 }: CreateColumnsParams, t: TFunction): TorrentTableColumnDef[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
@@ -377,105 +371,29 @@ export const createColumns = ({
   }
 
   return [
-    ...(includeSelectionColumn ? [{
+    ...(selection ? [{
       id: "select",
-      header: ({ table }: HeaderContext<TorrentTableFeatures, Torrent, unknown>) => (
+      header: () => (
         <div className="flex items-center justify-center p-1 -m-1">
           <Checkbox
-            checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
-            onCheckedChange={(checked) => {
-              if (selectionEnhancers?.customSelectAll?.onSelectAll) {
-                selectionEnhancers.customSelectAll.onSelectAll(!!checked)
-              } else {
-              // Fallback to default behavior
-                table.toggleAllPageRowsSelected(!!checked)
-              }
-            }}
+            checked={selection.isIndeterminate ? "indeterminate" : selection.isAllChecked}
+            onCheckedChange={() => selection.onSelectAll()}
             aria-label={selectAllRowsLabel}
             className="hover:border-ring cursor-pointer transition-colors"
           />
         </div>
       ),
-      cell: ({ row, table }: CellContext<TorrentTableFeatures, Torrent, unknown>) => {
-        const torrent = row.original
-        const hash = torrent.hash
-        const selectionIdentity = selectionEnhancers?.getSelectionIdentity?.(torrent) ?? hash
-
-        // Determine if row is selected based on custom logic
-        const isRowSelected = (() => {
-          if (selectionEnhancers?.isAllSelected) {
-          // In "select all" mode, row is selected unless excluded
-            return !selectionEnhancers.excludedFromSelectAll?.has(selectionIdentity)
-          } else {
-          // Regular mode, use table's selection state
-            return row.getIsSelected()
-          }
-        })()
-
-        return (
-          <div className="flex items-center justify-center p-1 -m-1">
-            <Checkbox
-              checked={isRowSelected}
-              onPointerDown={(e) => {
-                if (selectionEnhancers) {
-                  selectionEnhancers.shiftPressedRef.current = e.shiftKey
-                }
-              }}
-              onCheckedChange={(checked: boolean | "indeterminate") => {
-                const isShift = selectionEnhancers?.shiftPressedRef.current === true
-                const allRows = table.getRowModel().rows
-                const currentIndex = allRows.findIndex((r: { id: string }) => r.id === row.id)
-
-                if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
-                  const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-                  const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-
-                  // For shift selection, use custom handler if available, otherwise fallback
-                  if (selectionEnhancers?.onRowSelection) {
-                    for (let i = start; i <= end; i++) {
-                      const r = allRows[i]
-                      if (r) {
-                        const rTorrent = r.original as Torrent
-                        const rSelectionIdentity = selectionEnhancers.getSelectionIdentity?.(rTorrent) ?? rTorrent.hash
-                        selectionEnhancers.onRowSelection(rSelectionIdentity, !!checked, r.id)
-                      }
-                    }
-                  } else {
-                    table.setRowSelection((prev: RowSelectionState) => {
-                      const next: RowSelectionState = { ...prev }
-                      for (let i = start; i <= end; i++) {
-                        const r = allRows[i]
-                        if (r) {
-                          if (checked) {
-                            next[r.id] = true
-                          } else {
-                            delete next[r.id]
-                          }
-                        }
-                      }
-                      return next
-                    })
-                  }
-                } else {
-                // Single row selection
-                  if (selectionEnhancers?.onRowSelection) {
-                    selectionEnhancers.onRowSelection(selectionIdentity, !!checked, row.id)
-                  } else {
-                    row.toggleSelected(!!checked)
-                  }
-                }
-
-                if (selectionEnhancers) {
-                  selectionEnhancers.lastSelectedIndexRef.current = currentIndex
-                  selectionEnhancers.shiftPressedRef.current = false
-                }
-              }}
-              aria-label={selectRowLabel}
-              className="hover:border-ring cursor-pointer transition-colors"
-            />
-          </div>
-        )
-      },
+      cell: ({ row }: CellContext<TorrentTableFeatures, Torrent, unknown>) => (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={selection.isSelected(row.original)}
+            onPointerDown={selection.onCheckboxPointerDown}
+            onCheckedChange={(checked) => selection.onCheckboxChange(row.original, row.id, !!checked)}
+            aria-label={selectRowLabel}
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
+        </div>
+      ),
       size: 40,
       enableResizing: false,
       meta: {

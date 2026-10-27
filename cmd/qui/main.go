@@ -733,6 +733,10 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
+	settler := crossseed.NewSettler(syncManager, seasonPackRunStore)
+	settleCtx, settleCancel := context.WithCancel(context.Background())
+	defer settleCancel()
+	settler.Start(settleCtx)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -748,6 +752,7 @@ func (app *Application) runServer() {
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
+		settler,
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
@@ -778,7 +783,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedBlocklistStore)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {

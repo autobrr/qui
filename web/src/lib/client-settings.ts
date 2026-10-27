@@ -86,8 +86,16 @@ export function readRaw(key: string): string | null {
   }
 }
 
-function writeLocal(key: string, raw: string): boolean {
+// Marks a value that a tab copied from the server into the shared
+// localStorage, so another tab's flush does not push it back as an edit.
+// Local-only: the prefix matches no synced key.
+const SERVER_COPY_PREFIX = "qui-client-settings-server-copy:"
+
+function writeLocal(key: string, raw: string, fromServer = false): boolean {
   try {
+    // Mark before value, so another tab never reads a server copy without its mark.
+    if (fromServer) localStorage.setItem(SERVER_COPY_PREFIX + key, "1")
+    else localStorage.removeItem(SERVER_COPY_PREFIX + key)
     localStorage.setItem(key, raw)
   } catch (error) {
     console.error("Failed to write client setting to localStorage:", error)
@@ -194,10 +202,12 @@ async function flushPending(): Promise<void> {
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-    // a newer value from another tab is copied from the shared localStorage.
+    // a newer edit from another tab is copied from the shared localStorage.
+    // A server copy is not an edit: pushing it back can be one write old, and
+    // two tabs then flip the value forever (#3424).
     for (const [key, raw] of Object.entries(batch)) {
       const latest = readRaw(key)
-      if (latest !== null && latest !== raw) {
+      if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
         pending.set(key, latest)
         flushRequestedInFlight = true
       } else if (pending.get(key) === raw) pending.delete(key)
@@ -246,7 +256,7 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
   for (const [key, raw] of Object.entries(settings)) {
     if (pending.has(key)) continue
     if (readRaw(key) === raw) continue
-    if (writeLocal(key, raw)) changed.push(key)
+    if (writeLocal(key, raw, true)) changed.push(key)
   }
   return changed
 }

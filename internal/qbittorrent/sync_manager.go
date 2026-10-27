@@ -361,6 +361,11 @@ type SyncManager struct {
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
 
+	// categoryVersions holds each instance's version answer for
+	// InstanceFolders.
+	categoryVersionsMu sync.Mutex
+	categoryVersions   map[int]categoryVersion
+
 	fileFetchSemMu         sync.Mutex
 	fileFetchSem           map[int]chan struct{}
 	fileFetchMaxConcurrent int
@@ -1768,7 +1773,13 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 
 // GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
 // When instanceIDs is non-empty, only the provided active instance IDs are included.
+// Without [WithSkipFreshData], each instance with data returns its cached rows
+// at once and, if they are stale, starts a background sync. An instance without
+// data gives no rows and marks the response partial, and its first sync starts
+// in the background.
 func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions, instanceIDs []int) (*TorrentResponse, error) {
+	skipFreshData := shouldSkipFreshData(ctx)
+
 	// Get all instances
 	instances, err := sm.clientPool.instanceStore.List(ctx)
 	if err != nil {
@@ -1822,6 +1833,15 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 			partialResults = true
 			break
+		}
+
+		// The checked read of an instance without data waits for its first sync.
+		if !skipFreshData {
+			if client, err := sm.clientPool.GetClientOffline(ctx, instance.ID); err != nil || client.GetLastSyncUpdate().IsZero() {
+				sm.HintMainDataRefresh(instance.ID, "unified view read") //nolint:contextcheck // the first sync must outlive this request
+				partialResults = true
+				continue
+			}
 		}
 
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
@@ -5120,52 +5140,6 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 		}
 	}
 	return false
-}
-
-// CategoryPathRule reports how an instance names the folder of a category with
-// an empty save path. It nests under the parent category's save path, as
-// Automatic Torrent Management does on qBittorrent 5.0+ with subcategories on.
-// qBittorrent 5.2 dropped use_subcategories, so the preference cannot be read
-// on its own.
-func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (CategoryPathRule, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return CategoryPathRule{}, fmt.Errorf("failed to get client: %w", err)
-	}
-	// A client that keeps syncing skips health checks, so after an in-place
-	// upgrade from 4.6 its cached capabilities would still say "flat".
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		return CategoryPathRule{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
-	}
-	if !client.NestsCategorySavePaths() {
-		return CategoryPathRule{}, nil
-	}
-	if !client.SubcategoriesAlwaysEnabled() {
-		prefs, err := client.GetAppPreferences(ctx)
-		if err != nil {
-			return CategoryPathRule{}, fmt.Errorf("failed to get app preferences: %w", err)
-		}
-		return CategoryPathRule{Nest: prefs.UseSubcategories}, nil
-	}
-
-	platform, err := categoryFolderPlatform(ctx, client)
-	if err != nil {
-		return CategoryPathRule{}, err
-	}
-	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform}, nil
-}
-
-// categoryFolderPlatform returns the build platform when it changes the folder
-// name of a category (qBittorrent 5.3+), and "" before that.
-func categoryFolderPlatform(ctx context.Context, client *Client) (string, error) {
-	if !client.CategoryFileNames() {
-		return "", nil
-	}
-	info, err := client.GetAppInfo(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get qBittorrent build info: %w", err)
-	}
-	return info.BuildInfo.Platform, nil
 }
 
 func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {

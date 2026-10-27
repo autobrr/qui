@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PageHeader } from "@/components/layout/PageHeader"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -240,16 +241,19 @@ export function RSSPage({
   // No instances view
   if (!hasInstances) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-            <CardTitle>{t("noInstances.title")}</CardTitle>
-            <CardDescription>
-              {t("noInstances.description")}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader title={t("pageTitle")} description={t("pageDescription")} />
+        <div className="flex flex-1 items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+              <CardTitle>{t("noInstances.title")}</CardTitle>
+              <CardDescription>
+                {t("noInstances.description")}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -257,14 +261,8 @@ export function RSSPage({
   // No instance selected view
   if (!instanceId) {
     return (
-      <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Rss className="h-6 w-6" />
-            <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
-          </div>
-          {renderInstanceSelector()}
-        </div>
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader title={t("pageTitle")} description={t("pageDescription")} actions={renderInstanceSelector()} />
         <div className="flex flex-1 items-center justify-center">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
@@ -281,24 +279,23 @@ export function RSSPage({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] p-6 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("pageDescription")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {renderInstanceSelector()}
-          <InstanceSettingsButton
-            instanceId={instanceId}
-            instanceName={instances?.find(inst => inst.id === instanceId)?.name ?? ""}
-            defaultTab="rss"
-            asButton
-          />
-        </div>
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-4 lg:p-6 overflow-hidden">
+      <div className="mb-4 shrink-0">
+        <PageHeader
+          title={t("pageTitle")}
+          description={t("pageDescription")}
+          actions={
+            <>
+              {renderInstanceSelector()}
+              <InstanceSettingsButton
+                instanceId={instanceId}
+                instanceName={instances?.find(inst => inst.id === instanceId)?.name ?? ""}
+                defaultTab="rss"
+                asButton
+              />
+            </>
+          }
+        />
       </div>
 
       {/* Warning Banners */}

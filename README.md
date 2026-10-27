@@ -102,6 +102,14 @@ Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) t
 
 For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
 
+[Macroscope](https://macroscope.com) supports code review for qui through its open source program.
+
+<p>
+  <a href="https://macroscope.com">
+    <img alt="Sponsored by Macroscope" src=".github/assets/macroscope-banner.png" width="400">
+  </a>
+</p>
+
 ## Contributing
 
 [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) tells who can contribute and how. It also gives the development and test workflow.

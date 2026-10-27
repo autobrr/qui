@@ -47,20 +47,18 @@ Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then ex
 
 - **Base directories**: paths where qui creates link trees, on the host that holds the instance's files. For an instance with local filesystem access that is the qui host; for a remote instance it is the remote host, so enter the paths as that host sees them. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory organization** preset:
-  - `flat`: `base/TorrentName--shortHash/...`
-  - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
-  - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
+  - `flat`: `base/TorrentName/...`
+  - `by-tracker`: `base/<tracker>/TorrentName/...`
+  - `by-instance`: `base/<instance>/TorrentName/...`
 
 ### Isolation folders
 
-For the `by-tracker` and `by-instance` presets, qui inspects the torrent file structure to decide whether it needs an isolation folder:
+An isolation folder keeps the files of one torrent apart from the files of other torrents. For each preset, qui reads the file structure of the torrent to decide whether it needs one:
 
-- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level directory, so qui adds no isolation folder.
-- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder to prevent file conflicts.
+- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level folder, so qui adds no isolation folder.
+- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder with the torrent name, for example `My.Movie.2024.1080p.BluRay`.
 
-When qui needs an isolation folder, it uses the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`).
-
-For the `flat` preset, qui always uses an isolation folder to keep each torrent's files separate.
+The folder that qui adds to the preset directory must be new. If a folder with that name already exists, qui uses an isolation folder with the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`). The short hash is the first 8 characters of the info hash.
 
 ## How to enable
 
@@ -105,6 +103,8 @@ After each recheck, **Max auto-start download** under Cross-Seed → After injec
 
 Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
 
+Pool path validation rejects dangling symbolic links, even when their missing destinations are inside the pool root. This applies on every platform. Ordinary missing files and directories remain valid, as do existing symbolic links that resolve inside the root.
+
 If the active member's downloaded-byte counter makes no progress for 15 minutes, qui pauses it, retains all partial data, and gives it a 30-minute cooldown before retry. Another eligible member may run during that cooldown. Disabling pooled completion pauses only a downloader qui started; persisted pool state remains available if the setting is enabled again.
 
 Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
@@ -125,7 +125,7 @@ Because hardlinked copies keep their own links to the data, deleting the origina
 Detection requires:
 
 - **Local filesystem access** enabled on the instances. qui must run in an environment where qBittorrent save paths are valid, identical to the requirements above. Without local access, qui detects only same-path cross-seeds.
-- The copy torrent name must match the original by name or release metadata. qui does not detect copies renamed beyond recognition.
+- The copy torrent must have the same name as the original, or the same release title and metadata. qui does not detect a copy with a different title.
 
 If qui cannot verify a copy (for example when its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
 

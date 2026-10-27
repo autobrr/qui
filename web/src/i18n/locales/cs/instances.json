@@ -733,8 +733,8 @@
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
       "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
       "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
-      "remoteLimits": "Mazání a automatické vyčištění na vzdálených instancích zatím neběží.",
-      "remoteNoIdentity": "qui také nepozná, že dvě cesty vedou ke stejnému souboru, takže soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent.",
+      "remoteLimits": "Mazání a automatické vyčištění na vzdálené instanci potřebují identitu souborů, kterou qui přečte jen tehdy, když mu server dovolí spouštět GNU find a stat.",
+      "remoteNoIdentity": "Tato vzdálená instance je spouštět nedovoluje, takže qui nepozná, že dvě cesty vedou ke stejnému souboru, a soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent. Výsledky vyhledávání zde lze zobrazit a exportovat, ale ne smazat.",
       "on": "Zapnuto",
       "off": "Vypnuto",
       "summaryGrace": "Lhůta {{grace}}min",
@@ -748,7 +748,7 @@
       "cancel": "Zrušit",
       "autoCleanupEnabled": "Automatické vyčištění zapnuto (≤{{max}} souborů)",
       "autoCleanupDisabled": "Automatické vyčištění vypnuto",
-      "autoCleanupRemote": "Vzdálené instance se automaticky nečistí",
+      "autoCleanupRemote": "Tato vzdálená instance se automaticky nečistí",
       "pathsIgnored_one": " · {{count}} cesta ignorována",
       "pathsIgnored_few": " · {{count}} cesty ignorovány",
       "pathsIgnored_other": " · {{count}} cest ignorováno",
@@ -818,7 +818,7 @@
       "exportCSV": "Exportovat CSV",
       "close": "Zavřít",
       "deleteItems": "Smazat",
-      "remoteDeleteUnavailable": "Toto vyhledávání proběhlo na vzdálené instanci, kde mazání zatím není podporováno. Exportujte seznam a soubory na serveru odstraňte sami.",
+      "remoteDeleteUnavailable": "Toto vyhledávání nemůže mazat, protože vzdálená instance nehlásí identitu souborů nebo ji vyhledávání nedokázalo přečíst u všech souborů. Exportujte seznam a soubory na serveru odstraňte sami.",
       "toast": {
         "deletionStarted": "Smazání spuštěno",
         "deletionDescription": "Nepárové soubory a opuštěné adresáře jsou odstraňovány",
@@ -1805,11 +1805,9 @@
       "lastBackup": "Poslední záloha",
       "loading": "Načítání...",
       "progress": "{{current}} z {{total}} torrentů ({{percentage}}%)",
-      "status": "Stav: {{status}}",
       "noBackupsYet": "Zatím nejsou žádné zálohy",
       "nextScheduledBackup": "Další naplánovaná záloha",
       "loadingSchedule": "Načítání plánu...",
-      "instance": "Instance",
       "automaticBackupsOff": "Automatické zálohování jsou vypnuto pro tuto instanci.",
       "enableCadenceToSchedule": "Povolte alespoň jednu automatickou časovou jednotku pro naplánování záloh.",
       "currentlyRunning": "Záloha je aktuálně spuštěna.",
@@ -1833,6 +1831,7 @@
       "schedule": {
         "title": "Automatické časové jednotky",
         "description": "Hodinové, denní, týdenní a měsíční zálohy začnou po dokončení předchozí zálohy a po uplynutí jejich intervalu. Vypněte je všechny, pokud zálohy spouštíte pouze manuálně.",
+        "keep": "Ponechat",
         "hourly": "Hodinové",
         "hourlyDescription": "Kolik hodinových záloh si mám uchovat před tím, než se starší zmažou.",
         "hourlyTooltip": "Spustí se přibližně jednou za hodinu, když jsou zálohy povoleny a minulo alespoň hodinu od posledního spuštění.",
@@ -1851,8 +1850,7 @@
         "saveChanges": "Uložit změny",
         "saveAll": "Uložit změny do všech instancí",
         "requiresCadence": "Vyberte alespoň jednu časovou jednotku (hodinově, denně, týdně nebo měsíčně) před uložením.",
-        "waitForCapabilities": "Počkejte na dokončení kontrol schopností instance před uložením do všech instancí.",
-        "changesApplyImmediately": "Změny se použijí na budoucí zálohy hned po uložení."
+        "waitForCapabilities": "Počkejte na dokončení kontrol schopností instance před uložením do všech instancí."
       }
     },
     "restore": {

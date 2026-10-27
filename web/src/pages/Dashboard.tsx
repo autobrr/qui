@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
@@ -136,9 +137,12 @@ type InstanceStreamData = {
   streamConnected: boolean
   streamError: string | null
   hasLiveDashboardStatsPayload: boolean
+  fallbackPollInterval: number | false
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
+
+const STATS_FALLBACK_POLL_INTERVAL_MS = 5000
 
 const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   stats: null,
@@ -151,6 +155,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   streamConnected: false,
   streamError: null,
   hasLiveDashboardStatsPayload: false,
+  fallbackPollInterval: STATS_FALLBACK_POLL_INTERVAL_MS,
   cacheMetadata: null,
   instanceMeta: null,
 })
@@ -215,6 +220,7 @@ function instanceStreamDataFromResponse(
     streamConnected: current?.streamConnected ?? false,
     streamError: current?.streamError ?? null,
     hasLiveDashboardStatsPayload: current?.hasLiveDashboardStatsPayload ?? false,
+    fallbackPollInterval: current?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS,
     cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
     instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
   }
@@ -323,7 +329,8 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const { enabled: streamEnabled } = options
   const syncStream = useSyncStreamManager()
   const queryClient = useQueryClient()
@@ -372,7 +379,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           order: DASHBOARD_STATS_FALLBACK_ORDER,
         }),
         enabled: fallbackEnabled,
-        refetchInterval: fallbackEnabled ? 5000 : false,
+        refetchInterval: fallbackEnabled ? (streamState?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS) : false,
         refetchIntervalInBackground: false,
         staleTime: 2000,
         gcTime: 300000,
@@ -571,6 +578,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               streamConnected: true,
               streamError: null,
               hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload || hasLiveDashboardStatsPayload,
+              fallbackPollInterval: current.fallbackPollInterval,
               cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
@@ -591,6 +599,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               streamError: snapshot.error ?? (streamUsable ? null : current.streamError),
               hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
+              fallbackPollInterval: streamFallbackPollInterval(snapshot, STATS_FALLBACK_POLL_INTERVAL_MS),
             }
 
             if (snapshot.error) {
@@ -695,7 +704,8 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
+      // A stopped poll refreshes nothing, so its fallback data must not hide the error
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive && state.fallbackPollInterval !== false, fallbackData),
       hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
       isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
@@ -3145,7 +3155,7 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-4 sm:p-6">
+      <div className="p-4 lg:p-6 pb-16">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-48"></div>
           <div className="h-4 bg-muted rounded w-64"></div>
@@ -3160,30 +3170,23 @@ export function Dashboard() {
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6">
-      {/* Header with Actions */}
+    <div className="p-4 lg:p-6 pb-16">
       <div className="mb-6">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("title")}</h1>
-          {/* on phones the two rare actions ride the title row, which is otherwise dead
-              space, so only the primary action costs a row of its own below */}
-          {instances && instances.length > 0 && (
-            <div className="flex items-center gap-1 sm:hidden">
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
-                <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
-                  <HardDrive className="h-4 w-4" />
-                </Button>
-              </Link>
-              <DashboardSettingsDialog iconOnly />
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
-          <p className="text-muted-foreground">
-            {t("description")}
-          </p>
-          {instances && instances.length > 0 && (
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <PageHeader
+          title={t("title")}
+          description={t("description")}
+          actions={instances && instances.length > 0 && (
+            <>
+              {/* on phones the two rare actions ride the title row, which is otherwise dead
+                  space, so only the primary action costs a row of its own below */}
+              <div className="flex items-center gap-1 sm:hidden">
+                <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+                  <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
+                    <HardDrive className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <DashboardSettingsDialog iconOnly />
+              </div>
               <QuickActionsDropdown statsData={statsData} />
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
                 <Button variant="outline" size="sm">
@@ -3194,9 +3197,9 @@ export function Dashboard() {
               <div className="hidden sm:block">
                 <DashboardSettingsDialog />
               </div>
-            </div>
+            </>
           )}
-        </div>
+        />
       </div>
 
       {/* Show banner if any instances have decryption errors */}

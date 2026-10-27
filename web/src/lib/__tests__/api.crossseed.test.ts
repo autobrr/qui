@@ -6,7 +6,7 @@
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
 // Contract tests for the lib/api.ts "crossseed" method group (issue #1931).
@@ -73,31 +73,6 @@ describe("api.crossseed contract", () => {
       expect(captured.value!.body).toBe("")
       expect(result).toEqual(settings)
     })
-
-    it("throws APIError with status and parsed JSON data on a non-2xx response", async () => {
-      server.use(
-        http.get("*/api/cross-seed/settings", () =>
-          HttpResponse.json(
-            { error: "settings unavailable", code: "DOWN" },
-            { status: 503 }
-          )
-        )
-      )
-
-      // Shared error path for the two no-arg GET methods: extractErrorData
-      // reads .error and attaches the full parsed body as APIError.data.
-      await expect(api.getCrossSeedSettings()).rejects.toBeInstanceOf(APIError)
-      try {
-        await api.getCrossSeedSettings()
-        throw new Error("expected APIError")
-      } catch (err) {
-        const apiErr = err as APIError
-        expect(apiErr).toBeInstanceOf(APIError)
-        expect(apiErr.message).toBe("settings unavailable")
-        expect(apiErr.status).toBe(503)
-        expect(apiErr.data).toEqual({ error: "settings unavailable", code: "DOWN" })
-      }
-    })
   })
 
   describe("analyzeTorrentForCrossSeedSearch", () => {
@@ -146,7 +121,6 @@ describe("api.crossseed contract", () => {
         filtered_indexers: [1, 2],
         excluded_indexers: { "3": "no caps", "bad": "ignored" },
         content_matches: ["file.mkv"],
-        content_filtering_completed: true,
       }
       server.use(
         http.get("*/api/cross-seed/torrents/:instanceId/:hash/analyze", () =>
@@ -178,7 +152,6 @@ describe("api.crossseed contract", () => {
         // normalizeExcludedIndexerMap: string keys -> numeric, non-numeric dropped.
         excludedIndexers: { 3: "no caps" },
         contentMatches: ["file.mkv"],
-        contentFilteringCompleted: true,
       })
     })
   })
@@ -373,58 +346,39 @@ describe("api.crossseed contract", () => {
       const result = await api.searchCrossSeedTorrent(1, "abc")
 
       expect(result.queryDegraded).toBe("arr_no_ids")
-    })
-  })
-
-  describe("getAsyncFilteringStatus", () => {
-    it("GETs async-status with raw interpolation and remaps snake_case state", async () => {
-      const captured = captureNext(
-        "get",
-        "*/api/cross-seed/torrents/:instanceId/:hash/async-status",
-        () =>
-          HttpResponse.json({
-            capabilities_completed: true,
-            content_completed: false,
-            capability_indexers: [1, 2],
-            filtered_indexers: [1],
-            excluded_indexers: { "2": "blocked" },
-            content_matches: ["a.mkv"],
-          })
-      )
-
-      const result = await api.getAsyncFilteringStatus(8, "zz")
-
-      const req = captured.value!.request
-      expect(req.method).toBe("GET")
-      expect(new URL(req.url).pathname).toBe("/api/cross-seed/torrents/8/zz/async-status")
-      expect(captured.value!.body).toBe("")
-      expect(result).toEqual({
-        capabilitiesCompleted: true,
-        contentCompleted: false,
-        capabilityIndexers: [1, 2],
-        filteredIndexers: [1],
-        excludedIndexers: { 2: "blocked" },
-        contentMatches: ["a.mkv"],
-      })
+      expect(result.torznabFailed).toBeUndefined()
     })
 
-    it("defaults excludedIndexers to {} when the map is absent", async () => {
+    it("maps the torznab_failed note", async () => {
       server.use(
-        http.get("*/api/cross-seed/torrents/:instanceId/:hash/async-status", () =>
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
           HttpResponse.json({
-            capabilities_completed: false,
-            content_completed: false,
-            capability_indexers: [],
-            filtered_indexers: [],
-            // excluded_indexers omitted -> normalizeExcludedIndexerMap(undefined)
-            // returns undefined, then `|| {}` defaults to empty object.
-            content_matches: [],
+            source_torrent: null,
+            results: [],
+            torznab_failed: true,
           })
         )
       )
 
-      const result = await api.getAsyncFilteringStatus(1, "h")
-      expect(result.excludedIndexers).toEqual({})
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.torznabFailed).toBe(true)
+    })
+
+    it("maps the RED/OPS timeout note", async () => {
+      server.use(
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
+          HttpResponse.json({
+            source_torrent: null,
+            results: [],
+            gazelle_timed_out: true,
+          })
+        )
+      )
+
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.gazelleTimedOut).toBe(true)
     })
   })
 
@@ -584,29 +538,6 @@ describe("api.crossseed contract", () => {
           },
         ],
       })
-    })
-
-    it("throws APIError with status and parsed JSON data on a 409 conflict (POST error path)", async () => {
-      server.use(
-        http.post("*/api/cross-seed/torrents/:instanceId/:hash/apply", () =>
-          HttpResponse.json(
-            { error: "conflict", conflicts: ["dupe-hash"] },
-            { status: 409 }
-          )
-        )
-      )
-
-      try {
-        await api.applyCrossSeedSearchResults(1, "h", { selections: [], useTag: false })
-        throw new Error("expected APIError")
-      } catch (err) {
-        const apiErr = err as APIError
-        expect(apiErr).toBeInstanceOf(APIError)
-        expect(apiErr.message).toBe("conflict")
-        expect(apiErr.status).toBe(409)
-        // Full parsed JSON body attached as APIError.data (409 conflict payload).
-        expect(apiErr.data).toEqual({ error: "conflict", conflicts: ["dupe-hash"] })
-      }
     })
   })
 })

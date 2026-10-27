@@ -187,8 +187,32 @@ func (f *applyFakeSyncManager) GetTorrentProperties(context.Context, int, string
 	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
 }
 
-func (f *applyFakeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+// AddTorrent lists the files of the added torrent, as qBittorrent does.
+func (f *applyFakeSyncManager) AddTorrent(_ context.Context, _ int, data []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	meta, err := ParseTorrentMetadataWithInfo(data)
+	if err != nil {
+		return nil, err
+	}
+	f.files[normalizeHash(meta.HashV1)] = slices.Clone(meta.Files)
 	return nil, nil
+}
+
+func (f *applyFakeSyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	for i, file := range f.files[normalizeHash(hash)] {
+		if file.Name == oldPath {
+			f.files[normalizeHash(hash)][i].Name = newPath
+		}
+	}
+	return nil
+}
+
+func (f *applyFakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	for i, file := range f.files[normalizeHash(hash)] {
+		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
+			f.files[normalizeHash(hash)][i].Name = newPath + "/" + suffix
+		}
+	}
+	return nil
 }
 
 func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
@@ -215,14 +239,16 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	withAdder(service)
 	resp, err := service.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs:            []int{instanceID},
 		SkipPieceBoundarySafetyCheck: true,
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassStrict,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	})
 	require.NoError(t, err)
@@ -267,9 +293,12 @@ func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
 				SearchDecision: searchDecisionProvenance{
-					Class:            tt.decisionClass,
-					SourceInstanceID: instanceID,
-					SourceHash:       existingHash,
+					Class: tt.decisionClass,
+					// Search stored a strict verdict for a listing that names the
+					// local group.
+					SearchCandidateName: existingName,
+					SourceInstanceID:    instanceID,
+					SourceHash:          existingHash,
 				},
 			})
 			require.NoError(t, err)
@@ -310,10 +339,10 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
 			Class:                 searchCandidateClassExactSizeFallback,
+			SearchCandidateName:   splitName,
 			SourceInstanceID:      instanceID,
 			SourceHash:            existingHash,
-			StrictMismatchReason:  groupMismatchReason,
-			RelaxedDifferences:    []string{"group"},
+			Relaxed:               differencesOf(differenceGroup),
 			GroupFallbackIdentity: "kiri",
 		},
 	})
@@ -366,7 +395,9 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	startPaused := true
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
@@ -450,10 +481,12 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	incomingView := service.readApplyTarget(rawEpisode, incomingFiles, true)
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
 	startPaused := true
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
@@ -647,7 +680,9 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 
+			withAdder(service)
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(tt.torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -678,21 +713,39 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 		name      string
 		localRoot string
 		decision  searchDecisionProvenance
+		rejected  bool
 	}{
 		{
 			name:      "local copy in a renamed season folder",
 			localRoot: "Season 02 [BD]",
 			decision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
-				StrictMismatchReason: "source mismatch",
-				RelaxedDifferences:   []string{"source"},
+				Class:               searchCandidateClassExactSizeFallback,
+				SearchCandidateName: "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+				Relaxed:             differencesOf(differenceSource),
 			},
 		},
 		{
 			name:      "local copy in the original folder",
 			localRoot: name,
-			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 S02 [BDRip 1080p HEVC FLAC]",
+			},
+		},
+		{
+			// The listing name has no season, but the download reads one from its files.
+			name:      "listing named as the download",
+			localRoot: "Season 02 [BD]",
+			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name},
+		},
+		{
+			name:      "listing of the next season",
+			localRoot: "Season 02 [BD]",
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 III [BDRip 1080p HEVC FLAC]",
+			},
+			rejected: true,
 		},
 	}
 	for _, tt := range tests {
@@ -718,10 +771,12 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 			decision := tt.decision
 			decision.SourceInstanceID = instanceID
 			decision.SourceHash = sourceHash
 
+			withAdder(service)
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -729,7 +784,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				SearchDecision:               decision,
 			})
 			require.NoError(t, err)
-			require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+			require.Equal(t, !tt.rejected, resp.Success, "results: %+v", resp.Results)
 		})
 	}
 }

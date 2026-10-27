@@ -44,7 +44,8 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	multiOpts := StreamOptions{InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}
-	multiID, err := manager.registerSubscription(multiOpts, "multi")
+	conn := manager.openConnection(false)
+	multi, err := manager.registerSubscription(multiOpts, "multi", conn, false)
 	require.NoError(t, err)
 
 	for _, id := range []int{1, 2, 3} {
@@ -55,20 +56,20 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 
 	// A single-instance subscription that overlaps member instance 2.
 	singleOpts := StreamOptions{InstanceID: 2, Limit: 100, Sort: "added_on", Order: "desc"}
-	singleID, err := manager.registerSubscription(singleOpts, "single")
+	single, err := manager.registerSubscription(singleOpts, "single", conn, false)
 	require.NoError(t, err)
 	require.Equal(t, 2, manager.instanceSubCount(2))
 
 	// Removing the multi-instance subscription tears down its exclusive members (1, 3)
 	// but must keep instance 2 alive for the remaining single-instance subscription.
-	manager.Unregister(multiID)
+	manager.Unregister(multi.id)
 	require.False(t, manager.hasInstance(1))
 	require.False(t, manager.hasInstance(3))
 	require.True(t, manager.hasInstance(2))
 	require.Equal(t, 1, manager.instanceSubCount(2))
 	require.Equal(t, 1, manager.instanceLoopCount())
 
-	manager.Unregister(singleID)
+	manager.Unregister(single.id)
 	require.False(t, manager.hasInstance(2))
 	require.Equal(t, 0, manager.instanceLoopCount())
 }
@@ -187,15 +188,17 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	manager := NewStreamManager(nil, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi")
+	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false), false)
 	require.NoError(t, err)
+	builds := provider.signalBuilds()
 
 	// An update from either member must rebuild the aggregated group.
 	manager.HandleMainData(2, &qbt.MainData{Rid: 1})
+	receive(t, builds, "the aggregated group build")
 
-	require.Eventually(t, func() bool {
-		provider.mu.Lock()
-		defer provider.mu.Unlock()
-		return provider.crossInstanceCalls > 0 && provider.torrentsCalls == 0
-	}, 2*time.Second, 10*time.Millisecond, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
+	require.True(t, provider.crossSkipFresh, "a stream read must not start a sync")
+	require.Zero(t, provider.torrentsCalls)
 }

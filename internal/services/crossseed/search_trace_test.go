@@ -145,7 +145,7 @@ func TestSearchTorrentMatches_TraceCountsRawCandidates(t *testing.T) {
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 	}
 
-	resp, _, _, err := service.searchTorrentMatches(context.Background(), instanceID, sourceHash, TorrentSearchOptions{}, nil)
+	resp, _, _, err := service.searchTorrentMatches(context.Background(), instanceID, sourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1}}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.DecisionTrace)

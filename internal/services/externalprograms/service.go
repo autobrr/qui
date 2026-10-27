@@ -87,6 +87,12 @@ type waitKey struct {
 	hash       string
 }
 
+// Slot ownership and dispatch reporting differ for GUI programs and shell wrappers.
+type executionPolicy struct {
+	releaseOnStart  bool
+	reportAfterExit bool
+}
+
 // ExecuteRequest contains all parameters needed to execute an external program.
 type ExecuteRequest struct {
 	// ProgramID is used to fetch the program from the store.
@@ -203,7 +209,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Build and execute command
 	// Use background context since the command runs async and parent context may be cancelled
-	cmd, launcher := s.buildCommand(context.Background(), program, args)
+	cmd, policy := s.buildCommand(context.Background(), program, args)
 
 	key := waitKey{programID: program.ID, instanceID: req.InstanceID, hash: req.Torrent.Hash}
 	if _, waiting := s.waiting.LoadOrStore(key, struct{}{}); waiting {
@@ -237,7 +243,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Execute in goroutine (fire-and-forget)
 	// Activity logging happens inside executeAsync after cmd.Start() succeeds
-	go s.executeAsync(cmd, launcher, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
+	go s.executeAsync(cmd, policy, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
 	if program.UseTerminal {
@@ -248,12 +254,12 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 }
 
 // executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
-// A launcher (a terminal emulator, or cmd.exe start on Windows) releases the slot after the start,
-// because qui cannot wait on the program behind it; any other run holds the slot until it exits.
-// Activity logging happens here after the command actually starts successfully.
+// Windows GUI programs, terminals and Windows batch wrappers release their slot after startup;
+// owned console programs retain it until exit. Every process is reaped with Wait.
+// Windows wrappers report activity after exit so shell failures remain visible.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
-	launcher bool,
+	policy executionPolicy,
 	key waitKey,
 	program *models.ExternalProgram,
 	req ExecuteRequest,
@@ -282,54 +288,44 @@ func (s *Service) executeAsync(
 	})
 	defer release()
 
-	if runtime.GOOS == "windows" {
-		// Windows: Use Run() which waits for cmd.exe to complete
-		// The 'start' command will spawn the process and cmd.exe will exit quickly
-		execErr := cmd.Run()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed to start: %v", execErr))
-			return
-		}
-		// Log success - on Windows, Run() completing without error means the program started
+	execErr := cmd.Start()
+	if execErr != nil {
+		log.Error().
+			Err(execErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("external program failed to start")
+		// Log failure activity
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
+		return
+	}
+
+	if policy.releaseOnStart {
+		release()
+	}
+
+	// Windows wrappers must also successfully dispatch their command.
+	if !policy.reportAfterExit {
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
-	} else {
-		// Unix/Linux: Start the terminal emulator or direct process
-		execErr := cmd.Start()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			// Log failure activity
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
-			return
-		}
+	}
 
-		if launcher {
-			release()
-		}
-
-		// Log success - the program has actually started
-		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
-
-		// Wait for the process to prevent zombie processes
-		waitErr := cmd.Wait()
+	// Wait for the process to prevent zombie processes
+	waitErr := cmd.Wait()
+	if policy.reportAfterExit {
 		if waitErr != nil {
-			log.Warn().
-				Err(waitErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("process exited with error (may be normal for terminal emulators)")
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed: %v", waitErr))
+		} else {
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 		}
+	}
+	if waitErr != nil {
+		log.Warn().
+			Err(waitErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("process exited with error (may be normal for terminal emulators)")
 	}
 
 	log.Info().
@@ -340,27 +336,12 @@ func (s *Service) executeAsync(
 }
 
 // buildCommand creates the appropriate exec.Cmd based on platform and settings.
-// launcher reports that the command exits before the program it starts.
-func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (cmd *exec.Cmd, launcher bool) {
+// The policy controls slot lifetime and when dispatch activity can be reported.
+func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
 	if program.UseTerminal {
 		return s.buildTerminalCommand(ctx, program, args)
 	}
 	return s.buildDirectCommand(ctx, program, args)
-}
-
-// buildTerminalCommand creates a command that opens in a terminal window.
-func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
-	if runtime.GOOS == "windows" {
-		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
-		cmdArgs := make([]string, 0, 6+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
-	}
-
-	// Unix/Linux: Build command string and spawn in a terminal
-	allArgs := append([]string{program.Path}, args...)
-	return s.createTerminalCommand(ctx, shellJoin(allArgs))
 }
 
 // shellJoin single-quotes each argument for a POSIX shell and joins them with spaces.
@@ -370,23 +351,6 @@ func shellJoin(args []string) string {
 		quoted[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 	}
 	return strings.Join(quoted, " ")
-}
-
-// buildDirectCommand creates a command that runs directly without a terminal.
-func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
-	if runtime.GOOS == "windows" {
-		// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
-		cmdArgs := make([]string, 0, 5+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "/b", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
-	}
-
-	// Unix/Linux: Direct execution
-	if len(args) > 0 {
-		return exec.CommandContext(ctx, program.Path, args...), false //nolint:gosec // intentional external program execution
-	}
-	return exec.CommandContext(ctx, program.Path), false //nolint:gosec // intentional external program execution
 }
 
 // terminalCandidate represents a terminal emulator to check for availability.
@@ -664,7 +628,7 @@ func (s *Service) logActivity(
 		outcome = models.ActivityOutcomeFailed
 	}
 
-	details, _ := json.Marshal(map[string]string{
+	details, _ := json.Marshal(map[string]string{ //nolint:errchkjson // marshaling map[string]string cannot fail
 		"programName": program.Name,
 	})
 

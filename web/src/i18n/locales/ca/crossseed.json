@@ -82,14 +82,12 @@
     "cancel": "Cancel·la",
     "runNow": "Executa ara",
     "saveSettings": "Desa la configuració de l'automatització d'RSS",
-    "reset": "Restableix",
     "requiresTorznabIndexer": "Les execucions de l'automatització d'RSS necessiten com a mínim un indexador de Torznab.",
     "items": "{{count}} elements",
     "failedCount": "{{count}} fallits",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} execucions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execucions • +{{added}} • {{failed}} fallits",
-    "runDisabledAlreadyRunning": "Ja hi ha una execució de l'automatització en curs.",
     "runDisabledCooldown": "Les execucions manuals estan limitades a un interval de {{minutes}} minuts. Torna-ho a provar d'aquí a {{remaining}}."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: activat (clau de RED definida, falta la d'OPS)",
       "enabledKeysMissing": "Gazelle: activat (falten les claus)"
     },
-    "noMessageProvided": "No s'ha proporcionat cap missatge"
+    "noMessageProvided": "No s'ha proporcionat cap missatge",
+    "cancelDialog": {
+      "title": "Vols cancel·lar l'exploració de la biblioteca?",
+      "description": "Això atura l'exploració actual de la biblioteca. Els cross-seeds ja afegits es mantenen, però no se cerquen més torrents."
+    }
   },
   "rules": {
     "hardlinkReflink": "Mode hardlink / reflink",
@@ -359,6 +361,9 @@
       "matching": "Regles que decideixen quins candidats afegeix qui, per a totes les fonts.",
       "categories": "La categoria i les etiquetes que qui assigna a cada nou cross-seed."
     }
+  },
+  "run": {
+    "starting": "L'execució s'està iniciant."
   },
   "seasonPackRuns": {
     "title": "Execucions recents de packs de temporada",

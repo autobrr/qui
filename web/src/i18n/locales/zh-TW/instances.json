@@ -697,8 +697,8 @@
       "description": "掃描下載目錄並識別孤立檔案以進行清理。",
       "noLocalAccess": "無本機存取權限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必須執行在同一臺機器上。在實例設定中啟用\"本機檔案系統存取\"以使用孤立項目掃描。",
-      "remoteLimits": "刪除和自動清理暫時無法在遠端實例上執行。",
-      "remoteNoIdentity": "qui 也無法判斷兩個路徑是否指向同一檔案，因此可透過第二個路徑存取的檔案（例如透過 bind mount）即使正被種子使用，也可能出現在清單中。",
+      "remoteLimits": "在遠端實例上刪除和自動清理需要檔案識別資訊，只有伺服器允許 qui 執行 GNU find 和 stat 時才能讀取。",
+      "remoteNoIdentity": "此遠端實例不允許這樣做，因此 qui 無法判斷兩個路徑是否指向同一檔案，可透過第二個路徑存取的檔案（例如透過 bind mount）即使正被種子使用，也可能出現在清單中。此處的掃描只能預覽和匯出，無法刪除。",
       "on": "開",
       "off": "關",
       "summaryGrace": "寬限期 {{grace}} 分鐘",
@@ -709,7 +709,7 @@
       "cancel": "取消",
       "autoCleanupEnabled": "自動清理已啟用（≤{{max}} 個檔案）",
       "autoCleanupDisabled": "自動清理已停用",
-      "autoCleanupRemote": "遠端實例不自動清理",
+      "autoCleanupRemote": "此遠端實例不自動清理",
       "pathsIgnored_other": " · {{count}} 個路徑已忽略",
       "scanNow": "立即掃描",
       "configure": "配置",
@@ -765,7 +765,7 @@
       "exportCSV": "匯出 CSV",
       "close": "關閉",
       "deleteItems": "刪除",
-      "remoteDeleteUnavailable": "此掃描在遠端實例上進行，遠端實例暫不支援刪除。請匯出清單，然後自行在伺服器上刪除這些檔案。",
+      "remoteDeleteUnavailable": "此掃描無法刪除，因為遠端實例不提供檔案識別資訊，或掃描未能讀取每個檔案的識別資訊。請匯出清單，然後自行在伺服器上刪除這些檔案。",
       "statusLabels": {
         "pending": "等待中",
         "deleted": "已刪除",
@@ -1748,11 +1748,9 @@
       "lastBackup": "上次備份",
       "loading": "載入中...",
       "progress": "{{current}}/{{total}} 個種子（{{percentage}}%）",
-      "status": "狀態：{{status}}",
       "noBackupsYet": "暫無備份",
       "nextScheduledBackup": "下次排程備份",
       "loadingSchedule": "正在載入排程...",
-      "instance": "實例",
       "automaticBackupsOff": "此實例的自動備份已關閉。",
       "enableCadenceToSchedule": "請至少啟用一個自動頻率以排程備份。",
       "currentlyRunning": "備份正在執行中。",
@@ -1776,6 +1774,7 @@
       "schedule": {
         "title": "自動頻率",
         "description": "每小時、每天、每週和每月執行在上一次備份完成且間隔已過後開始。全部關閉則僅手動觸發備份。",
+        "keep": "保留",
         "hourly": "每小時",
         "hourlyDescription": "較舊的每小時快照被清除前保留的數量。",
         "hourlyTooltip": "當備份已啟用且距上次執行已過至少一小時時，大約每小時執行一次。",
@@ -1794,8 +1793,7 @@
         "saveChanges": "儲存更改",
         "saveAll": "儲存所有實例的更改",
         "requiresCadence": "請在儲存前至少選擇一個頻率（每小時、每天、每週或每月）。",
-        "waitForCapabilities": "請等待實例能力檢查完成後再儲存到所有實例。",
-        "changesApplyImmediately": "儲存後更改將立即應用於後續備份。"
+        "waitForCapabilities": "請等待實例能力檢查完成後再儲存到所有實例。"
       }
     },
     "restore": {

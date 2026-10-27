@@ -4,7 +4,6 @@
 package automations
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -17,36 +16,12 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// buildTagChangesForTest mirrors the tag diff loop in applyRulesForInstance:
-// each state's pending actions are applied on top of its own current tags.
+// buildTagChangesForTest builds the tag changes that the Run plan would apply.
 func buildTagChangesForTest(states map[string]*torrentDesiredState) map[string]*tagChange {
 	changes := make(map[string]*tagChange)
 	for hash, state := range states {
-		if len(state.tagActions) == 0 {
-			continue
-		}
-		var toAdd, toRemove []string
-		desired := make(map[string]struct{})
-		for t := range state.currentTags {
-			desired[t] = struct{}{}
-		}
-		for tag, action := range state.tagActions {
-			switch action {
-			case "add":
-				toAdd = append(toAdd, tag)
-				desired[tag] = struct{}{}
-			case "remove":
-				toRemove = append(toRemove, tag)
-				delete(desired, tag)
-			}
-		}
-		if len(toAdd) > 0 || len(toRemove) > 0 {
-			changes[hash] = &tagChange{
-				current:  state.currentTags,
-				desired:  desired,
-				toAdd:    toAdd,
-				toRemove: toRemove,
-			}
+		if change := plannedTagChange(state); change != nil {
+			changes[hash] = change
 		}
 	}
 	return changes
@@ -614,8 +589,6 @@ func TestRecordDryRunActivities_Tags_IncludeCrossSeeds_CountsSiblings(t *testing
 			Tracker:     "https://tracker.example.com/announce",
 		},
 	}
-	torrentByHash := map[string]qbt.Torrent{"h1": torrents[0], "h2": torrents[1]}
-
 	rule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -634,32 +607,8 @@ func TestRecordDryRunActivities_Tags_IncludeCrossSeeds_CountsSiblings(t *testing
 	require.NotContains(t, states, "h2")
 
 	expandTagStatesForCrossSeeds(states, ruleByID, crossSeedGroupsForTest(torrents))
-	tagChanges := buildTagChangesForTest(states)
-
-	_ = s.recordDryRunActivities(
-		context.Background(),
-		1,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		tagChanges,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		torrentByHash,
-		torrents,
-		states,
-		ruleByID,
-		nil,
-		true,
-	)
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionTagsChanged, mockDB.activities[0].Action)

@@ -12,7 +12,7 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.1-0.20261020212110-ecff3f2464a3
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20261026220743-38712c703028
 	github.com/autobrr/go-torrent v1.1.1
 	github.com/autobrr/rls v0.10.0
 	github.com/avast/retry-go v3.0.0+incompatible
@@ -63,7 +63,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eclipse/paho.golang v0.23.0 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/go-github/v86 v86.0.0 // indirect

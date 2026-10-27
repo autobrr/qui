@@ -16,6 +16,11 @@
     "security": "安全",
     "logs": "日誌"
   },
+  "nav": {
+    "general": "一般",
+    "connections": "連線",
+    "access": "存取"
+  },
   "language": {
     "cardTitle": "語言",
     "cardDescription": "選擇您偏好的顯示語言"
@@ -446,7 +451,9 @@
         "activeTitle": "進階存取已啟用",
         "activeDescription": "您可以存取所有目前和未來的進階主題",
         "activationRequiredTitle": "需要啟用授權",
-        "activationRequiredDescription": "您的授權需要在此裝置上啟用"
+        "activationRequiredDescription": "您的授權需要在此裝置上啟用",
+        "offlineTitle": "無法連線至授權服務",
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此進階主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
@@ -468,7 +475,12 @@
       },
       "details": {
         "productAdded": "{{productName}} · 新增於 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}",
+        "statusLabels": {
+          "invalid": "無效",
+          "offline": "離線",
+          "unknown": "未知"
+        }
       },
       "invalid": {
         "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"

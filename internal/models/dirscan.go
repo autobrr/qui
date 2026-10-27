@@ -624,7 +624,9 @@ func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path strin
 		if dir.ID == excludeID {
 			continue
 		}
-		if filepath.Clean(dir.Path) == cleanPath {
+		// Match webhook routing, which uses filepath.Rel. On Windows it ignores
+		// case, even when a case-sensitive volume stores distinct directories.
+		if rel, err := filepath.Rel(dir.Path, cleanPath); err == nil && rel == "." {
 			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
 		}
 	}
@@ -1351,7 +1353,7 @@ func marshalSearchedIndexerIDs(ids []int) any {
 	if ids == nil {
 		return nil
 	}
-	raw, _ := json.Marshal(ids)
+	raw, _ := json.Marshal(ids) //nolint:errchkjson // json.Marshal cannot fail for a plain int slice
 	return string(raw)
 }
 

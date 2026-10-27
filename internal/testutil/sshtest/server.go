@@ -4,6 +4,7 @@
 package sshtest
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -99,7 +101,7 @@ const (
 	SFTPNoHardlink
 	// SFTPHoldNextMutation serves sftp but holds the next mkdir, remove, rmdir
 	// or hardlink request before the server sees it, until ReleaseStall or
-	// the stall timer. Requests after that one pass. HeldMutations counts
+	// the stall timer. Requests after that one pass. Stalled is closed at
 	// the hold, so a test can cancel its caller while the request is held.
 	SFTPHoldNextMutation
 	// SFTPRefuseRemove serves an empty in-memory tree that refuses every
@@ -107,6 +109,10 @@ const (
 	// the way two different errnos reach a client. pkg/sftp's Client.Remove
 	// then names the error from a link-following Stat.
 	SFTPRefuseRemove
+	// SFTPStatVFS serves deterministic filesystem statistics without host statvfs support.
+	SFTPStatVFS
+	// SFTPRefuseLinkAndLstat injects permission errors without host directory modes.
+	SFTPRefuseLinkAndLstat
 )
 
 const hardlinkExtension = "hardlink@openssh.com"
@@ -126,17 +132,18 @@ type Server struct {
 
 	exec ExecMode
 
-	mu              sync.Mutex
-	latency         time.Duration
-	sftpMode        SFTPMode
-	dials           int
-	auths           int
-	accepts         int
-	channels        int
-	stalledReadDirs int
-	heldMutations   int
-	commands        [][]string
-	live            map[*ssh.ServerConn]struct{}
+	mu             sync.Mutex
+	latency        time.Duration
+	sftpMode       SFTPMode
+	dials          int
+	auths          int
+	accepts        int
+	channels       int
+	inFlight       int
+	maxInFlight    int
+	commands       [][]string
+	live           map[*ssh.ServerConn]struct{}
+	sessionWaiters []chan struct{}
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
 	wg sync.WaitGroup
@@ -145,6 +152,8 @@ type Server struct {
 	stallTimer   *time.Timer
 	stallRelease chan struct{}
 	releaseStall func()
+	stalled      chan struct{}
+	markStalled  func()
 }
 
 // NewServer starts a server on 127.0.0.1 with hostKey and stops it when the
@@ -152,8 +161,9 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}, stallRelease: make(chan struct{})}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}, stallRelease: make(chan struct{}), stalled: make(chan struct{})}
 	server.releaseStall = sync.OnceFunc(func() { close(server.stallRelease) })
+	server.markStalled = sync.OnceFunc(func() { close(server.stalled) })
 	config := &ssh.ServerConfig{
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
@@ -243,21 +253,32 @@ func (s *Server) Channels() int {
 	return s.channels
 }
 
-// StalledReadDirs returns the number of directory listings that reached the
-// stall, which is how a test proves its deadline covered the stall and not
-// something before it.
-func (s *Server) StalledReadDirs() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.stalledReadDirs
+// Stalled is closed when the first request reaches a stall: a listing in
+// SFTPStallReadDir, the mutation SFTPHoldNextMutation holds, or a command in
+// ExecHang. A test cancels on it, so its cancel lands inside the stall.
+func (s *Server) Stalled() <-chan struct{} {
+	return s.stalled
 }
 
-// HeldMutations returns the number of mutation requests SFTPHoldNextMutation
-// has held, so a test can wait for the hold before it cancels.
-func (s *Server) HeldMutations() int {
+// SessionOpened returns a channel that is closed when the server next accepts
+// a session channel, so a test knows that session holds its place in the
+// host's limit.
+func (s *Server) SessionOpened() <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.heldMutations
+	opened := make(chan struct{})
+	s.sessionWaiters = append(s.sessionWaiters, opened)
+	return opened
+}
+
+// MaxInFlight returns the most sftp requests the server had read and not yet
+// answered at one time, so a test can show how many requests the client
+// overlaps. Without SetLatency the server answers at once, and the count says
+// little.
+func (s *Server) MaxInFlight() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxInFlight
 }
 
 // ReleaseStall ends an SFTPStallReadDir or SFTPHoldNextMutation stall. Safe
@@ -271,11 +292,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 	s.mu.Lock()
 	s.dials++
-	latency := s.latency
 	s.mu.Unlock()
-	if latency > 0 {
-		conn = newLatencyConn(conn, latency, &s.wg)
-	}
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
@@ -337,6 +354,12 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		}
 
 		open.Add(1)
+		s.mu.Lock()
+		for _, waiter := range s.sessionWaiters {
+			close(waiter)
+		}
+		s.sessionWaiters = nil
+		s.mu.Unlock()
 		sessions.Go(func() {
 			defer open.Add(-1)
 			s.handleSession(sshConn, channel, requests, stalled)
@@ -362,7 +385,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			switch mode {
 			case SFTPStall:
 				<-stalled
-			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove:
+			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove, SFTPStatVFS, SFTPRefuseLinkAndLstat:
 				s.serveInMemSFTP(channel, mode)
 			default:
 				s.serveSFTP(conn, channel)
@@ -376,6 +399,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			}
 			_ = req.Reply(true, nil)
 			if s.execMode() == ExecHang {
+				s.markStalled()
 				<-stalled
 				return
 			}
@@ -390,6 +414,13 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 
 func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	cutter := &requestCutter{Channel: channel, conn: conn, server: s}
+	s.mu.Lock()
+	latency := s.latency
+	s.mu.Unlock()
+	if latency > 0 {
+		cutter.latency = newLatencyWriter(channel, latency, s, &s.wg)
+		defer cutter.latency.close()
+	}
 	server, err := sftp.NewServer(cutter)
 	if err != nil {
 		return
@@ -407,9 +438,29 @@ func (s *Server) serveInMemSFTP(channel ssh.Channel, mode SFTPMode) {
 	if mode == SFTPRefuseRemove {
 		handlers.FileCmd = removeRefuser{handlers.FileCmd}
 	}
+	if mode == SFTPRefuseLinkAndLstat {
+		handlers.FileCmd = linkRefuser{handlers.FileCmd}
+	}
+	if mode == SFTPStatVFS {
+		handlers.FileCmd = statVFSCmd{handlers.FileCmd}
+	}
 	server := sftp.NewRequestServer(channel, handlers)
 	defer func() { _ = server.Close() }()
 	_ = server.Serve()
+}
+
+type statVFSCmd struct{ sftp.FileCmder }
+
+func (c statVFSCmd) StatVFS(r *sftp.Request) (*sftp.StatVFS, error) {
+	hostPath := r.Filepath
+	// RequestServer prefixes drive paths with / because its namespace is POSIX.
+	if native := strings.TrimPrefix(hostPath, "/"); filepath.VolumeName(native) != "" {
+		hostPath = native
+	}
+	if _, err := os.Stat(hostPath); err != nil {
+		return nil, err
+	}
+	return &sftp.StatVFS{Bsize: 4096, Frsize: 4096, Blocks: 1000, Bfree: 100, Bavail: 50, Fsid: 7}, nil
 }
 
 // inMemLister answers from the in-memory tree, except for the requests its
@@ -433,10 +484,22 @@ func (l inMemLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 // Lstat keeps the in-memory tree's own lstat: without it pkg/sftp answers an
 // lstat as a link-following stat.
 func (l inMemLister) Lstat(r *sftp.Request) (sftp.ListerAt, error) {
+	if l.mode == SFTPRefuseLinkAndLstat {
+		return nil, sftp.ErrSSHFxPermissionDenied
+	}
 	if l.mode == SFTPStatEOF {
 		return nil, io.EOF
 	}
 	return l.inner.(sftp.LstatFileLister).Lstat(r)
+}
+
+type linkRefuser struct{ sftp.FileCmder }
+
+func (c linkRefuser) Filecmd(r *sftp.Request) error {
+	if r.Method == "Link" {
+		return sftp.ErrSSHFxPermissionDenied
+	}
+	return c.FileCmder.Filecmd(r)
 }
 
 // removeRefuser implements SFTPRefuseRemove.
@@ -455,9 +518,7 @@ func (c removeRefuser) Filecmd(r *sftp.Request) error {
 // ListAt is the stalled listing.
 func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 	s := l.server
-	s.mu.Lock()
-	s.stalledReadDirs++
-	s.mu.Unlock()
+	s.markStalled()
 	s.stallStart.Do(func() { s.stallTimer = time.AfterFunc(stallTimeout, s.releaseStall) })
 	<-s.stallRelease
 	return 0, io.EOF
@@ -510,10 +571,11 @@ func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 }
 
-// SetLatency delays every byte the server sends on connections accepted from
-// now on by d, the way a distant host does. Delivery is deferred, not
-// serialised: requests the client pipelines still overlap, so a test can
-// show what concurrency buys against a round trip rather than a slow server.
+// SetLatency delays each sftp answer by d, the way a distant host does, on
+// sftp sessions opened from now on. It applies to the modes that serve the
+// host file system, not to the in-memory ones. Delivery is deferred, not
+// serialised: requests the client pipelines still overlap, and MaxInFlight
+// counts them.
 func (s *Server) SetLatency(d time.Duration) {
 	s.mu.Lock()
 	s.latency = d
@@ -557,9 +619,18 @@ func DeadAddr(t testing.TB) string {
 	return addr
 }
 
-// NewHangingListener accepts TCP connections and never speaks SSH, so a dial
+// HangingListener accepts TCP connections and never speaks SSH, so a dial
 // against it blocks in the handshake until the caller's context gives up.
-func NewHangingListener(t testing.TB) string {
+type HangingListener struct {
+	Addr string
+	// Accepted is closed when the listener accepts its first connection: the
+	// dial behind it is then in the handshake.
+	Accepted <-chan struct{}
+}
+
+// NewHangingListener starts a HangingListener on 127.0.0.1 and stops it when
+// the test ends.
+func NewHangingListener(t testing.TB) *HangingListener {
 	t.Helper()
 
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -567,6 +638,7 @@ func NewHangingListener(t testing.TB) string {
 		t.Fatalf("listen: %v", err)
 	}
 
+	accepted := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		var conns []net.Conn
@@ -580,6 +652,9 @@ func NewHangingListener(t testing.TB) string {
 			if err != nil {
 				return
 			}
+			if conns == nil {
+				close(accepted)
+			}
 			conns = append(conns, conn)
 		}
 	})
@@ -589,7 +664,7 @@ func NewHangingListener(t testing.TB) string {
 		wg.Wait()
 	})
 
-	return listener.Addr().String()
+	return &HangingListener{Addr: listener.Addr().String(), Accepted: accepted}
 }
 
 // NewSigner returns a fresh ed25519 host key signer.
@@ -622,16 +697,21 @@ func NewRSASigner() ssh.Signer {
 
 // requestCutter cuts off the next request once mode asks for it. It closes the
 // connection, or only the channel, on the first bytes a client sends, before
-// the sftp server sees them.
+// the sftp server sees them. It also counts the requests in flight, and
+// delays the answers when the server has a latency.
 type requestCutter struct {
 	ssh.Channel
 	conn        *ssh.ServerConn
 	versionSent bool
 	server      *Server
+	latency     *latencyWriter
 	// bodyLeft is how many bytes of the current request body are still to
 	// be read; zero means the next read is a 4-byte length header. pkg/sftp
 	// reads a request as exactly those two reads.
 	bodyLen, bodyLeft int
+	// answerLeft is how many bytes of the current answer are still to be
+	// written; zero means the next write starts an answer with its length.
+	answerLeft int
 }
 
 func (t *requestCutter) mode() SFTPMode {
@@ -650,36 +730,73 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 		_ = t.conn.Close()
 	case SFTPCloseChannelOnNextRequest:
 		_ = t.Close()
-	case SFTPHoldNextMutation:
-		t.holdMutation(p[:n])
 	default:
 		// Every other mode lets the request through.
+	}
+	if t.readRequestType(p[:n]) {
+		t.server.requested()
+		if t.mode() == SFTPHoldNextMutation {
+			t.holdMutation(p[0])
+		}
 	}
 	return n, err
 }
 
-// latencyConn defers each write by a fixed delay through an ordered queue, so
-// bytes arrive late but in order and later writes do not wait for earlier ones.
-type latencyConn struct {
-	net.Conn
-	delay time.Duration
-	queue chan delayed
-	done  chan struct{}
-	once  sync.Once
+// readRequestType follows the request framing, and reports whether b starts
+// a request body, whose first byte is the request type.
+func (t *requestCutter) readRequestType(b []byte) bool {
+	if t.bodyLeft == 0 {
+		if len(b) == 4 {
+			t.bodyLen = int(binary.BigEndian.Uint32(b))
+			t.bodyLeft = t.bodyLen
+		}
+		return false
+	}
+	first := t.bodyLeft == t.bodyLen
+	t.bodyLeft = max(t.bodyLeft-len(b), 0)
+	return first
+}
+
+func (s *Server) requested() {
+	s.mu.Lock()
+	s.inFlight++
+	s.maxInFlight = max(s.maxInFlight, s.inFlight)
+	s.mu.Unlock()
+}
+
+// answered is called before the answer reaches the channel, so the client
+// cannot send its next request before the count drops.
+func (s *Server) answered() {
+	s.mu.Lock()
+	s.inFlight--
+	s.mu.Unlock()
+}
+
+// latencyWriter defers each write by a fixed delay through an ordered queue,
+// so bytes arrive late but in order and later writes do not wait for earlier
+// ones.
+type latencyWriter struct {
+	w      io.Writer
+	server *Server
+	delay  time.Duration
+	queue  chan delayed
+	done   chan struct{}
+	once   sync.Once
 }
 
 type delayed struct {
-	at   time.Time
-	data []byte
+	at     time.Time
+	data   []byte
+	answer bool // data starts an answer
 }
 
-func newLatencyConn(conn net.Conn, delay time.Duration, wg *sync.WaitGroup) *latencyConn {
-	c := &latencyConn{Conn: conn, delay: delay, queue: make(chan delayed, 1024), done: make(chan struct{})}
+func newLatencyWriter(w io.Writer, delay time.Duration, server *Server, wg *sync.WaitGroup) *latencyWriter {
+	c := &latencyWriter{w: w, server: server, delay: delay, queue: make(chan delayed, 1024), done: make(chan struct{})}
 	wg.Go(c.forward)
 	return c
 }
 
-func (c *latencyConn) forward() {
+func (c *latencyWriter) forward() {
 	for {
 		select {
 		case <-c.done:
@@ -692,7 +809,10 @@ func (c *latencyConn) forward() {
 				timer.Stop()
 				return
 			}
-			if _, err := c.Conn.Write(d.data); err != nil {
+			if d.answer {
+				c.server.answered()
+			}
+			if _, err := c.w.Write(d.data); err != nil {
 				// A dead peer must surface as a write error, not a queue that
 				// accepts 1024 more writes and then blocks.
 				c.once.Do(func() { close(c.done) })
@@ -702,60 +822,59 @@ func (c *latencyConn) forward() {
 	}
 }
 
-func (c *latencyConn) Write(p []byte) (int, error) {
-	data := append([]byte(nil), p...)
+func (c *latencyWriter) write(p []byte, answer bool) error {
 	select {
-	case c.queue <- delayed{at: time.Now().Add(c.delay), data: data}:
-		return len(p), nil
+	case c.queue <- delayed{at: time.Now().Add(c.delay), data: bytes.Clone(p), answer: answer}:
+		return nil
 	case <-c.done:
-		return 0, net.ErrClosed
+		return net.ErrClosed
 	}
 }
 
-func (c *latencyConn) Close() error {
+func (c *latencyWriter) close() {
 	c.once.Do(func() { close(c.done) })
-	return c.Conn.Close()
 }
 
-// holdMutation follows the request framing and blocks on the first byte of a
-// mutation's body, which is its type, until the stall is released. One hold
-// only: the mode is cleared so rollback after the hold runs unhindered.
-func (t *requestCutter) holdMutation(b []byte) {
-	if t.bodyLeft == 0 {
-		if len(b) == 4 {
-			t.bodyLen = int(binary.BigEndian.Uint32(b))
-			t.bodyLeft = t.bodyLen
-		}
-		return
-	}
-	first := t.bodyLeft == t.bodyLen
-	t.bodyLeft = max(t.bodyLeft-len(b), 0)
-	if !first {
-		return
-	}
-	switch b[0] {
+// holdMutation blocks a mutation, told by its request type, until the stall
+// is released. One hold only: the mode is cleared so rollback after the hold
+// runs unhindered.
+func (t *requestCutter) holdMutation(requestType byte) {
+	switch requestType {
 	case 13, 14, 15, 200: // REMOVE, MKDIR, RMDIR, EXTENDED (hardlink)
 	default:
 		return
 	}
 	s := t.server
 	s.mu.Lock()
-	s.heldMutations++
 	s.sftpMode = SFTPServe
 	s.mu.Unlock()
+	s.markStalled()
 	s.stallStart.Do(func() { s.stallTimer = time.AfterFunc(stallTimeout, s.releaseStall) })
 	<-s.stallRelease
 }
 
-// Write strips the hardlink extension from the server's SSH_FXP_VERSION reply
-// when the mode asks for it. Only the first write is looked at: the version
-// packet is always the server's first send, and later writes may be payload
-// chunks (file data, names) whose bytes mean nothing to this parser.
+// Write follows the framing of each answer, so the count in flight drops when
+// an answer starts. It also strips the hardlink extension from the server's
+// SSH_FXP_VERSION reply when the mode asks for it. Only the first write is
+// parsed for that: the version packet is always the server's first send, and
+// later writes may be payload chunks (file data, names) whose bytes mean
+// nothing to that parser.
 func (t *requestCutter) Write(p []byte) (int, error) {
+	// pkg/sftp writes an answer's length and header first, and its payload, if
+	// any, in a second write.
+	answer := t.answerLeft == 0 && len(p) >= 4
+	if answer {
+		t.answerLeft = 4 + int(binary.BigEndian.Uint32(p))
+	}
+	t.answerLeft = max(t.answerLeft-len(p), 0)
+
 	first := !t.versionSent
 	t.versionSent = true
 	if !first || t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
-		return t.Channel.Write(p)
+		if err := t.send(p, answer); err != nil {
+			return 0, err
+		}
+		return len(p), nil
 	}
 	out := append([]byte(nil), p[:9]...)
 	rest := p[9:]
@@ -770,8 +889,19 @@ func (t *requestCutter) Write(p []byte) (int, error) {
 		}
 	}
 	binary.BigEndian.PutUint32(out, uint32(len(out)-4))
-	if _, err := t.Channel.Write(out); err != nil {
+	if err := t.send(out, answer); err != nil {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+func (t *requestCutter) send(p []byte, answer bool) error {
+	if t.latency != nil {
+		return t.latency.write(p, answer)
+	}
+	if answer {
+		t.server.answered()
+	}
+	_, err := t.Channel.Write(p)
+	return err
 }

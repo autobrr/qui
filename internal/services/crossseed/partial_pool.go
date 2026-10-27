@@ -31,13 +31,11 @@ import (
 const (
 	partialPoolActiveRecoveryInterval = 10 * time.Second
 	partialPoolSettledAuditInterval   = 10 * time.Minute
-	partialPoolRecheckPollInterval    = 100 * time.Millisecond
 	partialPoolRecheckPollSyncTimeout = 5 * time.Second
 	partialPoolRecheckObserveTimeout  = 30 * time.Second
 	partialPoolStallWindow            = 15 * time.Minute
 	partialPoolCooldown               = 30 * time.Minute
 	partialPoolRecheckGrace           = 20 * time.Second
-	partialPoolAdmissionHold          = 2 * time.Second
 
 	partialPoolRecheckPending    = models.CrossSeedPartialPoolRecheckPending
 	partialPoolRecheckRequested  = models.CrossSeedPartialPoolRecheckRequested
@@ -57,6 +55,12 @@ const (
 	partialPoolReflinkStagingClone     = "clone"
 	partialPoolReflinkProbeSource      = ".reflink_probe_src_"
 	partialPoolReflinkProbeDestination = ".reflink_probe_dst_"
+)
+
+// Tests shorten these timers.
+var (
+	partialPoolRecheckPollInterval = 100 * time.Millisecond
+	partialPoolAdmissionHold       = 2 * time.Second
 )
 
 type partialPoolWake struct {

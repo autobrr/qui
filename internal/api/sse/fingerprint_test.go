@@ -30,6 +30,10 @@ var volatileTorrentFields = map[string]bool{
 	"NumIncomplete": true,
 	"NumLeechs":     true,
 	"NumSeeds":      true,
+
+	"ConnectionsCount": true,
+	// Not jitter: Progress already resends a list row during a download.
+	"PiecesHave": true,
 }
 
 // payloadOmittedTorrentFields are skipped for a different reason than jitter:

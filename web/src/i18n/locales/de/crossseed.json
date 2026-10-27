@@ -82,14 +82,12 @@
     "cancel": "Abbrechen",
     "runNow": "Jetzt ausführen",
     "saveSettings": "RSS-Automatisierungseinstellungen speichern",
-    "reset": "Zurücksetzen",
     "requiresTorznabIndexer": "RSS-Automatisierungsläufe benötigen mindestens einen Torznab-Indexer.",
     "items": "{{count}} Einträge",
     "failedCount": "{{count}} fehlgeschlagen",
     "runError": "Fehler: {{message}}",
     "runSummary": "{{runs}} Läufe • +{{added}}",
     "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} • {{failed}} fehlgeschlagen",
-    "runDisabledAlreadyRunning": "Es läuft bereits ein Automatisierungslauf.",
     "runDisabledCooldown": "Manuelle Läufe sind auf ein Intervall von {{minutes}} Minuten begrenzt. Versuche es in {{remaining}} erneut."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: aktiviert (RED-Schlüssel gesetzt, OPS fehlt)",
       "enabledKeysMissing": "Gazelle: aktiviert (Schlüssel fehlen)"
     },
-    "noMessageProvided": "Keine Meldung vorhanden"
+    "noMessageProvided": "Keine Meldung vorhanden",
+    "cancelDialog": {
+      "title": "Bibliotheks-Scan abbrechen?",
+      "description": "Dies stoppt den aktuellen Bibliotheks-Scan. Bereits hinzugefügte Cross-Seeds bleiben erhalten, aber es werden keine weiteren Torrents gesucht."
+    }
   },
   "rules": {
     "hardlinkReflink": "Hardlink-/Reflink-Modus",
@@ -359,6 +361,9 @@
       "matching": "Regeln, die für alle Quellen entscheiden, welche Kandidaten qui hinzufügt.",
       "categories": "Die Kategorie und die Tags, die qui jedem neuen Cross-Seed gibt."
     }
+  },
+  "run": {
+    "starting": "Der Lauf wird gestartet."
   },
   "seasonPackRuns": {
     "title": "Letzte Season-Pack-Durchläufe",

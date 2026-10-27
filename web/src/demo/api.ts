@@ -11,6 +11,7 @@
 
 import type { TorrentFilters } from "@/types/torrents"
 import { CAPABILITIES, PREFERENCE_VIEW, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
+import { changeDemoSubscriptions, type StreamEntry } from "./stream"
 
 // The built-in themes the Go registry embeds, so the picker and the default
 // look match a real install. Name and id follow internal/themes/registry.go.
@@ -92,6 +93,11 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/auth/me", () => json({ id: 1, username: "demo", auth_method: "demo" }))
   on("GET", "/auth/check-setup", () => json({ setupRequired: false }))
   on("POST", "/auth/logout", () => noContent())
+
+  on("POST", "/stream/subscriptions", async ({ request }) => {
+    const body = await bodyJSON<{ connectionId?: string; add?: StreamEntry[]; remove?: string[] }>(request)
+    return changeDemoSubscriptions(body.connectionId ?? "", body.add ?? [], body.remove ?? []) ? noContent() : json({ error: "connection not found" }, 404)
+  })
 
   on("GET", "/themes", () => json({ themes: builtinThemes }))
   on("GET", "/themes/settings", () => json({}))
@@ -211,6 +217,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/instances/:instanceId/torrents/:hash/webseeds", () => json([]))
   on("GET", "/instances/:instanceId/torrents/:hash/disc-scans", () => json([]))
   on("GET", "/cross-seed/torrents/:instanceId/:hash/local-matches", () => json([]))
+  on("POST", "/instances/:instanceId/torrents/delete-cross-seeds", () => json({ matches: [] }))
 
   const upsertCategory: Handler = async ({ params, request }) => {
     const body = await bodyJSON<{ name?: string; savePath?: string }>(request)

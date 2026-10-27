@@ -537,7 +537,9 @@ scratch directories and a temporarily added, uniquely tagged
    `Pool.Resolve`. An instance whose local access was turned off after the
    gate is then refused rather than read over SSH at a local path. Orphan
    scan admits an instance on Read, walks the backend `Pool.Require`
-   returns for Read, and refuses to delete from a run scanned over SSH.
+   returns for Read, and deletes from a run scanned over SSH only on the exec
+   tier, when the walk read every file's identity and the SSH endpoint has not
+   changed since the scan (#3236).
    Each remaining gate lifts in its own slice, with the degraded-mode
    handling that service needs, and the API-driven checks
    (missing files, orphan scan) become the field test of that slice. Every

@@ -715,8 +715,8 @@
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
       "noLocalAccess": "Acesso Local Ausente",
       "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
-      "remoteLimits": "A exclusão e a auto-limpeza ainda não funcionam em instâncias remotas.",
-      "remoteNoIdentity": "O qui também não consegue saber quando dois caminhos são o mesmo arquivo, então um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize.",
+      "remoteLimits": "A exclusão e a auto-limpeza em uma instância remota precisam da identidade dos arquivos, que o qui só consegue ler quando o servidor permite executar GNU find e stat.",
+      "remoteNoIdentity": "Esta instância remota não permite isso, então o qui não consegue saber quando dois caminhos são o mesmo arquivo, e um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize. As varreduras aqui podem ser visualizadas e exportadas, mas não excluídas.",
       "on": "Ligado",
       "off": "Desligado",
       "summaryGrace": "Tolerância {{grace}}m",
@@ -728,7 +728,7 @@
       "cancel": "Cancelar",
       "autoCleanupEnabled": "Auto-limpeza ATIVA (≤{{max}} arquivos)",
       "autoCleanupDisabled": "Auto-limpeza INATIVA",
-      "autoCleanupRemote": "Sem auto-limpeza em instâncias remotas",
+      "autoCleanupRemote": "Sem auto-limpeza nesta instância remota",
       "pathsIgnored_one": " · {{count}} caminho ignorado",
       "pathsIgnored_other": " · {{count}} caminhos ignorados",
       "scanNow": "Escanear Agora",
@@ -789,7 +789,7 @@
       "exportCSV": "Exportar CSV",
       "close": "Fechar",
       "deleteItems": "Excluir",
-      "remoteDeleteUnavailable": "Esta varredura foi feita em uma instância remota, onde a exclusão ainda não é suportada. Exporte a lista para remover você mesmo os arquivos no servidor.",
+      "remoteDeleteUnavailable": "Esta varredura não pode excluir, porque a instância remota não informa a identidade dos arquivos ou a varredura não conseguiu lê-la para todos os arquivos. Exporte a lista para remover você mesmo os arquivos no servidor.",
       "statusLabels": {
         "pending": "Pendente",
         "deleted": "Excluído",
@@ -1777,11 +1777,9 @@
       "lastBackup": "Último backup",
       "loading": "Carregando...",
       "progress": "{{current}} de {{total}} torrents ({{percentage}}%)",
-      "status": "Status: {{status}}",
       "noBackupsYet": "Nenhum backup ainda",
       "nextScheduledBackup": "Próximo backup agendado",
       "loadingSchedule": "Carregando agendamento...",
-      "instance": "Instância",
       "automaticBackupsOff": "Backups automáticos estão desligados para esta instância.",
       "enableCadenceToSchedule": "Ative pelo menos um agendamento automático para programar backups.",
       "currentlyRunning": "O backup está em execução.",
@@ -1805,6 +1803,7 @@
       "schedule": {
         "title": "Agendamento automático",
         "description": "As execuções por hora, diárias, semanais e mensais começam após a conclusão do backup anterior.",
+        "keep": "Manter",
         "hourly": "Por hora",
         "hourlyDescription": "Quantos snapshots por hora manter antes de podar os mais antigos.",
         "hourlyTooltip": "Executa aproximadamente uma vez por hora quando backups estão ativados e pelo menos uma hora se passou desde a última execução.",
@@ -1823,8 +1822,7 @@
         "saveChanges": "Salvar alterações",
         "saveAll": "Salvar alterações em todas as instâncias",
         "requiresCadence": "Selecione pelo menos um agendamento (por hora, diário, semanal ou mensal) antes de salvar.",
-        "waitForCapabilities": "Aguarde a conclusão das verificações de capacidade da instância antes de salvar em todas as instâncias.",
-        "changesApplyImmediately": "As alterações são aplicadas a backups futuros assim que você salva."
+        "waitForCapabilities": "Aguarde a conclusão das verificações de capacidade da instância antes de salvar em todas as instâncias."
       }
     },
     "restore": {
