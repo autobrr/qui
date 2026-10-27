@@ -51,10 +51,10 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sqlite3store"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
-	"github.com/autobrr/qui/pkg/sqlite3store"
 )
 
 func main() {
@@ -733,6 +733,10 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
+	settler := crossseed.NewSettler(syncManager, seasonPackRunStore)
+	settleCtx, settleCancel := context.WithCancel(context.Background())
+	defer settleCancel()
+	settler.Start(settleCtx)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -748,6 +752,7 @@ func (app *Application) runServer() {
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
+		settler,
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
@@ -761,7 +766,6 @@ func (app *Application) runServer() {
 		return remotebackend.New(sshPool, inst)
 	})
 	crossSeedService.SetBackendPool(backendPool)
-	syncManager.SetBackendPool(backendPool)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
@@ -770,21 +774,24 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 
+	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
+	syncManager.SetFolderCleanup(folderCleanup)
+	folderCleanup.Start(context.Background())
+
 	discScanStore := models.NewDiscScanStore(db)
 	discScanService := discscan.NewService(discScanStore)
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedBlocklistStore)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
-	})
+	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -1018,6 +1025,9 @@ func (app *Application) runServer() {
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
 		}
 
+		// Deferred so it also runs when Shutdown returns an error. Stop
+		// ignores snapshots a request still hands in.
+		defer folderCleanup.Stop()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
 		}

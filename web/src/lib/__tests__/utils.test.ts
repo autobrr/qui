@@ -6,6 +6,7 @@
 import { formatBytesOrFallback, joinPath, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { describe, expect, it } from "vitest"
+import "@/i18n"
 
 function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   return {

@@ -11,7 +11,9 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -112,99 +114,33 @@ func TestResolveTrackerDisplayName(t *testing.T) {
 	}
 }
 
-func TestBuildHardlinkDestDir(t *testing.T) {
-	// Standard test files with a common root folder (no isolation needed)
+func TestLinkDestDir(t *testing.T) {
 	filesWithRoot := []hardlinktree.TorrentFile{
 		{Path: "Movie/video.mkv", Size: 1000},
 		{Path: "Movie/subs.srt", Size: 100},
 	}
-	// Rootless files (isolation needed)
 	filesRootless := []hardlinktree.TorrentFile{
 		{Path: "video.mkv", Size: 1000},
 		{Path: "subs.srt", Size: 100},
 	}
 
-	// Note: Hardlink mode always uses contentLayout=Original, so isolation
-	// decisions are based purely on whether the torrent has a common root folder.
+	// Link mode always uses contentLayout=Original, so every preset adds the
+	// torrent's own root folder, or an isolation folder for a rootless torrent.
 	tests := []struct {
-		name                  string
-		preset                string
-		baseDir               string
-		torrentHash           string
-		torrentName           string
-		instanceName          string
-		incomingTrackerDomain string
-		trackerDisplay        string
-		candidateFiles        []hardlinktree.TorrentFile
-		wantContains          []string // substrings that should be in the result
-		wantNotContains       []string // substrings that should NOT be in the result
+		name           string
+		preset         string
+		files          []hardlinktree.TorrentFile
+		wantTopFolder  string
+		wantDestDir    string
+		trackerDisplay string
 	}{
-		{
-			name:           "flat preset always uses isolation folder",
-			preset:         "flat",
-			baseDir:        "/hardlinks",
-			torrentHash:    "abcdef1234567890",
-			torrentName:    "My.Movie.2024",
-			instanceName:   "qbt1",
-			candidateFiles: filesWithRoot,
-			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"}, // human-readable name + short hash
-		},
-		{
-			name:                  "by-tracker with root folder - no isolation",
-			preset:                "by-tracker",
-			baseDir:               "/hardlinks",
-			torrentHash:           "abcdef1234567890",
-			torrentName:           "My.Movie.2024",
-			instanceName:          "qbt1",
-			incomingTrackerDomain: "tracker.example.com",
-			trackerDisplay:        "MyTracker",
-			candidateFiles:        filesWithRoot,
-			wantContains:          []string{"/hardlinks/", "MyTracker"},
-			wantNotContains:       []string{"abcdef12", "My.Movie.2024--"}, // no isolation folder
-		},
-		{
-			name:                  "by-tracker with rootless - needs isolation",
-			preset:                "by-tracker",
-			baseDir:               "/hardlinks",
-			torrentHash:           "abcdef1234567890",
-			torrentName:           "My.Movie.2024",
-			instanceName:          "qbt1",
-			incomingTrackerDomain: "tracker.example.com",
-			trackerDisplay:        "MyTracker",
-			candidateFiles:        filesRootless,
-			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
-		},
-		{
-			name:            "by-instance with root folder - no isolation",
-			preset:          "by-instance",
-			baseDir:         "/hardlinks",
-			torrentHash:     "abcdef1234567890",
-			torrentName:     "My.Movie.2024",
-			instanceName:    "qbt-main",
-			candidateFiles:  filesWithRoot,
-			wantContains:    []string{"/hardlinks/", "qbt-main"},
-			wantNotContains: []string{"abcdef12", "My.Movie.2024--"},
-		},
-		{
-			name:           "by-instance with rootless - needs isolation",
-			preset:         "by-instance",
-			baseDir:        "/hardlinks",
-			torrentHash:    "abcdef1234567890",
-			torrentName:    "My.Movie.2024",
-			instanceName:   "qbt-main",
-			candidateFiles: filesRootless,
-			wantContains:   []string{"/hardlinks/", "qbt-main", "My.Movie.2024--abcdef12"},
-		},
-		{
-			name:           "unknown preset defaults to flat with isolation",
-			preset:         "unknown",
-			baseDir:        "/hardlinks",
-			torrentHash:    "abcdef1234567890",
-			torrentName:    "My.Movie.2024",
-			instanceName:   "qbt1",
-			candidateFiles: filesWithRoot,
-			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"},
-		},
+		{name: "flat with root folder", preset: "flat", files: filesWithRoot, wantTopFolder: "/hardlinks/Movie", wantDestDir: "/hardlinks"},
+		{name: "flat rootless", preset: "flat", files: filesRootless, wantTopFolder: "/hardlinks/My.Movie.2024", wantDestDir: "/hardlinks/My.Movie.2024"},
+		{name: "unknown preset is flat", preset: "unknown", files: filesWithRoot, wantTopFolder: "/hardlinks/Movie", wantDestDir: "/hardlinks"},
+		{name: "by-tracker with root folder", preset: "by-tracker", trackerDisplay: "MyTracker", files: filesWithRoot, wantTopFolder: "/hardlinks/MyTracker/Movie", wantDestDir: "/hardlinks/MyTracker"},
+		{name: "by-tracker rootless", preset: "by-tracker", trackerDisplay: "MyTracker", files: filesRootless, wantTopFolder: "/hardlinks/MyTracker/My.Movie.2024", wantDestDir: "/hardlinks/MyTracker/My.Movie.2024"},
+		{name: "by-instance with root folder", preset: "by-instance", files: filesWithRoot, wantTopFolder: "/hardlinks/qbt-main/Movie", wantDestDir: "/hardlinks/qbt-main"},
+		{name: "by-instance rootless", preset: "by-instance", files: filesRootless, wantTopFolder: "/hardlinks/qbt-main/My.Movie.2024", wantDestDir: "/hardlinks/qbt-main/My.Movie.2024"},
 	}
 
 	for _, tt := range tests {
@@ -212,54 +148,22 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			var customizations []*models.TrackerCustomization
 			if tt.trackerDisplay != "" {
 				customizations = []*models.TrackerCustomization{
-					{DisplayName: tt.trackerDisplay, Domains: []string{tt.incomingTrackerDomain}},
+					{DisplayName: tt.trackerDisplay, Domains: []string{"tracker.example.com"}},
 				}
 			}
-			mockStore := &mockTrackerCustomizationStore{customizations: customizations}
+			s := &Service{trackerCustomizationStore: &mockTrackerCustomizationStore{customizations: customizations}}
+			instance := &models.Instance{ID: 1, Name: "qbt-main", HardlinkBaseDir: "/hardlinks", HardlinkDirPreset: tt.preset}
+			candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt-main"}
 
-			s := &Service{
-				trackerCustomizationStore: mockStore,
-			}
-
-			instance := &models.Instance{
-				ID:                1,
-				Name:              tt.instanceName,
-				HardlinkBaseDir:   tt.baseDir,
-				HardlinkDirPreset: tt.preset,
-			}
-
-			candidate := CrossSeedCandidate{
-				InstanceID:   1,
-				InstanceName: tt.instanceName,
-			}
-
-			req := &CrossSeedRequest{}
-
-			result := s.buildHardlinkDestDir(
-				context.Background(),
-				instance,
-				tt.baseDir,
-				tt.torrentHash,
-				tt.torrentName,
-				candidate,
-				tt.incomingTrackerDomain,
-				req,
-				tt.candidateFiles,
-			)
-
-			normalized := filepath.ToSlash(result)
-
-			for _, substr := range tt.wantContains {
-				assert.Contains(t, normalized, substr, "result should contain %q", substr)
-			}
-			for _, substr := range tt.wantNotContains {
-				assert.NotContains(t, normalized, substr, "result should NOT contain %q", substr)
-			}
+			presetDir := s.linkPresetDir(t.Context(), fsops.SlashPaths, instance, "/hardlinks", candidate, "tracker.example.com", &CrossSeedRequest{})
+			topFolder, destDir := linkDestDir(fsops.SlashPaths, presetDir, "My.Movie.2024", tt.files)
+			assert.Equal(t, tt.wantTopFolder, topFolder)
+			assert.Equal(t, tt.wantDestDir, destDir)
 		})
 	}
 }
 
-func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
+func TestLinkPresetDir_SanitizesNames(t *testing.T) {
 	mockStore := &mockTrackerCustomizationStore{
 		customizations: []*models.TrackerCustomization{
 			{DisplayName: "Tracker<>:\"/\\|?*Name", Domains: []string{"tracker.example.com"}},
@@ -280,21 +184,14 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 	candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"}
 	req := &CrossSeedRequest{}
 
-	// Use rootless files to force isolation folder creation (so we can verify sanitization)
-	candidateFiles := []hardlinktree.TorrentFile{
-		{Path: "movie.mkv", Size: 1000},
-	}
-
-	result := s.buildHardlinkDestDir(
-		context.Background(),
+	result := s.linkPresetDir(
+		t.Context(),
+		fsops.HostPaths,
 		instance,
 		instance.HardlinkBaseDir,
-		"abcdef1234567890",
-		"Movie",
 		candidate,
 		"tracker.example.com", // incoming tracker domain
 		req,
-		candidateFiles,
 	)
 
 	// Should not contain illegal path characters
@@ -304,6 +201,17 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 
 	// Should contain the sanitized name
 	assert.Contains(t, result, "TrackerName")
+}
+
+// firstMatchingBaseDir returns the dirs LinkIntoMatchingBaseDir offers to a
+// link function that succeeds, which is the first matching dir only.
+func firstMatchingBaseDir(t *testing.T, configured, source string) ([]string, error) {
+	var tried []string
+	err := LinkIntoMatchingBaseDir(t.Context(), configured, source, local.NewBackend(), func(dir string) error {
+		tried = append(tried, dir)
+		return nil
+	})
+	return tried, err
 }
 
 func TestFindMatchingBaseDir(t *testing.T) {
@@ -341,10 +249,10 @@ func TestFindMatchingBaseDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := FindMatchingBaseDir(context.Background(), tt.configured, "/some/source/path", local.NewBackend())
+			result, err := firstMatchingBaseDir(t, tt.configured, "/some/source/path")
 
 			if tt.wantErr {
-				require.Error(t, err)
+				require.ErrorIs(t, err, ErrNoMatchingBaseDir)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
@@ -370,7 +278,7 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
 
 	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := FindMatchingBaseDir(context.Background(), configured, sourceFile, local.NewBackend())
+	_, err := firstMatchingBaseDir(t, configured, sourceFile)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base directory")
@@ -405,7 +313,7 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := FindMatchingBaseDir(context.Background(), tt.configured, "/nonexistent/source", local.NewBackend())
+			_, err := firstMatchingBaseDir(t, tt.configured, "/nonexistent/source")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "no base directory")
 		})
@@ -420,10 +328,11 @@ func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	firstDir := filepath.Join(t.TempDir(), "first")
 	secondDir := filepath.Join(t.TempDir(), "second")
 
-	result, err := FindMatchingBaseDir(context.Background(), "  "+firstDir+" , "+secondDir+"  ", sourceFile, local.NewBackend())
+	result, err := firstMatchingBaseDir(t, "  "+firstDir+" , "+secondDir+"  ", sourceFile)
 	require.NoError(t, err)
-	assert.Equal(t, firstDir, result)
+	assert.Equal(t, []string{firstDir}, result)
 	assert.DirExists(t, firstDir)
+	assert.NoDirExists(t, secondDir, "dirs after the one that linked must not be created")
 }
 
 func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
@@ -436,10 +345,223 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 
 	validDir := filepath.Join(t.TempDir(), "valid")
 
-	result, err := FindMatchingBaseDir(context.Background(), invalidFilePath+", "+validDir, sourceFile, local.NewBackend())
+	result, err := firstMatchingBaseDir(t, invalidFilePath+", "+validDir, sourceFile)
 	require.NoError(t, err)
-	assert.Equal(t, validDir, result)
+	assert.Equal(t, []string{validDir}, result)
 	assert.DirExists(t, validDir)
+}
+
+func TestFindMatchingBaseDir_PrefersDirOnSourcePath(t *testing.T) {
+	root := t.TempDir()
+	dirA := filepath.Join(root, "a", "cross-seed")
+	dirB := filepath.Join(root, "b", "cross-seed")
+	sourceFile := filepath.Join(root, "b", "movies", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(sourceFile), 0o755))
+	require.NoError(t, os.WriteFile(sourceFile, []byte("movie"), 0o600))
+
+	result, err := firstMatchingBaseDir(t, dirA+","+dirB, sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, []string{dirB}, result)
+}
+
+func TestRankBaseDirs(t *testing.T) {
+	tests := []struct {
+		name   string
+		dirs   []string
+		source string
+		want   []string
+	}{
+		{
+			name:   "source disk first",
+			dirs:   []string{"/data/cross-seed", "/data2/cross-seed", "/data3/cross-seed"},
+			source: "/data2/movies/movie.mkv",
+			want:   []string{"/data2/cross-seed", "/data/cross-seed", "/data3/cross-seed"},
+		},
+		{
+			name:   "components, not raw string prefixes",
+			dirs:   []string{"/data/cross-seed", "/data10/cross-seed"},
+			source: "/data1/movies/movie.mkv",
+			want:   []string{"/data/cross-seed", "/data10/cross-seed"},
+		},
+		{
+			name:   "ties keep configured order",
+			dirs:   []string{"/mnt/b/cross-seed", "/mnt/a/cross-seed"},
+			source: "/mnt/c/movie.mkv",
+			want:   []string{"/mnt/b/cross-seed", "/mnt/a/cross-seed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dirs := make([]string, len(tt.dirs))
+			for i, dir := range tt.dirs {
+				dirs[i] = filepath.FromSlash(dir)
+			}
+			got := rankBaseDirs(fsops.HostPaths, dirs, filepath.FromSlash(tt.source))
+			for i := range got {
+				got[i] = filepath.ToSlash(got[i])
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func crossDeviceLinkError(target string) error {
+	return fmt.Errorf("hardlink src -> %s: %w", target, &os.LinkError{Op: "link", Old: "src", New: target, Err: syscall.EXDEV})
+}
+
+func TestLinkIntoMatchingBaseDir_Retry(t *testing.T) {
+	root := t.TempDir()
+	sourceFile := filepath.Join(root, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+	dirA := filepath.Join(root, "a")
+	dirB := filepath.Join(root, "b")
+
+	otherErr := errors.New("permission denied")
+	tests := []struct {
+		name      string
+		results   map[string]error
+		wantTried []string
+		wantErr   error
+	}{
+		{
+			name:      "cross-device error tries next dir",
+			results:   map[string]error{dirA: crossDeviceLinkError(dirA)},
+			wantTried: []string{dirA, dirB},
+		},
+		{
+			name:      "every dir cross-device returns the last error",
+			results:   map[string]error{dirA: crossDeviceLinkError(dirA), dirB: crossDeviceLinkError(dirB)},
+			wantTried: []string{dirA, dirB},
+			wantErr:   syscall.EXDEV,
+		},
+		{
+			name:      "other error stops",
+			results:   map[string]error{dirA: otherErr},
+			wantTried: []string{dirA},
+			wantErr:   otherErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tried []string
+			err := LinkIntoMatchingBaseDir(t.Context(), dirA+","+dirB, sourceFile, local.NewBackend(), func(dir string) error {
+				tried = append(tried, dir)
+				return tt.results[dir]
+			})
+			assert.Equal(t, tt.wantTried, tried)
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.NotErrorIs(t, err, ErrNoMatchingBaseDir)
+			}
+		})
+	}
+}
+
+// crossDeviceBackend fails HardlinkTree with EXDEV under the listed base dirs,
+// the way link() fails on a host whose disks share one device ID.
+type crossDeviceBackend struct {
+	*local.Backend
+	crossDevice []string
+}
+
+func (b crossDeviceBackend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	for _, dir := range b.crossDevice {
+		if plan.RootDir == dir || strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
+			return nil, crossDeviceLinkError(plan.RootDir)
+		}
+	}
+	return b.Backend.HardlinkTree(ctx, plan)
+}
+
+func TestProcessHardlinkMode_CrossDeviceTriesNextBaseDir(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	dirA := filepath.Join(tempDir, "links-a")
+	dirB := filepath.Join(tempDir, "links-b")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+	tests := []struct {
+		name         string
+		crossDevice  []string
+		wantSuccess  bool
+		wantBaseDir  string
+		wantFallback bool
+	}{
+		{name: "first dir cross-device", crossDevice: []string{dirA}, wantSuccess: true, wantBaseDir: dirB},
+		{name: "every dir cross-device", crossDevice: []string{dirA, dirB}, wantFallback: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sync := &rootlessSavePathSyncManager{}
+			s := &Service{
+				instanceStore: &mockInstanceStore{
+					instances: map[int]*models.Instance{
+						1: {
+							ID:                       1,
+							Name:                     "qbt1",
+							HasLocalFilesystemAccess: true,
+							UseHardlinks:             true,
+							HardlinkBaseDir:          dirA + "," + dirB,
+							FallbackToRegularMode:    true,
+						},
+					},
+				},
+				syncManager: sync,
+			}
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, crossDeviceBackend{local.NewBackend(), tt.crossDevice}))
+
+			files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+			adds := withLinkAdder(s)
+			result := s.processHardlinkMode(
+				t.Context(),
+				linkCheck(1, "hash123"),
+				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
+				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+				"exact", files, files,
+				&qbt.TorrentProperties{SavePath: downloadsDir},
+				"category", "category.cross",
+			)
+
+			require.Equal(t, tt.wantSuccess, result.Success, "result: %+v", result)
+			assert.Equal(t, tt.wantFallback, result.FallbackToRegular)
+			categorySavePath, categoryCreated := s.createdCategories.Load("1:category.cross")
+			if tt.wantBaseDir == "" {
+				assert.False(t, categoryCreated, "a failed link tree must not create the category")
+				return
+			}
+			// The torrent's root folder goes into the base dir. The folder that
+			// the cross-device dir reserved is free again.
+			require.Len(t, adds.added, 1)
+			assert.Equal(t, tt.wantBaseDir, adds.added[0]["savepath"])
+			assert.NoDirExists(t, filepath.Join(dirA, "Movie"))
+			require.True(t, categoryCreated)
+			assert.Equal(t, normalizePathForComparison(tt.wantBaseDir), categorySavePath)
+		})
+	}
+}
+
+func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
+	root := t.TempDir()
+	dirA := filepath.Join(root, "a", "cross-seed")
+	dirB := filepath.Join(root, "b", "cross-seed")
+	savePath := filepath.Join(root, "b", "movies")
+	for _, dir := range []string{dirA, dirB, savePath} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: dirA + "," + dirB}
+	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}}}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	got, _ := s.previewLinkBaseDir(t.Context(), instance, savePath)
+	assert.Equal(t, dirB, got)
 }
 
 func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
@@ -528,8 +650,8 @@ func TestProcessLinkMode_RejectsUnsafeCandidatePathsWithoutFallback(t *testing.T
 					if mode == "reflink" {
 						process = service.processReflinkMode
 					}
-					result := process(t.Context(), CrossSeedCandidate{InstanceID: 1},
-						nil, "hash", "", "Synthetic.Release", &CrossSeedRequest{}, &qbt.Torrent{}, "exact",
+					result := process(t.Context(), linkCheck(1, "hash"), CrossSeedCandidate{InstanceID: 1},
+						nil, "hash", "Synthetic.Release", &CrossSeedRequest{}, &qbt.Torrent{}, "exact",
 						qbt.TorrentFiles{{Name: "Synthetic.Release/video.mkv", Size: 5}},
 						qbt.TorrentFiles{{Name: "Synthetic.Release/safe.mkv", Size: 3}, {Name: name, Size: 5}},
 						&qbt.TorrentProperties{SavePath: t.TempDir()}, "", "")
@@ -562,12 +684,13 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -599,12 +722,13 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -663,20 +787,21 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 			},
 		},
 		syncManager: &rootlessSavePathSyncManager{},
-		postInjectionHook: func(_ context.Context, instanceID int, torrentHash string) {
-			if instanceID == 1 && torrentHash == "hash123" {
+		postInjectionHook: func(_ context.Context, instanceID int, hashes []string) {
+			if instanceID == 1 && strings.Join(hashes, ",") == "hash123" {
 				hookCallCount++
 			}
 		},
 	}
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
@@ -712,42 +837,102 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 				},
 			},
 		},
-		syncManager:       syncManager,
-		recheckResumeChan: make(chan *pendingResume, 1),
-		recheckResumeCtx:  context.Background(),
+		syncManager: syncManager,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service,
+			scripted("hash123", qbt.TorrentStateCheckingUp, 0.5, 0),
+			scripted("hash123", qbt.TorrentStatePausedUp, 1, 0),
+		)
 
-	result := service.processHardlinkMode(
-		context.Background(),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"Renamed",
-		&CrossSeedRequest{SkipAutoResume: true},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-		"size",
-		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"",
-		"",
-	)
+		withLinkAdder(service)
+		result := service.processHardlinkMode(
+			context.Background(),
+			linkCheck(1, "hash123"),
+			CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+			[]byte("torrent"),
+			"hash123",
+			"Renamed",
+			&CrossSeedRequest{SkipAutoResume: true},
+			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+			"size",
+			qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+			qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+			&qbt.TorrentProperties{SavePath: downloadsDir},
+			"",
+			"",
+		)
 
-	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "true", syncManager.addedOptions["paused"])
-	require.Equal(t, "true", syncManager.addedOptions["stopped"])
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes)
-		require.True(t, pending.monitorOnly)
-	default:
-		require.Fail(t, "expected hardlink title rescue to wait for a full recheck")
+		require.True(t, result.Success, result.Result.Message)
+		require.Contains(t, result.Result.Message, "auto-resume skipped per settings")
+		actions, polled := script.wait()
+		require.Equal(t, []string{"recheck:hash123"}, actions, "a skipped title rescue is never resumed")
+		require.Equal(t, 2, polled, "the title rescue recheck is monitored")
+	})
+}
+
+func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
+	for _, skipAutoResume := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skipAutoResume=%v", skipAutoResume), func(t *testing.T) {
+			tempDir := t.TempDir()
+			downloadsDir := filepath.Join(tempDir, "downloads")
+			require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Original"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
+
+			service := &Service{
+				instanceStore: &mockInstanceStore{
+					instances: map[int]*models.Instance{
+						1: {
+							ID:                       1,
+							Name:                     "qbt1",
+							HasLocalFilesystemAccess: true,
+							UseHardlinks:             true,
+							HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+						},
+					},
+				},
+				syncManager: &failingRecheckSyncManager{
+					qbittorrentSync: &rootlessSavePathSyncManager{},
+					recheckErr:      context.DeadlineExceeded,
+				},
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return models.DefaultCrossSeedAutomationSettings(), nil
+				},
+			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+			stopped := scripted("hash123", qbt.TorrentStateStoppedUp, 1, 0)
+			synctest.Test(t, func(t *testing.T) {
+				script := startSettleScript(t, service, stopped, stopped)
+
+				withLinkAdder(service)
+				result := service.processHardlinkMode(
+					t.Context(),
+					linkCheck(1, "hash123"),
+					CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+					[]byte("torrent"),
+					"hash123",
+					"Renamed",
+					&CrossSeedRequest{SkipAutoResume: skipAutoResume},
+					&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+					"size",
+					qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+					qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+					&qbt.TorrentProperties{SavePath: downloadsDir},
+					"",
+					"",
+				)
+
+				require.True(t, result.Success, result.Result.Message)
+				require.NotContains(t, result.Result.Message, "manual intervention required")
+				// qBittorrent still fails the recheck, so each poll sends it again.
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck:hash123", "recheck:hash123", "recheck:hash123"}, actions)
+			})
+		})
 	}
 }
 
@@ -757,11 +942,10 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
-		reason     string
-		difference string
+		difference matchDifference
 	}{
-		{name: "relaxed season", reason: "season mismatch", difference: "season"},
-		{name: "relaxed group", reason: groupMismatchReason, difference: "group"},
+		{name: "relaxed season", difference: differenceSeason},
+		{name: "relaxed group", difference: differenceGroup},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -782,51 +966,46 @@ func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 						},
 					},
 				},
-				syncManager:       syncManager,
-				recheckResumeChan: make(chan *pendingResume, 1),
-				recheckResumeCtx:  context.Background(),
+				syncManager: syncManager,
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return models.DefaultCrossSeedAutomationSettings(), nil
 				},
 			}
 
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+			synctest.Test(t, func(t *testing.T) {
+				script := startSettleScript(t, service, verifyScript("hash123")...)
 
-			result := service.processHardlinkMode(
-				context.Background(),
-				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"),
-				"hash123",
-				"",
-				"Renamed",
-				&CrossSeedRequest{
-					SearchDecision: searchDecisionProvenance{
-						Class:                searchCandidateClassExactSizeFallback,
-						SourceInstanceID:     1,
-						SourceHash:           "matched",
-						StrictMismatchReason: tt.reason,
-						RelaxedDifferences:   []string{tt.difference},
+				withLinkAdder(service)
+				result := service.processHardlinkMode(
+					context.Background(),
+					linkCheck(1, "hash123"),
+					CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"),
+					"hash123",
+					"Renamed",
+					&CrossSeedRequest{
+						SearchDecision: searchDecisionProvenance{
+							Class:            searchCandidateClassExactSizeFallback,
+							SourceInstanceID: 1,
+							SourceHash:       "matched",
+							Relaxed:          differencesOf(tt.difference),
+						},
 					},
-				},
-				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-				"size",
-				qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-				qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-				&qbt.TorrentProperties{SavePath: downloadsDir},
-				"",
-				"",
-			)
+					&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+					"size",
+					qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+					qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+					&qbt.TorrentProperties{SavePath: downloadsDir},
+					"",
+					"",
+				)
 
-			require.True(t, result.Success, result.Result.Message)
-			require.Equal(t, "true", syncManager.addedOptions["paused"])
-			select {
-			case pending := <-service.recheckResumeChan:
-				require.NotNil(t, pending.budgetBytes)
-				require.Zero(t, *pending.budgetBytes, "a relaxed match must resume only after a full recheck")
-				requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
-			default:
-				require.Fail(t, "expected the relaxed pairing to wait for a full recheck")
-			}
+				require.True(t, result.Success, result.Result.Message)
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck:hash123", "resume:hash123"}, actions,
+					"a relaxed match resumes only after an observed full recheck")
+			})
 		})
 	}
 }
@@ -853,21 +1032,21 @@ func TestProcessHardlinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
+	adds := withLinkAdder(service)
 	result := service.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "newhash"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"newhash",
-		"",
 		"Renamed",
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "bound",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:            searchCandidateClassExactSizeFallback,
+				SourceInstanceID: 1,
+				SourceHash:       "bound",
+				Relaxed:          differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "strict", ContentPath: filepath.Join(downloadsDir, "Original")},
@@ -880,9 +1059,8 @@ func TestProcessHardlinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 	)
 
 	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "false", syncManager.addedOptions["paused"])
-	require.Equal(t, "false", syncManager.addedOptions["stopped"])
-	require.Empty(t, syncManager.bulkActions)
+	require.Len(t, adds.added, 1)
+	require.Empty(t, adds.actions)
 }
 
 func TestProcessReflinkMode_RelaxedGroupSkipRecheck(t *testing.T) {
@@ -904,21 +1082,21 @@ func TestProcessReflinkMode_RelaxedGroupSkipRecheck(t *testing.T) {
 
 	// Identical layouts, so only the relaxed group can demand the recheck.
 	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}}
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "matched",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:            searchCandidateClassExactSizeFallback,
+				SourceInstanceID: 1,
+				SourceHash:       "matched",
+				Relaxed:          differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
@@ -955,9 +1133,7 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 				},
 			},
 		},
-		syncManager:       syncManager,
-		recheckResumeChan: make(chan *pendingResume, 1),
-		recheckResumeCtx:  context.Background(),
+		syncManager: syncManager,
 		reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			materialized = true
 			return &fsops.TreeCreateResult{}, nil
@@ -968,44 +1144,40 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 	}
 
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, verifyScript("hash123")...)
 
-	result := service.processReflinkMode(
-		context.Background(),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"Renamed",
-		&CrossSeedRequest{
-			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "matched",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+		withLinkAdder(service)
+		result := service.processReflinkMode(
+			context.Background(),
+			linkCheck(1, "hash123"),
+			CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+			[]byte("torrent"),
+			"hash123",
+			"Renamed",
+			&CrossSeedRequest{
+				SearchDecision: searchDecisionProvenance{
+					Class:            searchCandidateClassExactSizeFallback,
+					SourceInstanceID: 1,
+					SourceHash:       "matched",
+					Relaxed:          differencesOf(differenceGroup),
+				},
 			},
-		},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-		"size",
-		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"",
-		"",
-	)
+			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+			"size",
+			qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+			qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+			&qbt.TorrentProperties{SavePath: downloadsDir},
+			"",
+			"",
+		)
 
-	require.True(t, materialized, "reflink materialization seam must be exercised")
-	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "true", syncManager.addedOptions["paused"])
-	require.Equal(t, "true", syncManager.addedOptions["stopped"])
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes, "a relaxed match must resume only after a full recheck")
-		requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
-	default:
-		require.Fail(t, "expected the relaxed reflink pairing to wait for a full recheck")
-	}
+		require.True(t, materialized, "reflink materialization seam must be exercised")
+		require.True(t, result.Success, result.Result.Message)
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck:hash123", "resume:hash123"}, actions,
+			"a relaxed reflink match resumes only after an observed full recheck")
+	})
 }
 
 func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
@@ -1035,21 +1207,21 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
+	adds := withLinkAdder(service)
 	result := service.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "newhash"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"newhash",
-		"",
 		"Renamed",
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "bound",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:            searchCandidateClassExactSizeFallback,
+				SourceInstanceID: 1,
+				SourceHash:       "bound",
+				Relaxed:          differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "strict", ContentPath: filepath.Join(downloadsDir, "Original")},
@@ -1063,9 +1235,8 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 
 	require.True(t, materialized)
 	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "false", syncManager.addedOptions["paused"])
-	require.Equal(t, "false", syncManager.addedOptions["stopped"])
-	require.Empty(t, syncManager.bulkActions)
+	require.Len(t, adds.added, 1)
+	require.Empty(t, adds.actions)
 }
 
 func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
@@ -1085,12 +1256,13 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -1130,12 +1302,13 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/also/nonexistent/path"},
@@ -1188,12 +1361,13 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		{Name: "Movie/movie.mkv", Size: 1000},
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
@@ -1244,12 +1418,13 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		{Name: "Movie/movie.mkv", Size: 1000},
 	}
 
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
@@ -1304,7 +1479,7 @@ func TestResumeBudgetBytes(t *testing.T) {
 				},
 			}
 
-			assert.Equal(t, tt.want, s.resumeBudgetBytes(context.Background()))
+			assert.Equal(t, tt.want, s.ResumeBudgetBytes(context.Background()))
 		})
 	}
 }
@@ -1331,12 +1506,13 @@ func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.
 		syncManager: sync,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
@@ -1381,12 +1557,13 @@ func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T
 		syncManager: sync,
 	}
 
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
@@ -1516,12 +1693,13 @@ func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t 
 	}
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: downloadsDir},
@@ -1560,12 +1738,13 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -1601,12 +1780,13 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processHardlinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -1645,12 +1825,13 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -1686,12 +1867,13 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
+	withLinkAdder(s)
 	result := s.processReflinkMode(
 		context.Background(),
+		linkCheck(1, "hash123"),
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
-		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -1710,19 +1892,19 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "base directory")
 }
 
-// cancelOnAddSyncManager cancels the run's context from inside AddTorrent and
+// cancelOnAddSync cancels the run's context from inside AddTorrent and
 // then fails the add, so the rollback that follows runs under a cancelled
 // context. It records how many entries the link base held at that moment, which
 // keeps the "base dir is empty afterwards" assertion non-vacuous.
-type cancelOnAddSyncManager struct {
-	*rootlessSavePathSyncManager
+type cancelOnAddSync struct {
+	*adderFake
 	cancel       context.CancelFunc
 	err          error
 	watchDir     string
 	entriesAtAdd int
 }
 
-func (m *cancelOnAddSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+func (m *cancelOnAddSync) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
 	entries, _ := os.ReadDir(m.watchDir)
 	m.entriesAtAdd = len(entries)
 	m.cancel()
@@ -1759,8 +1941,8 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 			configure: func(i *models.Instance) { i.UseHardlinks = true },
 			backend:   local.NewBackend(),
 			process: func(s *Service, ctx context.Context, matched *qbt.Torrent, files qbt.TorrentFiles, props *qbt.TorrentProperties) (bool, bool) {
-				result := s.processHardlinkMode(ctx, CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-					[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+				result := s.processHardlinkMode(ctx, linkCheck(1, "hash123"), CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
 					matched, "exact", files, files, props, "category", "category.cross")
 				return result.Used, result.Success
 			},
@@ -1770,8 +1952,8 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 			configure: func(i *models.Instance) { i.UseReflinks = true },
 			backend:   reflinkCapableBackend{local.NewBackend()},
 			process: func(s *Service, ctx context.Context, matched *qbt.Torrent, files qbt.TorrentFiles, props *qbt.TorrentProperties) (bool, bool) {
-				result := s.processReflinkMode(ctx, CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-					[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+				result := s.processReflinkMode(ctx, linkCheck(1, "hash123"), CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
 					matched, "exact", files, files, props, "category", "category.cross")
 				return result.Used, result.Success
 			},
@@ -1789,11 +1971,11 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			sync := &cancelOnAddSyncManager{
-				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
-				cancel:                      cancel,
-				err:                         errors.New("add failed"),
-				watchDir:                    linkBase,
+			sync := &cancelOnAddSync{
+				adderFake: &adderFake{},
+				cancel:    cancel,
+				err:       errors.New("add failed"),
+				watchDir:  linkBase,
 			}
 			instance := &models.Instance{
 				ID:                       1,
@@ -1804,8 +1986,9 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 			tt.configure(instance)
 			s := &Service{
 				instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}},
-				syncManager:   sync,
+				syncManager:   &rootlessSavePathSyncManager{},
 			}
+			s.adder = NewAdder(sync, nil, nil, s.ResumeBudgetBytes, s.RunExternalProgram)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, tt.backend))
 
 			files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
@@ -1861,4 +2044,109 @@ func TestShouldWarnForReflinkCreateError(t *testing.T) {
 			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
 		})
 	}
+}
+
+// An existing target means the tree is half made in the target dir, so link
+// mode reports the error instead of adding in regular mode (#2942 decision 5).
+// A stranger's file sits where the link would go; both backends answer that
+// with hardlinktree.ErrTargetExists.
+func TestProcessHardlinkMode_ExistingTargetRefusesInsteadOfFallingBack(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	linksDir := filepath.Join(tempDir, "links")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+	// Another torrent holds the root folder, so the tree goes into the hashed
+	// isolation folder, where a stranger's file sits.
+	require.NoError(t, os.MkdirAll(filepath.Join(linksDir, "Movie"), 0o755))
+	stranger := filepath.Join(linksDir, "TorrentName--hash123", "Movie", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
+	require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: {
+			ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+			HardlinkBaseDir: linksDir, FallbackToRegularMode: true,
+		}}},
+		syncManager: sync,
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	withLinkAdder(s)
+	result := s.processHardlinkMode(
+		t.Context(),
+		linkCheck(1, "hash123"),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact", files, files,
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category", "category.cross",
+	)
+
+	require.False(t, result.Success, "result: %+v", result)
+	assert.Equal(t, "hardlink_error", result.Result.Status, "the refusal is reported as a hardlink error")
+	assert.False(t, result.FallbackToRegular, "an existing target must not become a regular add")
+	assert.False(t, result.RequiresFullRecheck)
+	assert.Empty(t, sync.addedOptions, "nothing is added")
+}
+
+func TestLinkIntoNewFolder(t *testing.T) {
+	t.Parallel()
+
+	withRoot := []hardlinktree.TorrentFile{{Path: "Movie/movie.mkv"}, {Path: "Movie/subs.srt"}}
+	rootless := []hardlinktree.TorrentFile{{Path: "movie.mkv"}, {Path: "subs.srt"}}
+	tests := []struct {
+		name     string
+		files    []hardlinktree.TorrentFile
+		existing string // folder already in the preset dir
+		wantDest string // relative to the preset dir
+		wantNew  string // folder the call reserves, "" when it falls back
+	}{
+		{name: "root folder is free", files: withRoot, wantDest: ".", wantNew: "Movie"},
+		{name: "root folder is taken", files: withRoot, existing: "Movie", wantDest: "Movie.2024--abcdef12"},
+		{name: "rootless name is free", files: rootless, wantDest: "Movie.2024", wantNew: "Movie.2024"},
+		{name: "rootless name is taken", files: rootless, existing: "Movie.2024", wantDest: "Movie.2024--abcdef12"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// The preset dir does not exist yet, as for a tracker's first add.
+			presetDir := filepath.Join(t.TempDir(), "Tracker")
+			if tt.existing != "" {
+				require.NoError(t, os.MkdirAll(filepath.Join(presetDir, tt.existing), 0o755))
+			}
+
+			var gotDest string
+			created, err := LinkIntoNewFolder(t.Context(), local.NewBackend(), presetDir, "ABCDEF1234567890", "Movie.2024", tt.files,
+				func(destDir string) (*fsops.TreeCreateResult, error) {
+					gotDest = destDir
+					return &fsops.TreeCreateResult{}, nil
+				})
+			require.NoError(t, err)
+			require.Equal(t, filepath.Join(presetDir, tt.wantDest), gotDest)
+
+			if tt.wantNew == "" {
+				assert.Empty(t, created.Dirs)
+				return
+			}
+			// RemoveTree after a failed add takes back the reserved folder.
+			assert.Equal(t, []string{filepath.Join(presetDir, tt.wantNew)}, created.Dirs)
+			assert.DirExists(t, filepath.Join(presetDir, tt.wantNew))
+		})
+	}
+}
+
+func TestLinkIntoNewFolder_FailedLinkFreesTheName(t *testing.T) {
+	t.Parallel()
+
+	presetDir := t.TempDir()
+	linkErr := errors.New("link failed")
+	_, err := LinkIntoNewFolder(t.Context(), local.NewBackend(), presetDir, "abcdef1234567890", "Movie.2024",
+		[]hardlinktree.TorrentFile{{Path: "movie.mkv"}},
+		func(string) (*fsops.TreeCreateResult, error) { return nil, linkErr })
+	require.ErrorIs(t, err, linkErr)
+	assert.NoDirExists(t, filepath.Join(presetDir, "Movie.2024"))
 }

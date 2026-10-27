@@ -8,6 +8,7 @@ import { api } from "@/lib/api"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 import { act, renderHook } from "@testing-library/react"
+import { toast } from "sonner"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -47,7 +48,6 @@ function exportSelection(torrents: Torrent[], overrides: Record<string, unknown>
     hashes: torrents.map(t => t.hash),
     torrents,
     isAllSelected: false,
-    totalSelected: torrents.length,
     ...overrides,
   }
 }
@@ -135,7 +135,6 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 2,
         instanceIds: [2, 3],
       }))
     })
@@ -161,13 +160,50 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 1,
       }))
     })
 
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(2, expect.any(Object))
     expect(mockedApi.getCrossInstanceTorrents).not.toHaveBeenCalled()
     expect(mockedApi.exportTorrent).toHaveBeenCalledWith(2, "aaa")
+  })
+
+  it("reads every matching page, also past a stale Exclusion", async () => {
+    mockedApi.getTorrents.mockResolvedValue({
+      torrents: [makeTorrent({ hash: "aaa" }), makeTorrent({ hash: "bbb" })],
+      total: 2,
+      hasMore: false,
+    })
+
+    const { result } = renderHook(() => useTorrentExporter({ instanceId: 2, incognitoMode: false }))
+
+    await act(async () => {
+      await result.current.exportTorrents(exportSelection([], {
+        isAllSelected: true,
+        excludeHashes: ["gone"],
+      }))
+    })
+
+    expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(2)
+  })
+
+  it("exports nothing when an instance in unified scope did not answer", async () => {
+    mockedApi.getCrossInstanceTorrents.mockResolvedValue({
+      torrents: [],
+      crossInstanceTorrents: [makeCrossTorrent({ hash: "aaa", instanceId: 2 })],
+      total: 1,
+      hasMore: false,
+      partialResults: true,
+    })
+
+    const { result } = renderHook(() => useTorrentExporter({ instanceId: 0, incognitoMode: false }))
+
+    await act(async () => {
+      await result.current.exportTorrents(exportSelection([], { isAllSelected: true }))
+    })
+
+    expect(mockedApi.exportTorrent).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("contextMenu.toast.exportFailed")
   })
 
   it("skips excluded instance:hash targets in unified scope", async () => {
@@ -186,7 +222,6 @@ describe("useTorrentExporter — select-all", () => {
     await act(async () => {
       await result.current.exportTorrents(exportSelection([], {
         isAllSelected: true,
-        totalSelected: 1,
         excludeTargets: [{ instanceId: 2, hash: "same" }],
       }))
     })

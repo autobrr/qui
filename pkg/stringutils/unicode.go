@@ -119,6 +119,10 @@ func normalized(s string) string {
 	// Normalize commas to spaces - "show,title" → "show title"
 	s = strings.ReplaceAll(s, ",", " ")
 
+	// Periods become spaces - "Madame de..." → "madame de". A dotted name
+	// loses its periods when it is parsed; an announce keeps them.
+	s = strings.ReplaceAll(s, ".", " ")
+
 	// Normalize ampersand to "and" - "His & Hers" → "His and Hers"
 	s = strings.ReplaceAll(s, "&", " and ")
 
@@ -155,6 +159,7 @@ func NormalizeUnicode(s string) string {
 //   - Convert colons to spaces
 //   - Strip exclamation and question marks
 //   - Convert commas to spaces
+//   - Convert periods to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
 //   - Replace decorative anime title symbols via animeTitleSymbolReplacer, e.g. "Classic★Stars" to "classic stars"

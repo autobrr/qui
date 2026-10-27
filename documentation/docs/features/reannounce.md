@@ -15,7 +15,7 @@ qui never spams trackers. If a tracker update is in progress or a response is pe
 
 ## Quick start
 
-1. Open **Automations** in the main navigation.
+1. Open **Automations** in the main navigation, then select the **Reannounce** section.
 2. Find your instance in the **Reannounce** card.
 3. Turn on the switch next to the instance name. In the dialog that opens, click **Enable**.
 4. If you want to change settings, expand the instance row and click **Configure**. Adjust the values and click **Save Changes**.
@@ -56,7 +56,7 @@ Quick Retry helps on trackers that register new uploads slowly. Some sites need 
 
 If you want to view activity:
 
-1. Open **Automations** and find your instance in the **Reannounce** card.
+1. Open **Automations**, select the **Reannounce** section, and find your instance in the **Reannounce** card.
 2. Expand the instance row, click **Configure**, then select the **Activity Log** tab.
 
 The log displays a real-time feed of every checked torrent. It shows whether qui succeeded, failed, or skipped the reannounce, for example because the tracker already works.

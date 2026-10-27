@@ -416,7 +416,6 @@ type TransmissionResumeFile struct {
 	Labels                 []string                         `bencode:"labels"`
 	MaxPeers               int64                            `bencode:"max-peers"`
 	Paused                 bool                             `bencode:"paused"`
-	Peers                  string                           `bencode:"peers2"`
 	ActivityDate           int64                            `bencode:"activity-date"`
 	AddedDate              int64                            `bencode:"added-date"`
 	Dnd                    []int                            `bencode:"dnd"`

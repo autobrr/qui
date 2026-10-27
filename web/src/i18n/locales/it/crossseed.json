@@ -82,14 +82,12 @@
     "cancel": "Annulla",
     "runNow": "Esegui ora",
     "saveSettings": "Salva le impostazioni di automazione RSS",
-    "reset": "Reimposta",
     "requiresTorznabIndexer": "Le esecuzioni dell'automazione RSS richiedono almeno un indexer Torznab.",
     "items": "{{count}} elementi",
     "failedCount": "{{count}} non riusciti",
     "runError": "Errore: {{message}}",
     "runSummary": "{{runs}} esecuzioni • +{{added}}",
     "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} • {{failed}} non riusciti",
-    "runDisabledAlreadyRunning": "Un'esecuzione dell'automazione è già in corso.",
     "runDisabledCooldown": "Le esecuzioni manuali sono limitate a un intervallo di {{minutes}} minuti. Riprova tra {{remaining}}."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: abilitato (chiave RED impostata, OPS mancante)",
       "enabledKeysMissing": "Gazelle: abilitato (chiavi mancanti)"
     },
-    "noMessageProvided": "Nessun messaggio disponibile"
+    "noMessageProvided": "Nessun messaggio disponibile",
+    "cancelDialog": {
+      "title": "Annullare la scansione della libreria?",
+      "description": "Questo interrompe la scansione corrente della libreria. I cross-seed già aggiunti restano, ma non vengono cercati altri torrent."
+    }
   },
   "rules": {
     "hardlinkReflink": "Modalità Hardlink / Reflink",
@@ -210,7 +212,7 @@
     "reflinkDescription": "Crea cloni in reflink. Più sicuro per i file aggiuntivi/mancanti, mitiga al meglio la corruzione.",
     "baseDirectories": "Directory di base",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Percorsi separati da virgole. Verrà usata la prima directory sullo stesso filesystem dell'origine.",
+    "baseDirectoriesDescription": "Percorsi separati da virgole. qui usa una directory sullo stesso filesystem dell'origine, provando prima quella che condivide con essa il prefisso di percorso più lungo. Dopo un errore di collegamento tra dispositivi, prova quella successiva.",
     "directoryOrganization": "Organizzazione delle directory",
     "flat": "Piatta (tutto nella directory di base)",
     "byTracker": "Per tracker",
@@ -283,7 +285,7 @@
       "rescueTitleMismatches": "Recupera titoli non corrispondenti",
       "rescueTitleMismatchesDescription": "Prova in totale fino a tre risultati di dimensione esatta per ogni ricerca sorgente, su tutti gli indicizzatori. qui controlla tutti i dati prima di avviare il torrent. Salta ricontrollo disattiva questa regola.",
       "skipRecheck": "Ignora le corrispondenze che richiedono la riverifica",
-      "skipRecheckDescription": "Ignora le corrispondenze che richiedono una riverifica a causa di percorsi rinominati, file aggiuntivi o mancanti, ripiego dalla modalità hardlink/reflink o strutture di disco (BDMV/VIDEO_TS). Ignora anche le corrispondenze con dimensione esatta basate su dati diversi relativi a stagione, episodio o gruppo di release. Quando questa opzione è disattivata, qui aggiunge queste corrispondenze in pausa e le riverifica.",
+      "skipRecheckDescription": "Ignora le corrispondenze che richiedono una riverifica a causa di percorsi rinominati, file aggiuntivi o mancanti, ripiego dalla modalità hardlink/reflink o strutture di disco (BDMV/VIDEO_TS). Ignora anche le corrispondenze con dimensione esatta basate su dati diversi relativi a stagione, episodio o gruppo di release. Una corrispondenza completa (ogni file ha un file della stessa dimensione, non ci sono file aggiuntivi e al massimo cambiano i percorsi) viene comunque aggiunta senza riverifica. Un episodio da un pacchetto stagionale, una struttura di disco, una corrispondenza con dimensione esatta e dati diversi, file della stessa dimensione con nomi ambigui e un file .nfo o di sottotitoli rinominato non sono mai corrispondenze complete. Quando questa opzione è disattivata, qui aggiunge queste corrispondenze in pausa e le riverifica.",
       "pieceBoundaryDisabled": "Verifica di sicurezza dei confini dei pezzi attualmente disabilitata",
       "pieceBoundaryEnabled": "Verifica di sicurezza dei confini dei pezzi abilitata",
       "pieceBoundaryDisabledDescription": "Consenti le corrispondenze anche se i file aggiuntivi condividono pezzi con il contenuto. Può corrompere i file esistenti in distribuzione se il contenuto differisce. Considera invece la modalità reflink.",
@@ -359,6 +361,9 @@
       "matching": "Regole che decidono quali candidati qui aggiunge, per tutte le sorgenti.",
       "categories": "La categoria e i tag che qui assegna a ogni nuovo cross-seed."
     }
+  },
+  "run": {
+    "starting": "L'esecuzione è in fase di avvio."
   },
   "seasonPackRuns": {
     "title": "Esecuzioni recenti dei pacchetti stagionali",
@@ -555,6 +560,7 @@
       "requeueFailed": "Impossibile riprovare i file senza corrispondenza: {{error}}",
       "resetFailed": "Reimpostazione dei file non riuscita: {{error}}"
     },
+    "webhookScanStatus": "Analisi webhook · {{status}}",
     "statusLabels": {
       "queued": "In coda",
       "scanning": "Analisi in corso",

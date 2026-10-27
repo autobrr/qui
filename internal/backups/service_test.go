@@ -10,8 +10,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -148,7 +150,7 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 		close(started)
 	}()
 
-	timer := time.NewTimer(250 * time.Millisecond)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	select {
@@ -1118,34 +1120,38 @@ func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
 }
 
 func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
+		start := time.Now()
+		// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+		require.Equal(t, 200*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	err := adaptiveExportDelay(ctx, time.Second, 0)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+		start := time.Now()
+		err := adaptiveExportDelay(ctx, time.Second, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
@@ -1407,6 +1413,77 @@ func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 
 	_, err = os.Stat(blobAbsPath)
 	require.NoError(t, err)
+}
+
+func TestDeleteRunKeepsBlobsWhileARunReferencesThemSQLite(t *testing.T) {
+	t.Parallel()
+	checkDeleteRunKeepsBlobsWhileARunReferencesThem(t, setupTestBackupDB(t))
+}
+
+func TestDeleteRunKeepsBlobsWhileARunReferencesThemPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkDeleteRunKeepsBlobsWhileARunReferencesThem(t, testdb.NewMigratedPostgres(t, "backups-blob-refs"))
+}
+
+// Item rows cover ranges of runs, so a blob must survive while any remaining
+// run's range reaches its row, and go once none does. The three torrents give
+// the three row shapes: open from the first run, closed after one run, and
+// closed after being shared by two runs.
+func checkDeleteRunKeepsBlobsWhileARunReferencesThem(t *testing.T, db *database.DB) {
+	ctx := t.Context()
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "blob-refs", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobs := map[string]string{} // rel -> abs
+	blob := func(name string) *string {
+		rel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", name))
+		abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte("blob"), 0o600))
+		blobs[name] = abs
+		return &rel
+	}
+	unchanged, xOld, xNew, dropped := blob("unchanged.torrent"), blob("x-old.torrent"), blob("x-new.torrent"), blob("dropped.torrent")
+
+	now := time.Unix(0, 0).UTC()
+	commit := func(items ...models.BackupItem) int64 {
+		run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess,
+			RequestedBy: "tester", RequestedAt: now, CompletedAt: &now}
+		require.NoError(t, store.CreateRun(ctx, run))
+		require.NoError(t, store.InsertItems(ctx, run.ID, items))
+		return run.ID
+	}
+	item := func(hash string, blobPath *string) models.BackupItem {
+		return models.BackupItem{TorrentHash: hash, Name: hash, SizeBytes: 1, TorrentBlobPath: blobPath}
+	}
+	runA := commit(item("unchanged", unchanged), item("x", xOld), item("dropped", dropped))
+	runB := commit(item("unchanged", unchanged), item("x", xNew), item("dropped", dropped))
+	runC := commit(item("unchanged", unchanged), item("x", xNew))
+
+	requireBlobs := func(step string, kept ...string) {
+		t.Helper()
+		for name, abs := range blobs {
+			if slices.Contains(kept, name) {
+				require.FileExists(t, abs, "%s: %s is still referenced", step, name)
+			} else {
+				require.NoFileExists(t, abs, "%s: %s is no longer referenced", step, name)
+			}
+		}
+	}
+
+	require.NoError(t, svc.DeleteRun(ctx, runA))
+	requireBlobs("after deleting A", "unchanged.torrent", "x-new.torrent", "dropped.torrent")
+
+	require.NoError(t, svc.DeleteRun(ctx, runB))
+	requireBlobs("after deleting B", "unchanged.torrent", "x-new.torrent")
+
+	require.NoError(t, svc.DeleteRun(ctx, runC))
+	requireBlobs("after deleting C")
 }
 
 func TestCleanupOrphanedBlobs(t *testing.T) {

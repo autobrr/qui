@@ -22,7 +22,7 @@ Thumbs.db
 .vscode
 
 # Package manager
-node_modules/
+node_modules
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -67,6 +67,7 @@ docs/*
 !docs/remote-backend-design.md
 !docs/agents/
 !docs/adr/
+!docs/standards/
 .mcp_unused.json
 config.toml
 .env

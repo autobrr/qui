@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/sshpool"
 )
@@ -35,6 +36,37 @@ type InstancesHandler struct {
 	// sshPool is told when what a connection depends on changes; sshDialer
 	// stays separate so ssh-test never consults the pool's memo.
 	sshPool *sshpool.Pool
+	// orphanScan keeps orphan scan runs bound to the SSH server they walked.
+	// Nil in tests that do not need it.
+	orphanScan orphanScanGuard
+}
+
+type orphanScanGuard interface {
+	ChangeSSH(ctx context.Context, instanceID int, change func() error) error
+}
+
+// SetOrphanScan wires the orphan scan service in. A server built without one
+// leaves the guard off.
+func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
+	if s != nil {
+		h.orphanScan = s
+	}
+}
+
+// sshChangeDuringDeletionMessage is the 409 body for an SSH change refused
+// with orphanscan.ErrDeletionInProgress.
+const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
+
+// changeSSH runs change, which stores new SSH settings and invalidates the
+// pooled connection, through the orphan scan service: it refuses the change
+// while a deletion runs, since the deletion redials with the stored settings,
+// and fails the instance's remote previews after it. The invalidation belongs
+// inside change, since a scan reads the instance under the same lock.
+func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
+	if h.orphanScan == nil {
+		return change()
+	}
+	return h.orphanScan.ChangeSSH(ctx, instanceID, change)
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
@@ -763,6 +795,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
 	}
 	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
+	// No backend reflinks over sftp, so reflink mode stays a local-only choice
+	// even though a remote instance has Write (#2942).
+	canReflink := canWrite && models.FilesystemAccessMode(&effective) == models.FilesystemModeLocal
 	effectiveUseHardlinks := existingInstance.UseHardlinks
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
@@ -794,7 +829,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseReflinks {
-		if !canWrite {
+		if !canReflink {
 			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
 			return
 		}
@@ -825,8 +860,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
+	// Drop the old client, backoff, and errors so the new settings are tried at once
 	h.clientPool.RemoveClient(instanceID)
+	h.clientPool.ResetFailureTracking(instanceID) //nolint:contextcheck // the error clear has its own timeout and must outlive a cancelled request
 	// The local access flag decides whether the instance is in remote mode,
 	// and the ssh pool only rereads the row when it dials. Any other edit
 	// leaves the session alone, since Invalidate cuts reads in flight.

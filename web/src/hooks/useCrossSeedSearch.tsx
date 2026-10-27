@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -63,9 +63,10 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
-
-  const crossSeedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const crossSeedPollingInFlightRef = useRef(false)
+  // Each opening and each close of the dialog changes the number. A late answer for an earlier opening is ignored.
+  const openingRef = useRef(0)
+  // A search answer holds the source torrent too, so a failed analysis no longer matters after a search starts.
+  const searchStartedRef = useRef(false)
 
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -189,7 +190,9 @@ export function useCrossSeedSearch(instanceId: number) {
       setCrossSeedSearchResponse(null)
       setCrossSeedApplyResult(null)
       setCrossSeedHasSearched(true)
+      searchStartedRef.current = true
 
+      const opening = openingRef.current
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
@@ -197,6 +200,9 @@ export function useCrossSeedSearch(instanceId: number) {
           cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
+          if (opening !== openingRef.current) {
+            return
+          }
           setCrossSeedSearchResponse(response)
 
           const defaultSelection = new Set<string>()
@@ -205,11 +211,15 @@ export function useCrossSeedSearch(instanceId: number) {
           })
           setCrossSeedSelectedKeys(defaultSelection)
 
-          if (response.results.length === 0) {
+          // The dialog shows the RED/OPS timeout note or the Torznab failure note instead.
+          if (response.results.length === 0 && !response.gazelleTimedOut && !response.torznabFailed) {
             toast.info(t("hooks.search.noMatches"))
           }
         })
         .catch((error: unknown) => {
+          if (opening !== openingRef.current) {
+            return
+          }
           let message = error instanceof Error ? error.message : t("hooks.search.searchFailed")
 
           if (
@@ -228,7 +238,9 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
         .finally(() => {
-          setCrossSeedSearchLoading(false)
+          if (opening === openingRef.current) {
+            setCrossSeedSearchLoading(false)
+          }
         })
     },
     [
@@ -251,11 +263,15 @@ export function useCrossSeedSearch(instanceId: number) {
     runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
   }, [crossSeedTorrent, runCrossSeedSearch])
 
-  const hasEnabledCrossSeedIndexers = sortedEnabledIndexers.length > 0
+  const gazelleConfigured = Boolean(
+    crossSeedSettings?.gazelleEnabled &&
+    ((crossSeedSettings.redactedApiKey ?? "").trim() || (crossSeedSettings.orpheusApiKey ?? "").trim())
+  )
+  const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || gazelleConfigured
 
   const handleCrossSeedSearch = useCallback(
     (torrent: Torrent) => {
-      if (!hasEnabledCrossSeedIndexers) {
+      if (!canCrossSeedSearch) {
         toast.error(t("hooks.search.noIndexers"))
         return
       }
@@ -265,6 +281,8 @@ export function useCrossSeedSearch(instanceId: number) {
         return
       }
 
+      const opening = ++openingRef.current
+      searchStartedRef.current = false
       setCrossSeedTorrent(torrent)
       setCrossSeedDialogOpen(true)
       setCrossSeedSelectedKeys(new Set())
@@ -279,12 +297,16 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
         .then(torrentInfo => {
-          setCrossSeedSearchResponse({
-            sourceTorrent: torrentInfo,
-            results: [],
-          })
+          if (opening !== openingRef.current) {
+            return
+          }
+          // A search that answered first already holds the source torrent.
+          setCrossSeedSearchResponse(prev => prev ?? { sourceTorrent: torrentInfo, results: [] })
         })
         .catch((error: unknown) => {
+          if (opening !== openingRef.current || searchStartedRef.current) {
+            return
+          }
           let message = error instanceof Error ? error.message : t("hooks.search.analyzeFailed")
 
           if (message.includes("429") || message.includes("rate limit") || message.includes("too many requests")) {
@@ -297,7 +319,7 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
     },
-    [hasEnabledCrossSeedIndexers, instanceId, t]
+    [canCrossSeedSearch, instanceId, t]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {
@@ -351,6 +373,7 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [])
 
   const closeCrossSeedDialog = useCallback(() => {
+    openingRef.current++
     setCrossSeedDialogOpen(false)
     const shouldPreserveError = Boolean(
       crossSeedSearchError && (
@@ -482,75 +505,6 @@ export function useCrossSeedSearch(instanceId: number) {
   const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0 ? t("hooks.search.refreshReadyIn", { seconds: Math.ceil(crossSeedRefreshRemaining / 1000) }) : undefined
   const canForceCrossSeedRefresh = !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
-  useEffect(() => {
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
-
-    if (
-      !sourceTorrent ||
-      sourceTorrent.contentFilteringCompleted ||
-      !crossSeedDialogOpen ||
-      crossSeedPollingRef.current
-    ) {
-      return
-    }
-
-    const pollForUpdates = async () => {
-      if (crossSeedPollingInFlightRef.current) {
-        return
-      }
-
-      crossSeedPollingInFlightRef.current = true
-      try {
-        if (!sourceTorrent.hash) {
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-          return
-        }
-
-        const status = await api.getAsyncFilteringStatus(instanceId, sourceTorrent.hash)
-
-        if (status.contentCompleted) {
-          const updatedAnalysis = await api.analyzeTorrentForCrossSeedSearch(instanceId, sourceTorrent.hash)
-
-          setCrossSeedSearchResponse(prev => (prev ? { ...prev, sourceTorrent: updatedAnalysis } : null))
-
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to poll async filtering status:", error)
-        if (crossSeedPollingRef.current) {
-          clearInterval(crossSeedPollingRef.current)
-          crossSeedPollingRef.current = null
-        }
-      } finally {
-        crossSeedPollingInFlightRef.current = false
-      }
-    }
-
-    crossSeedPollingRef.current = setInterval(pollForUpdates, 500)
-
-    return () => {
-      if (crossSeedPollingRef.current) {
-        clearInterval(crossSeedPollingRef.current)
-        crossSeedPollingRef.current = null
-      }
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [crossSeedDialogOpen, crossSeedSearchResponse, instanceId])
-
-  useEffect(() => {
-    if (!crossSeedDialogOpen && crossSeedPollingRef.current) {
-      clearInterval(crossSeedPollingRef.current)
-      crossSeedPollingRef.current = null
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [crossSeedDialogOpen])
-
   const crossSeedDialog = (
     <CrossSeedDialog
       open={crossSeedDialogOpen}
@@ -565,6 +519,7 @@ export function useCrossSeedSearch(instanceId: number) {
       error={crossSeedSearchError}
       applyResult={crossSeedApplyResult}
       indexerOptions={crossSeedIndexerOptions}
+      gazelleConfigured={gazelleConfigured}
       indexerMode={crossSeedIndexerMode}
       selectedIndexerIds={crossSeedIndexerSelection}
       indexerNameMap={crossSeedIndexerNameMap}
@@ -590,6 +545,8 @@ export function useCrossSeedSearch(instanceId: number) {
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
+      gazelleTimedOut={crossSeedSearchResponse?.gazelleTimedOut ?? false}
+      torznabFailed={crossSeedSearchResponse?.torznabFailed ?? false}
       decisionTrace={crossSeedSearchResponse?.decisionTrace}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}
@@ -598,7 +555,7 @@ export function useCrossSeedSearch(instanceId: number) {
   )
 
   return {
-    canCrossSeedSearch: hasEnabledCrossSeedIndexers,
+    canCrossSeedSearch,
     isCrossSeedSearching: crossSeedSearchLoading || crossSeedSubmitting,
     openCrossSeedSearch: handleCrossSeedSearch,
     crossSeedDialog,

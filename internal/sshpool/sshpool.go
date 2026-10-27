@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/models"
@@ -35,6 +36,7 @@ type credentialSource interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
+	SetSSHTier(ctx context.Context, instanceID int, tier models.SSHTier) error
 }
 
 // Dialer opens SSH connections: one-shot ones for Test and Confirm, and the
@@ -73,11 +75,18 @@ type Report struct {
 
 // Capabilities is what the server lets us do, probed read-only.
 type Capabilities struct {
-	SFTP        bool
-	Statvfs     bool
-	Hardlink    bool
-	Limits      bool
-	Exec        bool
+	SFTP     bool
+	Statvfs  bool
+	Hardlink bool
+	Limits   bool
+	Exec     bool
+	// POSIXShell is a login shell that reads a single-quoted word the POSIX
+	// way. Every remote command is quoted for that shell, so a shell that
+	// treats a quote differently (fish escapes a closing quote with the
+	// backslash before it, tcsh rejects a newline inside a quote and reads the
+	// next line as a new command) could run a path as a command, and gets no
+	// exec tier.
+	POSIXShell  bool
 	GNUUserland bool
 }
 
@@ -162,7 +171,7 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		status = StatusPinned
 	}
 
-	capabilities, err := probe(ctx, client)
+	capabilities, err := probe(ctx, client, d.timeout)
 	if err != nil {
 		// The probe sees a closed socket either way; the caller's own reason
 		// is the one to report.
@@ -178,22 +187,32 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 // Confirm dials the instance and succeeds only if the host presents hostKey, so
 // the caller can pin the key the user was shown rather than whatever the host
 // offers at pin time. hostKey is in SSH wire format, the form the pin column
-// holds.
-func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) error {
+// holds. It then probes the host, on the key it just verified, so the caller
+// can store the tier with the pin.
+func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) (*Capabilities, error) {
 	expected, err := ssh.ParsePublicKey(hostKey)
 	if err != nil {
-		return fmt.Errorf("parse host key: %w", err)
+		return nil, fmt.Errorf("parse host key: %w", err)
 	}
 
 	client, err := d.dialExpecting(ctx, inst, expected, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer client.Close()
 
-	// The key was verified during the handshake; a failed teardown is not a
-	// failed confirmation.
-	_ = client.Close()
-	return nil
+	capabilities, err := probe(ctx, client, d.timeout)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// The handshake verified the key, which is what a pin records. A host
+		// whose session channels misbehave is still one the user may pin; the
+		// tier stays unknown until a connect probes it.
+		log.Debug().Err(err).Int("instanceID", inst.ID).Msg("sshpool: host key confirmed, exec probe got no answer")
+		return nil, nil
+	}
+	return capabilities, nil
 }
 
 // ErrPinUnusable marks the errors Connect raises before it dials, when the

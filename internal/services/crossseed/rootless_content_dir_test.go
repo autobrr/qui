@@ -179,6 +179,24 @@ func TestResolveRootlessContentDir(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "Movie.mkv"}},
 			expected:       "C:/Downloads",
 		},
+		{
+			name:           "UNC single file preserves share root",
+			torrent:        &qbt.Torrent{ContentPath: `\\server\share\Library\Movie.mkv`},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.mkv"}},
+			expected:       "//server/share/Library",
+		},
+		{
+			name:           "UNC share root single file",
+			torrent:        &qbt.Torrent{ContentPath: "//server/share/Movie.mkv"},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.mkv"}},
+			expected:       "//server/share",
+		},
+		{
+			name:           "UNC multi-file preserves share root",
+			torrent:        &qbt.Torrent{ContentPath: "//server/share/Library"},
+			candidateFiles: qbt.TorrentFiles{{Name: "e01.mkv"}, {Name: "e02.mkv"}},
+			expected:       "//server/share/Library",
+		},
 		// URL rejection (should not be treated as Windows absolute)
 		{
 			name:           "http url rejected",

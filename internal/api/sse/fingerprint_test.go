@@ -30,14 +30,21 @@ var volatileTorrentFields = map[string]bool{
 	"NumIncomplete": true,
 	"NumLeechs":     true,
 	"NumSeeds":      true,
+
+	"ConnectionsCount": true,
+	// Not jitter: Progress already resends a list row during a download.
+	"PiecesHave": true,
 }
 
 // payloadOmittedTorrentFields are skipped for a different reason than jitter:
 // TorrentView shadows them out of the serialized payload (issue #2328), so a
 // change to one has nothing to update client-side and must not resend a row.
 var payloadOmittedTorrentFields = map[string]bool{
-	"MagnetURI":   true,
-	"HasMetadata": true,
+	"MagnetURI":             true,
+	"HasMetadata":           true,
+	"HasTrackerWarning":     true,
+	"HasTrackerError":       true,
+	"HasOtherAnnounceError": true,
 }
 
 // setSampleValue writes a non-zero value of the field's kind so a hashed field

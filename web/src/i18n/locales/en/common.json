@@ -46,7 +46,7 @@
     "tasksForInstance": "Tasks for instance",
     "settingsForInstance": "Settings for instance",
     "clearSearch": "Clear search",
-    "searchTorrents": "Search torrents... ({{shortcutKey}})",
+    "searchTorrents": "Search torrents...",
     "globPattern": "Glob pattern...",
     "smartSearchTitle": "Smart Search Features:",
     "smartSearchGlob": "Glob patterns:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Searches name, category, and tags",
     "smartSearchEnter": "Press Enter for instant search",
     "smartSearchAuto": "Auto-searches after 500ms pause",
+    "smartSearchShortcut": "Press {{shortcutKey}} to focus search",
     "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
@@ -158,7 +159,6 @@
   "updateBanner": {
     "updateAvailable": "Update Available",
     "versionAvailable": "Version {{version}} is now available",
-    "viewRelease": "View Release",
     "dismiss": "Dismiss"
   },
   "pwaUpdate": {
@@ -192,8 +192,7 @@
     "trigger": "More information"
   },
   "numberInput": {
-    "unlimited": "Unlimited",
-    "useUnlimited": " (use -1 for unlimited)"
+    "unlimited": "Unlimited"
   },
   "dateTime": {
     "na": "N/A",
@@ -218,6 +217,25 @@
       "year_one": "{{count}} year",
       "year_other": "{{count}} years"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Support qui",

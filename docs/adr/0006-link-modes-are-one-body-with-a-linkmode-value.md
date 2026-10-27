@@ -17,4 +17,4 @@ Hardlink mode and reflink mode share one `processLinkMode` body in `internal/ser
 
 - A new link mode is one more `linkMode` literal.
 - A change that moves an asymmetry out of the struct into a branch on the mode name, or that changes the create-error split, reverses this decision and needs a new ADR.
-- `recheck_policy.go` is gone. `linkModeRecheckPolicy` lives in `link_mode.go`, and its table test in `relaxed_structure_recheck_test.go` still pins the rule.
+- `recheck_policy.go` is gone. The recheck rule of link modes moved into the `Adder` (#3409). Its table test moved with it.

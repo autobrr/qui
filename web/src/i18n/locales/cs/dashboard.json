@@ -54,6 +54,7 @@
     "externalIPv6": "External IPv6",
     "unregisteredTorrents": "Neregistrované torrenty",
     "trackerDown": "Tracker offline",
+    "trackerError": "Chyba trackeru",
     "errors": "Chyby",
     "reannounceTooltip": "Automatické opětovné ohlášení trackeru povoleno",
     "altSpeedLimits": "Alternativní rychlostní limity: {{status}}",

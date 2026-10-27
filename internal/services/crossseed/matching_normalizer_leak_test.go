@@ -41,14 +41,14 @@ func TestReleasesMatch_DoesNotLeakGoroutines(t *testing.T) {
 
 	// Warm up any one-time allocations before sampling.
 	for range 50 {
-		s.releasesMatch(&source, &candidate, false)
+		s.strictCompare(&source, &candidate, false)
 	}
 	runtime.GC()
 	before := runtime.NumGoroutine()
 
 	const iterations = 5000
 	for range iterations {
-		s.releasesMatch(&source, &candidate, false)
+		s.strictCompare(&source, &candidate, false)
 	}
 	runtime.GC()
 	after := runtime.NumGoroutine()

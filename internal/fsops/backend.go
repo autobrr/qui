@@ -43,7 +43,10 @@ type Backend interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
-	// The channel is closed when the walk completes, is cancelled via ctx, or
+	// Entries within one directory arrive in lexical order and a directory's
+	// own entry precedes everything beneath it; nothing more is promised about
+	// order, as a backend may list sibling directories concurrently. The
+	// channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
@@ -66,6 +69,11 @@ type Backend interface {
 	// fsutil.LinkTreeBaseDirMode rather than a hand-typed mode (#1704, #2086).
 	MkdirAll(ctx context.Context, path string, perm fs.FileMode) error
 
+	// Mkdir creates one directory, like os.Mkdir. The error wraps fs.ErrExist
+	// when path already exists, so of two calls for one path only one
+	// succeeds. Link trees use it to reserve a folder name.
+	Mkdir(ctx context.Context, path string, perm fs.FileMode) error
+
 	// Remove removes a file or directory. If opts.Recursive is true, removes
 	// the entire tree (like os.RemoveAll).
 	Remove(ctx context.Context, path string, opts RemoveOptions) error
@@ -75,6 +83,14 @@ type Backend interface {
 	// HardlinkTree creates a hardlink tree from plan. Rolls back what it
 	// created on partial failure. The result records the files and dirs this
 	// call made, for a later RemoveTree.
+	//
+	// Every implementation owes the same answer to a target that already
+	// exists: skip it when it is provably the same file as its source, and
+	// refuse the whole plan with hardlinktree.ErrTargetExists otherwise. A
+	// skipped target is counted in SkippedExists and never recorded in Files,
+	// because it belongs to whoever made it first; see
+	// TestHardlinkTree_ExecTierSkippedLinkSurvivesLaterFailure. A backend that
+	// cannot prove identity refuses.
 	HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
 	// ReflinkTree creates a reflink (CoW) tree from plan. Rolls back what it
@@ -98,4 +114,42 @@ type Backend interface {
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
+}
+
+// BatchStater is a Backend that answers many paths in one request, so a
+// remote host costs a few round trips per batch and not a few per path.
+type BatchStater interface {
+	// StatBatch is Stat for each path: infos[i] and errs[i] answer paths[i].
+	StatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
+	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
+
+// StatAll is Stat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Stat per
+// path.
+func StatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.StatBatch(ctx, paths)
+	}
+	return statEach(ctx, paths, b.Stat)
+}
+
+// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Lstat per
+// path.
+func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.LstatBatch(ctx, paths)
+	}
+	return statEach(ctx, paths, b.Lstat)
+}
+
+func statEach(ctx context.Context, paths []string, stat func(context.Context, string) (*LstatInfo, error)) ([]*LstatInfo, []error) {
+	infos := make([]*LstatInfo, len(paths))
+	errs := make([]error, len(paths))
+	for i, p := range paths {
+		infos[i], errs[i] = stat(ctx, p)
+	}
+	return infos, errs
 }

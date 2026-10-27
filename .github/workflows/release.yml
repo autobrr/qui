@@ -15,15 +15,10 @@ on:
       - "Makefile"
       - "**.md"
       - "documentation/**"
+  # A pull request starts the workflow for every change. The "changes" job
+  # skips the build and test jobs when only ignored files change. A skipped
+  # job reports success, so "Run tests" can be a required check.
   pull_request:
-    paths-ignore:
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/images/**"
-      - "config.toml"
-      - "distrib/docker/docker-compose.yml"
-      - "Makefile"
-      - "**.md"
-      - "documentation/**"
 
 env:
   REGISTRY: ghcr.io
@@ -36,8 +31,36 @@ permissions:
   actions: write
 
 jobs:
+  changes:
+    name: Find code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.changed_files }}
+        run: |
+          # Keep this list the same as paths-ignore above.
+          ignored='^(\.github/ISSUE_TEMPLATE/|\.github/images/|documentation/)|^(config\.toml|distrib/docker/docker-compose\.yml|Makefile)$|\.md$'
+          # A push already skips these files with paths-ignore above. If the
+          # file list cannot be read, run everything, because a skipped
+          # "Run tests" counts as a pass. The API returns at most 3000
+          # files, so a larger PR also runs everything.
+          code=true
+          if [[ $GITHUB_EVENT_NAME == pull_request ]] && ((CHANGED < 3000)) &&
+            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename') &&
+            ! grep -qvE "$ignored" <<<"$files"; then
+            code=false
+          fi
+          echo "code=$code" >>"$GITHUB_OUTPUT"
+
   web:
     name: Build web
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,7 +69,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -78,13 +101,7 @@ jobs:
 
       - name: Type check and build frontend
         working-directory: web
-        run: |
-          pnpm tsc --noEmit &
-          TSC_PID=$!
-          CI= pnpm run build &
-          BUILD_PID=$!
-          wait $TSC_PID || exit 1
-          wait $BUILD_PID || exit 1
+        run: CI= pnpm run build
 
       - name: Upload web production build
         uses: actions/upload-artifact@v7
@@ -113,10 +130,26 @@ jobs:
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
 
-      - name: Fetch premium themes
-        run: make themes-fetch
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
         env:
-          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: autobrr/qui-premium-themes
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          path: .themes-temp
+          sparse-checkout: themes
+          persist-credentials: false
+
+      - name: Copy premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -163,7 +196,7 @@ jobs:
           fi
 
       - name: Run GoReleaser build and publish tags
-        uses: goreleaser/goreleaser-action@v7.2.3
+        uses: goreleaser/goreleaser-action@v7.3.0
         with:
           distribution: goreleaser-pro
           version: "~> v2"
@@ -195,8 +228,35 @@ jobs:
             dist/msi/*/*.msi
           if-no-files-found: error
 
+  # GoReleaser makes a draft. This job adds the Highlights and publishes it.
+  # It has its own job so that only this job can read the Claude token. The
+  # claude environment holds the token and allows develop and v* tags.
+  highlights:
+    name: Write Highlights and publish the release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    needs: goreleaserbuild
+    environment: claude
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          # The script finds the previous tag with git describe.
+          fetch-depth: 0
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.280
+
+      - name: Write Highlights and publish the release
+        run: .github/scripts/release-highlights.sh "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
   docker-matrix:
     name: Determine Docker platforms
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     outputs:
       platforms: ${{ steps.set.outputs.platforms }}
@@ -234,10 +294,26 @@ jobs:
           name: web-dist
           path: web/dist
 
-      - name: Fetch premium themes
-        run: make themes-fetch
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
         env:
-          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: autobrr/qui-premium-themes
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          path: .themes-temp
+          sparse-checkout: themes
+          persist-credentials: false
+
+      - name: Copy premium themes
+        if: steps.themes.outputs.enabled == 'true'
+        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Extract metadata
         id: meta
@@ -294,9 +370,15 @@ jobs:
 
   docker-merge:
     name: Publish Docker multi-arch manifest
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
+    # On a tag, the image tags go out only after GoReleaser succeeds. A failed
+    # release then pushes no image, and a retag gives no image tag a new digest.
+    if: >-
+      !cancelled() &&
+      needs.docker.result == 'success' && needs.test.result == 'success' &&
+      (!startsWith(github.ref, 'refs/tags/') || needs.goreleaserbuild.result == 'success') &&
+      (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
-    needs: [docker, test]
+    needs: [docker, test, goreleaserbuild]
     steps:
       - name: Download image digests
         uses: actions/download-artifact@v8
@@ -340,6 +422,8 @@ jobs:
 
   test:
     name: Run tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

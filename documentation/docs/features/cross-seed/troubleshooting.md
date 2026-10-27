@@ -19,7 +19,7 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Title, year, and release group
 - Resolution (1080p, 2160p)
 - Source (WEB-DL, BluRay) and collection (AMZN, NF)
-- Codec (x264, x265) and HDR format
+- Codec (x264, x265) and HDR format. A bare `HDR` counts as `HDR10`.
 - Audio format and channels
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
@@ -62,7 +62,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `hardlink_error` | Failed | You enabled hardlink mode, but qui failed to create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
 | `reflink_error` | Failed | You enabled reflink mode, but qui failed to create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
 | `no_save_path` | Failed | qui did not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Check the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
-| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add, a required file or folder rename failed, or qui failed to pause a misaligned torrent after an alignment failure. | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
+| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add (`error`), a required file or folder rename failed or qui could not confirm it in qBittorrent (`alignment_failed`), or qui failed to pause a misaligned torrent after an alignment failure (`pause_failed`). | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
 
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
@@ -121,6 +121,8 @@ Two of these reasons show that the candidate belongs to different content. `titl
 
 For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
 
+For the **autobrr webhook check**, look for `Webhook check: rejected near miss` entries. qui writes one entry for each rejected torrent that has the same release group as the announce. For a fansub release, such as `[SubsPlease] Show - 01`, the tag in brackets counts as the group. Each entry names the announced release (`incomingName`), the torrent in qBittorrent (`existingName`), and the reason (`rejectReason`). qui does not log the rejected torrents of other groups, because most torrents in a library have no relation to the announce.
+
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 
 - `crossseed: rejected existing content prefilter candidate after file-level matching`
@@ -144,7 +146,7 @@ In reuse mode (the default), qui adds most cross-seeds with hash verification sk
 
 ### 1. Name or folder alignment needed
 
-If the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must run a recheck to verify the files at the new paths.
+If the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must run a recheck to verify the files at the new paths. If **Skip recheck** is on, qui adds a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) without a recheck.
 
 ### 2. Extra files in source torrent
 
@@ -154,7 +156,7 @@ If the source torrent contains files that do not exist on disk (NFO, SRT, or sam
 
 If the source files and the link-tree base reside on different filesystems, or if the filesystem does not support the requested link type, link-tree creation fails. If you enable **Fallback to regular mode on error**, qui falls back to regular mode and adds the torrent against the matched source files instead of the link-tree directory.
 
-qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips them instead. If you enable **Skip recheck**, disable **Fallback to regular mode**, because all fallbacks require a recheck.
+qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui adds only [byte-complete matches](./rules.md#skip-cross-seeds-with-extra-files) after a fallback, and it adds them without a recheck. qui skips every other match that falls back. Keep **Fallback to regular mode** on to keep those byte-complete adds.
 
 If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if the **Piece boundary safety check** switch in Matching rules is off. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
@@ -166,7 +168,7 @@ A fansub name also splits its release-group identity across two parsed fields. E
 
 Title, season, episode, and split release-group differences require verification. qui adds these torrents paused and resumes them only after a 100% recheck.
 
-Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, keep the normal fast path after all safety checks.
+Soft differences, such as codec, source, HDR, edition, or a year that only one name has, keep the normal fast path after all safety checks.
 
 If you enable **Skip recheck**, qui skips only decisions that require verification. RSS and autobrr reject these decisions before their planned download.
 
@@ -175,7 +177,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - If missing data is at or below **Max auto-start download** (default: 50 MiB), qui auto-resumes after the recheck
 - If only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
-- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
+- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume. With **Skip recheck** and **Auto-resume after injection** on, a byte-complete filesystem fallback resumes without a recheck
 - Configure this limit with **Max auto-start download** in Cross-Seed > After injection
 - In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 

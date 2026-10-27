@@ -46,7 +46,7 @@
     "tasksForInstance": "Aufgaben für Instanz",
     "settingsForInstance": "Einstellungen für Instanz",
     "clearSearch": "Suche zurücksetzen",
-    "searchTorrents": "Torrents suchen... ({{shortcutKey}})",
+    "searchTorrents": "Torrents suchen...",
     "globPattern": "Glob-Muster...",
     "smartSearchTitle": "Funktionen der intelligenten Suche:",
     "smartSearchGlob": "Glob-Muster:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Durchsucht Name, Kategorie und Tags",
     "smartSearchEnter": "Enter für sofortige Suche drücken",
     "smartSearchAuto": "Sucht automatisch nach 500 ms Pause",
+    "smartSearchShortcut": "{{shortcutKey}} drücken, um zur Suche zu springen",
     "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
     "updateAvailable": "Update verfügbar",
     "updateVersion": "Version {{version}}",
@@ -158,7 +159,6 @@
   "updateBanner": {
     "updateAvailable": "Update verfügbar",
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
-    "viewRelease": "Release ansehen",
     "dismiss": "Verwerfen"
   },
   "pwaUpdate": {
@@ -192,8 +192,7 @@
     "trigger": "Weitere Informationen"
   },
   "numberInput": {
-    "unlimited": "Unbegrenzt",
-    "useUnlimited": " (-1 für unbegrenzt verwenden)"
+    "unlimited": "Unbegrenzt"
   },
   "dateTime": {
     "na": "N/V",
@@ -218,6 +217,25 @@
       "year_one": "{{count}} Jahr",
       "year_other": "{{count}} Jahre"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "qui unterstützen",

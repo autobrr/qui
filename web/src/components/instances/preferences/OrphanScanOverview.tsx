@@ -5,6 +5,7 @@
 
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,7 @@ import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRun } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
-import { Fragment, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -180,16 +181,6 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
       </CollapsibleContent>
     </Collapsible>
   )
-}
-
-// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
-function SettingsSummary({ parts }: { parts: string[] }) {
-  return parts.map((part, i) => (
-    <Fragment key={i}>
-      <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
-      {i < parts.length - 1 && " "}
-    </Fragment>
-  ))
 }
 
 function InstanceOrphanScanItem({
@@ -373,7 +364,7 @@ function InstanceOrphanScanItem({
                 ): t("preferences.orphanScanOverview.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                {instance.filesystemMode === "remote"? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
+                {instance.filesystemMode === "remote" && !instance.capabilities.identity? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
                 {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
                   <>{t("preferences.orphanScanOverview.pathsIgnored", { count: settings.ignorePaths.length })}</>
                 )}
@@ -428,7 +419,7 @@ function InstanceOrphanScanItem({
             </div>
           </div>
 
-          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits />}
+          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits hasIdentity={instance.capabilities.identity} />}
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
@@ -531,7 +522,7 @@ export function OrphanScanOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.orphanScanOverview.noInstancesDescription")}
           </CardDescription>
@@ -544,7 +535,7 @@ export function OrphanScanOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

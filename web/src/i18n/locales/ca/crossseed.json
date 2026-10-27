@@ -82,14 +82,12 @@
     "cancel": "Cancel·la",
     "runNow": "Executa ara",
     "saveSettings": "Desa la configuració de l'automatització d'RSS",
-    "reset": "Restableix",
     "requiresTorznabIndexer": "Les execucions de l'automatització d'RSS necessiten com a mínim un indexador de Torznab.",
     "items": "{{count}} elements",
     "failedCount": "{{count}} fallits",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} execucions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execucions • +{{added}} • {{failed}} fallits",
-    "runDisabledAlreadyRunning": "Ja hi ha una execució de l'automatització en curs.",
     "runDisabledCooldown": "Les execucions manuals estan limitades a un interval de {{minutes}} minuts. Torna-ho a provar d'aquí a {{remaining}}."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: activat (clau de RED definida, falta la d'OPS)",
       "enabledKeysMissing": "Gazelle: activat (falten les claus)"
     },
-    "noMessageProvided": "No s'ha proporcionat cap missatge"
+    "noMessageProvided": "No s'ha proporcionat cap missatge",
+    "cancelDialog": {
+      "title": "Vols cancel·lar l'exploració de la biblioteca?",
+      "description": "Això atura l'exploració actual de la biblioteca. Els cross-seeds ja afegits es mantenen, però no se cerquen més torrents."
+    }
   },
   "rules": {
     "hardlinkReflink": "Mode hardlink / reflink",
@@ -210,7 +212,7 @@
     "reflinkDescription": "Crea clons amb reflinks. Més segur amb fitxers de més o que falten, i és el que millor mitiga la corrupció.",
     "baseDirectories": "Directoris base",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Camins separats per comes. Es farà servir el primer directori que sigui al mateix sistema de fitxers que l'origen.",
+    "baseDirectoriesDescription": "Camins separats per comes. qui fa servir un directori que sigui al mateix sistema de fitxers que l'origen i prova primer el que comparteix amb l'origen el prefix de camí més llarg. Després d'un error d'enllaç entre dispositius, prova el següent.",
     "directoryOrganization": "Organització dels directoris",
     "flat": "Plana (tot al directori base)",
     "byTracker": "Per tracker",
@@ -283,7 +285,7 @@
       "rescueTitleMismatches": "Rescata les discrepàncies de títol",
       "rescueTitleMismatchesDescription": "Prova fins a tres resultats de mida exacta per cerca d'origen, en total entre tots els indexadors. qui comprova totes les dades abans d'iniciar el torrent. Un rescat fallit compta igualment com una baixada al teu tracker. Si omets la recomprovació, això es desactiva.",
       "skipRecheck": "Omet les coincidències que necessiten recomprovació",
-      "skipRecheckDescription": "Omet les coincidències que necessiten una recomprovació per camins reanomenats, fitxers de més o que falten, recurs a un altre mode d'enllaç o estructures de disc (BDMV/VIDEO_TS). També omet les coincidències de mida exacta que depenen de detalls diferents de temporada, episodi o grup de release. Quan aquesta opció està desactivada, qui afegeix aquestes coincidències aturades i les recomprova.",
+      "skipRecheckDescription": "Omet les coincidències que necessiten una recomprovació per camins reanomenats, fitxers de més o que falten, recurs a un altre mode d'enllaç o estructures de disc (BDMV/VIDEO_TS). També omet les coincidències de mida exacta que depenen de detalls diferents de temporada, episodi o grup de release. Una coincidència completa (cada fitxer té un fitxer de la mateixa mida, no hi ha fitxers de més i com a molt canvien els camins) s'afegeix igualment sense recomprovació. Un episodi d'un paquet de temporada, una estructura de disc, una coincidència de mida exacta amb detalls diferents, fitxers de la mateixa mida amb noms ambigus i un fitxer .nfo o de subtítols reanomenat mai no són coincidències completes. Quan aquesta opció està desactivada, qui afegeix aquestes coincidències aturades i les recomprova.",
       "pieceBoundaryDisabled": "La comprovació de seguretat dels límits de peces està desactivada",
       "pieceBoundaryEnabled": "La comprovació de seguretat dels límits de peces està activada",
       "pieceBoundaryDisabledDescription": "Permet les coincidències encara que els fitxers de més comparteixin peces amb el contingut. Pot corrompre fitxers que ja sembres si el contingut difereix. Val més que et plantegis el mode reflink.",
@@ -359,6 +361,9 @@
       "matching": "Regles que decideixen quins candidats afegeix qui, per a totes les fonts.",
       "categories": "La categoria i les etiquetes que qui assigna a cada nou cross-seed."
     }
+  },
+  "run": {
+    "starting": "L'execució s'està iniciant."
   },
   "seasonPackRuns": {
     "title": "Execucions recents de packs de temporada",
@@ -555,6 +560,7 @@
       "requeueFailed": "No s'han pogut reintentar els fitxers sense coincidència: {{error}}",
       "resetFailed": "No s'han pogut restablir els fitxers: {{error}}"
     },
+    "webhookScanStatus": "Exploració per webhook · {{status}}",
     "statusLabels": {
       "queued": "En cua",
       "scanning": "Explorant",

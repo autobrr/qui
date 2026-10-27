@@ -113,7 +113,7 @@ func TestExportsAfterMoves_KeepsPreflightFailures(t *testing.T) {
 		{hash: "moved", action: action},
 		{hash: "moved-failed", action: action, failureReason: "Save path template resolution failed"},
 	}
-	ready, waiting := exportsAfterMoves(exports, map[string]struct{}{"moved": {}, "moved-failed": {}})
+	ready, waiting := exportsAfterMoves(exports, map[string]ruleRef{"moved": {}, "moved-failed": {}})
 	require.Len(t, waiting, 1)
 	require.Equal(t, "moved", waiting[0].hash)
 	require.Len(t, ready, 1)
