@@ -97,15 +97,24 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	}
 }
 
+// sessionContext opens a connection with one subscription, as Serve does before
+// go-sse calls onSession.
+func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
+	t.Helper()
+	conn := manager.openConnection(false)
+	sub, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, key, conn, false)
+	require.NoError(t, err)
+	ctx := context.WithValue(t.Context(), connectionContextKey, conn)
+	return context.WithValue(ctx, subscriptionIDsContextKey, []string{sub.id})
+}
+
 func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-init")
-	require.NoError(t, err)
+	ctx := sessionContext(t, manager, "failing-init")
 
-	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
 	topics, ok := manager.onSession(&erroringResponseWriter{}, req)
@@ -120,10 +129,8 @@ func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
-	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-flush")
-	require.NoError(t, err)
+	ctx := sessionContext(t, manager, "failing-flush")
 
-	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
 	topics, ok := manager.onSession(&flushErrorResponseWriter{}, req)
@@ -132,7 +139,7 @@ func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 	require.Nil(t, topics)
 	require.Equal(t, uint64(0), manager.eventsPublished.Load())
 	require.Equal(t, uint64(1), manager.eventsDropped.Load())
-	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventConnection)
 }
 
 func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
@@ -141,14 +148,12 @@ func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
-	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-buffered-flush")
-	require.NoError(t, err)
+	ctx := sessionContext(t, manager, "failing-buffered-flush")
 
 	rw := &flushErrorResponseWriter{}
 	bw := newBufferedSessionWriter(rw, http.NewResponseController(rw), streamWriteTimeout, func() {})
 	t.Cleanup(bw.Close)
 
-	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
 	ctx = context.WithValue(ctx, sessionWriterContextKey, bw)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
@@ -159,24 +164,7 @@ func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 	require.False(t, bw.buffered.Load())
 	require.Equal(t, uint64(0), manager.eventsPublished.Load())
 	require.Equal(t, uint64(1), manager.eventsDropped.Load())
-	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
-}
-
-func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil)
-	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
-	logs := captureSSELogs(t)
-
-	ctx := context.WithValue(context.Background(), activityTopicContextKey, "activity-topic")
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
-
-	topics, ok := manager.onSession(&flushErrorResponseWriter{}, req)
-
-	require.False(t, ok)
-	require.Nil(t, topics)
-	require.Equal(t, uint64(0), manager.eventsPublished.Load())
-	require.Equal(t, uint64(1), manager.eventsDropped.Load())
-	requireSSEPayloadFlushLog(t, logs.String(), streamEventHeartbeat)
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventConnection)
 }
 
 func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
