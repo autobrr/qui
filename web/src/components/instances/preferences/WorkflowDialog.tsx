@@ -64,6 +64,7 @@ import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
@@ -491,7 +492,7 @@ type FormState = {
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
   // Free space source settings (for FREE_SPACE conditions)
-  exprFreeSpaceSourceType: "qbittorrent" | "path"
+  exprFreeSpaceSourceType: "qbittorrent" | "path" | "qbitPath"
   exprFreeSpaceSourcePath: string
   // Tag action settings
   exprTagActions: TagActionForm[]
@@ -770,6 +771,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
+  // Undefined while the capabilities query is in flight. Only a definite false
+  // may rewrite a saved source; treating "not loaded yet" as unsupported would
+  // silently drop a stored qBittorrent path when the dialog opens.
+  const supportsFreeSpaceAtPath = capabilities?.supportsFreeSpaceAtPath
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
@@ -1093,7 +1098,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
           exprFreeSpaceSourceType = rule.freeSpaceSource.type ?? "qbittorrent"
-          if (rule.freeSpaceSource.type === "path") {
+          if (rule.freeSpaceSource.type === "path" || rule.freeSpaceSource.type === "qbitPath") {
             exprFreeSpaceSourcePath = rule.freeSpaceSource.path ?? ""
           }
         }
@@ -1357,9 +1362,38 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [pathSourceWindowsBlocked, formState.exprFreeSpaceSourceType, t])
 
+  // Instances older than qBittorrent 5.3 have no path endpoint, so fall back to the
+  // default directory instead of reading a path this server cannot answer for.
+  useEffect(() => {
+    const usable = usableFreeSpaceSourceType(formState.exprFreeSpaceSourceType, supportsFreeSpaceAtPath)
+    if (usable !== formState.exprFreeSpaceSourceType) {
+      setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: usable }))
+      if (!isHydrating.current) {
+        toast.warning(t("preferences.workflowDialog.toast.qbitPathSourceUnsupported"))
+      }
+    }
+  }, [supportsFreeSpaceAtPath, formState.exprFreeSpaceSourceType, t])
+
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
-    if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
+    if (!usesFreeSpace || state.exprFreeSpaceSourceType === "qbittorrent") {
+      setFreeSpaceSourcePathError(null)
+      return true
+    }
+
+    if (state.exprFreeSpaceSourceType === "qbitPath") {
+      // qBittorrent reads this path on its own host, so neither local access nor the
+      // qui host's operating system matters here.
+      if (supportsFreeSpaceAtPath === false) {
+        setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.qbitPathUnsupported"))
+        toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
+        return false
+      }
+      if (state.exprFreeSpaceSourcePath.trim() === "") {
+        setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.pathRequired"))
+        toast.error(t("preferences.workflowDialog.toast.enterPathOrDefault"))
+        return false
+      }
       setFreeSpaceSourcePathError(null)
       return true
     }
@@ -1385,7 +1419,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [pathSourceAvailable, pathSourceWindowsBlocked, t])
+  }, [pathSourceAvailable, pathSourceWindowsBlocked, supportsFreeSpaceAtPath, t])
 
   const validateCategory = useCallback((state: FormState): boolean => {
     if (state.categoryEnabled && state.exprCategory === undefined) {
@@ -1397,14 +1431,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
-    if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
+    if (!usesFreeSpace || state.exprFreeSpaceSourceType === "qbittorrent") {
       return true
+    }
+    if (state.exprFreeSpaceSourceType === "qbitPath") {
+      return supportsFreeSpaceAtPath !== false && state.exprFreeSpaceSourcePath.trim() !== ""
     }
     if (!pathSourceAvailable) {
       return false
     }
     return state.exprFreeSpaceSourcePath.trim() !== ""
-  }, [pathSourceAvailable])
+  }, [pathSourceAvailable, supportsFreeSpaceAtPath])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
@@ -1581,15 +1618,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
     let freeSpaceSource: AutomationInput["freeSpaceSource"]
-    if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
-      freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
-    } else if (input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
-      // Keep the path source even if FREE_SPACE isn't currently in the condition
-      // (user might add it later, or just want to preserve the setting)
-      freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
+    // Keep a configured path source even if FREE_SPACE isn't currently in the condition
+    // (user might add it later, or just want to preserve the setting)
+    if (input.exprFreeSpaceSourceType !== "qbittorrent" && trimmedFreeSpacePath) {
+      freeSpaceSource = { type: input.exprFreeSpaceSourceType, path: trimmedFreeSpacePath }
     }
 
     let sortingConfig: SortingConfig | undefined
@@ -3969,15 +4003,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       value={formState.exprFreeSpaceSourceType}
                       onValueChange={(value) => {
                         const nextType = value as FormState["exprFreeSpaceSourceType"]
-                        setFormState(prev => ({
+                        // Each source reads a different host, so a path entered for one
+                        // never carries over to another. Keeping it would save a qui-host
+                        // path as a qBittorrent-host path, or the reverse.
+                        setFormState(prev => prev.exprFreeSpaceSourceType === nextType? prev: {
                           ...prev,
                           exprFreeSpaceSourceType: nextType,
-                        }))
-                        if (nextType !== "path") {
-                          setFreeSpaceSourcePathError(null)
-                          // Clear autocomplete state to prevent stale suggestions
-                          handleFreeSpacePathInputChange("")
-                        }
+                          exprFreeSpaceSourcePath: "",
+                        })
+                        setFreeSpaceSourcePathError(null)
+                        // Clear autocomplete state to prevent stale suggestions
+                        handleFreeSpacePathInputChange("")
                       }}
                     >
                       <SelectTrigger className="h-8 text-xs">
@@ -3988,9 +4024,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="path" disabled={!pathSourceAvailable}>
                           {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
+                        <SelectItem value="qbitPath" disabled={supportsFreeSpaceAtPath === false}>
+                          {supportsFreeSpaceAtPath === false? t("preferences.workflowDialog.freeSpace.qbitPathSourceUnsupported"): t("preferences.workflowDialog.freeSpace.qbitPathSource")}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
-                    {formState.exprFreeSpaceSourceType === "path" && !pathSourceWindowsBlocked && (
+                    {((formState.exprFreeSpaceSourceType === "path" && !pathSourceWindowsBlocked) || (formState.exprFreeSpaceSourceType === "qbitPath" && supportsFreeSpaceAtPath !== false)) && (
                       <div className="flex flex-col gap-1">
                         <div className="relative">
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
@@ -4051,7 +4090,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {t("preferences.workflowDialog.freeSpace.pathHelp")}
+                          {formState.exprFreeSpaceSourceType === "qbitPath"? t("preferences.workflowDialog.freeSpace.qbitPathHelp"): t("preferences.workflowDialog.freeSpace.pathHelp")}
                         </p>
                       </div>
                     )}

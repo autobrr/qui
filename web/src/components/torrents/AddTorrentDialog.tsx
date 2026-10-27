@@ -1518,7 +1518,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         savePath,
                         category,
                         categories,
-                        defaultSavePath: preferences?.save_path,
+                        defaultSavePath: preferenceDefaults.savePath,
                       })}
                     />
                   )}

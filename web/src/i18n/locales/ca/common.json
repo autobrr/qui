@@ -127,6 +127,7 @@
     "updating": "S'està actualitzant",
     "error": "Error",
     "unknown": "Desconegut",
+    "unavailable": "No disponible",
     "trackerError": "Error del tracker",
     "unreachable": "Inaccessible"
   },

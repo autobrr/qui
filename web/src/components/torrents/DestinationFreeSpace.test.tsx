@@ -12,8 +12,10 @@ vi.mock("@/lib/api", () => ({
   api: { getFreeSpaceAtPath: vi.fn() },
 }))
 
-// Render the interpolated value so the assertions read what a user sees.
-vi.mock("react-i18next", () => ({
+// Render the interpolated value so the assertions read what a user sees. formatBytes
+// loads @/i18n, which needs the real initReactI18next.
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({
     t: (key: string, options?: { value?: string }) => (options?.value ? `${key}: ${options.value}` : key),
   }),
@@ -24,6 +26,7 @@ vi.mock("@/hooks/useInstanceCapabilities.ts", () => ({
   useInstanceCapabilities: () => ({ data: capabilities.current }),
 }))
 
+import "@/i18n"
 import { api } from "@/lib/api"
 import { DestinationFreeSpace } from "./DestinationFreeSpace"
 

@@ -31,6 +31,10 @@ func newQbitPathLibraryRig(t *testing.T, name string, bodies map[string]string) 
 				body = "-1"
 			}
 			_, _ = w.Write([]byte(body))
+		case "/api/v2/sync/maindata":
+			// A failed first sync marks the client unhealthy, and the next read then
+			// fails with "health check already in progress".
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -82,7 +86,7 @@ func newQbitPathInstance(t *testing.T, name, host string) (*qbittorrent.SyncMana
 	return qbittorrent.NewSyncManager(clientPool, nil), instance
 }
 
-func TestGetFreeSpaceBytesForQbitPathSource(t *testing.T) {
+func TestFreeSpaceBytesQbitPathSource(t *testing.T) {
 	// A Windows-style path proves qui forwards the qBittorrent host's own semantics.
 	const path = `D:\downloads\complete`
 
@@ -105,12 +109,12 @@ func TestGetFreeSpaceBytesForQbitPathSource(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			syncManager, instance, paths := newQbitPathRig(t, tt.name, tt.apiVersion, tt.body, tt.status)
 
-			got, err := GetFreeSpaceBytesForSource(
+			// No backend pool: the read happens on the qBittorrent host.
+			service := &Service{syncManager: syncManager}
+			got, err := service.freeSpaceBytes(
 				t.Context(),
-				syncManager,
 				instance,
 				&models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: path},
-				nil, // no filesystem backend: the read happens on the qBittorrent host
 			)
 
 			if tt.wantErr {
@@ -141,9 +145,9 @@ func TestGetFreeSpaceSourceKeySeparatesQbitPath(t *testing.T) {
 	require.Equal(t, FreeSpaceSourceKeyQBittorrent, GetFreeSpaceSourceKey(&models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath}))
 }
 
-// TestGetFreeSpaceBytesForSourceReadsEachPath pins that two rules on one instance read
-// their own path. Preview and execution share this function, so both see these values.
-func TestGetFreeSpaceBytesForSourceReadsEachPath(t *testing.T) {
+// TestFreeSpaceBytesQbitPathReadsEachPath pins that two rules on one instance read
+// their own path. Preview and execution share freeSpaceBytes, so both see these values.
+func TestFreeSpaceBytesQbitPathReadsEachPath(t *testing.T) {
 	const (
 		archive = "/mnt/archive"
 		staging = "/mnt/staging"
@@ -154,10 +158,11 @@ func TestGetFreeSpaceBytesForSourceReadsEachPath(t *testing.T) {
 		staging: "536870912000",
 	})
 
+	service := &Service{syncManager: syncManager}
 	for path, want := range map[string]int64{archive: 1099511627776, staging: 536870912000} {
 		source := &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: path}
 
-		got, err := GetFreeSpaceBytesForSource(t.Context(), syncManager, instance, source, nil)
+		got, err := service.freeSpaceBytes(t.Context(), instance, source)
 		require.NoError(t, err)
 		require.Equal(t, want, got, "free space for %s", path)
 	}

@@ -179,8 +179,8 @@ This section lists every key of a rule as JSON, the condition fields and their o
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
-| `type` | string | `qbittorrent`, `path` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. |
-| `path` | string |  | With type `path`: the path to read. Needs filesystem access on the instance. |
+| `type` | string | `qbittorrent`, `path`, `qbitPath` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. `qbitPath` asks qBittorrent for the free space at `path` on its own host. |
+| `path` | string |  | With type `path` or `qbitPath`: the path to read. Type `path` needs filesystem access on the instance. Type `qbitPath` needs qBittorrent with Web API 2.15.2 or later. |
 
 ### `sortingConfig`
 
