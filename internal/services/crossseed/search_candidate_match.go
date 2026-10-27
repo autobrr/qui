@@ -136,8 +136,14 @@ func (provenance searchDecisionProvenance) admitted() bool {
 }
 
 func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
-	return decision.Class == searchCandidateClassTitleRescue ||
-		decision.Relaxed.needsVerification()
+	return decision.Class == searchCandidateClassTitleRescue || decision.boundNeedsVerification()
+}
+
+// boundNeedsVerification reports whether the add from the bound source must be
+// hashed before it seeds. A HYBRID tag can name another master with the same
+// file lengths, and the file comparison checks only names and lengths.
+func (provenance searchDecisionProvenance) boundNeedsVerification() bool {
+	return provenance.Class == searchCandidateClassHybridTolerance || provenance.Relaxed.needsVerification()
 }
 
 // Score bands mirror the explicit sorter: positive size evidence outranks the
@@ -247,7 +253,9 @@ func (m matcher) hybridToleranceVerdict(input searchCandidateInput, evidence mat
 	if hybrid.Class != searchCandidateClassStrict {
 		return verdict
 	}
-	if !m.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
+	// The second verdict checks the size tolerance, and skips it where a strict
+	// match skips it.
+	if hybrid.SizeRejected {
 		gap := math.Abs(float64(input.CandidateSize-input.SourceSize)) / float64(input.SourceSize) * 100
 		verdict.RejectReason = fmt.Sprintf("%s (size differs by %.2f%%)", verdict.Strict.reason(), gap)
 		return verdict
@@ -473,7 +481,7 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	}
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
-		req.SearchDecision.Relaxed.needsVerification()
+		req.SearchDecision.boundNeedsVerification()
 }
 
 // crossFieldGroupSiteFallback reports whether a group mismatch carries the

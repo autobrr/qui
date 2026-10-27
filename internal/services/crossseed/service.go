@@ -5148,7 +5148,7 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 // candidate remain eligible, so a strict alternative can supply the add plan.
 func filterRecheckBlockedSource(candidate CrossSeedCandidate, req *CrossSeedRequest) (CrossSeedCandidate, bool) {
 	if req == nil || !req.SkipRecheck || candidate.InstanceID != req.SearchDecision.SourceInstanceID ||
-		!req.SearchDecision.Relaxed.needsVerification() {
+		!req.SearchDecision.boundNeedsVerification() {
 		return candidate, false
 	}
 	boundHash := normalizeHash(req.SearchDecision.SourceHash)

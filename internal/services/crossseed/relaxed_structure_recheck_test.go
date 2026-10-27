@@ -134,6 +134,32 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
 	})
 
+	// A HYBRID tag can name another master with the same file lengths, and the
+	// file comparison checks only names and lengths.
+	t.Run("HYBRID tolerance forces a paused add and a recheck", func(t *testing.T) {
+		req := newRequest()
+		req.SearchDecision.Class = searchCandidateClassHybridTolerance
+		req.SearchDecision.Relaxed = 0
+
+		result, sync := run(t, req)
+
+		require.Equal(t, "added", result.Status, "message: %s", result.Message)
+		require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
+	})
+
+	t.Run("HYBRID tolerance is dropped when rechecks are disabled", func(t *testing.T) {
+		req := newRequest()
+		req.SearchDecision.Class = searchCandidateClassHybridTolerance
+		req.SearchDecision.Relaxed = 0
+		req.SkipRecheck = true
+
+		result, sync := run(t, req)
+
+		require.False(t, result.Success)
+		require.Equal(t, "skipped_recheck", result.Status)
+		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
+	})
+
 	t.Run("soft relaxations keep the unverified fast path", func(t *testing.T) {
 		req := newRequest()
 		req.SearchDecision.Relaxed = differencesOf(differenceCodec)

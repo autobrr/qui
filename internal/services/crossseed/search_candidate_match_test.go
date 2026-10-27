@@ -2560,6 +2560,14 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "the HYBRID tolerance keeps a CRC tag that only the listing has",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			local:    "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			want:     true,
+		},
+		{
 			name:     "the HYBRID tolerance does not admit an IMAX download",
 			class:    searchCandidateClassHybridTolerance,
 			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
@@ -2689,4 +2697,26 @@ func TestClassifySearchCandidateHybridExactSizeWithoutGroupUsesTolerance(t *test
 	require.True(t, decision.Accepted, decision.RejectReason)
 	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
 	require.Equal(t, []string{"variant"}, decision.RelaxedDifferences)
+}
+
+func TestClassifySearchCandidateHybridPackAgainstEpisodeSkipsSizeCheck(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+		candidateName = "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP"
+	)
+
+	// Cross-seed episodes from packs skips the size check, as it does for a
+	// strict match.
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:                 namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:              namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:             10_000,
+		CandidateSize:          1_000,
+		TolerancePercent:       defaultSizeMismatchTolerancePercent,
+		FindIndividualEpisodes: true,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
 }

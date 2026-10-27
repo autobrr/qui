@@ -902,6 +902,16 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		// Strict matching fails on HYBRID first here, so search runs the HYBRID
+		// tolerance, and IMAX must still reject the pair.
+		name:          "HYBRID against IMAX within the size tolerance, HYBRID on the source",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize - corpusHybridExtrasSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:          "one-sided IMAX within the size tolerance",
 		source:        "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
 		candidate:     "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
