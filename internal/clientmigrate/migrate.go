@@ -20,6 +20,7 @@ var (
 	ClientTypeDeluge       ClientType = "deluge"
 	ClientTypeRTorrent     ClientType = "rtorrent"
 	ClientTypeTransmission ClientType = "transmission"
+	ClientTypeUTorrent     ClientType = "utorrent"
 )
 
 type Options struct {
@@ -49,6 +50,8 @@ func New(opts Options) Migrater {
 		m.imp = NewRTorrentImporter(m.opts)
 	case ClientTypeTransmission:
 		m.imp = NewTransmissionImporter(m.opts)
+	case ClientTypeUTorrent:
+		m.imp = NewUTorrentImporter(m.opts)
 	default:
 		log.Fatal().Str("source", string(m.opts.Source)).Msg("unsupported source client")
 	}

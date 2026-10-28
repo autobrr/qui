@@ -1,16 +1,16 @@
 ---
 sidebar_position: 13
-title: Migrate from Deluge, rTorrent, or Transmission to qBittorrent
+title: Migrate from Deluge, rTorrent, Transmission, or uTorrent to qBittorrent
 sidebar_label: Client Migration
-description: Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent.
+description: Import torrents with their state from Deluge, rTorrent, Transmission, or uTorrent into qBittorrent.
 ---
 
 # Client migration
 
-The `qui migrate` command imports torrents from Deluge, rTorrent, or Transmission into qBittorrent. It preserves their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state, and per-file selection. Completed torrents arrive in a verified state, so qBittorrent skips the recheck.
+The `qui migrate` command imports torrents from Deluge, rTorrent, Transmission, or uTorrent into qBittorrent. It preserves their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state, and per-file selection. Completed torrents arrive in a verified state, so qBittorrent skips the recheck.
 
 ```bash
-qui migrate {deluge | rtorrent | transmission} \
+qui migrate {deluge | rtorrent | transmission | utorrent} \
   --source-dir <client state dir> \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
@@ -19,7 +19,7 @@ Run with `--dry-run` first to preview the import. The dry run writes nothing.
 
 ## Before you start
 
-1. **Stop the source client cleanly.** All three clients flush their resume state on shutdown. If you terminate the process abruptly, it leaves stale or missing state files.
+1. **Stop the source client cleanly.** All four clients flush their resume state on shutdown. If you terminate the process abruptly, it leaves stale or missing state files.
 2. **Stop qBittorrent.** The importer writes into qBittorrent's `BT_backup` directory. qBittorrent reads that directory only at startup.
 3. After the migration finishes, start qBittorrent. The imported torrents appear with their history intact.
 
@@ -83,21 +83,41 @@ Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based
 - Paused torrents stay paused. Per-torrent ratio and speed limits carry over.
 - If you set files to "do not download", they keep priority 0 in qBittorrent.
 
+## uTorrent
+
+Point `--source-dir` at the uTorrent directory that contains `resume.dat` and the `.torrent` files. On Windows, this is usually `%APPDATA%\uTorrent`. For BitTorrent, it is `%APPDATA%\BitTorrent`:
+
+```powershell
+.\qui.exe migrate utorrent `
+  --source-dir "$env:APPDATA\uTorrent" `
+  --qbit-dir "$env:LOCALAPPDATA\qBittorrent\BT_backup"
+```
+
+Supported: uTorrent and BitTorrent 2.x and 3.x, the classic desktop clients. uTorrent Web uses a different format, and the importer does not read it.
+
+- uTorrent labels become the qBittorrent **category**.
+- The importer preserves renamed torrents, a renamed top folder, and renamed or moved files.
+- Stopped and paused torrents stay paused. Force-started torrents import as forced, outside qBittorrent's queue. Per-torrent ratio and speed limits carry over.
+- If a `resume.dat` entry points at a `.torrent` file outside the source directory and that file is gone, the importer looks for a file with the same name in the source directory.
+- The importer skips BitTorrent v2 and hybrid torrents, and magnet links that never got their metadata.
+
+uTorrent on Windows stores Windows save paths. To import that library, run the migration on Windows and use qBittorrent on Windows. See the warning above about save paths.
+
 ## What is imported
 
-| | Deluge | rTorrent | Transmission |
-|---|---|---|---|
-| Save path & content layout | ✓ | ✓ | ✓ |
-| Verified piece state (no recheck) | ✓ | ✓ | ✓ |
-| Upload/download totals & ratio | ✓ | ✓ | ✓ |
-| Added / completed timestamps | ✓ | ✓ | ✓ |
-| Seeding time | ✓ | ✓ | ✓ |
-| Trackers | ✓ | ✓ | ✓ |
-| Labels | category | category (ruTorrent) | tags |
-| Paused state | 2.x only | ✓ | ✓ |
-| Deselected files | ✓ | ✓ | ✓ |
-| File renames | ✓ | — | ✓ |
-| Per-torrent ratio/speed limits | — | — | ✓ |
+| | Deluge | rTorrent | Transmission | uTorrent |
+|---|---|---|---|---|
+| Save path & content layout | ✓ | ✓ | ✓ | ✓ |
+| Verified piece state (no recheck) | ✓ | ✓ | ✓ | ✓ |
+| Upload/download totals & ratio | ✓ | ✓ | ✓ | ✓ |
+| Added / completed timestamps | ✓ | ✓ | ✓ | ✓ |
+| Seeding time | ✓ | ✓ | ✓ | ✓ |
+| Trackers | ✓ | ✓ | ✓ | ✓ |
+| Labels | category | category (ruTorrent) | tags | category |
+| Paused state | 2.x only | ✓ | ✓ | ✓ |
+| Deselected files | ✓ | ✓ | ✓ | ✓ |
+| File renames | ✓ | — | ✓ | ✓ |
+| Per-torrent ratio/speed limits | — | — | ✓ | ✓ |
 
 The importer tags every imported torrent `migrated` so you can find them with one filter. Running torrents import as auto-managed, so qBittorrent applies its queueing and share limits. Torrents that you stopped stay stopped and stay out of auto-management.
 
