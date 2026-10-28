@@ -207,3 +207,25 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		require.Len(t, response.Matches, len(want), "torrent %s lists a match twice", hash)
 	}
 }
+
+// A source without trusted identity has no Shared file, so a torrent on another
+// instance that only shares the total size is no candidate. Its file list is
+// not read.
+func TestFindCrossSeedsSkipsSizeOnlyCandidatesWithoutTrustedSource(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{{Name: "Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", Size: 5}}
+	svc, sm := deleteMatchService(
+		withTotalSize(crossMatchTorrent(1, "aaaa", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
+		withTotalSize(crossMatchTorrent(2, "kkkk", "qc-home-encode", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
+	)
+	sm.failHashes = map[string]bool{"kkkk": true}
+	svc.instanceStore = newOrderedInstanceStore(
+		&models.Instance{ID: 1, Name: "remote", IsActive: true},
+		&models.Instance{ID: 2, Name: "second", IsActive: true, HasLocalFilesystemAccess: true},
+	)
+
+	response, err := svc.FindCrossSeeds(t.Context(), 1, "aaaa")
+	require.NoError(t, err)
+	require.Empty(t, response.Matches)
+}

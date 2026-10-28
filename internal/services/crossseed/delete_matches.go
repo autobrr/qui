@@ -98,6 +98,7 @@ func (s *Service) findSelectedMatches(
 	if otherInstances {
 		otherIdx, others, _ = s.buildOtherInstanceIndex(ctx, instances, instanceID, false, reads)
 	}
+	sourceTrusted := instanceHas(instances, instanceID, models.CapabilityTrustedIdentity)
 	picks := make([][]*candidatePick, len(torrents))
 	otherPicks := make([][]*candidatePick, len(torrents))
 	for i := range torrents {
@@ -111,7 +112,10 @@ func (s *Service) findSelectedMatches(
 		read := reads.read(s.matcher(), instanceID, source)
 		picks[i] = s.selectCandidates(source, read, idx, true)
 		if otherIdx != nil {
-			otherPicks[i] = addSizePicks(instances, s.selectCandidates(source, read, otherIdx, false), otherIdx.bySize[searchSourceSize(source)])
+			otherPicks[i] = s.selectCandidates(source, read, otherIdx, false)
+			if sourceTrusted {
+				otherPicks[i] = addSizePicks(instances, otherPicks[i], otherIdx.bySize[searchSourceSize(source)])
+			}
 		}
 	}
 	addOtherPathPicks(instances, instanceID, torrents, others, isSelected, otherPicks)
