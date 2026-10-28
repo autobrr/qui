@@ -435,6 +435,35 @@ describe("useTorrentActions - delete", () => {
     expect(second.targets).toEqual(crossSeedTargets)
     expect(second.hashes).toEqual([])
   })
+
+  it("leaves a cross-seed on another instance out of the cached total of this instance", async () => {
+    const { result, queryClient } = renderActions()
+    queryClient.setQueryData(TORRENTS_LIST_KEY(), {
+      torrents: [makeTorrent({ hash: "h1" }), makeTorrent({ hash: "cs1" }), makeTorrent({ hash: "keep" })],
+      total: 10,
+      totalCount: 10,
+    })
+
+    await act(async () => {
+      await result.current.handleDelete(
+        ["h1"],
+        false,
+        undefined,
+        undefined,
+        undefined,
+        {
+          clientHashes: ["h1"],
+          totalSelected: 1,
+          actionTargets: [{ instanceId: 7, hash: "h1" }],
+          crossSeedTargets: [{ instanceId: 7, hash: "cs1" }, { instanceId: 9, hash: "cs2" }],
+        }
+      )
+    })
+
+    const cache = queryClient.getQueryData(TORRENTS_LIST_KEY()) as { total: number; totalCount: number }
+    expect(cache.total).toBe(8)
+    expect(cache.totalCount).toBe(8)
+  })
 })
 
 describe("useTorrentActions - tags", () => {

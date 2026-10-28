@@ -263,7 +263,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         if (variables.clientHashes && variables.clientHashes.length > 0) {
           hashesToRemove = variables.clientHashes
         }
-        const optimisticRemoveCount = variables.clientCount ?? hashesToRemove.length
+        // A target on another instance is not in the list of this instance.
+        const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
+        const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
         // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
         const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
         const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
