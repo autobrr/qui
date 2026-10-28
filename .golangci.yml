@@ -95,6 +95,9 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
         - pattern: ^qbittorrent\.Category(Save|Download)Path$
           pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
           msg: read category folders through SyncManager.InstanceFolders
@@ -171,6 +174,12 @@ linters:
         linters:
           - forbidigo
         text: Search scope module
+
+      # Only the source apply module runs normal matches, then title rescue.
+      - path: internal/services/crossseed/source_apply\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: source apply module
 
       # Only the Adder adds a torrent in the cross-seed and Dir Scan packages (ADR 0022).
       - path-except: ^internal/services/(crossseed|dirscan)/

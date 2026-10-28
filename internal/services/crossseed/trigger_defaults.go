@@ -42,7 +42,7 @@ type triggerDefaults struct {
 
 // defaultsFor returns the settings for one trigger. Tags, auto-resume, and
 // source filters are per trigger; the rest are shared. Seeded search and
-// completion take source filters from their run options, and interactive apply
+// completion fill sourceFilter from their own filters, and interactive apply
 // has none because the user picked the torrent.
 func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) triggerDefaults {
 	d := triggerDefaults{

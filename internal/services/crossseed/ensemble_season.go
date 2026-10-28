@@ -304,7 +304,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		}
 
 		match := torrentSearchResultFromJackett(res, "season pack from seeded episodes", 0, searchDecisionProvenance{Class: searchCandidateClassStrict})
-		attemptResult, attemptErr := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
+		attemptResult, attemptErr := s.executeCrossSeedSearchAttempt(ctx, state.opts.InstanceID, state.opts.triggerDefaults, torrent, match, processedAt)
 		if attemptResult != nil {
 			switch attemptResult.Status {
 			case models.CrossSeedSearchResultStatusAdded:

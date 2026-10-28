@@ -2779,89 +2779,44 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return nil
 	}
 
-	searchState := &searchRunState{
-		opts: SearchRunOptions{
-			triggerDefaults: defaultsFor(triggerCompletion, settings),
-			InstanceID:      instanceID,
-		},
-	}
+	defaults := defaultsFor(triggerCompletion, settings)
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
 	if completionSettings != nil {
-		searchState.opts.Categories = append([]string(nil), completionSettings.Categories...)
-		searchState.opts.Tags = append([]string(nil), completionSettings.Tags...)
-		searchState.opts.ExcludeCategories = append([]string(nil), completionSettings.ExcludeCategories...)
-		searchState.opts.ExcludeTags = append([]string(nil), completionSettings.ExcludeTags...)
-	}
-
-	successCount := 0
-	failedCount := 0
-	skippedCount := 0
-	completionErrorsSeen := make(map[string]struct{}, 3)
-	completionErrors := make([]string, 0, 3)
-	results := make([]models.CrossSeedSearchResult, 0, len(searchResp.Results))
-	normalAddedIndexers := make(map[int]struct{})
-	normalAddedHashes := make(map[string]struct{})
-	attemptMatch := func(match TorrentSearchResult, normalCandidate bool) {
-		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
-		if result != nil {
-			results = append(results, *result)
-			switch result.Status {
-			case models.CrossSeedSearchResultStatusAdded:
-				successCount++
-				if normalCandidate {
-					normalAddedIndexers[match.IndexerID] = struct{}{}
-					addTorrentSearchResultHashes(normalAddedHashes, match)
-				}
-			case models.CrossSeedSearchResultStatusFailed:
-				failedCount++
-				if msg := strings.TrimSpace(result.Message); msg != "" {
-					if _, ok := completionErrorsSeen[msg]; !ok && len(completionErrors) < 3 {
-						completionErrorsSeen[msg] = struct{}{}
-						completionErrors = append(completionErrors, msg)
-					}
-				}
-			case models.CrossSeedSearchResultStatusSkipped:
-				skippedCount++
-			}
+		defaults.sourceFilter = sourceFilter{
+			completionSettings.Categories, completionSettings.Tags,
+			completionSettings.ExcludeCategories, completionSettings.ExcludeTags,
 		}
-		if attemptErr != nil {
-			if msg := strings.TrimSpace(attemptErr.Error()); msg != "" {
-				if _, ok := completionErrorsSeen[msg]; !ok && len(completionErrors) < 3 {
-					completionErrorsSeen[msg] = struct{}{}
-					completionErrors = append(completionErrors, msg)
-				}
-			}
+	}
+	entries, err := s.applySourceSearchResults(ctx, instanceID, torrent, searchResp, defaults, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	results := make([]models.CrossSeedSearchResult, 0, len(entries))
+	for _, entry := range entries {
+		results = append(results, entry.result)
+		if entry.err != nil {
 			log.Debug().
-				Err(attemptErr).
+				Err(entry.err).
 				Int("instanceID", instanceID).
 				Str("hash", torrent.Hash).
-				Str("matchIndexer", match.Indexer).
+				Str("matchIndexer", entry.result.IndexerName).
 				Msg("[CROSSSEED-COMPLETION] Cross-seed apply attempt failed")
 		}
 	}
+	counts := countSourceApplyEntries(entries)
 
-	normalMatches, rescueMatches := splitTitleRescueResults(searchResp.Results)
-	for _, match := range normalMatches {
-		attemptMatch(match, true)
-	}
-	if err := s.attemptTitleRescueResults(ctx, instanceID, rescueMatches, normalAddedIndexers, normalAddedHashes, func(match TorrentSearchResult) {
-		attemptMatch(match, false)
-	}); err != nil {
-		return err
-	}
+	logCompletionSearchSummary(instanceID, torrent, counts.added, counts.failed, counts.skipped)
 
-	logCompletionSearchSummary(instanceID, torrent, successCount, failedCount, skippedCount)
-
-	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
+	if s.notifier != nil && (counts.added > 0 || counts.failed > 0) {
 		completedAt := time.Now().UTC()
 		eventType := notifications.EventCrossSeedCompletionSucceeded
-		if failedCount > 0 {
+		if counts.failed > 0 {
 			eventType = notifications.EventCrossSeedCompletionFailed
 		}
 		var errorMessage string
 		if eventType == notifications.EventCrossSeedCompletionFailed {
-			if len(completionErrors) > 0 {
-				errorMessage = completionErrors[0]
+			if len(counts.errorSamples) > 0 {
+				errorMessage = counts.errorSamples[0]
 			} else {
 				errorMessage = "cross-seed completion failed"
 			}
@@ -2869,9 +2824,9 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		lines := []string{
 			"Torrent: " + torrent.Name,
 			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
-			fmt.Sprintf("Added: %d", successCount),
-			fmt.Sprintf("Failed: %d", failedCount),
-			fmt.Sprintf("Skipped: %d", skippedCount),
+			fmt.Sprintf("Added: %d", counts.added),
+			fmt.Sprintf("Failed: %d", counts.failed),
+			fmt.Sprintf("Skipped: %d", counts.skipped),
 		}
 		samples := collectSearchResultSamples(results, 0)
 		if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
@@ -2885,22 +2840,15 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			Message:     strings.Join(lines, "\n"),
 			CrossSeed: &notifications.CrossSeedEventData{
 				Matches: len(searchResp.Results),
-				Added:   successCount,
-				Failed:  failedCount,
-				Skipped: skippedCount,
+				Added:   counts.added,
+				Failed:  counts.failed,
+				Skipped: counts.skipped,
 				Samples: samples,
 			},
-			ErrorMessage: errorMessage,
-			ErrorMessages: func() []string {
-				if len(completionErrors) == 0 {
-					return nil
-				}
-				out := make([]string, len(completionErrors))
-				copy(out, completionErrors)
-				return out
-			}(),
-			StartedAt:   &startedAt,
-			CompletedAt: &completedAt,
+			ErrorMessage:  errorMessage,
+			ErrorMessages: counts.errorSamples,
+			StartedAt:     &startedAt,
+			CompletedAt:   &completedAt,
 		})
 	}
 
@@ -2980,6 +2928,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 
 	opts.triggerDefaults = defaultsFor(triggerSeededSearch, settings)
 	opts.addTags = normalizeStringSlice(opts.addTags)
+	opts.sourceFilter = sourceFilter{opts.Categories, opts.Tags, opts.ExcludeCategories, opts.ExcludeTags}
 	opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
 	// Targeted re-searches of specific torrents stay episode-scoped, and
 	// Gazelle-only runs have no TV indexers to ask for packs.
@@ -7824,124 +7773,6 @@ func limitTitleRescueResults(results []TorrentSearchResult, limit int) []Torrent
 	return kept
 }
 
-func splitTitleRescueResults(results []TorrentSearchResult) (normal, rescue []TorrentSearchResult) {
-	for _, result := range results {
-		if result.SearchDecision.Class == searchCandidateClassTitleRescue {
-			rescue = append(rescue, result)
-		} else {
-			normal = append(normal, result)
-		}
-	}
-	return normal, rescue
-}
-
-func selectTitleRescueAttempts(results []TorrentSearchResult, blockedIndexers map[int]struct{}, limit int) []TorrentSearchResult {
-	if limit <= 0 {
-		return nil
-	}
-	selected := make([]TorrentSearchResult, 0, min(limit, len(results)))
-	selectedResults := make(map[int]struct{}, limit)
-	seenIndexers := make(map[int]struct{}, len(results))
-	for index, result := range results {
-		if _, blocked := blockedIndexers[result.IndexerID]; blocked {
-			continue
-		}
-		if _, seen := seenIndexers[result.IndexerID]; seen {
-			continue
-		}
-		seenIndexers[result.IndexerID] = struct{}{}
-		selected = append(selected, result)
-		selectedResults[index] = struct{}{}
-		if len(selected) == limit {
-			return selected
-		}
-	}
-	for index, result := range results {
-		if _, blocked := blockedIndexers[result.IndexerID]; blocked {
-			continue
-		}
-		if _, used := selectedResults[index]; used {
-			continue
-		}
-		selected = append(selected, result)
-		if len(selected) == limit {
-			break
-		}
-	}
-	return selected
-}
-
-func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int, results []TorrentSearchResult, blockedIndexers map[int]struct{}, knownHashes map[string]struct{}, attempt func(TorrentSearchResult)) error {
-	eligible := make([]TorrentSearchResult, 0, len(results))
-	seenHashes := make(map[string]struct{}, len(knownHashes))
-	maps.Copy(seenHashes, knownHashes)
-	for _, result := range results {
-		if _, blocked := blockedIndexers[result.IndexerID]; blocked {
-			continue
-		}
-		hashes := torrentSearchResultInfoHashes(result.InfoHashV1, result.InfoHashV2)
-		duplicate := false
-		for _, hash := range hashes {
-			if _, seen := seenHashes[hash]; seen {
-				duplicate = true
-				break
-			}
-		}
-		if duplicate {
-			continue
-		}
-		for _, hash := range hashes {
-			seenHashes[hash] = struct{}{}
-		}
-		exists, err := s.titleRescueResultExists(ctx, instanceID, result)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			eligible = append(eligible, result)
-		}
-	}
-
-	attempts := 0
-	for _, result := range selectTitleRescueAttempts(eligible, nil, len(eligible)) {
-		attempt(result)
-		attempts++
-		if attempts == maxTitleRescueAttemptsPerSearch {
-			break
-		}
-	}
-	return nil
-}
-
-func addTorrentSearchResultHashes(hashes map[string]struct{}, result TorrentSearchResult) {
-	for _, hash := range torrentSearchResultInfoHashes(result.InfoHashV1, result.InfoHashV2) {
-		hashes[hash] = struct{}{}
-	}
-}
-
-func (s *Service) titleRescueResultExists(ctx context.Context, instanceID int, result TorrentSearchResult) (bool, error) {
-	hashes := torrentSearchResultInfoHashes(result.InfoHashV1, result.InfoHashV2)
-	if len(hashes) == 0 || s.syncManager == nil {
-		return false, nil
-	}
-	_, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
-	if err == nil {
-		return exists, nil
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false, err
-	}
-	log.Debug().
-		Err(err).
-		Int("instanceID", instanceID).
-		Int("indexerID", result.IndexerID).
-		Str("indexer", result.Indexer).
-		Str("title", result.Title).
-		Strs("infoHashes", hashes).
-		Msg("[CROSSSEED-SEARCH] Failed title rescue duplicate check; keeping result")
-	return false, nil
-}
-
 type scoredTorrentSearchResult struct {
 	result       jackett.SearchResult
 	score        float64
@@ -9624,73 +9455,23 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
 	}
 
-	successCount := 0
-	failedAttempt := false
-	var classifiedFailures []string
-	var attemptErrors []string
-
-	// Track outcomes per indexer for search history
-	indexerAdds := make(map[int]int)  // indexerID -> count of adds
-	indexerFails := make(map[int]int) // indexerID -> count of fails
-	normalAddedHashes := make(map[string]struct{})
-
-	attemptMatch := func(match TorrentSearchResult, normalCandidate bool) {
-		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
-		if attemptResult != nil {
-			switch attemptResult.Status {
-			case models.CrossSeedSearchResultStatusAdded:
-				s.searchMu.Lock()
-				state.run.CrossSeedsAdded++
-				s.searchMu.Unlock()
-				successCount++
-				indexerAdds[match.IndexerID]++
-				if normalCandidate {
-					addTorrentSearchResultHashes(normalAddedHashes, match)
-				}
-			case models.CrossSeedSearchResultStatusFailed:
-				failedAttempt = true
-				message := strings.TrimSpace(attemptResult.Message)
-				if message == "" {
-					message = "classified apply failure"
-				}
-				classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
-				indexerFails[match.IndexerID]++
-			case models.CrossSeedSearchResultStatusSkipped:
-			}
-			s.appendSearchResult(state, *attemptResult)
-		}
-		if err != nil {
-			attemptErrors = append(attemptErrors, fmt.Sprintf("%s: %v", match.Indexer, err))
-			indexerFails[match.IndexerID]++
-		}
+	entries, err := s.applySourceSearchResults(ctx, state.opts.InstanceID, torrent, searchResp, state.opts.triggerDefaults, processedAt)
+	counts := countSourceApplyEntries(entries)
+	s.searchMu.Lock()
+	state.run.CrossSeedsAdded += counts.added
+	s.searchMu.Unlock()
+	for _, entry := range entries {
+		s.appendSearchResult(state, entry.result)
 	}
-
-	normalMatches, rescueMatches := splitTitleRescueResults(searchResp.Results)
-	for _, match := range normalMatches {
-		attemptMatch(match, true)
-	}
-	blockedRescueIndexers := make(map[int]struct{}, len(indexerAdds))
-	for indexerID := range indexerAdds {
-		blockedRescueIndexers[indexerID] = struct{}{}
-	}
-	if err := s.attemptTitleRescueResults(ctx, state.opts.InstanceID, rescueMatches, blockedRescueIndexers, normalAddedHashes, func(match TorrentSearchResult) {
-		attemptMatch(match, false)
-	}); err != nil {
+	failed := err != nil || counts.firstErr != nil
+	s.finishSearchCandidate(state, counts.added, failed)
+	if err != nil {
 		return delayAfterCandidate, err
 	}
-
-	// Report outcomes to jackett service for search history
-	s.reportIndexerOutcomes(searchResp.JobID, indexerAdds, indexerFails)
-
-	failed := len(attemptErrors) > 0 || failedAttempt
-	s.finishSearchCandidate(state, successCount, failed)
-	if successCount > 0 || !failed {
+	if counts.added > 0 || !failed {
 		return delayAfterCandidate, nil
 	}
-	if len(attemptErrors) > 0 {
-		return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
-	}
-	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
+	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %w", counts.firstErr)
 }
 
 // finishSearchCandidate puts one completed search candidate into exactly one
@@ -9792,7 +9573,7 @@ func (s *Service) waitForContentFilteringCompletion(ctx context.Context, state *
 
 // executeCrossSeedSearchAttempt downloads a search match and applies it to the
 // target instance, returning the persisted automation result for that attempt.
-func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
+func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID int, defaults triggerDefaults, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
 	result := &models.CrossSeedSearchResult{
 		TorrentHash:  torrent.Hash,
 		TorrentName:  torrent.Name,
@@ -9801,14 +9582,14 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		ProcessedAt:  processedAt,
 	}
 
-	if rejection, rejected := s.contentPrefilterRejectionForHashes(state.opts.InstanceID, torrent.Hash, match.IndexerID, torrentSearchResultInfoHashes(match.InfoHashV1, match.InfoHashV2)); rejected {
+	if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, torrent.Hash, match.IndexerID, torrentSearchResultInfoHashes(match.InfoHashV1, match.InfoHashV2)); rejected {
 		result.Status = models.CrossSeedSearchResultStatusSkipped
 		if contentPrefilterRejectedExistingStatus(rejection) == contentPrefilterRejectedSizeStatus {
 			result.Status = models.CrossSeedSearchResultStatusFailed
 		}
 		result.Message = contentPrefilterRejectedExistingMessage(rejection)
 		log.Debug().
-			Int("instanceID", state.opts.InstanceID).
+			Int("instanceID", instanceID).
 			Str("sourceHash", torrent.Hash).
 			Str("matchIndexer", match.Indexer).
 			Str("matchTitle", match.Title).
@@ -9830,14 +9611,9 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, fmt.Errorf("download failed: %w", err)
 	}
 
-	request := state.opts.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
-	request.TargetInstanceIDs = []int{state.opts.InstanceID}
-	// The run options carry the seeded search or completion source filters.
-	request.SourceFilterCategories = append([]string(nil), state.opts.Categories...)
-	request.SourceFilterTags = append([]string(nil), state.opts.Tags...)
-	request.SourceFilterExcludeCategories = append([]string(nil), state.opts.ExcludeCategories...)
-	request.SourceFilterExcludeTags = append([]string(nil), state.opts.ExcludeTags...)
-	request.SearchDecision = match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash)
+	request := defaults.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
+	request.TargetInstanceIDs = []int{instanceID}
+	request.SearchDecision = match.SearchDecision.bindSource(instanceID, torrent.Hash)
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
 		result.Status = models.CrossSeedSearchResultStatusFailed
@@ -9854,22 +9630,20 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, nil
 	}
 
-	if state != nil {
-		if rejection, rejected := s.contentPrefilterRejectionForCrossSeedResponse(state.opts.InstanceID, torrent.Hash, match.IndexerID, resp); rejected {
-			result.Status = models.CrossSeedSearchResultStatusSkipped
-			if contentPrefilterRejectedExistingStatus(rejection) == contentPrefilterRejectedSizeStatus {
-				result.Status = models.CrossSeedSearchResultStatusFailed
-			}
-			result.Message = contentPrefilterRejectedExistingMessage(rejection)
-			log.Debug().
-				Int("instanceID", state.opts.InstanceID).
-				Str("sourceHash", torrent.Hash).
-				Str("matchIndexer", match.Indexer).
-				Str("matchTitle", match.Title).
-				Str("rejectionReason", rejection.Reason).
-				Msg("[CROSSSEED-SEARCH-AUTO] Existing search result failed due to prior content prefilter rejection")
-			return result, nil
+	if rejection, rejected := s.contentPrefilterRejectionForCrossSeedResponse(instanceID, torrent.Hash, match.IndexerID, resp); rejected {
+		result.Status = models.CrossSeedSearchResultStatusSkipped
+		if contentPrefilterRejectedExistingStatus(rejection) == contentPrefilterRejectedSizeStatus {
+			result.Status = models.CrossSeedSearchResultStatusFailed
 		}
+		result.Message = contentPrefilterRejectedExistingMessage(rejection)
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("sourceHash", torrent.Hash).
+			Str("matchIndexer", match.Indexer).
+			Str("matchTitle", match.Title).
+			Str("rejectionReason", rejection.Reason).
+			Msg("[CROSSSEED-SEARCH-AUTO] Existing search result failed due to prior content prefilter rejection")
+		return result, nil
 	}
 
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
