@@ -37,7 +37,6 @@
     "pkg/prowlarr/client.go": 3
   },
   "errchkjson": {
-    "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
     "internal/services/automations/service.go": 16
   },
