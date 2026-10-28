@@ -32,6 +32,8 @@ type writeStub struct {
 
 	mu     sync.Mutex
 	hashes map[string][]string
+	// filesDeleted holds the hashes of each delete that also removed the files.
+	filesDeleted []string
 }
 
 // writeStubActions maps the write endpoints these tests read to the action they belong to.
@@ -69,6 +71,9 @@ func (s *writeStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if action, ok := writeStubActions[strings.TrimPrefix(r.URL.Path, "/api/v2/")]; ok {
 			s.mu.Lock()
 			s.hashes[action] = append(s.hashes[action], strings.Split(r.Form.Get("hashes"), "|")...)
+			if action == "delete" && r.Form.Get("deleteFiles") == "true" {
+				s.filesDeleted = append(s.filesDeleted, strings.Split(r.Form.Get("hashes"), "|")...)
+			}
 			s.mu.Unlock()
 		}
 		_, _ = w.Write([]byte("Ok."))
@@ -126,15 +131,25 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, sharedFilesMatcher{sharing}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, sharedFilesMatcher{sharing: sharing}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, instance.ID, stub
 }
 
 // sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
-type sharedFilesMatcher struct{ sharing map[string][]string }
+// otherShared, otherUnknown, and offline are the result of the check on other instances.
+type sharedFilesMatcher struct {
+	sharing                   map[string][]string
+	otherShared, otherUnknown map[string]struct{}
+	offline                   []string
+}
 
 func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
-	return &CrossMatchResult{SameInstanceContentByHash: m.sharing}
+	return &CrossMatchResult{
+		SameInstanceContentByHash:  m.sharing,
+		OtherInstanceShared:        m.otherShared,
+		OtherInstanceSharedUnknown: m.otherUnknown,
+		OfflineLocalInstances:      m.offline,
+	}
 }
 
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.

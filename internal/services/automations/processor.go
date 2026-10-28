@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -930,6 +932,11 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
 		return true
 	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		if _, keep := otherInstanceKeepsFiles(evalCtx, torrent.Hash); keep {
+			return true
+		}
+	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
 		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
@@ -979,6 +986,11 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
 	if !ok {
 		return false
+	}
+	// The selection keeps the files of the whole group, so the group frees nothing.
+	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
+		maps.Copy(evalCtx.CrossSeedHashesToClear, expanded.expandedSet)
+		return true
 	}
 	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
 }

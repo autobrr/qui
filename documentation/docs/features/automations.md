@@ -551,6 +551,10 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 
 Delete skips a torrent while qBittorrent checks it, because the progress of the torrent is not correct until the check ends. qui still deletes a checking torrent that another match pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode.
 
+In the modes `deleteWithFilesPreserveCrossSeeds` and `deleteWithFilesIncludeCrossSeeds`, qui also checks the other active instances with local filesystem access. Two instances can save into one folder on one disk. If a torrent on another instance uses the same file on disk as the torrent that the rule deletes, qui removes the torrent and keeps the files. In include mode, qui keeps the files of the whole group. A rule never deletes a torrent on another instance.
+
+If an instance with local filesystem access is offline, qui cannot check it. These two modes then keep the files of each torrent that they delete, and the log names the offline instance. qui ignores an instance that you turned off in qui. `deleteWithFiles` does not check other instances. The [Cross-Seed overview](./cross-seed/overview.md) tells what qui finds across instances and what it misses.
+
 In a live run, if a delete depends on hardlink data and the hardlinks changed or can't be read when qui checks them again, qui skips the delete for that run and decides again on the next one. A dry run does not check them again. See [Unknown scope and safety behavior](#unknown-scope-and-safety-behavior).
 
 **Optional grouping (advanced):**
@@ -1163,6 +1167,7 @@ The preview expands and shows cross-seeds only in `Remove with files (include cr
 | Remove with files | Full torrent size |
 | Preserve cross-seeds (no shared files) | Full torrent size |
 | Preserve cross-seeds (shared files) | 0 (files kept) |
+| Preserve or include cross-seeds (another instance needs the files, or is offline) | 0 (files kept) |
 
 **How preserve cross-seeds works:**
 

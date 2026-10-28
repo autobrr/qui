@@ -28,6 +28,9 @@ type CrossMatchNeeds struct {
 	SameContent  bool
 	OtherExists  bool
 	OtherSeeding bool
+	// OtherShared asks for the torrents that share a file with a torrent on
+	// another instance, and for the torrents that qui could not check.
+	OtherShared bool
 }
 
 // CrossMatchResult contains all cross-match sets for a given instance.
@@ -53,6 +56,17 @@ type CrossMatchResult struct {
 	// Conditions without a confirmed positive match are unknown for this run.
 	SameInstanceUnknown  map[string]struct{}
 	OtherInstanceUnknown map[string]struct{}
+	// OtherInstanceShared holds the torrents that share a file with a torrent
+	// on another active instance. Both instances need trusted identity.
+	// OtherInstanceSharedUnknown holds the torrents that qui could not check:
+	// every torrent while OfflineLocalInstances names an instance or the
+	// instance list cannot be read, and a torrent whose file list or folders
+	// could not be read.
+	OtherInstanceShared        map[string]struct{}
+	OtherInstanceSharedUnknown map[string]struct{}
+	// OfflineLocalInstances names the active instances with trusted identity
+	// whose torrents could not be read.
+	OfflineLocalInstances []string
 }
 
 // candidateEntry holds pre-computed data for a candidate torrent.
@@ -131,7 +145,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags || needs.SameContent
 	needsOther := needs.OtherExists || needs.OtherSeeding
 
-	if !needsSame && !needsOther {
+	if !needsSame && !needsOther && !needs.OtherShared {
 		return result
 	}
 
@@ -157,29 +171,48 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		fetched:   make(map[string]qbt.TorrentFiles),
 		links:     make(map[string]*localMatchContext),
 		linkTiers: make(map[[2]string]localLinkResult),
+		folders:   make(map[string]fsops.FileKey),
 	}
 
 	reads := s.readLocalTorrents(ctx, currentInstanceID, viewTorrents(currentTorrents))
 
 	// Select the candidates of every torrent first, so that the file lists they
 	// need are read in one batch per instance.
-	var samePicks, otherPicks [][]*candidatePick
+	var samePicks, otherPicks, sharedPicks [][]*candidatePick
+	var sharedGroups []crossPathGroup
 	var pathGroups [][]int
-	var peerReadFailed bool
+	var offline []*models.Instance
 	if needsSame {
 		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding, reads); sameIdx != nil {
 			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true, reads)
 			pathGroups = sharedPathGroups(currentTorrents)
 		}
 	}
-	if needsOther && listErr == nil {
-		var otherIdx *matchIndex
-		otherIdx, _, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
+	checkShared := needs.OtherShared && instanceHas(instances, currentInstanceID, models.CapabilityTrustedIdentity)
+	if (needsOther || checkShared) && listErr == nil {
+		otherIdx, others, failed := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
+		offline = failed
 		if otherIdx != nil {
-			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false, reads)
+			picks := s.selectAllCandidates(ctx, currentTorrents, otherIdx, false, reads)
+			if needsOther {
+				otherPicks = picks
+			}
+			if checkShared {
+				// Only a candidate with trusted identity can share a file, so qui reads no other file list.
+				untrusted := func(p *candidatePick) bool {
+					return !instanceHas(instances, p.entry.instanceID, models.CapabilityTrustedIdentity)
+				}
+				sharedPicks = make([][]*candidatePick, len(picks))
+				for i := range picks {
+					trusted := slices.DeleteFunc(slices.Clone(picks[i]), untrusted)
+					sharedPicks[i] = addSizePicks(instances, trusted, otherIdx.bySize[searchSourceSize(currentTorrents[i].Torrent)])
+				}
+				sharedGroups = crossPathGroups(instances, currentTorrents, others)
+			}
 		}
 	}
-	files.prefetch(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, otherPicks)
+	groupSources, groupPicks := prefetchGroups(len(currentTorrents), sharedGroups)
+	files.prefetch(ctx, currentInstanceID, currentTorrents, slices.Concat(pathGroups, groupSources), samePicks, otherPicks, sharedPicks, groupPicks)
 
 	if samePicks != nil {
 		result.SameInstanceContentByHash = files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs)
@@ -243,22 +276,42 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		}
 	}
 
+	if checkShared {
+		result.OtherInstanceShared = make(map[string]struct{})
+		result.OtherInstanceSharedUnknown = make(map[string]struct{})
+		if sharedPicks != nil {
+			files.addOtherShared(ctx, currentInstanceID, currentTorrents, sharedPicks, sharedGroups, result)
+		}
+		for _, inst := range offline {
+			if models.FilesystemCapabilitiesOf(inst).Has(models.CapabilityTrustedIdentity) {
+				result.OfflineLocalInstances = append(result.OfflineLocalInstances, inst.Name)
+			}
+		}
+	}
+
 	// A peer whose torrents could not be read can hold the only copy.
 	sameUnknown := needsSame && listErr != nil
-	otherUnknown := needsOther && (listErr != nil || peerReadFailed)
+	otherUnknown := needsOther && (listErr != nil || len(offline) > 0)
+	sharedUnknown := needs.OtherShared && (listErr != nil || len(result.OfflineLocalInstances) > 0)
 	if sameUnknown {
 		result.SameInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
 	}
 	if otherUnknown {
 		result.OtherInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
 	}
-	if sameUnknown || otherUnknown {
+	if sharedUnknown {
+		result.OtherInstanceSharedUnknown = make(map[string]struct{}, len(currentTorrents))
+	}
+	if sameUnknown || otherUnknown || sharedUnknown {
 		for _, torrent := range currentTorrents {
 			if sameUnknown {
 				result.SameInstanceUnknown[torrent.Hash] = struct{}{}
 			}
 			if otherUnknown {
 				result.OtherInstanceUnknown[torrent.Hash] = struct{}{}
+			}
+			if sharedUnknown {
+				result.OtherInstanceSharedUnknown[torrent.Hash] = struct{}{}
 			}
 		}
 	}
@@ -551,6 +604,174 @@ func (b *batchFiles) addSharedPathPicks(
 	return sharedPaths
 }
 
+// folderEntry is one file name in one folder on disk.
+type folderEntry struct {
+	folder fsops.FileKey
+	name   string
+}
+
+// crossPathGroup is a group of sharedPathGroups that joins torrents of the
+// instance (sources, indexes into its torrents) with torrents on other
+// instances with trusted identity.
+type crossPathGroup struct {
+	sources []int
+	others  []*candidatePick
+}
+
+// crossPathGroups returns the groups of sharedPathGroups over the torrents of
+// the instance and the torrents of others on instances with trusted identity
+// that hold torrents of both sides. A group is one unit, so that a flat save
+// path costs its torrent count, not its pair count.
+func crossPathGroups(instances []*models.Instance, torrents, others []qbittorrent.CrossInstanceTorrentView) []crossPathGroup {
+	all, sources := selectedAndTrustedOthers(instances, torrents, others, func(string) bool { return true })
+	var groups []crossPathGroup
+	for _, members := range sharedPathGroups(all) {
+		var group crossPathGroup
+		for _, member := range members {
+			if member < len(sources) {
+				group.sources = append(group.sources, sources[member])
+			} else {
+				group.others = append(group.others, &candidatePick{entry: newCandidateEntry(&all[member], false)})
+			}
+		}
+		if len(group.sources) > 0 && len(group.others) > 0 {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+// prefetchGroups gives prefetch the sources of each group, and the other
+// torrents of each group as picks of its first source.
+func prefetchGroups(torrentCount int, groups []crossPathGroup) (sources [][]int, picks [][]*candidatePick) {
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	picks = make([][]*candidatePick, torrentCount)
+	for _, group := range groups {
+		sources = append(sources, group.sources)
+		first := group.sources[0]
+		picks[first] = append(picks[first], group.others...)
+	}
+	return sources, picks
+}
+
+// addOtherShared adds to result.OtherInstanceShared each torrent with a file
+// in a folder entry of a candidate on another instance with trusted identity.
+// A candidate is a pick of the torrent or a torrent of one of its path
+// groups. A torrent whose file list or folders, or a candidate's, could not be
+// read goes to result.OtherInstanceSharedUnknown. The candidates only limit
+// which torrents qui reads: a folder entry of any candidate counts for every
+// torrent, because a Shared file is a fact on disk.
+func (b *batchFiles) addOtherShared(
+	ctx context.Context,
+	instanceID int,
+	torrents []qbittorrent.CrossInstanceTorrentView,
+	picks [][]*candidatePick,
+	groups []crossPathGroup,
+	result *CrossMatchResult,
+) {
+	_, groupPicks := prefetchGroups(len(torrents), groups)
+	entries, candidateRead := b.candidateFolderEntries(ctx, picks, groupPicks)
+	// readStatus reports whether qui read any of the candidates, and whether
+	// a read failed.
+	readStatus := func(candidates []*candidatePick) (checked, unknown bool) {
+		for _, p := range candidates {
+			ok, read := candidateRead[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)]
+			checked = checked || read
+			unknown = unknown || (read && !ok)
+		}
+		return checked, unknown
+	}
+	checked := make([]bool, len(torrents))
+	unknown := make([]bool, len(torrents))
+	for i := range picks {
+		checked[i], unknown[i] = readStatus(picks[i])
+	}
+	for _, group := range groups {
+		groupChecked, groupUnknown := readStatus(group.others)
+		for _, i := range group.sources {
+			checked[i] = checked[i] || groupChecked
+			unknown[i] = unknown[i] || groupUnknown
+		}
+	}
+
+	for i := range torrents {
+		if ctx.Err() != nil {
+			return
+		}
+		source := torrents[i].Torrent
+		if !checked[i] || source.ContentPath == "" {
+			continue
+		}
+		if unknown[i] {
+			result.OtherInstanceSharedUnknown[source.Hash] = struct{}{}
+		}
+		folders, ok := b.readFolders(ctx, instanceID, source.Hash, source.SavePath)
+		switch {
+		case !ok:
+			result.OtherInstanceSharedUnknown[source.Hash] = struct{}{}
+		case sharesFolderEntry(folders, entries):
+			result.OtherInstanceShared[source.Hash] = struct{}{}
+		}
+	}
+}
+
+// candidateFolderEntries reads the folder entries of each candidate on an
+// instance with trusted identity. read maps the files cache key of each
+// candidate that it checked to whether the read succeeded.
+func (b *batchFiles) candidateFolderEntries(ctx context.Context, picksBySource ...[][]*candidatePick) (entries map[folderEntry]struct{}, read map[string]bool) {
+	entries = make(map[folderEntry]struct{})
+	read = make(map[string]bool)
+	for _, picks := range picksBySource {
+		for _, sourcePicks := range picks {
+			for _, p := range sourcePicks {
+				c := p.entry
+				key := cacheKeyForTorrentFiles(c.instanceID, c.hash)
+				if _, done := read[key]; done || c.view.ContentPath == "" ||
+					!instanceHas(b.instances, c.instanceID, models.CapabilityTrustedIdentity) {
+					continue
+				}
+				folders, ok := b.readFolders(ctx, c.instanceID, c.hash, c.savePath)
+				read[key] = ok
+				for name, keys := range folders {
+					for _, folder := range keys {
+						entries[folderEntry{folder, name}] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	return entries, read
+}
+
+// readFolders returns folderEntries for a torrent. ok is false when its file
+// list or a folder could not be read.
+func (b *batchFiles) readFolders(ctx context.Context, instanceID int, hash, savePath string) (map[string][]fsops.FileKey, bool) {
+	data, ok := b.get(ctx, instanceID, hash, savePath)
+	if !ok {
+		return nil, false
+	}
+	folders, err := b.folderEntries(ctx, instanceID, savePath, data.files)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
+			Msg("crossseed: could not read the folders of a torrent for the shared file check")
+		return nil, false
+	}
+	return folders, true
+}
+
+func sharesFolderEntry(folders map[string][]fsops.FileKey, entries map[folderEntry]struct{}) bool {
+	for name, keys := range folders {
+		for _, folder := range keys {
+			if _, shared := entries[folderEntry{folder, name}]; shared {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
 // files are linked copies of the source files, as the Cross-Seed tab checks
 // them. A failed verification keeps the result unknown.
@@ -623,10 +844,10 @@ func newMatchIndex() *matchIndex {
 }
 
 // buildOtherInstanceIndex builds a matchIndex from all torrents on other
-// instances, and adds their reads from files to reads. views holds the
-// torrents that it read. readFailed is set when the torrents of an instance
-// could not be read.
-func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, views []qbittorrent.CrossInstanceTorrentView, readFailed bool) {
+// active instances, and adds their reads from files to reads. views holds the
+// torrents that it read. offline holds the instances whose torrents could not
+// be read.
+func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, views []qbittorrent.CrossInstanceTorrentView, offline []*models.Instance) {
 	idx = newMatchIndex()
 
 	for _, inst := range instances {
@@ -640,7 +861,7 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 		instanceViews, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
 			log.Debug().Err(err).Int("instanceID", inst.ID).Msg("crossseed: skipping instance for cross-instance matching")
-			readFailed = true
+			offline = append(offline, inst)
 			continue
 		}
 
@@ -656,9 +877,9 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 	}
 
 	if len(views) == 0 {
-		return nil, nil, readFailed
+		return nil, nil, offline
 	}
-	return idx, views, readFailed
+	return idx, views, offline
 }
 
 // indexView adds a single torrent view to all indexes.

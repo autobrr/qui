@@ -138,6 +138,14 @@ type EvalContext struct {
 	// rule that tests for "no cross-seed" cannot act on a read error.
 	SameInstanceCrossSeedUnknown map[string]struct{}
 	CrossInstanceUnknown         map[string]struct{}
+	// CrossInstanceSharedHashSet holds the torrents that share a file with a
+	// torrent on another instance, and CrossInstanceSharedUnknown the torrents
+	// that qui could not check. OfflineLocalInstances names the offline
+	// instances with local file access. Built for the delete modes that
+	// preserve or include cross-seeds; otherInstanceKeepsFiles reads them.
+	CrossInstanceSharedHashSet map[string]struct{}
+	CrossInstanceSharedUnknown map[string]struct{}
+	OfflineLocalInstances      []string
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
