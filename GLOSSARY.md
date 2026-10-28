@@ -104,6 +104,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Alignment**: The renames after an add that make the file and folder names of a torrent match the files that are already on disk. _Avoid_: content path alignment, rename alignment.
 - **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
 - **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
+- **Partial pool**: Related partial cross-seeds that share one source torrent. qui lets one member download at a time and links each completed file into the other members. _Avoid_: Pooled group.
+- **Pool member**: One torrent in a partial pool.
+- **Pool admission**: The step that makes a new partial add a pool member, and the window after it during which more members can join. _Avoid_: Admission alone (see Admitted Execution and Pre-add check).
 
 ## Automations
 
