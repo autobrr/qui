@@ -289,9 +289,23 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
 	})))
 	add(2, "llll", episode, packDir)
+	// Two flat torrents in one save path that share only a subtitle.
+	flatDir := filepath.Join(root, "flat")
+	require.NoError(t, os.MkdirAll(flatDir, 0o755))
+	for _, name := range []string{"Night.Ferry.mkv", "Night.Ferry.REPACK.mkv", "Night.Ferry.srt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(flatDir, name), []byte(name), 0o600))
+	}
+	library = append(library,
+		withTotalSize(crossMatchTorrent(1, "mmmm", "Night.Ferry.2019.1080p.BluRay.x264-GRP", flatDir, flatDir, qbt.TorrentFiles{
+			{Name: "Night.Ferry.mkv", Size: 15}, {Name: "Night.Ferry.srt", Size: 15},
+		})),
+		withTotalSize(crossMatchTorrent(2, "nnnn", "Night.Ferry.2019.REPACK.1080p.BluRay.x264-GRP", flatDir, flatDir, qbt.TorrentFiles{
+			{Name: "Night.Ferry.REPACK.mkv", Size: 22}, {Name: "Night.Ferry.srt", Size: 15},
+		})),
+	)
 
 	needs := CrossMatchNeeds{OtherShared: true}
-	shared := map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "kkkk": {}}
+	shared := map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "kkkk": {}, "mmmm": {}}
 	for _, tt := range []struct {
 		name        string
 		third       *models.Instance
@@ -302,7 +316,7 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		{
 			name:        "offline local instance",
 			third:       &models.Instance{ID: 3, Name: "third", IsActive: true, HasLocalFilesystemAccess: true},
-			wantUnknown: map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "dddd": {}, "eeee": {}, "kkkk": {}},
+			wantUnknown: map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "dddd": {}, "eeee": {}, "kkkk": {}, "mmmm": {}},
 			wantOffline: []string{"third"},
 		},
 		{

@@ -745,7 +745,8 @@ func (b *batchFiles) candidateFolderEntries(ctx context.Context, picksBySource .
 	return entries, read
 }
 
-// readFolders returns folderEntries for a torrent. ok is false when its file
+// readFolders returns folderEntries for every file of a torrent, ignored files
+// too, because a delete with files removes them. ok is false when its file
 // list or a folder could not be read.
 func (b *batchFiles) readFolders(ctx context.Context, instanceID int, hash, savePath string) (map[string][]fsops.FileKey, bool) {
 	data, ok := b.get(ctx, instanceID, hash, savePath)
