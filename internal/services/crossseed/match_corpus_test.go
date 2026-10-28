@@ -777,6 +777,26 @@ var corpusRows = []corpusRow{
 		differences:    packFromEpisodes(nil),
 	},
 	{
+		name:           "identical season pack of a show whose name starts with an ignore word",
+		source:         "Trailer.Park.Boys.S02.1080p.WEB.H264-GRP",
+		candidate:      "Trailer.Park.Boys.S02.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("Trailer.Park.Boys.S02.1080p.WEB.H264-GRP", "Trailer.Park.Boys.S02E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Trailer.Park.Boys.S02.1080p.WEB.H264-GRP", "Trailer.Park.Boys.S02E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		name:           "identical season pack of a show named after an ignore word",
+		source:         "Extras.S02.1080p.WEB.H264-GRP",
+		candidate:      "Extras.S02.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("Extras.S02.1080p.WEB.H264-GRP", "Extras.S02E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Extras.S02.1080p.WEB.H264-GRP", "Extras.S02E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+	},
+	{
 		// The season folder name has no title, so the Read release takes it from the files.
 		name:           "season folder pack against its season pack listing",
 		source:         "Season 2",

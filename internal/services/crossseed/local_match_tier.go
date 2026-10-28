@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"path"
 	"slices"
 	"strings"
 
@@ -33,20 +34,19 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 	return data
 }
 
-// contentFiles removes the files that search ignores. A file with an ignored
-// extension (nfo, srt) is always a sidecar. An ignored path keyword (proof,
-// extras) that every file has is part of the title, as for a movie named
-// Proof, so only the other keywords mark a sidecar. When every remaining file
-// has one, those files stay. A torrent of sidecars only keeps all its files.
+// contentFiles removes the files that search ignores. When every file without
+// an ignored extension (nfo, srt) is ignored, an ignore word that every file
+// has is part of the title, so only the other words mark a sidecar. When every
+// file still has one, those files stay. A torrent of sidecars only keeps all
+// its files.
 func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) qbt.TorrentFiles {
 	var noSidecars, content qbt.TorrentFiles
 	for _, file := range files {
-		name := normalizer.Normalize(file.Name)
-		if slices.ContainsFunc(DefaultIgnoredExtensions, func(ext string) bool { return strings.HasSuffix(name, ext) }) {
+		if slices.Contains(DefaultIgnoredExtensions, path.Ext(normalizer.Normalize(file.Name))) {
 			continue
 		}
 		noSidecars = append(noSidecars, file)
-		if !slices.ContainsFunc(DefaultIgnoredPathKeywords, func(keyword string) bool { return strings.Contains(name, keyword) }) {
+		if !shouldIgnoreFile(file.Name, normalizer) {
 			content = append(content, file)
 		}
 	}
@@ -57,7 +57,8 @@ func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[str
 		return files
 	}
 
-	// Every file has a keyword. Drop the keywords that every file has.
+	// Every file has a keyword. Drop the keywords that every file has, as
+	// for a show named Extras in an Extras/ folder.
 	names := make([]string, len(noSidecars))
 	for i, file := range noSidecars {
 		names[i] = normalizer.Normalize(file.Name)
