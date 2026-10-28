@@ -6,6 +6,7 @@ package crossseed
 import (
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -42,5 +43,34 @@ func TestShouldIgnoreFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, shouldIgnoreFile(tt.name, stringutils.DefaultNormalizer), tt.name)
+	}
+}
+
+func TestContentFilesTitleIsIgnoreWord(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		files qbt.TorrentFiles
+		want  []string
+	}{
+		{
+			files: qbt.TorrentFiles{{Name: "Extras/Extras.S02E01.mkv"}, {Name: "Extras/Sample/sample.mkv"}},
+			want:  []string{"Extras/Extras.S02E01.mkv"},
+		},
+		{
+			files: qbt.TorrentFiles{{Name: "Proof/Proof.mkv"}, {Name: "Proof/Sample/proof-sample.mkv"}},
+			want:  []string{"Proof/Proof.mkv"},
+		},
+		{
+			files: qbt.TorrentFiles{{Name: "Movie/sample.mkv"}, {Name: "Movie/Movie.nfo"}},
+			want:  []string{"Movie/sample.mkv"},
+		},
+	}
+	for _, tt := range tests {
+		var got []string
+		for _, file := range contentFiles(tt.files, stringutils.DefaultNormalizer) {
+			got = append(got, file.Name)
+		}
+		assert.Equal(t, tt.want, got)
 	}
 }

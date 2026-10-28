@@ -6,6 +6,7 @@ package crossseed
 import (
 	"path"
 	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -34,8 +35,10 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 }
 
 // contentFiles removes the files that search ignores. When every file without
-// an ignored extension (nfo, srt) is a sample or a bonus video, those files
-// stay. A torrent of sidecars only keeps all its files.
+// an ignored extension (nfo, srt) is ignored, an ignore word that every file
+// has is part of the title, so only the other words mark a sidecar. When every
+// file still has one, those files stay. A torrent of sidecars only keeps all
+// its files.
 func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) qbt.TorrentFiles {
 	var noSidecars, content qbt.TorrentFiles
 	for _, file := range files {
@@ -52,6 +55,27 @@ func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[str
 		return content
 	case len(noSidecars) == 0:
 		return files
+	}
+
+	// Every file has a keyword. Drop the keywords that every file has, as
+	// for a show named Extras in an Extras/ folder.
+	names := make([]string, len(noSidecars))
+	for i, file := range noSidecars {
+		names[i] = normalizer.Normalize(file.Name)
+	}
+	var keywords []string
+	for _, keyword := range DefaultIgnoredPathKeywords {
+		if slices.ContainsFunc(names, func(name string) bool { return !strings.Contains(name, keyword) }) {
+			keywords = append(keywords, keyword)
+		}
+	}
+	for i, file := range noSidecars {
+		if !slices.ContainsFunc(keywords, func(keyword string) bool { return strings.Contains(names[i], keyword) }) {
+			content = append(content, file)
+		}
+	}
+	if len(content) > 0 {
+		return content
 	}
 	return noSidecars
 }
