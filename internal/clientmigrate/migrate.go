@@ -340,46 +340,48 @@ func firstNonZero(values ...int64) int64 {
 	return 0
 }
 
-// CopyFile copies the contents of the file named src to the file named
-// by dst. The file will be created if it does not already exist. If the
-// destination file exists, all it's contents will be replaced by the contents
-// of the source file. The file mode will be copied from the source and
-// the copied data is synced/flushed to stable storage.
+// CopyFile copies the file named src to dst with the mode of src. It writes
+// a temp file next to dst and renames it into place after the data is synced,
+// so a failed copy never leaves a partial dst: the importers treat an existing
+// dst as already imported and would skip it on the next run
 func CopyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
-		return
+		return err
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	si, err := in.Stat()
 	if err != nil {
-		return
+		return err
+	}
+
+	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
+	if err != nil {
+		return err
 	}
 	defer func() {
-		if e := out.Close(); e != nil {
-			err = e
+		if err != nil {
+			out.Close()
+			os.Remove(out.Name())
 		}
 	}()
 
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return
+	if _, err = io.Copy(out, in); err != nil {
+		return err
 	}
 
-	err = out.Sync()
-	if err != nil {
-		return
+	if err = out.Sync(); err != nil {
+		return err
 	}
 
-	si, err := os.Stat(src)
-	if err != nil {
-		return
-	}
-	err = os.Chmod(dst, si.Mode())
-	if err != nil {
-		return
+	if err = out.Chmod(si.Mode()); err != nil {
+		return err
 	}
 
-	return
+	if err = out.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(out.Name(), dst)
 }

@@ -667,3 +667,30 @@ func TestForeignAbs(t *testing.T) {
 		assert.Equal(t, tt.want, foreignAbs(tt.path), tt.path)
 	}
 }
+
+func TestCopyFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.torrent")
+	dst := filepath.Join(dir, "dst.torrent")
+	require.NoError(t, os.WriteFile(src, []byte("d4:infod4:name4:testee"), 0o600))
+
+	require.NoError(t, CopyFile(src, dst))
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, "d4:infod4:name4:testee", string(got))
+
+	// a read error mid-copy (src is a directory) must leave neither dst nor
+	// a temp file behind, or the next run would skip the torrent as imported
+	failDst := filepath.Join(dir, "fail.torrent")
+	require.Error(t, CopyFile(t.TempDir(), failDst))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.ElementsMatch(t, []string{"src.torrent", "dst.torrent"}, names)
+}
