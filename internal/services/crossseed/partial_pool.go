@@ -76,7 +76,8 @@ type partialPoolSync interface {
 
 // partialPoolCoordinator owns durable partial link-mode completion. Code
 // outside this file uses only run, wake, joinEnabled, and join. A nil
-// coordinator means that the pool is off.
+// coordinator means that the pool is off, so a test that expects a pooled
+// add must set Service.partialPool and assert that the add joined a pool.
 type partialPoolCoordinator struct {
 	automationStore     *models.CrossSeedStore
 	instanceStore       instanceProvider
