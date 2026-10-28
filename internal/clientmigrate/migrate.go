@@ -280,18 +280,19 @@ func foreignAbs(p string) bool {
 		return false
 	}
 
-	s := sourceSlash(p)
-	if strings.HasPrefix(s, "/") {
+	// a single leading backslash is a valid POSIX file name character
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\\`) {
 		return true
 	}
 
-	return len(s) >= 3 && s[1] == ':' && s[2] == '/' && ('a' <= s[0]|0x20 && s[0]|0x20 <= 'z')
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') && ('a' <= p[0]|0x20 && p[0]|0x20 <= 'z')
 }
 
 // sourceSlash turns the backslashes of a Windows-style path into slashes.
-// POSIX paths keep theirs, a backslash is a valid file name character there
+// POSIX paths keep theirs, a backslash is a valid file name character there;
+// a leading // is a UNC share written with forward slashes
 func sourceSlash(p string) string {
-	if strings.HasPrefix(p, "/") {
+	if strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") {
 		return p
 	}
 	return strings.ReplaceAll(p, `\`, "/")

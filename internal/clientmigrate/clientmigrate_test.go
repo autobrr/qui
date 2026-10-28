@@ -608,6 +608,7 @@ func TestReplacePath(t *testing.T) {
 		{name: "windows case and slashes", path: `d:/downloads/tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows drive root", path: `D:\tv`, rules: []PathReplace{{From: `D:\`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows unc", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc mixed slashes", path: `//nas/share\Show`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "Show")},
 		{name: "windows unc case", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\NAS\Share`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows component boundary", path: `D:\Downloads2\tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: `D:\Downloads2\tv`},
 		{
@@ -656,6 +657,8 @@ func TestForeignAbs(t *testing.T) {
 	}{
 		{path: "Name/a.mkv", want: false},
 		{path: `Name\a.mkv`, want: false},
+		{path: `\Season/episode.mkv`, want: false},
+		{path: `E:/Extras\b.mkv`, want: !windows},
 		{path: `E:\Extras\b.mkv`, want: !windows},
 		{path: "e:/Extras/b.mkv", want: !windows},
 		{path: `\\nas\share\b.mkv`, want: !windows},
