@@ -130,6 +130,7 @@ import type {
   ThemeSettings,
   ThemeSlot,
   ThemeSlots,
+  UncheckedInstance,
   User,
   VersionInfo,
   WarningResponse,
@@ -1290,6 +1291,7 @@ class ApiClient {
    * Get the torrents that a delete of the selected torrents with their files affects.
    * Takes the selection of a bulk action, so a select-all delete checks every selected
    * torrent in one request. The selected torrents are not in the result.
+   * uncheckedInstances names the instances that the check could not read.
    */
   async getDeleteCrossSeeds(
     instanceId: number,
@@ -1303,12 +1305,17 @@ class ApiClient {
       instanceIds?: number[]
     },
     signal?: AbortSignal
-  ): Promise<LocalCrossSeedMatch[]> {
-    const raw = await this.request<RawLocalMatchesResponse>(
+  ): Promise<{ matches: LocalCrossSeedMatch[]; uncheckedInstances: UncheckedInstance[] }> {
+    const raw = await this.request<RawLocalMatchesResponse & {
+      unchecked_instances: Array<{ instance_id: number; instance_name: string; reason: UncheckedInstance["reason"] }>
+    }>(
       `/instances/${instanceId}/torrents/delete-cross-seeds`,
       { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
     )
-    return toLocalCrossSeedMatches(raw)
+    return {
+      matches: toLocalCrossSeedMatches(raw),
+      uncheckedInstances: raw.unchecked_instances.map(u => ({ instanceId: u.instance_id, instanceName: u.instance_name, reason: u.reason })),
+    }
   }
 
   async searchCrossSeedTorrent(

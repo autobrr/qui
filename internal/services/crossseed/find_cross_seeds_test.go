@@ -6,6 +6,7 @@ package crossseed
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 		"2/cccc": matchTypeRelease,
 	}, findCrossSeeds(t, svc, "aaaa"))
 
-	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
+	matches, err := findDeleteMatches(t, svc, "aaaa")
 	require.NoError(t, err)
 	require.Empty(t, matches)
 }
@@ -116,7 +117,7 @@ func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 			continue
 		}
 		hash := torrent.view.Hash
-		deleted, err := svc.FindDeleteMatches(t.Context(), 1, []string{hash})
+		deleted, err := findDeleteMatches(t, svc, hash)
 		require.NoError(t, err)
 		tab := findCrossSeeds(t, svc, hash)
 		for key, tier := range tabTiers(deleted) {
@@ -124,8 +125,9 @@ func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 			checked++
 		}
 	}
-	// aaaa, bbbb, and cccc share files; dddd and eeee are linked.
-	require.Equal(t, 8, checked)
+	// aaaa, bbbb, and cccc share files; dddd and eeee are linked. dddd on
+	// instance 2 shares the file of dddd.
+	require.Equal(t, 9, checked)
 }
 
 // The tab labels a torrent on another local instance Content when it reads a
@@ -345,6 +347,133 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 			require.Equal(t, shared, result.OtherInstanceShared)
 			require.Equal(t, tt.wantUnknown, result.OtherInstanceSharedUnknown)
 			require.Equal(t, tt.wantOffline, result.OfflineLocalInstances)
+		})
+	}
+}
+
+// The delete check lists a torrent on another local instance only for a
+// Shared file, also through a second mount and when the file has a hardlink
+// elsewhere. A hardlinked copy and an SSH instance stay out. An offline local
+// instance and a turned-off local instance are named, and the other matches
+// are still returned. A torrent of the selection is never a match.
+// regression: #3592
+func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
+	t.Parallel()
+
+	const (
+		movie   = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
+		linked  = "Silent.Shore.2021.1080p.BluRay.x264-GRP"
+		pack    = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
+		episode = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
+	)
+	root := t.TempDir()
+	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
+	for _, dir := range []string{filepath.Join(dataDir, pack), linkDir} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	// A symlinked folder stands in for a second mount of the data folder.
+	require.NoError(t, os.Symlink(dataDir, mountDir))
+	write := func(name, data string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
+	}
+	write(movie+".mkv", "movie")
+	write(linked+".mkv", "linked")
+	require.NoError(t, os.Link(filepath.Join(dataDir, linked+".mkv"), filepath.Join(linkDir, linked+".mkv")))
+	write(pack+"/"+episode+".mkv", "ep01")
+	write(pack+"/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", "ep002")
+
+	movieFiles := qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}}
+	linkedFiles := qbt.TorrentFiles{{Name: linked + ".mkv", Size: 6}}
+	packDir := filepath.Join(dataDir, pack)
+	library := []crossMatchFixture{
+		crossMatchTorrent(1, "aaaa", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(1, "bbbb", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(1, "cccc", pack, dataDir, packDir, qbt.TorrentFiles{
+			{Name: pack + "/" + episode + ".mkv", Size: 4},
+			{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
+		}),
+		// One folder that both instances read.
+		crossMatchTorrent(2, "dddd", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		// The same folder through a second mount.
+		crossMatchTorrent(2, "eeee", movie, mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
+		// A shared file that also has a hardlink elsewhere.
+		crossMatchTorrent(2, "ffff", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		// The hardlinked copy.
+		crossMatchTorrent(2, "gggg", linked, linkDir, filepath.Join(linkDir, linked+".mkv"), linkedFiles),
+		// An episode inside the folder of the season pack.
+		crossMatchTorrent(2, "hhhh", episode, packDir, filepath.Join(packDir, episode+".mkv"),
+			qbt.TorrentFiles{{Name: episode + ".mkv", Size: 4}}),
+		// An SSH instance that reads the same folder.
+		crossMatchTorrent(3, "iiii", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+	}
+	for i := range library {
+		library[i] = withTotalSize(library[i])
+	}
+	instances := []*models.Instance{
+		{ID: 1, Name: "home", IsActive: true, HasLocalFilesystemAccess: true},
+		{ID: 2, Name: "second", IsActive: true, HasLocalFilesystemAccess: true},
+		{ID: 3, Name: "box", IsActive: true, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key",
+			SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+	}
+	shared := map[string]string{
+		"2/dddd": matchTypeContentPath,
+		"2/eeee": matchTypeContentPath,
+		"2/ffff": matchTypeContentPath,
+		"2/hhhh": matchTypeContentPath,
+	}
+
+	for _, tt := range []struct {
+		name          string
+		extra         []*models.Instance
+		selection     map[int][]string
+		wantMatches   map[string]string
+		wantUnchecked []UncheckedInstance
+	}{
+		{
+			name:          "two local instances",
+			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			wantMatches:   shared,
+			wantUnchecked: []UncheckedInstance{},
+		},
+		{
+			name: "offline local instance",
+			extra: []*models.Instance{
+				{ID: 4, Name: "offline", IsActive: true, HasLocalFilesystemAccess: true},
+			},
+			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			wantMatches:   shared,
+			wantUnchecked: []UncheckedInstance{{InstanceID: 4, InstanceName: "offline", Reason: UncheckedOffline}},
+		},
+		{
+			name: "turned-off instances",
+			extra: []*models.Instance{
+				{ID: 5, Name: "off-local", HasLocalFilesystemAccess: true},
+				{ID: 6, Name: "off-api-only"},
+			},
+			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			wantMatches:   shared,
+			wantUnchecked: []UncheckedInstance{{InstanceID: 5, InstanceName: "off-local", Reason: UncheckedDisabled}},
+		},
+		{
+			name:          "selection on both instances",
+			selection:     map[int][]string{1: {"aaaa"}, 2: {"dddd", "eeee"}},
+			wantMatches:   map[string]string{},
+			wantUnchecked: []UncheckedInstance{},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, sm := deleteMatchService(library...)
+			svc.syncManager = &failingPeerSyncManager{tierSyncManager: sm, failInstanceID: 4}
+			svc.instanceStore = newOrderedInstanceStore(slices.Concat(instances, tt.extra)...)
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+			response, err := svc.FindDeleteMatches(t.Context(), tt.selection)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantMatches, tabTiers(response.Matches))
+			require.Len(t, response.Matches, len(tt.wantMatches), "a match is listed twice")
+			require.Equal(t, tt.wantUnchecked, response.Unchecked)
 		})
 	}
 }

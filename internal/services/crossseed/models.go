@@ -371,6 +371,28 @@ type LocalMatchesResponse struct {
 	Matches []LocalMatch `json:"matches"`
 }
 
+// Reasons of an UncheckedInstance.
+const (
+	UncheckedOffline  = "offline"
+	UncheckedDisabled = "disabled"
+)
+
+// DeleteMatchesResponse holds the torrents that a delete with files affects,
+// and the instances with local filesystem access that the check could not
+// read, so that the list never reads as complete when it is not.
+type DeleteMatchesResponse struct {
+	Matches   []LocalMatch        `json:"matches"`
+	Unchecked []UncheckedInstance `json:"unchecked_instances"`
+}
+
+// UncheckedInstance is an instance that the delete check did not check.
+// Reason is UncheckedOffline or UncheckedDisabled.
+type UncheckedInstance struct {
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+	Reason       string `json:"reason"`
+}
+
 // LocalMatch represents a torrent that matches the source across instances.
 type LocalMatch struct {
 	InstanceID    int     `json:"instance_id"`

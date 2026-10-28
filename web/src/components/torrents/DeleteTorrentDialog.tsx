@@ -120,6 +120,7 @@ export function DeleteTorrentDialog({
         {crossSeedWarning && (
           <CrossSeedWarning
             affectedTorrents={crossSeedWarning.affectedTorrents}
+            uncheckedInstances={crossSeedWarning.uncheckedInstances}
             searchState={crossSeedWarning.searchState}
             hasWarning={crossSeedWarning.hasWarning}
             deleteFiles={deleteFiles}

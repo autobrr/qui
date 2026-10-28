@@ -6,6 +6,7 @@
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { api } from "@/lib/api"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
 import type { TagUpdatePlan } from "@/lib/tag-editor"
 import { buildTorrentActionTargets, getTorrentTargetInstanceId } from "@/lib/torrent-action-targets"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -77,6 +78,8 @@ interface TorrentActionData {
   search?: string
   excludeHashes?: string[]
   excludeTargets?: Array<{ instanceId: number; hash: string }>
+  /** The instance scope of the request, when it is not the instance of the hook. */
+  scope?: number
   // Client-side metadata used for optimistic updates and toast messages
   clientHashes?: string[]
   clientCount?: number
@@ -217,7 +220,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       const { clientHashes, clientCount, ...payload } = data
       void clientHashes
       void clientCount
-      return api.bulkAction(instanceId, {
+      return api.bulkAction(payload.scope ?? instanceId, {
         hashes: payload.hashes,
         instanceIds: payload.instanceIds,
         targets: payload.targets,
@@ -532,10 +535,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     excludeHashes?: string[],
     clientMeta?: ClientMeta
   ) => {
-    // A select-all request cannot list hashes, so its cross-seeds go in a second request.
-    // Any other delete lists them with the selection.
+    // A select-all request cannot list hashes, and a request on one instance leaves out
+    // targets on other instances, so these cross-seeds go in a second request. Any other
+    // delete lists them with the selection.
     const crossSeedTargets = clientMeta?.crossSeedTargets ?? []
-    const mergedTargets = isAllSelected ? [] : crossSeedTargets
+    const otherInstance = instanceId !== ALL_INSTANCES_ID && crossSeedTargets.some(target => target.instanceId !== instanceId)
+    const mergedTargets = isAllSelected || otherInstance ? [] : crossSeedTargets
     const mergedHashes = mergedTargets.map(target => target.hash)
     const clientHashes = [...(clientMeta?.clientHashes ?? hashes), ...mergedHashes]
     const clientCount = (clientMeta?.totalSelected ?? clientMeta?.clientHashes?.length ?? hashes.length) + mergedHashes.length
@@ -556,9 +561,10 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     })
     // The cross-seed warning leaves out every selected torrent, so the second delete
     // never repeats a torrent of the select-all delete (#3341).
-    if (isAllSelected && crossSeedTargets.length) {
+    if (mergedTargets.length === 0 && crossSeedTargets.length) {
       const crossSeedHashes = crossSeedTargets.map(target => target.hash)
       await mutation.mutateAsync({
+        scope: otherInstance ? ALL_INSTANCES_ID : undefined,
         action: "delete",
         instanceIds,
         targets: crossSeedTargets,
@@ -572,7 +578,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setDeleteCrossSeeds(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation, deleteFiles, instanceIds])
+  }, [mutation, deleteFiles, instanceIds, instanceId])
 
   const handleUpdateTags = useCallback(async (
     plan: TagUpdatePlan,

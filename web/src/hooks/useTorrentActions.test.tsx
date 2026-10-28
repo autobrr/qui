@@ -408,6 +408,33 @@ describe("useTorrentActions - delete", () => {
     expect(request.targets).toEqual([{ instanceId: 7, hash: "h1" }, { instanceId: 7, hash: "cs1" }])
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
   })
+
+  // A request on one instance leaves out targets on other instances.
+  // regression: #3592
+  it("sends the cross-seeds to the unified scope when one is on another instance", async () => {
+    const { result } = renderActions()
+    const crossSeedTargets = [{ instanceId: 7, hash: "cs1" }, { instanceId: 9, hash: "cs2" }]
+
+    await act(async () => {
+      await result.current.handleDelete(
+        ["h1"],
+        false,
+        undefined,
+        undefined,
+        undefined,
+        { clientHashes: ["h1"], totalSelected: 1, actionTargets: [{ instanceId: 7, hash: "h1" }], crossSeedTargets }
+      )
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
+    const [firstScope, first] = mockedApi.bulkAction.mock.calls[0]
+    expect(firstScope).toBe(7)
+    expect(first.targets).toEqual([{ instanceId: 7, hash: "h1" }])
+    const [secondScope, second] = mockedApi.bulkAction.mock.calls[1]
+    expect(secondScope).toBe(0)
+    expect(second.targets).toEqual(crossSeedTargets)
+    expect(second.hashes).toEqual([])
+  })
 })
 
 describe("useTorrentActions - tags", () => {

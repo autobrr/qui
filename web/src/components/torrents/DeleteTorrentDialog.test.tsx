@@ -102,6 +102,7 @@ describe("DeleteTorrentDialog", () => {
       deleteCrossSeeds: true,
       crossSeedWarning: {
         affectedTorrents: torrents.slice(0, 2).map(torrent => ({ ...torrent, matchType: "content_path" })),
+        uncheckedInstances: [],
         searchState: "complete",
         hasWarning: true,
       } as unknown as CrossSeedWarningResult,
@@ -109,5 +110,28 @@ describe("DeleteTorrentDialog", () => {
 
     expect(screen.getByRole("heading").textContent).toBe("Delete 10 torrents that match the filter?")
     expect(screen.getByRole("button", { name: "Delete 12 torrents" })).not.toBeNull()
+  })
+
+  // regression: #3592
+  it("names each instance that the cross-seed check did not read", () => {
+    const uncheckedInstances = [
+      { instanceId: 3, instanceName: "Basement", reason: "offline" },
+      { instanceId: 4, instanceName: "Spare", reason: "disabled" },
+    ] as const
+    for (const hasWarning of [false, true]) {
+      renderDialog({
+        deleteFiles: true,
+        crossSeedWarning: {
+          affectedTorrents: hasWarning ? [{ ...torrents[0], instanceId: 2, instanceName: "Second", matchType: "content_path" }] : [],
+          uncheckedInstances,
+          searchState: "complete",
+          hasWarning,
+        } as unknown as CrossSeedWarningResult,
+      })
+
+      expect(screen.getByText("Could not check Basement: qui cannot reach it.")).not.toBeNull()
+      expect(screen.getByText("Did not check Spare: it is turned off in qui.")).not.toBeNull()
+      cleanup()
+    }
   })
 })

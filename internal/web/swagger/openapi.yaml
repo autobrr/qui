@@ -2879,7 +2879,7 @@ paths:
       tags:
         - Torrents
       summary: Find the cross-seeds that a delete affects
-      description: Returns the torrents that share files with the selected torrents and that a delete with files affects, on the instance of each selected torrent. The selected torrents are not in the result. The request takes the selection of a bulk action, so a selectAll request checks every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash.
+      description: Returns the torrents that a delete with files of the selected torrents affects. On the instance of each selected torrent, these are the torrents that share files with it and its hardlinked or reflinked copies. On every other active instance with local filesystem access, these are the torrents that read the same files on disk (matchType content_path). The selected torrents are not in the result, also when they are on another instance. unchecked_instances names each instance with local filesystem access that the check could not read. The request takes the selection of a bulk action, so a selectAll request checks every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -2951,8 +2951,28 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/LocalCrossSeedMatch'
+                  unchecked_instances:
+                    type: array
+                    description: The instances with local filesystem access that the check did not read. offline means that qui could not read the torrent list of the instance. disabled means that the instance is turned off in qui. The matches do not include torrents on these instances.
+                    items:
+                      type: object
+                      required:
+                        - instance_id
+                        - instance_name
+                        - reason
+                      properties:
+                        instance_id:
+                          type: integer
+                        instance_name:
+                          type: string
+                        reason:
+                          type: string
+                          enum:
+                            - offline
+                            - disabled
                 required:
                   - matches
+                  - unchecked_instances
         '400':
           description: Invalid selection
         '409':

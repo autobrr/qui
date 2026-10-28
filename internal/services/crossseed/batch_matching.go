@@ -337,6 +337,9 @@ type batchFiles struct {
 	// trustedIdentityOnly limits links to instances with TrustedIdentity, as
 	// localMatchContext does.
 	trustedIdentityOnly bool
+	// otherSharedOnly gives a candidate on another instance a tier only for a
+	// Shared file, as the delete check asks.
+	otherSharedOnly bool
 }
 
 type localLinkResult struct {
