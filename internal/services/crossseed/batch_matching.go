@@ -15,6 +15,7 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -173,7 +174,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	}
 	if needsOther && listErr == nil {
 		var otherIdx *matchIndex
-		otherIdx, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
+		otherIdx, _, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
 		if otherIdx != nil {
 			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false, reads)
 		}
@@ -276,6 +277,10 @@ type batchFiles struct {
 	// linkTiers holds the link check result per pair of torrents. A link
 	// goes both ways, so the pair is checked once.
 	linkTiers map[[2]string]localLinkResult
+	// folders holds the file identity of each folder that sharedFile read. A
+	// zero key is a folder that does not exist or has no file identity. Only
+	// local instances reach it, so a path on the qui host is the key.
+	folders map[string]fsops.FileKey
 	// trustedIdentityOnly limits links to instances with TrustedIdentity, as
 	// localMatchContext does.
 	trustedIdentityOnly bool
@@ -618,11 +623,11 @@ func newMatchIndex() *matchIndex {
 }
 
 // buildOtherInstanceIndex builds a matchIndex from all torrents on other
-// instances, and adds their reads from files to reads. readFailed is set when
-// the torrents of an instance could not be read.
-func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, readFailed bool) {
+// instances, and adds their reads from files to reads. views holds the
+// torrents that it read. readFailed is set when the torrents of an instance
+// could not be read.
+func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, views []qbittorrent.CrossInstanceTorrentView, readFailed bool) {
 	idx = newMatchIndex()
-	hasEntries := false
 
 	for _, inst := range instances {
 		if inst.ID == currentInstanceID || !inst.IsActive {
@@ -632,24 +637,28 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 			break
 		}
 
-		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
+		instanceViews, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
 			log.Debug().Err(err).Int("instanceID", inst.ID).Msg("crossseed: skipping instance for cross-instance matching")
 			readFailed = true
 			continue
 		}
 
-		maps.Copy(reads, s.readLocalTorrents(ctx, inst.ID, viewTorrents(views)))
-		for i := range views {
-			s.indexView(idx, &views[i], needsSeeding, reads)
-			hasEntries = true
+		maps.Copy(reads, s.readLocalTorrents(ctx, inst.ID, viewTorrents(instanceViews)))
+		for i := range instanceViews {
+			s.indexView(idx, &instanceViews[i], needsSeeding, reads)
+		}
+		if views == nil {
+			views = instanceViews
+		} else {
+			views = append(views, instanceViews...)
 		}
 	}
 
-	if !hasEntries {
-		return nil, readFailed
+	if len(views) == 0 {
+		return nil, nil, readFailed
 	}
-	return idx, readFailed
+	return idx, views, readFailed
 }
 
 // indexView adds a single torrent view to all indexes.
