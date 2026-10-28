@@ -585,3 +585,60 @@ func TestDecodeTransmissionResumeFileStructuredPeers(t *testing.T) {
 		})
 	}
 }
+
+func TestReplacePath(t *testing.T) {
+	t.Parallel()
+
+	data := filepath.Join(string(filepath.Separator), "data")
+
+	tests := []struct {
+		name  string
+		path  string
+		rules []PathReplace
+		want  string
+	}{
+		{name: "posix prefix", path: "/mnt/old/tv/Show", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: filepath.Join(data, "tv", "Show")},
+		{name: "posix exact", path: "/mnt/old", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: data},
+		{name: "posix trailing slash in rule", path: "/mnt/old/tv", rules: []PathReplace{{From: "/mnt/old/", To: data}}, want: filepath.Join(data, "tv")},
+		{name: "posix root", path: "/tv", rules: []PathReplace{{From: "/", To: data}}, want: filepath.Join(data, "tv")},
+		{name: "posix component boundary", path: "/mnt/older/tv", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: "/mnt/older/tv"},
+		{name: "posix case-sensitive", path: "/MNT/old/tv", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: "/MNT/old/tv"},
+		{name: "windows prefix", path: `D:\Downloads\tv\Show`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv", "Show")},
+		{name: "windows case and slashes", path: `d:/downloads/tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows drive root", path: `D:\tv`, rules: []PathReplace{{From: `D:\`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows component boundary", path: `D:\Downloads2\tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: `D:\Downloads2\tv`},
+		{
+			name: "first match wins",
+			path: "/mnt/old/tv",
+			rules: []PathReplace{
+				{From: "/mnt/old/tv", To: filepath.Join(data, "shows")},
+				{From: "/mnt/old", To: data},
+			},
+			want: filepath.Join(data, "shows"),
+		},
+		{name: "no rules", path: `D:\Downloads\tv`, want: `D:\Downloads\tv`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, replacePath(tt.path, tt.rules))
+		})
+	}
+}
+
+func TestParsePathReplace(t *testing.T) {
+	t.Parallel()
+
+	to := t.TempDir()
+
+	r, err := ParsePathReplace(`D:\Downloads=` + to)
+	require.NoError(t, err)
+	assert.Equal(t, PathReplace{From: `D:\Downloads`, To: to}, r)
+
+	for _, rule := range []string{`D:\Downloads`, `D:\Downloads=`, "=" + to, `D:\Downloads=data`} {
+		_, err := ParsePathReplace(rule)
+		assert.Error(t, err, rule)
+	}
+}

@@ -89,6 +89,7 @@ func TestUTorrentLayout(t *testing.T) {
 		name       string
 		info       *metainfo.Info
 		item       UTorrentResumeItem
+		rules      []PathReplace
 		path       string
 		wantMapped []string
 	}{
@@ -122,6 +123,14 @@ func TestUTorrentLayout(t *testing.T) {
 			wantMapped: []string{info.Name + "/a.mkv", info.Name + "/extras/c.mkv"},
 		},
 		{
+			name:       "one file moved to another Windows drive",
+			info:       &info,
+			item:       UTorrentResumeItem{Targets: [][]any{{int64(1), `E:\Extras\b.mkv`}}},
+			rules:      []PathReplace{{From: `E:\`, To: filepath.Join(base, "elsewhere")}},
+			path:       filepath.Join(base, info.Name),
+			wantMapped: []string{info.Name + "/a.mkv", filepath.Join(base, "elsewhere", "Extras", "b.mkv")},
+		},
+		{
 			name:       "one file moved out of the content root",
 			info:       &info,
 			item:       UTorrentResumeItem{Targets: [][]any{{int64(1), moved}}},
@@ -133,7 +142,7 @@ func TestUTorrentLayout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			savePath, mapped := utorrentLayout(&tt.item, tt.path, tt.info)
+			savePath, mapped := utorrentLayout(&tt.item, tt.path, tt.info, tt.rules)
 			assert.Equal(t, base, savePath)
 			assert.Equal(t, tt.wantMapped, mapped)
 		})
@@ -218,7 +227,7 @@ func TestUTorrentMigrate(t *testing.T) {
 			"info":                  string(done.HashInfoBytes().Bytes()),
 			"label":                 "tv",
 			"override_seedsettings": int64(1),
-			"path":                  filepath.Join(saveDir, "Test.Torrent.2024.1080p.WEB-TEST"),
+			"path":                  `D:\Downloads\Test.Torrent.2024.1080p.WEB-TEST`,
 			"prio":                  "\x08\x08",
 			"runtime":               int64(7200),
 			"seedtime":              int64(3600),
@@ -238,7 +247,14 @@ func TestUTorrentMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "resume.dat"), blob, 0o600))
 
-	err = NewUTorrentImporter(Options{Source: ClientTypeUTorrent, SourceDir: sourceDir, QbitDir: qbitDir}).Migrate()
+	// the Windows save path only resolves through the replace rule
+	opts := Options{
+		Source:       ClientTypeUTorrent,
+		SourceDir:    sourceDir,
+		QbitDir:      qbitDir,
+		PathReplaces: []PathReplace{{From: `D:\Downloads`, To: saveDir}},
+	}
+	err = NewUTorrentImporter(opts).Migrate()
 	require.NoError(t, err)
 
 	entries, err := os.ReadDir(qbitDir)

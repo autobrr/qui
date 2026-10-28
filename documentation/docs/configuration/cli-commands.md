@@ -151,6 +151,12 @@ Import torrents with their state from Deluge, rTorrent, Transmission, or uTorren
   --source-dir "$env:APPDATA\uTorrent" `
   --qbit-dir "$env:LOCALAPPDATA\qBittorrent\BT_backup"
 
+# Map save paths when qBittorrent sees the data elsewhere
+./qui migrate utorrent \
+  --source-dir /mnt/old-pc/uTorrent \
+  --qbit-dir /config/qBittorrent/BT_backup \
+  --replace-path 'D:\Downloads=/data/downloads'
+
 # Skip the automatic tar.gz backup of both directories
 ./qui migrate transmission --source-dir ... --qbit-dir ... --skip-backup
 ```
@@ -163,6 +169,7 @@ Notes:
 - qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x, uTorrent and BitTorrent 2.x and 3.x.
 - If you do not set `--skip-backup`, qui first archives both directories to `qbt_backup/` in the current working directory. If the qBittorrent directory already exists, qui archives it. A fresh destination produces only the source archive.
 - If a torrent already exists in the target `BT_backup`, qui skips it. You can run the command again.
+- `--replace-path from=to` rewrites the start of each save path. You can repeat it. See [Save paths](../features/client-migration.md#save-paths).
 
 ## Database migration (db migrate)
 

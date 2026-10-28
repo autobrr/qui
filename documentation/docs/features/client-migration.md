@@ -29,9 +29,27 @@ If you do not set `--skip-backup`, the command archives both directories to `qbt
 
 `--qbit-dir` is qBittorrent's session directory. Common locations: `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, and `/config/qBittorrent/BT_backup` in Docker images.
 
-:::warning
-The command carries over save paths from the source client without changes. qBittorrent must see the downloaded data at those same paths. If you move between machines or containers, keep the mount layout identical. Otherwise, the torrents show as missing files. Run the migration on the same OS family as the source client. You cannot import a Unix session directory on a Windows host.
-:::
+## Save paths
+
+By default, the command carries over save paths from the source client without changes. qBittorrent must see the downloaded data at those same paths. Otherwise, the torrents show as missing files.
+
+If qBittorrent sees the data at a different path, add `--replace-path from=to`. The command replaces the start of each save path that begins with `from` with `to`:
+
+```bash
+qui migrate utorrent \
+  --source-dir /mnt/old-pc/uTorrent \
+  --qbit-dir /config/qBittorrent/BT_backup \
+  --replace-path 'D:\Downloads=/data/downloads' \
+  --replace-path 'E:\Movies=/data/movies'
+```
+
+- `from` is the path as the source client stored it. `to` must be an absolute path on the machine that runs the command.
+- A rule matches whole folder names: `/data` matches `/data/tv` but not `/database`.
+- Windows paths in `from` match with either slash and without regard to case.
+- You can repeat the flag. If more than one rule matches, the first one wins.
+- The command also rewrites files that you moved out of the torrent folder in Deluge or uTorrent.
+
+With these rules, you can move a library between Windows and Linux, or into a container. If a save path is not an absolute path on the host and no rule matches it, the command skips the torrent and logs a warning. Use `--dry-run` to check your rules first.
 
 ## Deluge
 
@@ -101,7 +119,7 @@ Supported: uTorrent and BitTorrent 2.x and 3.x, the classic desktop clients. uTo
 - If a `resume.dat` entry points at a `.torrent` file outside the source directory and that file is gone, the importer looks for a file with the same name in the source directory.
 - The importer skips BitTorrent v2 and hybrid torrents, and magnet links that never got their metadata.
 
-uTorrent on Windows stores Windows save paths. To import that library, run the migration on Windows and use qBittorrent on Windows. See the warning above about save paths.
+uTorrent on Windows stores Windows save paths such as `D:\Downloads`. To move that library to qBittorrent on Linux or in Docker, map the paths with `--replace-path`. See [Save paths](#save-paths).
 
 ## What is imported
 

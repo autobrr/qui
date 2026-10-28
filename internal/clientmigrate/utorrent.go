@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -103,11 +104,11 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
-		// also catches Windows save paths on a Unix host: cross-OS migration
-		// cannot work because the save paths would be unusable
-		contentPath := filepath.Clean(decodeCESU8(item.Path))
+		// also catches Windows save paths on a Unix host that no
+		// --replace-path rule maps
+		contentPath := filepath.Clean(replacePath(decodeCESU8(item.Path), i.opts.PathReplaces))
 		if !filepath.IsAbs(contentPath) {
-			log.Warn().Msgf("(%d/%d) %s save path %q is not an absolute path on this OS, skipping", positionNum, totalJobs, metaInfo.BestName(), item.Path)
+			log.Warn().Msgf("(%d/%d) %s save path %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.BestName(), item.Path)
 			skipped++
 			continue
 		}
@@ -118,7 +119,7 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
-		newFastResume := utorrentFastresume(&item, file, &metaInfo, contentPath, pieces)
+		newFastResume := utorrentFastresume(&item, file, &metaInfo, contentPath, pieces, i.opts.PathReplaces)
 
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
@@ -179,7 +180,7 @@ func (i *UTorrentImport) loadResume() (map[string]bencode.Bytes, error) {
 
 // utorrentFastresume builds the qBittorrent resume data for a complete
 // uTorrent resume entry
-func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, contentPath, pieces string) Fastresume {
+func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, contentPath, pieces string, rules []PathReplace) Fastresume {
 	completedTime := firstNonZero(item.CompletedOn, item.AddedOn)
 
 	// stopped (0) and paused (3) stay paused out of auto-management;
@@ -199,7 +200,7 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 		ratioLimit = item.WantedRatio
 	}
 
-	savePath, mappedFiles := utorrentLayout(item, contentPath, info)
+	savePath, mappedFiles := utorrentLayout(item, contentPath, info, rules)
 
 	fr := Fastresume{
 		ActiveTime:                item.Runtime,
@@ -362,8 +363,9 @@ func utorrentFilePriorities(prio string, fileCount int) []int {
 // mapped_files. path is the content root: the file itself for single-file
 // torrents, the torrent folder for multi-file ones. A renamed root and the
 // per-file targets renames only exist in the resume data, so the data on disk
-// needs mapped_files
-func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo.Info) (string, []string) {
+// needs mapped_files. Targets moved out of the content root are absolute and
+// go through the same --replace-path rules as the content path
+func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo.Info, rules []PathReplace) (string, []string) {
 	savePath := filepath.Dir(contentPath)
 	root := filepath.Base(contentPath)
 
@@ -394,7 +396,13 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 		if len(parts) == 0 {
 			continue
 		}
-		targets[int(idx)] = strings.Join(parts, string(filepath.Separator))
+
+		target := replacePath(strings.Join(parts, "/"), rules)
+		if filepath.IsAbs(target) {
+			targets[int(idx)] = filepath.Clean(target)
+		} else {
+			targets[int(idx)] = root + "/" + path.Clean(sourceSlash(target))
+		}
 	}
 
 	if root == info.BestName() && len(targets) == 0 {
@@ -404,13 +412,9 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 	files := info.UpvertedFiles()
 	mapped := make([]string, len(files))
 	for i, f := range files {
-		target, ok := targets[i]
-		switch {
-		case ok && filepath.IsAbs(target):
-			mapped[i] = filepath.Clean(target)
-		case ok:
-			mapped[i] = root + "/" + filepath.ToSlash(filepath.Clean(target))
-		default:
+		if target, ok := targets[i]; ok {
+			mapped[i] = target
+		} else {
 			mapped[i] = root + "/" + strings.Join(f.BestPath(), "/")
 		}
 	}

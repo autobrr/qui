@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/gzip"
@@ -24,11 +25,33 @@ var (
 )
 
 type Options struct {
-	Source     ClientType
-	SourceDir  string
-	QbitDir    string
-	DryRun     bool
-	SkipBackup bool
+	Source       ClientType
+	SourceDir    string
+	QbitDir      string
+	DryRun       bool
+	SkipBackup   bool
+	PathReplaces []PathReplace
+}
+
+// PathReplace rewrites save paths that start with From to start with To
+type PathReplace struct {
+	From string
+	To   string
+}
+
+// ParsePathReplace parses a from=to rule. To must be an absolute path on
+// this host; From is a path as the source client stored it
+func ParsePathReplace(rule string) (PathReplace, error) {
+	from, to, ok := strings.Cut(rule, "=")
+	if !ok || from == "" || to == "" {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, expected from=to", rule)
+	}
+
+	if !filepath.IsAbs(to) {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not an absolute path on this OS", rule, to)
+	}
+
+	return PathReplace{From: from, To: to}, nil
 }
 
 type ClientMigrater interface {
@@ -219,6 +242,42 @@ func archiveDir(dir, archiveName string) error {
 	}
 
 	return out.Close()
+}
+
+// replacePath rewrites the prefix of a source client path with the first
+// matching rule and returns it in host form, or returns p unchanged. Matches
+// end at a path separator, so /data does not match /database. Windows-style
+// paths match case-insensitively with either slash, which lets a library move
+// between Windows and Unix hosts
+func replacePath(p string, rules []PathReplace) string {
+	src := sourceSlash(p)
+	for _, r := range rules {
+		from := strings.TrimRight(sourceSlash(r.From), "/")
+		if len(src) < len(from) {
+			continue
+		}
+
+		prefix, rest := src[:len(from)], src[len(from):]
+		if rest != "" && rest[0] != '/' {
+			continue
+		}
+		if prefix != from && (strings.HasPrefix(from, "/") || !strings.EqualFold(prefix, from)) {
+			continue
+		}
+
+		return filepath.Join(r.To, filepath.FromSlash(rest))
+	}
+
+	return p
+}
+
+// sourceSlash turns the backslashes of a Windows-style path into slashes.
+// POSIX paths keep theirs, a backslash is a valid file name character there
+func sourceSlash(p string) string {
+	if strings.HasPrefix(p, "/") {
+		return p
+	}
+	return strings.ReplaceAll(p, `\`, "/")
 }
 
 // logImportSummary logs the per-importer end result with accurate counts
