@@ -315,11 +315,12 @@ func (b *batchFiles) sharedFile(ctx context.Context, sourceInstanceID int, sourc
 		!instanceHas(b.instances, c.instanceID, models.CapabilityTrustedIdentity) {
 		return false, nil
 	}
-	sourceFolders, err := b.folderEntries(ctx, sourceInstanceID, source.SavePath, sourceFiles)
+	normalizer := normalizerForService(b.svc)
+	sourceFolders, err := b.folderEntries(ctx, sourceInstanceID, source.SavePath, contentFiles(sourceFiles, normalizer))
 	if err != nil {
 		return false, err
 	}
-	candidateFolders, err := b.folderEntries(ctx, c.instanceID, c.savePath, candidateFiles)
+	candidateFolders, err := b.folderEntries(ctx, c.instanceID, c.savePath, contentFiles(candidateFiles, normalizer))
 	if err != nil {
 		return false, err
 	}
@@ -333,10 +334,9 @@ func (b *batchFiles) sharedFile(ctx context.Context, sourceInstanceID int, sourc
 	return false, nil
 }
 
-// folderEntries maps each content file name of a torrent to the identities of
-// the folders that hold a file of that name. A folder that does not exist
-// holds no file, and a name that does not resolve under the save path is
-// skipped.
+// folderEntries maps each file name in files to the identities of the folders
+// that hold a file of that name. A folder that does not exist holds no file,
+// and a name that does not resolve under the save path is skipped.
 func (b *batchFiles) folderEntries(ctx context.Context, instanceID int, savePath string, files qbt.TorrentFiles) (map[string][]fsops.FileKey, error) {
 	backend, err := b.svc.getBackendForInstance(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
@@ -349,7 +349,7 @@ func (b *batchFiles) folderEntries(ctx context.Context, instanceID int, savePath
 	}
 	instance := instanceByID(b.instances, instanceID)
 	folders := make(map[string][]fsops.FileKey)
-	for _, file := range contentFiles(files, normalizerForService(b.svc)) {
+	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(d, base, file.Name)
 		if !ok {
 			continue

@@ -4254,6 +4254,26 @@ func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatch
 	}
 	evalCtx.SameInstanceCrossSeedUnknown = result.SameInstanceUnknown
 	evalCtx.CrossInstanceUnknown = result.OtherInstanceUnknown
+	evalCtx.CrossInstanceSharedHashSet = result.OtherInstanceShared
+	evalCtx.CrossInstanceSharedUnknown = result.OtherInstanceSharedUnknown
+	evalCtx.OfflineLocalInstances = result.OfflineLocalInstances
+}
+
+// otherInstanceKeepsFiles reports whether a torrent on another instance can
+// need the files of the torrent: they share a file, or qui could not check. A
+// rule never reaches another instance, so the delete keeps the files. logMsg
+// says why.
+func otherInstanceKeepsFiles(evalCtx *EvalContext, hash string) (logMsg string, keep bool) {
+	if _, shared := evalCtx.CrossInstanceSharedHashSet[hash]; shared {
+		return "automations: removing torrent (a torrent on another instance shares the files - keeping files)", true
+	}
+	if _, unknown := evalCtx.CrossInstanceSharedUnknown[hash]; !unknown {
+		return "", false
+	}
+	if len(evalCtx.OfflineLocalInstances) == 0 {
+		return "automations: removing torrent (could not check other instances - keeping files)", true
+	}
+	return "automations: removing torrent (could not check instance " + strings.Join(evalCtx.OfflineLocalInstances, ", ") + " - keeping files)", true
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks

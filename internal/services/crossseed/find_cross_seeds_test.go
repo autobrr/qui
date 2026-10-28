@@ -229,3 +229,122 @@ func TestFindCrossSeedsSkipsSizeOnlyCandidatesWithoutTrustedSource(t *testing.T)
 	require.NoError(t, err)
 	require.Empty(t, response.Matches)
 }
+
+// The automation sets hold each torrent on the instance that shares a file
+// with a torrent on another local instance, also through a second mount and
+// when the file has a hardlink elsewhere. A hardlinked copy is no Shared file.
+// An offline local instance makes every torrent unknown and is named. A
+// turned-off instance changes nothing.
+// regression: #3591
+func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
+	for _, dir := range []string{dataDir, linkDir} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	// A symlinked folder stands in for a second mount of the data folder.
+	require.NoError(t, os.Symlink(dataDir, mountDir))
+
+	var library []crossMatchFixture
+	add := func(instanceID int, hash, name, dir string) {
+		files := qbt.TorrentFiles{{Name: name + ".mkv", Size: int64(len(name))}}
+		library = append(library, withTotalSize(crossMatchTorrent(instanceID, hash, name, dir, filepath.Join(dir, name+".mkv"), files)))
+	}
+	for _, name := range []string{
+		"Quiet.Coast.2020.1080p.BluRay.x264-GRP",
+		"Silent.Shore.2021.1080p.BluRay.x264-GRP",
+		"Still.Harbor.2022.1080p.BluRay.x264-GRP",
+		"Calm.Bay.2023.1080p.BluRay.x264-GRP",
+		"Lone.Pier.2024.1080p.BluRay.x264-GRP",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name+".mkv"), []byte(name), 0o600))
+	}
+	for _, name := range []string{"Still.Harbor.2022.1080p.BluRay.x264-GRP", "Calm.Bay.2023.1080p.BluRay.x264-GRP"} {
+		require.NoError(t, os.Link(filepath.Join(dataDir, name+".mkv"), filepath.Join(linkDir, name+".mkv")))
+	}
+	add(1, "aaaa", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
+	add(1, "bbbb", "Silent.Shore.2021.1080p.BluRay.x264-GRP", dataDir)
+	add(1, "cccc", "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
+	add(1, "dddd", "Calm.Bay.2023.1080p.BluRay.x264-GRP", dataDir)
+	add(1, "eeee", "Lone.Pier.2024.1080p.BluRay.x264-GRP", dataDir)
+	// One folder that both instances read.
+	add(2, "ffff", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
+	// The same folder through a second mount.
+	add(2, "gggg", "Silent.Shore.2021.1080p.BluRay.x264-GRP", mountDir)
+	// A shared file that also has a hardlink elsewhere.
+	add(2, "hhhh", "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
+	// A hardlinked copy.
+	add(2, "iiii", "Calm.Bay.2023.1080p.BluRay.x264-GRP", linkDir)
+	// An episode inside the folder of a season pack. Only the path finds it.
+	const pack, episode = "Harbor.Watch.S01.1080p.WEB.h264-GRP", "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
+	packDir := filepath.Join(dataDir, pack)
+	require.NoError(t, os.MkdirAll(packDir, 0o755))
+	for _, name := range []string{episode, "Harbor.Watch.S01E02.1080p.WEB.h264-GRP"} {
+		require.NoError(t, os.WriteFile(filepath.Join(packDir, name+".mkv"), []byte(name), 0o600))
+	}
+	library = append(library, withTotalSize(crossMatchTorrent(1, "kkkk", pack, dataDir, packDir, qbt.TorrentFiles{
+		{Name: pack + "/" + episode + ".mkv", Size: 4},
+		{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
+	})))
+	add(2, "llll", episode, packDir)
+	// Two flat torrents in one save path that share only a subtitle.
+	flatDir := filepath.Join(root, "flat")
+	require.NoError(t, os.MkdirAll(flatDir, 0o755))
+	for _, name := range []string{"Night.Ferry.mkv", "Night.Ferry.REPACK.mkv", "Night.Ferry.srt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(flatDir, name), []byte(name), 0o600))
+	}
+	library = append(library,
+		withTotalSize(crossMatchTorrent(1, "mmmm", "Night.Ferry.2019.1080p.BluRay.x264-GRP", flatDir, flatDir, qbt.TorrentFiles{
+			{Name: "Night.Ferry.mkv", Size: 15}, {Name: "Night.Ferry.srt", Size: 15},
+		})),
+		withTotalSize(crossMatchTorrent(2, "nnnn", "Night.Ferry.2019.REPACK.1080p.BluRay.x264-GRP", flatDir, flatDir, qbt.TorrentFiles{
+			{Name: "Night.Ferry.REPACK.mkv", Size: 22}, {Name: "Night.Ferry.srt", Size: 15},
+		})),
+	)
+
+	needs := CrossMatchNeeds{OtherShared: true}
+	shared := map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "kkkk": {}, "mmmm": {}}
+	for _, tt := range []struct {
+		name        string
+		third       *models.Instance
+		wantUnknown map[string]struct{}
+		wantOffline []string
+	}{
+		{name: "two instances", wantUnknown: map[string]struct{}{}},
+		{
+			name:        "offline local instance",
+			third:       &models.Instance{ID: 3, Name: "third", IsActive: true, HasLocalFilesystemAccess: true},
+			wantUnknown: map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "dddd": {}, "eeee": {}, "kkkk": {}, "mmmm": {}},
+			wantOffline: []string{"third"},
+		},
+		{
+			name:        "turned-off local instance",
+			third:       &models.Instance{ID: 3, Name: "third", HasLocalFilesystemAccess: true},
+			wantUnknown: map[string]struct{}{},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, sm := deleteMatchService(library...)
+			svc.syncManager = &failingPeerSyncManager{tierSyncManager: sm, failInstanceID: 3}
+			instances := []*models.Instance{
+				{ID: 1, Name: "home", IsActive: true, HasLocalFilesystemAccess: true},
+				{ID: 2, Name: "second", IsActive: true, HasLocalFilesystemAccess: true},
+			}
+			if tt.third != nil {
+				instances = append(instances, tt.third)
+			}
+			svc.instanceStore = newOrderedInstanceStore(instances...)
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+			result := svc.BuildCrossMatchSets(t.Context(), 1, needs)
+			require.NoError(t, result.Err)
+			require.Equal(t, shared, result.OtherInstanceShared)
+			require.Equal(t, tt.wantUnknown, result.OtherInstanceSharedUnknown)
+			require.Equal(t, tt.wantOffline, result.OfflineLocalInstances)
+		})
+	}
+}
