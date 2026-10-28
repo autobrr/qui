@@ -6,6 +6,7 @@
 package dirscan
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -1203,7 +1204,8 @@ func (s *Service) processRootSearchee(
 			}
 		}
 
-		if anyInjected {
+		// A season pack covers the other episodes of its group. A single episode does not.
+		if anyInjected && !item.isEpisode {
 			markTVGroupInjected(injectedTVGroups, item.tvGroup)
 		}
 
@@ -1948,6 +1950,9 @@ type searchGate struct {
 	busy           bool
 	lastSearchAt   time.Time
 	webhookWaiting int
+	// interval overrides the minimum wait between searches. Zero uses
+	// crossseed.MinTorznabSearchInterval. Tests set it to skip the wait.
+	interval time.Duration
 	// changed is closed when the gate frees or the last webhook item stops waiting.
 	changed chan struct{}
 }
@@ -1966,8 +1971,9 @@ func (g *searchGate) acquire(ctx context.Context, webhook bool) error {
 		}()
 	}
 
+	interval := cmp.Or(g.interval, crossseed.MinTorznabSearchInterval)
 	for {
-		wait := time.Until(g.lastSearchAt.Add(crossseed.MinTorznabSearchInterval))
+		wait := time.Until(g.lastSearchAt.Add(interval))
 		if !g.busy && wait <= 0 && (webhook || g.webhookWaiting == 0) {
 			g.busy = true
 			return nil
