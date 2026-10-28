@@ -172,8 +172,8 @@ func (s *partialPoolCoordinator) wake(wake partialPoolWake) {
 	}
 }
 
-// joinEnabled requires local mode, not Write, because pool
-// members are linked and renamed with host calls.
+// joinEnabled requires local mode, not Write, because pool members are linked
+// and renamed with host calls.
 func (s *partialPoolCoordinator) joinEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
 		req.SkipRecheck || req.SkipAutoResume || models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
@@ -227,10 +227,10 @@ func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2
 	return key, infohashV1, infohashV2, descriptors, nil
 }
 
-// join loads qBittorrent's authoritative file list,
-// joins it with the parsed and materialized file evidence, and atomically
-// persists the pool member before any recheck is requested. Added torrent IDs
-// are lookup hints only; metainfo hashes remain the durable member identity.
+// join loads qBittorrent's authoritative file list, merges it with the parsed
+// and materialized file evidence, and atomically persists the pool member
+// before any recheck is requested. Added torrent IDs are lookup hints only;
+// metainfo hashes remain the durable member identity.
 func (s *partialPoolCoordinator) join(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
@@ -1667,7 +1667,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolVerifying(ctx context.Conte
 	if !s.settlePartialPoolRecheckFiles(ctx, now, pool, member, snapshot) {
 		return
 	}
-	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 	if status == models.CrossSeedPartialPoolMemberStatusManual {
 		for _, file := range member.Files {
 			if file.MaterializedAtAdd && snapshot.fileByIndex[file.FileIndex].Progress < 1 {
@@ -1714,7 +1714,7 @@ func partialPoolPostRecheckVerdict(
 }
 
 func (s *partialPoolCoordinator) reapplyPartialPoolGate(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
-	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 	if partialPoolTorrentComplete(snapshot.torrent) {
 		status = models.CrossSeedPartialPoolMemberStatusComplete
 	}
@@ -1912,7 +1912,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolRechecking(
 		return
 	}
 
-	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 	missing := max(snapshot.torrent.AmountLeft, 0)
 	empty := ""
 	s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{MissingBytes: &missing, LastError: choosePartialPoolError(status, reason, &empty)})
@@ -2132,7 +2132,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolAcquiring(ctx context.Conte
 			}
 			return
 		}
-		status, _ := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+		status, _ := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 		modeEnabled, modeErr := s.partialPoolMemberModeEnabled(ctx, member)
 		if modeErr != nil {
 			snapshot.stateRetryPending = true
@@ -2182,7 +2182,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolAcquiring(ctx context.Conte
 			LastError:      &empty,
 		})
 	}
-	status, _ := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+	status, _ := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 	modeEnabled, modeErr := s.partialPoolMemberModeEnabled(ctx, member)
 	if modeErr != nil {
 		snapshot.stateRetryPending = true
@@ -3427,7 +3427,7 @@ func (s *partialPoolCoordinator) selectAndResumePartialPoolDownloader(ctx contex
 		s.requestPartialPoolRecheck(ctx, now, member)
 		return false
 	}
-	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, stringutils.DefaultNormalizer)
+	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(nil))
 	if status != models.CrossSeedPartialPoolMemberStatusWaiting {
 		if status != member.Status {
 			empty := ""
@@ -3473,7 +3473,7 @@ func (s *partialPoolCoordinator) selectAndResumePartialPoolDownloader(ctx contex
 		return true
 	}
 	currentBudget := int64(max(settings.AutoResumeMaxDownloadMB, 0)) << 20
-	status, reason = partialPoolPostRecheckVerdict(member, snapshot, currentBudget, stringutils.DefaultNormalizer)
+	status, reason = partialPoolPostRecheckVerdict(member, snapshot, currentBudget, normalizerForService(nil))
 	if status != models.CrossSeedPartialPoolMemberStatusWaiting {
 		if status == models.CrossSeedPartialPoolMemberStatusManual {
 			if !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason}) {
