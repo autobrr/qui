@@ -369,6 +369,25 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityTagRule(models.TagAction{Mode: models.TagModeFull, IncludeCrossSeeds: true}),
 			want: []string{"a", "outside"},
 		},
+		{
+			name: "tag that one rule adds and then removes",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: func() *models.Automation {
+				rule := parityTagRule(models.TagAction{Mode: models.TagModeAdd})
+				rule.Conditions.Tags = append(rule.Conditions.Tags, &models.TagAction{
+					Enabled:   true,
+					Tags:      []string{"managed"},
+					Mode:      models.TagModeRemove,
+					Condition: &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"},
+				})
+				return rule
+			}(),
+			want: []string{"a"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
