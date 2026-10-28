@@ -1254,7 +1254,7 @@ export function TorrentCardsMobile({
     const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
     const crossSeedDeleteTargets = [
       ...(deleteActionTargets ?? []),
-      ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+      ...(deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : []),
     ]
 
     if (shouldBlockCrossSeeds) {

@@ -25,9 +25,14 @@ type fakeDeleteMatches struct {
 	hashes map[int][]string
 }
 
-func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error) {
-	f.hashes[instanceID] = slices.Sorted(slices.Values(hashes))
-	return []crossseed.LocalMatch{{InstanceID: instanceID, Hash: "fff", MatchType: "content_path"}}, nil
+func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error) {
+	for instanceID, hashes := range selection {
+		f.hashes[instanceID] = slices.Sorted(slices.Values(hashes))
+	}
+	return &crossseed.DeleteMatchesResponse{
+		Matches:   []crossseed.LocalMatch{{InstanceID: 7, Hash: "fff", MatchType: "content_path"}},
+		Unchecked: []crossseed.UncheckedInstance{{InstanceID: 8, InstanceName: "offline", Reason: crossseed.UncheckedOffline}},
+	}, nil
 }
 
 // A select-all check covers the torrents of the filter beyond the loaded rows,
@@ -73,7 +78,8 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, map[int][]string{instance.ID: {"aaa", "bbb"}}, finder.hashes)
-	var response crossseed.LocalMatchesResponse
+	var response crossseed.DeleteMatchesResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Equal(t, []crossseed.LocalMatch{{InstanceID: instance.ID, Hash: "fff", MatchType: "content_path"}}, response.Matches)
+	require.Equal(t, []crossseed.LocalMatch{{InstanceID: 7, Hash: "fff", MatchType: "content_path"}}, response.Matches)
+	require.Equal(t, []crossseed.UncheckedInstance{{InstanceID: 8, InstanceName: "offline", Reason: crossseed.UncheckedOffline}}, response.Unchecked)
 }

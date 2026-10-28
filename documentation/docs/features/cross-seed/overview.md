@@ -169,3 +169,17 @@ An entry blocks the infohash only on its own instance. Season pack assembly can 
 A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
 
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
+
+### Shared files on other instances
+
+Two qBittorrent instances can save into one folder on one disk. A torrent on the second instance then reads the same files as a torrent on the first. A delete with files on the first instance removes the files of both.
+
+The delete dialog lists such a torrent with its instance name. qui finds it when both instances have [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Two files are one file on disk when their folders have the same file identity on disk and their names are equal. The folders can have different paths, for example two mounts of one folder. If you select **Also delete these cross-seeded torrents**, qui deletes the torrent on the other instance too. A hardlinked or reflinked copy, or a separate copy with the same name, on another instance keeps its own files. The dialog does not list it.
+
+qui does not compare every file of every torrent. It checks a torrent on another instance when it has the same save path or content path, the same name, the same release, or the same total size. Known limit: qui does not find a torrent that reads a file inside the folder of the selected torrent through a mount with another path, and that has another name, release, and total size. An example is a single episode that reads a file in a season pack through a second mount.
+
+qui does not check remote instances, also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
+
+If qui cannot read the torrent list of an instance with local filesystem access, the dialog shows the matches that it found and adds a line that it could not check that instance. If an instance with local filesystem access is turned off in qui, the dialog adds a line that it did not check that instance.
+
+Automations do not delete torrents on other instances. See [Delete](../automations.md#delete) for how the modes that preserve or include cross-seeds keep the files.

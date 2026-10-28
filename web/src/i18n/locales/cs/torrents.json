@@ -138,6 +138,8 @@
     "error": "Nepodařilo se zkontrolovat křížová sdílení",
     "retry": "Zkusit znovu",
     "noCrossSeeds": "Nenalezena žádná křížová sdílení",
+    "uncheckedOffline": "{{instance}} nelze zkontrolovat: qui se k ní nemůže připojit.",
+    "uncheckedDisabled": "{{instance}} nebyla zkontrolována: v qui je vypnutá.",
     "deleteCrossSeeds": "Tyto křížová sdílení budou také smazány",
     "deletingFilesBreaks": "Smazání souborů rozbije tyto křížová sdílení",
     "dataPreserved": "Křížová sdílení detekována: data budou zachována",

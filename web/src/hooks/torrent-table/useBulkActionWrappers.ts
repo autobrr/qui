@@ -164,7 +164,7 @@ export function useBulkActionWrappers({
     const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
     const crossSeedDeleteTargets = [
       ...(contextClientMeta.actionTargets ?? []),
-      ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+      ...(deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : []),
     ]
 
     if (shouldBlockCrossSeeds) {

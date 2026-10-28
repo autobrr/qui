@@ -134,6 +134,8 @@
     "error": "Prüfung auf Cross-Seeds fehlgeschlagen",
     "retry": "Erneut versuchen",
     "noCrossSeeds": "Keine Cross-Seeds gefunden",
+    "uncheckedOffline": "{{instance}} konnte nicht geprüft werden: qui erreicht die Instanz nicht.",
+    "uncheckedDisabled": "{{instance}} wurde nicht geprüft: Die Instanz ist in qui deaktiviert.",
     "deleteCrossSeeds": "Diese Cross-Seeds werden ebenfalls gelöscht",
     "deletingFilesBreaks": "Das Löschen von Dateien zerstört diese Cross-Seeds",
     "dataPreserved": "Cross-Seeds erkannt: Daten bleiben erhalten",
