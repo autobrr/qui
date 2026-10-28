@@ -263,7 +263,7 @@ func (m *scopedPartialPoolSyncManager) recordedActions() []string {
 
 func requirePartialPoolReconciled(
 	t *testing.T,
-	service *Service,
+	service *partialPoolCoordinator,
 	now time.Time,
 	pool *models.CrossSeedPartialPool,
 	snapshots map[int64]*partialPoolMemberSnapshot,
@@ -332,9 +332,9 @@ func TestPartialPoolCoordinatorDelayUsesAbsoluteDeadlines(t *testing.T) {
 }
 
 func TestPartialPoolWakeOverflowRequestsFullScan(t *testing.T) {
-	service := &Service{partialPoolWake: make(chan partialPoolWake, 1)}
-	service.signalPartialPoolWake(partialPoolWake{poolID: 1})
-	service.signalPartialPoolWake(partialPoolWake{poolID: 2})
+	service := &partialPoolCoordinator{partialPoolWake: make(chan partialPoolWake, 1)}
+	service.wake(partialPoolWake{poolID: 1})
+	service.wake(partialPoolWake{poolID: 2})
 
 	require.True(t, service.partialPoolFullScanPending.Load(), "a dropped targeted wake must retain all-pool recovery scope")
 	require.Equal(t, int64(1), (<-service.partialPoolWake).poolID)
@@ -342,7 +342,7 @@ func TestPartialPoolWakeOverflowRequestsFullScan(t *testing.T) {
 
 func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
-	service := &Service{}
+	service := &partialPoolCoordinator{}
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{
 		partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"shared-a.mkv", 100}, partialPoolTestFile{"shared-b.mkv", 200}),
 		partialPoolTestMember(2, 2, "beta", partialPoolTestFile{"shared-a.mkv", 100}),
@@ -365,7 +365,7 @@ func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
 
 func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
-	service := &Service{}
+	service := &partialPoolCoordinator{}
 	retryAfter := now.Add(partialPoolCooldown)
 	member := partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"unique.bin", 10})
 	member.RetryAfter = &retryAfter
@@ -381,7 +381,7 @@ func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 
 func TestSelectPartialPoolDownloaderChecksMissingFilesHardlinkAdmission(t *testing.T) {
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{}
+	service := &partialPoolCoordinator{}
 	member := partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"video.mkv", 100}, partialPoolTestFile{"release.nfo", 4})
 	member.Mode = models.CrossSeedPartialPoolModeHardlink
 	member.Status = models.CrossSeedPartialPoolMemberStatusVerifying
@@ -401,7 +401,7 @@ func TestSelectPartialPoolDownloaderChecksMissingFilesHardlinkAdmission(t *testi
 
 func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	service := &Service{}
+	service := &partialPoolCoordinator{}
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{
 		partialPoolTestMember(1, 1, "candidate-alpha", partialPoolTestFile{"shared.mkv", 100}),
 		partialPoolTestMember(2, 1, "candidate-beta", partialPoolTestFile{"shared.mkv", 100}),
@@ -453,8 +453,9 @@ func TestPartialPoolStalledPauseFailureRetriesUntilStopped(t *testing.T) {
 	snapshot.torrent.State = qbt.TorrentStateDownloading
 	snapshot.torrent.Downloaded = downloaded
 	syncManager := &scopedPartialPoolSyncManager{bulkActionErr: errors.New("synthetic pause failure")}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
+		settings:        store.GetSettings,
 		instanceStore:   newOrderedInstanceStore(instance),
 		syncManager:     syncManager,
 	}
@@ -491,7 +492,7 @@ func TestPartialPoolStalledPauseFailureRetriesUntilStopped(t *testing.T) {
 func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, UseReflinks: true}
-	service := &Service{instanceStore: newOrderedInstanceStore(instance)}
+	service := &partialPoolCoordinator{instanceStore: newOrderedInstanceStore(instance)}
 	source := partialPoolTestMember(1, 1, "source", partialPoolTestFile{"shared.mkv", 100})
 	source.Status = models.CrossSeedPartialPoolMemberStatusComplete
 	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
@@ -565,7 +566,7 @@ func TestSelectPartialPoolSourceFileSkipsRejectedPairs(t *testing.T) {
 	firstInstance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	secondInstance := &models.Instance{ID: 2, HasLocalFilesystemAccess: true, UseReflinks: true}
 	targetInstance := &models.Instance{ID: 3, HasLocalFilesystemAccess: true, UseReflinks: true}
-	service := &Service{instanceStore: newOrderedInstanceStore(firstInstance, secondInstance, targetInstance)}
+	service := &partialPoolCoordinator{instanceStore: newOrderedInstanceStore(firstInstance, secondInstance, targetInstance)}
 	require.Same(t, secondSource.Files[0], service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots), "a source with disabled link mode is ineligible")
 	firstInstance.UseReflinks = true
 	require.Same(t, firstSource.Files[0], service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots))
@@ -594,7 +595,7 @@ func TestPartialPoolSourceLookupFailureRemainsRetryable(t *testing.T) {
 	sourceSnapshot.files[0].Progress = 1
 	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
 
-	service := &Service{instanceStore: &flakyPartialPoolInstanceStore{instance: instance, failuresRemaining: 1}}
+	service := &partialPoolCoordinator{instanceStore: &flakyPartialPoolInstanceStore{instance: instance, failuresRemaining: 1}}
 	require.Nil(t, service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots))
 	require.True(t, snapshots[target.ID].stateRetryPending)
 
@@ -626,11 +627,11 @@ func TestPartialPoolDownloaderRetriesInstanceLookupFailure(t *testing.T) {
 	snapshot := partialPoolTestSnapshot(member, member.MissingBytes)
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: snapshot.files}
 	instanceStore := &flakyPartialPoolInstanceStore{instance: instance, failuresRemaining: 1}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore:   instanceStore,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true, AutoResumeMaxDownloadMB: 1}, nil
 		},
 	}
@@ -688,7 +689,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	pool, err := store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
 	sync := &recheckResumeSyncManager{}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
 			instanceID: {
@@ -698,7 +699,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 			},
 		}},
 		syncManager: sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -755,12 +756,12 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 
 // startPartialPoolCoordinator runs the coordinator until the test ends, and
 // waits for it to stop before a cleanup restores a timer that it reads.
-func startPartialPoolCoordinator(t *testing.T, service *Service) {
+func startPartialPoolCoordinator(t *testing.T, service *partialPoolCoordinator) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	stopped := make(chan struct{})
 	go func() {
-		service.RunPartialPoolCoordinator(ctx)
+		service.run(ctx)
 		close(stopped)
 	}()
 	t.Cleanup(func() {
@@ -806,11 +807,11 @@ func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
 			AmountLeft: 0,
 		},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
 		partialPoolWake: make(chan partialPoolWake, 10),
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -823,7 +824,7 @@ func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
 	require.Zero(t, syncManager.actionCount("recheck:"+member.TorrentKey), "the durable request must be observed without issuing another recheck")
 
 	syncManager.setState(qbt.TorrentStateStoppedUp)
-	service.signalPartialPoolWake(partialPoolWake{poolID: pool.ID})
+	service.wake(partialPoolWake{poolID: pool.ID})
 	require.Eventually(t, func() bool {
 		reloaded, loadErr := store.GetPartialPool(t.Context(), pool.ID)
 		if loadErr != nil {
@@ -858,10 +859,10 @@ func TestPartialPoolDisabledCoordinatorObservesRequestedRecheck(t *testing.T) {
 		Progress:   1,
 		AmountLeft: 0,
 	}}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
 		},
 	}
@@ -926,11 +927,11 @@ func TestPartialPoolCoordinatorUsesPersistedAdmissionDeadline(t *testing.T) {
 			AmountLeft: member.MissingBytes,
 		},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
 		partialPoolWake: make(chan partialPoolWake, 10),
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -993,10 +994,10 @@ func TestPartialPoolTargetedWakeDoesNotReconcileDormantPool(t *testing.T) {
 		target.TorrentKey:  files(target),
 		dormant.TorrentKey: files(dormant),
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1019,10 +1020,10 @@ func TestPartialPoolTargetedWakeDoesNotReconcileDormantPool(t *testing.T) {
 
 func TestPartialPoolTargetedWakeFailureRequestsFullScanRetry(t *testing.T) {
 	store, _ := newPartialPoolFilesystemStore(t)
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     &recheckResumeSyncManager{},
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1046,10 +1047,10 @@ func TestPartialPoolFullScanRetainsDormantInventoryFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, store.SetPartialPoolStatus(t.Context(), pool.ID, models.CrossSeedPartialPoolStatusDormant))
 
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     &scopedPartialPoolSyncManager{torrentsErr: errors.New("temporary inventory failure")},
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1086,10 +1087,10 @@ func TestPartialPoolFullScanRetainsDormantFileRefreshFailure(t *testing.T) {
 		}},
 	}
 	syncManager.filesErr = errors.New("temporary file refresh failure")
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1164,11 +1165,11 @@ func TestPartialPoolIncompleteInventoryBlocksDownloaderSelection(t *testing.T) {
 		unseen.TorrentKey:  files(unseen),
 		visible.TorrentKey: files(visible),
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore:   newOrderedInstanceStore(instances...),
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -1238,10 +1239,10 @@ func TestPartialPoolStatusPersistenceFailureRequestsFullScanRetry(t *testing.T) 
 		}},
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1296,11 +1297,11 @@ func TestPartialPoolClaimFailureKeepsActiveRecoverySchedule(t *testing.T) {
 		}},
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore:   newOrderedInstanceStore(instance),
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -1366,10 +1367,10 @@ func TestPartialPoolManualPersistenceFailureKeepsActiveRecoverySchedule(t *testi
 		}},
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -1449,12 +1450,12 @@ func TestPartialPoolPropagationManualFailureKeepsActiveRecoverySchedule(t *testi
 		source.TorrentKey: files(source, 1),
 		target.TorrentKey: files(target, 0),
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:             store,
 		instanceStore:               newOrderedInstanceStore(instance),
 		syncManager:                 syncManager,
 		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -1506,10 +1507,10 @@ func TestPartialPoolDisabledCoordinatorWaitsForStoppedDownloader(t *testing.T) {
 		}},
 		bulkActionErr: errors.New("temporary pause failure"),
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
 		},
 	}
@@ -1565,10 +1566,10 @@ func TestPartialPoolDisabledCoordinatorWaitsForSettledCompletion(t *testing.T) {
 			AmountLeft: 0,
 		}},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
 		},
 	}
@@ -1619,10 +1620,10 @@ func TestPartialPoolDisabledCoordinatorReleasesNonTransferTerminalState(t *testi
 					AmountLeft: member.MissingBytes,
 				}},
 			}
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				syncManager:     syncManager,
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
 				},
 			}
@@ -1669,10 +1670,10 @@ func TestPartialPoolCoordinatorKeepsExternalCheckOnActiveSchedule(t *testing.T) 
 		}},
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1747,7 +1748,7 @@ func TestPartialPoolCoordinatorPausesExternalTransferWhenFileRefreshFails(t *tes
 			{Hash: staleComplete.TorrentKey, SavePath: staleComplete.RootPath, State: qbt.TorrentStateDownloading, AmountLeft: staleComplete.Files[0].SizeBytes},
 		},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore: newOrderedInstanceStore(&models.Instance{
 			ID:                       instanceID,
@@ -1755,7 +1756,7 @@ func TestPartialPoolCoordinatorPausesExternalTransferWhenFileRefreshFails(t *tes
 			UseReflinks:              true,
 		}),
 		syncManager: syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true, AutoResumeMaxDownloadMB: 1}, nil
 		},
 	}
@@ -1805,7 +1806,7 @@ func TestPartialPoolExpiredCooldownSurvivesTransientFileRefreshFailure(t *testin
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
 	syncManager.filesErr = errors.New("temporary file refresh failure")
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore: newOrderedInstanceStore(&models.Instance{
 			ID:                       instanceID,
@@ -1813,7 +1814,7 @@ func TestPartialPoolExpiredCooldownSurvivesTransientFileRefreshFailure(t *testin
 			UseReflinks:              true,
 		}),
 		syncManager: syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -1919,7 +1920,7 @@ func TestPartialPoolInitialPropagationSettlesBeforeDownloaderRepair(t *testing.T
 				source.TorrentKey: sourceSnapshot.files,
 				target.TorrentKey: targetSnapshot.files,
 			}}
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				instanceStore: newOrderedInstanceStore(&models.Instance{
 					ID:                       instanceID,
@@ -1927,7 +1928,7 @@ func TestPartialPoolInitialPropagationSettlesBeforeDownloaderRepair(t *testing.T
 					UseReflinks:              true,
 				}),
 				syncManager: sync,
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{
 						PooledPartialCompletionEnabled: true,
 						AutoResumeMaxDownloadMB:        1,
@@ -1979,10 +1980,10 @@ func TestPartialPoolFailedRecheckCannotPublishOptimisticCompletion(t *testing.T)
 	snapshot.torrent.Progress = 1
 	snapshot.files[0].Progress = 1
 	snapshot.fileByIndex[0] = snapshot.files[0]
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     &failingPartialPoolRecheckSyncManager{},
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -2019,10 +2020,10 @@ func TestPartialPoolAdmissionHoldKeepsWaitingPoolActive(t *testing.T) {
 
 	snapshot := partialPoolTestSnapshot(member, member.Files[0].SizeBytes)
 	snapshot.torrent.Hash = member.TorrentKey
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     &recheckResumeSyncManager{},
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -2106,7 +2107,7 @@ func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	service := &Service{automationStore: store}
+	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
 	})
@@ -2131,7 +2132,7 @@ func TestObservePartialPoolMembersRemovesPendingAdmissionAfterVisibilityGrace(t 
 	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 	require.NoError(t, err)
 
-	service := &Service{automationStore: store}
+	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
 	})
@@ -2156,7 +2157,7 @@ func TestObservePartialPoolMembersRetainsPendingAdmissionWithoutAuthoritativeAbs
 	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 	require.NoError(t, err)
 
-	service := &Service{automationStore: store, syncManager: &recheckResumeSyncManager{}}
+	service := &partialPoolCoordinator{automationStore: store, syncManager: &recheckResumeSyncManager{}}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
 	})
@@ -2223,7 +2224,7 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 			test.mutate(&torrent, files)
 
 			sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{member.TorrentKey: files}}
-			service := &Service{automationStore: store, syncManager: sync}
+			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
 			observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt, pool, map[int]partialPoolTorrentInventory{
 				instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{member.TorrentKey: torrent}},
 			})
@@ -2313,11 +2314,11 @@ func TestPartialPoolAdmissionDriftPersistenceFailureBlocksDownloaderSelection(t 
 			Priority: 1,
 		}},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		instanceStore:   newOrderedInstanceStore(instance),
 		syncManager:     syncManager,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				PooledPartialCompletionEnabled: true,
 				AutoResumeMaxDownloadMB:        1,
@@ -2389,12 +2390,12 @@ func TestPartialPoolAdmissionDriftWaitsForSettledPause(t *testing.T) {
 				}},
 			}
 			enabled := true
-			newService := func() *Service {
-				return &Service{
+			newService := func() *partialPoolCoordinator {
+				return &partialPoolCoordinator{
 					automationStore: store,
 					instanceStore:   newOrderedInstanceStore(instance),
 					syncManager:     syncManager,
-					automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 						return &models.CrossSeedAutomationSettings{
 							PooledPartialCompletionEnabled: enabled,
 							AutoResumeMaxDownloadMB:        1,
@@ -2468,7 +2469,8 @@ func TestPartialPoolManualMemberCompletesAfterEvidenceValidation(t *testing.T) {
 	torrent := qbt.Torrent{Hash: member.TorrentKey, SavePath: rootPath, State: qbt.TorrentStateUploading, Progress: 1}
 	files := qbt.TorrentFiles{{Index: 0, Name: member.Files[0].RelativePath, Size: member.Files[0].SizeBytes, Priority: 1, Progress: 1}}
 	sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{member.TorrentKey: files}}
-	service := &Service{automationStore: store, syncManager: sync}
+	service := &partialPoolCoordinator{automationStore: store,
+		settings: store.GetSettings, syncManager: sync}
 	snapshots := map[int64]*partialPoolMemberSnapshot{member.ID: {torrent: torrent}}
 	service.refreshPartialPoolFiles(t.Context(), pool, snapshots)
 	requirePartialPoolReconciled(t, service, time.Now(), pool, snapshots, 0)
@@ -2512,10 +2514,10 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 	require.NoError(t, err)
 
 	sync := &recheckResumeSyncManager{}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -2587,10 +2589,10 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	}
 
 	sync := &recheckResumeSyncManager{}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
