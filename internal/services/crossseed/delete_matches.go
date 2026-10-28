@@ -153,7 +153,10 @@ func (s *Service) findSelectedMatches(
 			}
 		}
 	}
-	addOtherPathPicks(instances, instanceID, torrents, others, isSelected, otherPicks)
+	var groups []crossPathGroup
+	if sourceTrusted {
+		groups = crossPathGroups(instances, torrents, others, isSelected)
+	}
 	pathGroups := slices.DeleteFunc(sharedPathGroups(torrents), func(group []int) bool {
 		return !slices.ContainsFunc(group, func(i int) bool { return isSelected(torrents[i].Hash) })
 	})
@@ -169,8 +172,10 @@ func (s *Service) findSelectedMatches(
 		trustedIdentityOnly: true,
 		otherSharedOnly:     sharedOnly,
 	}
-	files.prefetch(ctx, instanceID, torrents, pathGroups, picks, otherPicks)
+	groupSources, groupPicks := prefetchGroups(len(torrents), groups)
+	files.prefetch(ctx, instanceID, torrents, slices.Concat(pathGroups, groupSources), picks, otherPicks, groupPicks)
 	files.addSharedPathPicks(ctx, instanceID, torrents, pathGroups, picks, CrossMatchNeeds{})
+	files.addOtherPathPicks(ctx, instanceID, torrents, groups, otherPicks)
 
 	skipCandidate := func(c candidateEntry) bool {
 		return (c.instanceID == instanceID && isSelected(c.hash)) || (skip != nil && skip(c))
@@ -213,51 +218,54 @@ func (s *Service) buildSharedFileIndex(
 	return idx, views, unchecked
 }
 
-// addOtherPathPicks adds to the picks of each selected torrent the torrents
-// on other instances whose cached paths allow a Shared file, by the rules of
-// sharedPathGroups. The path text only selects a candidate, and sharedFile
-// decides. Only instances with trusted identity take part. On the instance,
-// only the selected torrents join the groups. Each pair needs a selected
-// torrent. A third torrent that makes a save path flat does not change what
-// the two torrents of a pair share.
-func addOtherPathPicks(
-	instances []*models.Instance,
+// addOtherPathPicks adds to the picks of each selected torrent the torrents of
+// its crossPathGroups that share a file path with it. The path text only
+// selects a candidate, and sharedFile decides. One index of file paths per
+// group finds them, so a flat folder costs its file count, not its pair count.
+// A torrent whose file list cannot be read gets one pick, or is one pick, so
+// that matchSource fails the call.
+func (b *batchFiles) addOtherPathPicks(
+	ctx context.Context,
 	instanceID int,
-	torrents, others []qbittorrent.CrossInstanceTorrentView,
-	isSelected func(hash string) bool,
+	torrents []qbittorrent.CrossInstanceTorrentView,
+	groups []crossPathGroup,
 	picks [][]*candidatePick,
 ) {
-	if !instanceHas(instances, instanceID, models.CapabilityTrustedIdentity) {
-		return
-	}
-	all, sources := selectedAndTrustedOthers(instances, torrents, others, isSelected)
-	if len(all) == len(sources) {
-		return
-	}
 	picked := make(map[int]map[string]struct{})
-	for _, group := range sharedPathGroups(all) {
-		for _, member := range group {
-			if member >= len(sources) {
-				continue
+	add := func(i int, p *candidatePick) {
+		have := picked[i]
+		if have == nil {
+			have = make(map[string]struct{}, len(picks[i]))
+			for _, q := range picks[i] {
+				have[cacheKeyForTorrentFiles(q.entry.instanceID, q.entry.hash)] = struct{}{}
 			}
-			i := sources[member]
-			have := picked[i]
-			if have == nil {
-				have = make(map[string]struct{}, len(picks[i]))
-				for _, p := range picks[i] {
-					have[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)] = struct{}{}
-				}
-				picked[i] = have
+			picked[i] = have
+		}
+		key := cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)
+		if _, ok := have[key]; !ok {
+			have[key] = struct{}{}
+			picks[i] = append(picks[i], p)
+		}
+	}
+	for _, group := range groups {
+		byPath := make(map[string][]*candidatePick)
+		for _, p := range group.others {
+			data, ok := b.get(ctx, p.entry.instanceID, p.entry.hash, p.entry.savePath)
+			if !ok {
+				add(group.sources[0], p)
 			}
-			for _, j := range group {
-				if j < len(sources) {
-					continue
-				}
-				entry := newCandidateEntry(&all[j], false)
-				key := cacheKeyForTorrentFiles(entry.instanceID, entry.hash)
-				if _, ok := have[key]; !ok {
-					have[key] = struct{}{}
-					picks[i] = append(picks[i], &candidatePick{entry: entry})
+			for path := range data.data.paths {
+				byPath[path] = append(byPath[path], p)
+			}
+		}
+		for _, i := range group.sources {
+			data, ok := b.get(ctx, instanceID, torrents[i].Hash, torrents[i].SavePath)
+			if !ok {
+				add(i, group.others[0])
+			}
+			for path := range data.data.paths {
+				for _, p := range byPath[path] {
+					add(i, p)
 				}
 			}
 		}

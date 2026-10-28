@@ -207,7 +207,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 					trusted := slices.DeleteFunc(slices.Clone(picks[i]), untrusted)
 					sharedPicks[i] = addSizePicks(instances, trusted, otherIdx.bySize[searchSourceSize(currentTorrents[i].Torrent)])
 				}
-				sharedGroups = crossPathGroups(instances, currentTorrents, others)
+				sharedGroups = crossPathGroups(instances, currentTorrents, others, func(string) bool { return true })
 			}
 		}
 	}
@@ -622,11 +622,11 @@ type crossPathGroup struct {
 }
 
 // crossPathGroups returns the groups of sharedPathGroups over the torrents of
-// the instance and the torrents of others on instances with trusted identity
-// that hold torrents of both sides. A group is one unit, so that a flat save
-// path costs its torrent count, not its pair count.
-func crossPathGroups(instances []*models.Instance, torrents, others []qbittorrent.CrossInstanceTorrentView) []crossPathGroup {
-	all, sources := selectedAndTrustedOthers(instances, torrents, others, func(string) bool { return true })
+// the instance that isSelected keeps and the torrents of others on instances
+// with trusted identity that hold torrents of both sides. A group is one unit,
+// so that a flat save path costs its torrent count, not its pair count.
+func crossPathGroups(instances []*models.Instance, torrents, others []qbittorrent.CrossInstanceTorrentView, isSelected func(hash string) bool) []crossPathGroup {
+	all, sources := selectedAndTrustedOthers(instances, torrents, others, isSelected)
 	var groups []crossPathGroup
 	for _, members := range sharedPathGroups(all) {
 		var group crossPathGroup
