@@ -132,6 +132,18 @@ func parityCategoryRule(action models.CategoryAction) *models.Automation {
 	}
 }
 
+func parityTagRule(action models.TagAction) *models.Automation {
+	action.Enabled = true
+	action.Tags = []string{"managed"}
+	action.Condition = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"}
+	return &models.Automation{
+		Name:           "parity",
+		TrackerPattern: "*",
+		Enabled:        true,
+		Conditions:     &models.ActionConditions{Tags: []*models.TagAction{&action}},
+	}
+}
+
 // A manual dry run must report the same torrents the live impact preview shows.
 // Both take the same payload; only service-side state can split them.
 func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
@@ -309,6 +321,54 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityCategoryRule(models.CategoryAction{BlockIfCrossSeedInCategories: []string{"keep"}}),
 			want: []string{"solo"},
 		},
+		{
+			name: "tag with include cross-seeds",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "save_path": "/data", "content_path": "/data/show"},
+						"done":    {"name": "done", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b", "done"}, "b": {"a", "done"}, "done": {"a", "b"}},
+				}
+			},
+			rule:           parityTagRule(models.TagAction{Mode: models.TagModeAdd, IncludeCrossSeeds: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "tag with a managed reset re-add",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive, managed", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "tags": "managed", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b"}, "b": {"a"}},
+				}
+			},
+			rule:           parityTagRule(models.TagAction{Mode: models.TagModeAdd, IncludeCrossSeeds: true, DeleteFromClient: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "tag where a cross-seed cancels the own removal of a torrent",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "tags": "managed", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b"}, "b": {"a"}},
+				}
+			},
+			rule: parityTagRule(models.TagAction{Mode: models.TagModeFull, IncludeCrossSeeds: true}),
+			want: []string{"a", "outside"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -321,10 +381,14 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			wantAction := models.ActivityActionDeletedCondition
 			var preview *PreviewResult
 			var err error
-			if tt.rule.Conditions.Category != nil {
+			switch {
+			case tt.rule.Conditions.Category != nil:
 				wantAction = models.ActivityActionCategoryChanged
 				preview, err = svc.PreviewCategoryRule(t.Context(), instanceID, tt.rule, 100, 0)
-			} else {
+			case len(tt.rule.Conditions.TagActions()) > 0:
+				wantAction = models.ActivityActionTagsChanged
+				preview, err = svc.PreviewTagRule(t.Context(), instanceID, tt.rule, 100, 0)
+			default:
 				preview, err = svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
 			}
 			require.NoError(t, err)
