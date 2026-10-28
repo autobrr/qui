@@ -146,18 +146,52 @@ func checkDirContainsInUseFile(ctx context.Context, target string, protected *pr
 		if entry.IsDir {
 			continue
 		}
-		if err := checkFileInUse(entry.Path, protected); err != nil {
+		if err := checkEntryInUse(ctx, &entry, protected, backend); err != nil {
 			return err
-		}
-		held, err := protected.inUse.holds(&entry.LstatInfo)
-		if err != nil {
-			return fmt.Errorf("cannot read the identity of the files in this folder: %w", err)
-		}
-		if held {
-			return fmt.Errorf("%w: %s", errInUseThroughAlias, entry.Path)
 		}
 	}
 	return nil
+}
+
+// checkEntryInUse returns ErrInUse if a torrent owns the walked non-directory
+// entry, by path or by identity.
+func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *protectedPaths, backend fsops.Backend) error {
+	if err := checkFileInUse(entry.Path, protected); err != nil {
+		return err
+	}
+	info := &entry.LstatInfo
+	// The removal takes a symlink with the folder, so a torrent that reaches
+	// a file through the link would lose its path to it. collectInUseIDs
+	// followed the link, so compare where it points.
+	if entry.IsSymlink && protected.inUse != nil {
+		var err error
+		if info, err = followSymlink(ctx, entry.Path, backend); err != nil {
+			return err
+		}
+	}
+	held, err := protected.inUse.holds(info)
+	if err != nil {
+		return fmt.Errorf("cannot read the identity of the files in this folder: %w", err)
+	}
+	if held {
+		return fmt.Errorf("%w: %s", errInUseThroughAlias, entry.Path)
+	}
+	return nil
+}
+
+// followSymlink returns what the symlink at p points to. A link that leads
+// nowhere returns an empty info, since no torrent can use a file through it.
+// Any other failure is returned, as for a regular entry whose identity cannot
+// be read, because the target could be a torrent's file.
+func followSymlink(ctx context.Context, p string, backend fsops.Backend) (*fsops.LstatInfo, error) {
+	info, err := backend.Stat(ctx, p)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			return &fsops.LstatInfo{}, nil
+		}
+		return nil, fmt.Errorf("follow symlink %s: %w", p, err)
+	}
+	return info, nil
 }
 
 func checkFileInUse(path string, protected *protectedPaths) error {

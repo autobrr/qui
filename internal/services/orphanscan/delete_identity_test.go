@@ -211,6 +211,32 @@ func TestExecuteDeletion_KeepsDiscUnitHoldingAFileATorrentReachesThroughAnAlias(
 	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, f.runID)[unit])
 }
 
+// A disc unit can hold a symlink to a file elsewhere. A torrent that reaches
+// that link through an alias since the scan keeps the unit, because removing
+// the unit would remove the link the torrent uses.
+// regression: #3596
+func TestExecuteDeletion_KeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAlias(t *testing.T) {
+	var unit, link, aliasDir string
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-symlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
+		unit = filepath.Join(defaultSavePath, "Movie")
+		writeFile(t, filepath.Join(unit, "BDMV", "STREAM", "00000.m2ts"))
+		stored := filepath.Join(filepath.Dir(defaultSavePath), "store", "00001.m2ts")
+		writeFile(t, stored)
+		link = filepath.Join(unit, "BDMV", "STREAM", "00001.m2ts")
+		symlinkOrSkip(t, stored, link)
+		aliasDir = filepath.Join(filepath.Dir(defaultSavePath), "alias")
+		symlinkOrSkip(t, unit, aliasDir)
+	})
+	require.Contains(t, fileStatuses(t, f.store, f.runID), unit, "the scan lists it")
+
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: aliasDir}, "BDMV/STREAM/00001.m2ts")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	_, err := os.Lstat(link)
+	require.NoError(t, err, "the link the torrent uses survives")
+	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, f.runID)[unit])
+}
+
 // noWalkIdentityBackend walks root without the identity of its files, as the
 // sftp walk does.
 type noWalkIdentityBackend struct {
@@ -381,6 +407,33 @@ func TestExecuteDeletion_RemoteExecTierKeepsFileATorrentReachesThroughAnAlias(t 
 	require.Greater(t, f.batches.Load(), before, "the delete reads identities through StatBatch")
 	f.requireNothingDeleted(t)
 	require.Equal(t, aliasStatus, fileStatuses(t, f.store, run.ID)[sftpPath(f.orphan)])
+}
+
+// The exec tier walks without following links and follows the one it meets
+// over SSH, so a disc unit's symlink is compared by its target there too.
+// regression: #3596
+func TestExecuteDeletion_RemoteExecTierKeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAlias(t *testing.T) {
+	t.Parallel()
+
+	f, _ := newSSHFixture(t, "orphanscan-remote-delete-disc-symlink-late", sshtest.ExecGNU, models.SSHTierExec)
+	unit := filepath.Join(filepath.Dir(f.orphan), "Movie")
+	writeFile(t, filepath.Join(unit, "BDMV", "STREAM", "00000.m2ts"))
+	stored := filepath.Join(t.TempDir(), "00001.m2ts")
+	writeFile(t, stored)
+	link := filepath.Join(unit, "BDMV", "STREAM", "00001.m2ts")
+	symlinkOrSkip(t, stored, link)
+	aliasDir := filepath.Join(t.TempDir(), "alias")
+	symlinkOrSkip(t, unit, aliasDir)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.Contains(t, fileStatuses(t, f.store, run.ID), sftpPath(unit), "the scan lists it")
+	addTorrentAfterScan(f.svc, sftpPath(filepath.Dir(f.owned)), qbt.Torrent{SavePath: sftpPath(aliasDir)}, "BDMV/STREAM/00001.m2ts")
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	_, err := os.Lstat(link)
+	require.NoError(t, err, "the link the torrent uses survives")
+	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, run.ID)[sftpPath(unit)])
 }
 
 // On the exec tier the find batch reports a denied torrent file per path, so
