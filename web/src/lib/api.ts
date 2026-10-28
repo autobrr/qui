@@ -1272,19 +1272,15 @@ class ApiClient {
   }
 
   /**
-   * Get local cross-seed matches for a torrent across all instances.
-   * Uses proper release metadata parsing (rls library), not fuzzy string matching.
-   *
-   * @param strict - When true, fail if file overlap checks can't complete (use for delete dialogs)
+   * Get the cross-seeds of a torrent on every active instance, from the batch matcher.
+   * Rejects when a file list or a link check cannot be read.
    */
   async getLocalCrossSeedMatches(
     instanceId: number,
-    hash: string,
-    strict = false
+    hash: string
   ): Promise<LocalCrossSeedMatch[]> {
-    const params = strict ? "?strict=true" : ""
     const raw = await this.request<RawLocalMatchesResponse>(
-      `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
       { method: "GET" }
     )
     return toLocalCrossSeedMatches(raw)

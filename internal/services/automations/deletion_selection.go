@@ -303,13 +303,15 @@ func (s *Service) expandDeleteTrigger(
 		if len(expanded.hardlinkCopySet) > 0 {
 			logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
 		}
-		addAll(slices.Sorted(maps.Keys(expanded.expandedSet)), DeleteModeWithFiles, logMsg, expanded.hardlinkCopySet)
-	case DeleteModeWithFilesPreserveCrossSeeds:
-		if shouldPreserveCrossSeedFiles(trigger, in.crossSeeds, in.evalCtx.CrossSeedFilesByHash) {
-			addAll([]string{trigger.Hash}, DeleteModeKeepFiles, "automations: removing torrent (preserve cross-seeds - keeping files)", nil)
-		} else {
-			addAll([]string{trigger.Hash}, DeleteModeWithFiles, logMsgRemoveTorrentWithFiles, nil)
+		hashes := slices.Sorted(maps.Keys(expanded.expandedSet))
+		if keepMsg, keep := groupKeepsFilesForOtherInstances(in.evalCtx, hashes); keep {
+			addAll(hashes, DeleteModeKeepFiles, keepMsg, expanded.hardlinkCopySet)
+			return
 		}
+		addAll(hashes, DeleteModeWithFiles, logMsg, expanded.hardlinkCopySet)
+	case DeleteModeWithFilesPreserveCrossSeeds:
+		batchMode, logMsg := preserveCrossSeedsDelete(trigger, in)
+		addAll([]string{trigger.Hash}, batchMode, logMsg, nil)
 	case DeleteModeKeepFiles:
 		groupID := strings.TrimSpace(deleteAction.GroupID)
 		if groupID == "" {
@@ -339,4 +341,28 @@ func (s *Service) expandDeleteTrigger(
 	default:
 		addAll([]string{trigger.Hash}, deleteMode, logMsgRemoveTorrentWithFiles, nil)
 	}
+}
+
+// groupKeepsFilesForOtherInstances runs otherInstanceKeepsFiles for each member
+// of a group. The members share files, so one member that another instance
+// needs keeps the files of all.
+func groupKeepsFilesForOtherInstances(evalCtx *EvalContext, hashes []string) (logMsg string, keep bool) {
+	for _, hash := range hashes {
+		if logMsg, keep := otherInstanceKeepsFiles(evalCtx, hash); keep {
+			return logMsg, true
+		}
+	}
+	return "", false
+}
+
+// preserveCrossSeedsDelete keeps the files of the trigger when a torrent on
+// this instance or on another instance can need them.
+func preserveCrossSeedsDelete(trigger qbt.Torrent, in deletionSelectionInput) (batchMode, logMsg string) {
+	if keepMsg, keep := otherInstanceKeepsFiles(in.evalCtx, trigger.Hash); keep {
+		return DeleteModeKeepFiles, keepMsg
+	}
+	if shouldPreserveCrossSeedFiles(trigger, in.crossSeeds, in.evalCtx.CrossSeedFilesByHash) {
+		return DeleteModeKeepFiles, "automations: removing torrent (preserve cross-seeds - keeping files)"
+	}
+	return DeleteModeWithFiles, logMsgRemoveTorrentWithFiles
 }

@@ -263,7 +263,7 @@ describe("useLocalCrossSeedMatches", () => {
     })
 
     expect(mockedApi.getInstances).toHaveBeenCalled()
-    expect(mockedApi.getLocalCrossSeedMatches).toHaveBeenCalledWith(2, "torrenthash", true)
+    expect(mockedApi.getLocalCrossSeedMatches).toHaveBeenCalledWith(2, "torrenthash")
     expect(result.current.matchingTorrents[0]).toEqual(toCompatibleMatch(makeMatch()))
     // Verify the hook->mapping wiring independently of the transform implementation.
     expect(result.current.matchingTorrents[0].save_path).toBe("/data/movies")
@@ -273,7 +273,7 @@ describe("useLocalCrossSeedMatches", () => {
     expect(result.current.isLoadingMatches).toBe(false)
   })
 
-  it("surfaces a rejected strict lookup instead of an empty match list", async () => {
+  it("surfaces a rejected lookup instead of an empty match list", async () => {
     mockedApi.getLocalCrossSeedMatches.mockRejectedValue(new Error("overlap check failed"))
     const { result } = renderHook(
       () => useLocalCrossSeedMatches(2, makeTorrent({ hash: "h" }), true),

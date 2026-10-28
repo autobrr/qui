@@ -24,6 +24,10 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
 
+Search has one exception for a HYBRID tag on only one name. If HYBRID is the only difference and the reported sizes are within the size tolerance, search keeps the result. The file comparison after the download then decides. RSS uses this rule too, but only for feed items with the exact size of a local torrent. If the sizes are outside the tolerance, the rejection reason shows the size gap, for example `HYBRID (size differs by 7.20%)`.
+
+The Cross-Seed tab of a torrent and the autobrr webhook keep HYBRID strict. Their exception is an exact size when both names have a group tag. Then the exact-size rule below can match the pair.
+
 If strict release matching rejects an approved metadata difference, some discovery methods use an exact reported byte count.
 
 Interactive Torznab search, Library Scan, and completion search share this rule. RSS uses the title and byte count from the feed before its single download.

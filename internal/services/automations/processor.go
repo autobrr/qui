@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -66,9 +68,11 @@ type torrentDesiredState struct {
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags  map[string]struct{}
-	tagActions   map[string]string // tag -> "add" | "remove"
-	tagRuleByTag map[string]ruleRef
+	currentTags    map[string]struct{}
+	tagActions     map[string]string // tag -> "add" | "remove"
+	tagRuleByTag   map[string]ruleRef
+	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
+	tagResetTags   map[string]struct{}        // tags re-added after a managed reset: a real change even when already present
 
 	// Category (last rule wins)
 	category                  *string
@@ -102,6 +106,16 @@ type torrentDesiredState struct {
 type ruleRef struct {
 	id   int
 	name string
+}
+
+// tagExpandIntent is a pending cross-seed expansion of a tag decision: the rule
+// that requested it, the decision to propagate ("add" or "remove"), and whether
+// the action runs in managed-reset mode (the tag is wholesale-deleted in the
+// client before matches are re-added).
+type tagExpandIntent struct {
+	rule            ruleRef
+	action          string
+	resetFromClient bool
 }
 
 type ruleRunStats struct {
@@ -181,6 +195,7 @@ func processTorrents(
 	torrents []qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	stats map[int]*ruleRunStats,
@@ -192,8 +207,6 @@ func processTorrents(
 	} else {
 		states = make(map[string]*torrentDesiredState)
 	}
-
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -432,7 +445,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			continue
 		}
-		matches := processTagAction(rule, tagAction, torrent, state, evalCtx)
+		matches := processTagAction(rule, tagAction, torrent, state, evalCtx, crossSeeds)
 		if stats != nil {
 			if matches {
 				stats.TagConditionMet++
@@ -700,7 +713,7 @@ func containsStringFold(list []string, candidate string) bool {
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
-func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
+func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
 	tagMode := tagAction.Mode
 	if tagMode == "" {
 		tagMode = models.TagModeFull
@@ -724,6 +737,24 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		}
 	}
 	resetFromClient := shouldResetTagActionInClient(tagAction)
+	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
+	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
+	// As category: a group whose file check did not complete gets no decision,
+	// so the copies never diverge. A managed reset deletes the tag from every
+	// torrent first, so such a torrent keeps the tags it has.
+	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		if resetFromClient && rule != nil {
+			for _, managedTag := range tagsToManage {
+				_, hasTag := state.currentTags[managedTag]
+				if _, pending := state.tagActions[managedTag]; hasTag && !pending {
+					state.tagActions[managedTag] = "add"
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+					markTagReset(state, managedTag, true)
+				}
+			}
+		}
+		return false
+	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
@@ -741,37 +772,85 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
+		// action is the local change; assert is the steady-state decision a
+		// matching copy that already looks right still pushes across its
+		// cross-seed siblings (any-match-wins, and siblings added after the
+		// first run). Full-mode removals happen on non-matches and stay local.
+		action, assert := "", ""
 		switch tagMode {
 		case models.TagModeAdd:
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
 		case models.TagModeRemove:
-			if hasTag && matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case hasTag && matchesCondition:
+				action = "remove"
+			case !hasTag && matchesCondition:
+				assert = "remove"
 			}
 		default: // full (incl. unknown/empty)
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
-			} else if hasTag && !matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && !matchesCondition:
+				action = "remove"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
+		}
+		if action != "" {
+			state.tagActions[managedTag] = action
+			if rule != nil {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			markTagReset(state, managedTag, resetFromClient && action == "add")
+			if matchesCondition {
+				assert = action
+			}
+		} else if rule != nil && len(crossSeeds[torrent.Hash]) > 1 &&
+			(assert != "" || (tagMode != models.TagModeAdd && tagMode != models.TagModeRemove)) {
+			// A no-op decision (full mode always decides) still owns the tag:
+			// another rule's expansion must not override it, or the copy
+			// flips on every other run.
+			if _, decided := state.tagRuleByTag[managedTag]; !decided {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+		}
+		// A later rule's decision without expansion clears earlier intent (last rule wins).
+		if assert == "" || !expandCrossSeeds || rule == nil {
+			if action != "" {
+				delete(state.tagExpandByTag, managedTag)
+			}
+			continue
+		}
+		if state.tagExpandByTag == nil {
+			state.tagExpandByTag = make(map[string]tagExpandIntent)
+		}
+		state.tagExpandByTag[managedTag] = tagExpandIntent{
+			rule:            ruleRef{id: rule.ID, name: rule.Name},
+			action:          assert,
+			resetFromClient: resetFromClient,
 		}
 	}
 
 	return matchesCondition
+}
+
+// markTagReset records or clears a managed-reset re-add for tag, so the preview
+// counts it as the live path does (the tag is wholesale-deleted first).
+func markTagReset(state *torrentDesiredState, tag string, reset bool) {
+	if !reset {
+		delete(state.tagResetTags, tag)
+		return
+	}
+	if state.tagResetTags == nil {
+		state.tagResetTags = make(map[string]struct{})
+	}
+	state.tagResetTags[tag] = struct{}{}
 }
 
 // hasActions returns true if the state has any actions to execute.
@@ -786,6 +865,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldReannounce ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
+		len(state.tagExpandByTag) > 0 ||
+		len(state.tagRuleByTag) > 0 ||
 		state.category != nil ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||
@@ -850,6 +931,11 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
 		return true
 	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		if _, keep := otherInstanceKeepsFiles(evalCtx, torrent.Hash); keep {
+			return true
+		}
+	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
 		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
@@ -899,6 +985,11 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
 	if !ok {
 		return false
+	}
+	// The selection keeps the files of the whole group, so the group frees nothing.
+	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
+		maps.Copy(evalCtx.CrossSeedHashesToClear, expanded.expandedSet)
+		return true
 	}
 	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
 }

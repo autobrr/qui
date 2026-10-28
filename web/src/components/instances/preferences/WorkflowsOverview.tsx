@@ -649,10 +649,23 @@ export function WorkflowsOverview() {
     return rule.conditions?.category?.enabled === true
   }
 
-  // Handle toggle - show preview when enabling delete or category rules
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
+  const isTagRule = (rule: Automation): boolean => {
+    if (isDeleteRule(rule) || isCategoryRule(rule)) return false
+    return getRuleTagActions(rule).some(action => action?.enabled)
+  }
+
+  // The condition of the action that the preview runs, for its columns
+  const previewCondition = (rule: Automation) => {
+    if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
+    if (isCategoryRule(rule)) return rule.conditions?.category?.condition
+    return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
+  }
+
+  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
-    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
-      // Enabling a delete or category rule - show preview first
+    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
+      // Enabling a delete, category, or tag rule - show preview first
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
@@ -1573,7 +1586,7 @@ export function WorkflowsOverview() {
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): t("preferences.workflowsOverview.enableDeleteRule")
+          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): enableConfirm && isTagRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableTagRule"): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1586,6 +1599,17 @@ export function WorkflowsOverview() {
                     <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
                   ) : null}
                   {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
+              </>
+            ) : enableConfirm && isTagRule(enableConfirm.rule) ? (
+              <>
+                <p>
+                  {t("preferences.workflowDialog.preview.tagPrefix")}{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
+                  {enableConfirm.preview.crossSeedCount ? (
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
+                  ) : null}.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
@@ -1605,7 +1629,7 @@ export function WorkflowsOverview() {
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
+        condition={enableConfirm ? previewCondition(enableConfirm.rule) : null}
         onConfirm={confirmEnableRule}
         previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}

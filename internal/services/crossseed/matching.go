@@ -309,8 +309,8 @@ func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, ca
 // reject. The Match verdict pairs this with an exact-size gate, because
 // with the title ignored a sparsely parsed name can leave nothing else to
 // reject on. A path that adds data gets the paused-add full recheck as the
-// final authority; Local matches only reports existing pairings, so its false
-// positives stay confined to display.
+// final authority; the batch matcher only reports existing pairings and pairs
+// their file sizes or links.
 func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
 	comparison := m.compareExceptTitle(releaseComparison{}, sourceSide, candidateSide, findIndividualEpisodes, true, true)
 	return comparison.matched(), comparison.reason()

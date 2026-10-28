@@ -428,16 +428,14 @@ type Service struct {
 	backendPool atomic.Value // stores *fsops.Pool
 
 	// test hooks
-	crossSeedInvoker               func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier              func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
-	torrentDownloadFunc            func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker        func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator          func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	partialPoolPropagationRollback func(*hardlinktree.Created) error
-	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
-	postInjectionHook              func(context.Context, int, []string)
-	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
+	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	reflinkMaterializer     func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	postInjectionHook       func(context.Context, int, []string)
+	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
 	// settler rechecks and resumes each torrent that this service adds.
 	settler *Settler
@@ -446,15 +444,8 @@ type Service struct {
 	// aligner renames each added torrent to the layout of its match.
 	aligner *Aligner
 
-	// Durable partial link-mode completion coordinator.
-	partialPoolWake                       chan partialPoolWake
-	partialPoolFullScanPending            atomic.Bool
-	partialPoolAdmissionMaterializationMu sync.Mutex
-	partialPoolCreatedMu                  sync.Mutex
-	partialPoolCreated                    map[int64]*hardlinktree.Created
-	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
-	// one source/target file pair until either root path changes or qui restarts.
-	partialPoolRejectedPairs sync.Map
+	// partialPool is nil when the pool is off.
+	partialPool *partialPoolCoordinator
 
 	// Returns the season's episode total, the show's alias titles from the same
 	// lookup (series-wide + same-season), and whether the total resolved.
@@ -571,8 +562,6 @@ func NewService(
 		completionRetryDelay:          defaultCompletionCheckingRetryDelay,
 		completionMaxAttempts:         maxCompletionCheckingAttempts,
 		settler:                       settler,
-		partialPoolWake:               make(chan partialPoolWake, 100),
-		partialPoolCreated:            make(map[int64]*hardlinktree.Created),
 		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
@@ -580,17 +569,26 @@ func NewService(
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		instanceStore:   instanceStore,
+		syncManager:     syncManager,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
+	}
 
 	return svc
 }
 
 // NewServiceWithAutomationStore creates a minimal service for settings-only callers.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
-	return &Service{
-		automationStore:    automationStore,
-		partialPoolWake:    make(chan partialPoolWake, 100),
-		partialPoolCreated: make(map[int64]*hardlinktree.Created),
+	svc := &Service{automationStore: automationStore}
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
 	}
+	return svc
 }
 
 // SetMediaIDCacheStore wires the media_id_cache store that backs the
@@ -773,112 +771,6 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// FindLocalMatches finds existing torrents across all instances that match a source torrent.
-// Uses proper release metadata parsing (rls library) for matching, not fuzzy string matching.
-//
-// When strict is true (use for delete dialogs), any file overlap check failure returns an error
-// so the UI can show "failed to check" instead of a false "no cross-seeds found".
-// When strict is false (default for general queries), failures are logged and skipped.
-func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, sourceHash string, strict bool) (*LocalMatchesResponse, error) {
-	// Get all instances
-	instances, err := s.instanceStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list instances: %w", err)
-	}
-	instances = activeInstancesOnly(instances)
-
-	// Find the source torrent
-	sourceTorrents, err := s.syncManager.GetTorrents(ctx, sourceInstanceID, qbt.TorrentFilterOptions{
-		Filter: "all",
-		Hashes: []string{sourceHash},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get source torrent: %w", err)
-	}
-	if len(sourceTorrents) == 0 {
-		return nil, ErrTorrentNotFound
-	}
-	sourceTorrent := sourceTorrents[0]
-
-	reads := s.readLocalTorrents(ctx, sourceInstanceID, func(yield func(*qbt.Torrent) bool) { yield(&sourceTorrent) })
-	sourceRead := reads.read(s.matcher(), sourceInstanceID, &sourceTorrent)
-
-	// Normalize content path for comparison (case-insensitive, cleaned)
-	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
-
-	// Create match context with lazy file loading. Files are fetched only for
-	// candidates that pass the prefilter.
-	matchCtx := &localMatchContext{
-		ctx:                 ctx,
-		svc:                 s,
-		sourceInstanceID:    sourceInstanceID,
-		sourceInstance:      instanceByID(instances, sourceInstanceID),
-		sourceHash:          sourceTorrent.Hash,
-		sourceSavePath:      sourceTorrent.SavePath,
-		sourceContentPath:   sourceTorrent.ContentPath,
-		sourceLocal:         instanceIsLocal(instances, sourceInstanceID),
-		trustedIdentityOnly: strict,
-	}
-	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
-
-	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
-
-	// Check for any errors during local file relationship verification.
-	overlapErr := matchCtx.sourceFilesErr
-	if overlapErr == nil {
-		overlapErr = matchCtx.candidateFilesErr
-	}
-	if overlapErr == nil {
-		overlapErr = matchCtx.verificationErr
-	}
-
-	if overlapErr != nil {
-		if strict {
-			// In strict mode (delete dialogs), fail so UI shows "failed to check"
-			// instead of a false "no cross-seeds found".
-			return nil, fmt.Errorf("failed to verify local file relationship for cross-seed detection: %w", overlapErr)
-		}
-		// In best-effort mode, log the error and return partial results
-		log.Warn().Err(overlapErr).
-			Int("instanceID", sourceInstanceID).
-			Str("hash", normalizeHash(sourceHash)).
-			Msg("Local file relationship check failed during local match search (best-effort mode, continuing with partial results)")
-	}
-
-	return &LocalMatchesResponse{Matches: matches}, nil
-}
-
-// collectLocalMatches iterates through all instances and collects matching torrents.
-func (s *Service) collectLocalMatches(
-	ctx context.Context,
-	instances []*models.Instance,
-	sourceInstanceID int,
-	sourceTorrent *qbt.Torrent,
-	sourceRead namedRelease,
-	normalizedContentPath string,
-	matchCtx *localMatchContext,
-) []LocalMatch {
-	var matches []LocalMatch
-	normalizedSourceHash := normalizeHash(sourceTorrent.Hash)
-
-	for _, instance := range instances {
-		if ctx.Err() != nil {
-			return matches
-		}
-
-		cachedTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get cached torrents for instance")
-			continue
-		}
-
-		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
-			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
-	}
-
-	return matches
-}
-
 func activeInstancesOnly(instances []*models.Instance) []*models.Instance {
 	active := make([]*models.Instance, 0, len(instances))
 	for _, instance := range instances {
@@ -888,71 +780,6 @@ func activeInstancesOnly(instances []*models.Instance) []*models.Instance {
 		active = append(active, instance)
 	}
 	return active
-}
-
-// matchTorrentsInInstance checks torrents in a single instance for matches.
-func (s *Service) matchTorrentsInInstance(
-	ctx context.Context,
-	matches []LocalMatch,
-	instance *models.Instance,
-	cachedTorrents []qbittorrent.CrossInstanceTorrentView,
-	sourceInstanceID int,
-	normalizedSourceHash string,
-	sourceTorrent *qbt.Torrent,
-	sourceRead namedRelease,
-	normalizedContentPath string,
-	matchCtx *localMatchContext,
-) []LocalMatch {
-	reads := s.readLocalTorrents(ctx, instance.ID, viewTorrents(cachedTorrents))
-	for i := range cachedTorrents {
-		if ctx.Err() != nil {
-			return matches
-		}
-
-		cached := &cachedTorrents[i]
-		if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizedSourceHash {
-			continue
-		}
-
-		candidateRead := reads.read(s.matcher(), instance.ID, cached.Torrent)
-		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRead, cached, candidateRead, normalizedContentPath)
-		if !ok {
-			continue
-		}
-		if matchType := s.classifyLocalCandidate(matchCtx, instance, cached, nameOrRelease); matchType != "" {
-			matches = append(matches, newLocalMatch(instance, cached, matchType))
-		}
-	}
-	return matches
-}
-
-// classifyLocalCandidate fetches the file lists of a prefiltered candidate and
-// the source, and returns the candidate's tier. A failed fetch is recorded on
-// matchCtx for strict mode and gives "".
-func (s *Service) classifyLocalCandidate(
-	matchCtx *localMatchContext,
-	instance *models.Instance,
-	candidate *qbittorrent.CrossInstanceTorrentView,
-	nameOrRelease string,
-) string {
-	// A magnet without metadata has no content path and no files on disk.
-	if matchCtx.sourceContentPath == "" || candidate.ContentPath == "" {
-		return ""
-	}
-	if err := matchCtx.getSourceFiles(); err != nil {
-		return ""
-	}
-	candidateFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
-	if !ok {
-		return ""
-	}
-	return localMatchTier(
-		instance.ID == matchCtx.sourceInstanceID,
-		nameOrRelease,
-		matchCtx.sourceData,
-		newSameDataFiles(candidate.SavePath, candidateFiles, normalizerForService(s)),
-		func() string { return s.localLinkedMatchType(matchCtx, instance, candidate) },
-	)
 }
 
 // newLocalMatch creates a LocalMatch from instance and torrent data.
@@ -976,8 +803,8 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 }
 
 // localMatchContext holds source file data for file-level matching.
-// Source files are lazily fetched on first access to avoid unnecessary API calls
-// when no candidate passes the prefilter.
+// Source files are fetched on first use, so a source without a link check
+// reads no files.
 type localMatchContext struct {
 	ctx                   context.Context
 	svc                   *Service
@@ -1759,7 +1586,7 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	}
 
 	s.signalAutomationWake()
-	s.signalPartialPoolWake(partialPoolWake{})
+	s.partialPool.wake(partialPoolWake{})
 
 	return updated, nil
 }
@@ -2123,7 +1950,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	if s == nil || instanceID <= 0 {
 		return
 	}
-	s.signalPartialPoolWake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
+	s.partialPool.wake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
 
 	if ctx == nil {
 		ctx = context.Background()
@@ -8129,7 +7956,7 @@ func searchCandidateClassPriority(class searchCandidateClass) int {
 		return 4
 	case searchCandidateClassWebSourceRelabel:
 		return 3
-	case searchCandidateClassExactSizeFallback:
+	case searchCandidateClassExactSizeFallback, searchCandidateClassHybridTolerance:
 		return 2
 	case searchCandidateClassTitleRescue:
 		return 1

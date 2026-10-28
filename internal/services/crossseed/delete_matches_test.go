@@ -141,3 +141,53 @@ func TestFindDeleteMatchesSharedPathOutranksLink(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
+
+// The size group selects a hardlinked copy whose name shares no Title key or
+// episode with the selected torrent.
+// regression: #3587
+func TestFindDeleteMatchesLinkedCopyInSizeGroup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		source, copy       string
+		sourceFile, copied string
+	}{
+		{
+			name:       "retitled copy",
+			source:     "Quiet.Coast.2020.1080p.BluRay.x264-GRP",
+			copy:       "Silent Shore 2020 1080p",
+			sourceFile: "Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv",
+			copied:     "Silent Shore 2020 1080p.mkv",
+		},
+		{
+			name:       "copy that numbers its episodes in another way",
+			source:     "Harbor Watch - 25 1080p WEB h264-GRP",
+			copy:       "Harbor.Watch.S02E01.1080p.WEB.h264-GRP",
+			sourceFile: "Harbor Watch - 25.mkv",
+			copied:     "Harbor.Watch.S02E01.mkv",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			sourceDir, copyDir := filepath.Join(root, "a"), filepath.Join(root, "b")
+			require.NoError(t, os.MkdirAll(sourceDir, 0o755))
+			require.NoError(t, os.MkdirAll(copyDir, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(sourceDir, tt.sourceFile), []byte("data"), 0o600))
+			require.NoError(t, os.Link(filepath.Join(sourceDir, tt.sourceFile), filepath.Join(copyDir, tt.copied)))
+
+			source := withTotalSize(crossMatchTorrent(1, "aaaa", tt.source, sourceDir, filepath.Join(sourceDir, tt.sourceFile),
+				qbt.TorrentFiles{{Name: tt.sourceFile, Size: 4}}))
+			linked := withTotalSize(crossMatchTorrent(1, "bbbb", tt.copy, copyDir, filepath.Join(copyDir, tt.copied),
+				qbt.TorrentFiles{{Name: tt.copied, Size: 4}}))
+
+			svc, _ := deleteMatchService(source, linked)
+			matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
+			require.NoError(t, err)
+			require.Equal(t, map[string]string{"bbbb": matchTypeHardlink}, matchedTiers(matches))
+		})
+	}
+}

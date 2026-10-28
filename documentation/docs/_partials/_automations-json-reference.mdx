@@ -122,6 +122,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `deleteFromClient` | boolean |  | Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags. |
 | `useTrackerAsTag` | boolean |  | Use the tracker domain of each torrent as its tag. |
 | `useDisplayName` | boolean |  | With `useTrackerAsTag`: use the tracker display name in place of the domain. |
+| `includeCrossSeeds` | boolean |  | Also apply the tag changes to the cross-seeds of each matching torrent. Ignored with `useTrackerAsTag`. |
 | `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
 
 ### `conditions.category`
