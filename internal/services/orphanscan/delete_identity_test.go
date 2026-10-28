@@ -66,7 +66,7 @@ func symlinkOrSkip(t *testing.T, target, link string) {
 
 // A torrent added after the scan reaches a listed file through a symlinked
 // folder, so the delete keeps it, as the scan would have.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *testing.T) {
 	var orphan, aliasDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -86,7 +86,7 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *t
 
 // A hardlink of a listed file made since the scan is kept too, matching the
 // scan (#3487).
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-hardlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -107,7 +107,7 @@ func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.
 
 // Each row reaches the listed file through a path only one step of the
 // identity read covers, so dropping that step deletes the file.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -176,7 +176,7 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 
 // A torrent file that is not on disk, or whose parent is a file, protects
 // nothing, and the run goes on.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-missing-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -192,7 +192,7 @@ func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 
 // A disc unit is listed as one directory, and a torrent that reaches a file
 // inside it through an alias keeps the whole unit.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_KeepsDiscUnitHoldingAFileATorrentReachesThroughAnAlias(t *testing.T) {
 	var unit, stream, aliasDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -238,7 +238,7 @@ func (b noWalkIdentityBackend) WalkDir(ctx context.Context, root string, opts fs
 
 // A disc unit whose files carry no identity cannot be checked, so it stays and
 // its entry says why.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_DiscUnitWithoutFileIdentitiesFails(t *testing.T) {
 	var unit, stream string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
@@ -259,7 +259,7 @@ func TestExecuteDeletion_DiscUnitWithoutFileIdentitiesFails(t *testing.T) {
 
 // A torrent file qui may not read is skipped, as the scan skips a denied
 // subtree, and the run goes on.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_TorrentFileWithoutReadPermissionIsSkipped(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
@@ -302,7 +302,7 @@ func (b eioStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, e
 
 // A torrent file that cannot be read for any reason but permission could be a
 // listed file under another path, so the run stops before it deletes anything.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_UnreadableTorrentFileStopsTheRunBeforeAnyDelete(t *testing.T) {
 	var orphan, broken string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
@@ -342,7 +342,7 @@ func (b noTargetIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.Ls
 }
 
 // A target whose own identity cannot be read fails alone, and the run goes on.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_TargetWithoutIdentityFailsOnlyThatTarget(t *testing.T) {
 	var opaque, plain string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
@@ -364,7 +364,7 @@ func TestExecuteDeletion_TargetWithoutIdentityFailsOnlyThatTarget(t *testing.T) 
 
 // The exec tier reads identities over SSH, so a late alias on the remote host
 // is kept too.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_RemoteExecTierKeepsFileATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
 
@@ -385,7 +385,7 @@ func TestExecuteDeletion_RemoteExecTierKeepsFileATorrentReachesThroughAnAlias(t 
 
 // On the exec tier the find batch reports a denied torrent file per path, so
 // the delete skips it and goes on, as it does locally.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_RemoteExecTierSkipsTorrentFileWithoutReadPermission(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
@@ -436,7 +436,7 @@ func (b connectionLostStatBackend) Stat(ctx context.Context, p string) (*fsops.L
 // any delete, in words that fit a remote instance. When the SSH settings
 // changed meanwhile, the run says that instead, since the redial went to the
 // new endpoint.
-// regression: #3509
+// regression: #3596
 func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothing(t *testing.T) {
 	t.Parallel()
 
