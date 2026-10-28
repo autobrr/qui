@@ -446,6 +446,9 @@ type Service struct {
 	// aligner renames each added torrent to the layout of its match.
 	aligner *Aligner
 
+	// partialPool is nil when the pool is off.
+	partialPool *partialPoolCoordinator
+
 	// Durable partial link-mode completion coordinator.
 	partialPoolWake                       chan partialPoolWake
 	partialPoolFullScanPending            atomic.Bool
@@ -580,17 +583,30 @@ func NewService(
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		instanceStore:   instanceStore,
+		syncManager:     syncManager,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
+	}
 
 	return svc
 }
 
 // NewServiceWithAutomationStore creates a minimal service for settings-only callers.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
-	return &Service{
+	svc := &Service{
 		automationStore:    automationStore,
 		partialPoolWake:    make(chan partialPoolWake, 100),
 		partialPoolCreated: make(map[int64]*hardlinktree.Created),
 	}
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
+	}
+	return svc
 }
 
 // SetMediaIDCacheStore wires the media_id_cache store that backs the

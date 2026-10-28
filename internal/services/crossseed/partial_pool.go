@@ -13,6 +13,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -62,6 +64,39 @@ var (
 	partialPoolRecheckPollInterval = 100 * time.Millisecond
 	partialPoolAdmissionHold       = 2 * time.Second
 )
+
+// partialPoolSync is the part of the sync manager that the partial pool calls.
+type partialPoolSync interface {
+	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
+	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+}
+
+// partialPoolCoordinator owns durable partial link-mode completion. Code
+// outside this file uses only run, wake, joinEnabled, and join. A nil
+// coordinator means that the pool is off.
+type partialPoolCoordinator struct {
+	automationStore     *models.CrossSeedStore
+	instanceStore       instanceProvider
+	syncManager         partialPoolSync
+	reflinkMaterializer func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	settings            func(context.Context) (*models.CrossSeedAutomationSettings, error)
+
+	partialPoolWake                       chan partialPoolWake
+	partialPoolFullScanPending            atomic.Bool
+	partialPoolAdmissionMaterializationMu sync.Mutex
+	partialPoolCreatedMu                  sync.Mutex
+	partialPoolCreated                    map[int64]*hardlinktree.Created
+	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
+	// one source/target file pair until either root path changes or qui restarts.
+	partialPoolRejectedPairs sync.Map
+
+	// test hooks
+	partialPoolPropagationRollback func(*hardlinktree.Created) error
+	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
+}
 
 type partialPoolWake struct {
 	poolID     int64
