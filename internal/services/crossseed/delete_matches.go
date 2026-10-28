@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -16,27 +17,70 @@ import (
 // FindDeleteMatches returns the torrents on the instance, other than the
 // selected torrents, that a delete of the selected torrents with their files
 // affects: the torrents that share a file path with a selected torrent and the
-// linked copies of its files. It selects the candidates as BuildCrossMatchSets
-// does, so one call covers a selection of any size, and it applies title
-// rescue. Only trusted identity counts for a link, because the delete
-// dialog can add the matches to the delete. A file list or a link check that
-// cannot be read fails the call, so the dialog does not report "no
-// cross-seeds" in error.
+// linked copies of its files. One call covers a selection of any size.
 func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]LocalMatch, error) {
+	matches := deleteMatches{at: make(map[string]int)}
+	err := s.findSelectedMatches(ctx, instanceID, hashes, false, matches.shared, func(m LocalMatch) {
+		if m.MatchType == matchTypeContentPath || m.MatchType == matchTypeHardlink || m.MatchType == matchTypeReflink {
+			matches.add(normalizeHash(m.Hash), m)
+		}
+	})
+	if errors.Is(err, ErrTorrentNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return matches.list, nil
+}
+
+// FindCrossSeeds returns the cross-seeds of one torrent for the Cross-Seed
+// tab: every match on its instance, and the Name, Release, Hardlink, and
+// Reflink matches on every other active instance. An instance whose torrents
+// cannot be read is left out.
+func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash string) (*LocalMatchesResponse, error) {
+	var matches []LocalMatch
+	if err := s.findSelectedMatches(ctx, instanceID, []string{hash}, true, nil, func(m LocalMatch) {
+		matches = append(matches, m)
+	}); err != nil {
+		return nil, err
+	}
+	return &LocalMatchesResponse{Matches: matches}, nil
+}
+
+// findSelectedMatches runs the batch matcher for the selected torrents of an
+// instance, and calls match for each candidate with a tier. A selected torrent
+// of the instance is never a match. With otherInstances, the torrents of every
+// other active instance are also candidates. skip, when set, leaves out a
+// candidate before its files are read. It applies title rescue, and only
+// trusted identity counts for a link, because the delete dialog and the tab
+// can add the matches to a delete. A file list or a link check that cannot be
+// read fails the call, so a list never reads "no cross-seeds" in error. It
+// returns ErrTorrentNotFound when no selected torrent is on the instance.
+func (s *Service) findSelectedMatches(
+	ctx context.Context,
+	instanceID int,
+	hashes []string,
+	otherInstances bool,
+	skip func(hash string) bool,
+	match func(LocalMatch),
+) error {
 	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("get torrents of instance %d: %w", instanceID, err)
+		return fmt.Errorf("get torrents of instance %d: %w", instanceID, err)
 	}
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list instances: %w", err)
+		return fmt.Errorf("list instances: %w", err)
 	}
-	instance := instanceByID(instances, instanceID)
-	if instance == nil {
-		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrInvalidRequest)
+	if instanceByID(instances, instanceID) == nil {
+		return fmt.Errorf("instance %d: %w", instanceID, ErrInvalidRequest)
 	}
 
 	selected := selectedHashes(torrents, hashes)
+	if len(selected) == 0 {
+		return ErrTorrentNotFound
+	}
 	isSelected := func(hash string) bool {
 		_, ok := selected[normalizeHash(hash)]
 		return ok
@@ -44,16 +88,24 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 
 	reads := s.readLocalTorrents(ctx, instanceID, viewTorrents(torrents))
 	idx := s.buildIndexFromViews(torrents, false, reads)
-	if idx == nil {
-		return nil, nil
+	var otherIdx *matchIndex
+	if otherInstances {
+		otherIdx, _ = s.buildOtherInstanceIndex(ctx, instances, instanceID, false, reads)
 	}
 	picks := make([][]*candidatePick, len(torrents))
+	otherPicks := make([][]*candidatePick, len(torrents))
 	for i := range torrents {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
-		if source := torrents[i].Torrent; isSelected(source.Hash) {
-			picks[i] = s.selectCandidates(source, reads.read(s.matcher(), instanceID, source), idx, true)
+		source := torrents[i].Torrent
+		if !isSelected(source.Hash) {
+			continue
+		}
+		read := reads.read(s.matcher(), instanceID, source)
+		picks[i] = s.selectCandidates(source, read, idx, true)
+		if otherIdx != nil {
+			otherPicks[i] = s.selectCandidates(source, read, otherIdx, false)
 		}
 	}
 	pathGroups := slices.DeleteFunc(sharedPathGroups(torrents), func(group []int) bool {
@@ -69,57 +121,75 @@ func (s *Service) FindDeleteMatches(ctx context.Context, instanceID int, hashes 
 		linkTiers:           make(map[[2]string]localLinkResult),
 		trustedIdentityOnly: true,
 	}
-	files.prefetch(ctx, instanceID, torrents, pathGroups, picks)
+	files.prefetch(ctx, instanceID, torrents, pathGroups, picks, otherPicks)
 	files.addSharedPathPicks(ctx, instanceID, torrents, pathGroups, picks, CrossMatchNeeds{})
 
-	matches := deleteMatches{at: make(map[string]int)}
+	skipCandidate := func(c candidateEntry) bool {
+		return (c.instanceID == instanceID && isSelected(c.hash)) || (skip != nil && skip(c.hash))
+	}
 	for i := range torrents {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
-		source := torrents[i].Torrent
-		// A magnet without metadata has no files.
-		if !isSelected(source.Hash) || len(picks[i]) == 0 || source.ContentPath == "" {
-			continue
-		}
-		sourceData, ok := files.get(ctx, instanceID, source.Hash, source.SavePath)
-		if !ok {
-			return nil, fmt.Errorf("read the file list of torrent %s", normalizeHash(source.Hash))
-		}
-		for _, p := range picks[i] {
-			c := p.entry
-			if isSelected(c.hash) || c.view.ContentPath == "" || matches.shared(c.hash) {
-				continue
-			}
-			tier, err := files.deleteTier(ctx, source, instanceID, sourceData, p)
-			if err != nil {
-				return nil, err
-			}
-			if tier == matchTypeContentPath || tier == matchTypeHardlink || tier == matchTypeReflink {
-				matches.add(c.hash, newLocalMatch(instance, c.view, tier))
+		if isSelected(torrents[i].Hash) {
+			if err := files.matchSource(ctx, torrents[i].Torrent, instanceID, slices.Concat(picks[i], otherPicks[i]), skipCandidate, match); err != nil {
+				return err
 			}
 		}
 	}
-	return matches.list, nil
+	return nil
 }
 
-// deleteTier returns the tier of a candidate of a selected torrent on the same
-// instance. Unlike classifyCandidates, it checks the link also when the sizes
-// pair: a linked copy survives the delete, and the dialog says so.
-func (b *batchFiles) deleteTier(ctx context.Context, source *qbt.Torrent, instanceID int, sourceData batchFileData, p *candidatePick) (string, error) {
+// matchSource calls match for each candidate of a selected torrent with a tier.
+func (b *batchFiles) matchSource(
+	ctx context.Context,
+	source *qbt.Torrent,
+	instanceID int,
+	picks []*candidatePick,
+	skip func(candidateEntry) bool,
+	match func(LocalMatch),
+) error {
+	// A magnet without metadata has no files.
+	if len(picks) == 0 || source.ContentPath == "" {
+		return nil
+	}
+	sourceData, ok := b.get(ctx, instanceID, source.Hash, source.SavePath)
+	if !ok {
+		return fmt.Errorf("read the file list of torrent %s", normalizeHash(source.Hash))
+	}
+	for _, p := range picks {
+		c := p.entry
+		if c.view.ContentPath == "" || skip(c) {
+			continue
+		}
+		tier, err := b.strictTier(ctx, source, instanceID, sourceData, p)
+		if err != nil {
+			return err
+		}
+		if tier != "" {
+			match(newLocalMatch(instanceByID(b.instances, c.instanceID), c.view, tier))
+		}
+	}
+	return nil
+}
+
+// strictTier returns the tier of a candidate of a selected torrent. Unlike
+// classifyCandidates, it checks the link also when the sizes pair: a linked
+// copy survives a delete, and the lists say so.
+func (b *batchFiles) strictTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, sourceData batchFileData, p *candidatePick) (string, error) {
 	c := p.entry
-	candidateData, ok := b.get(ctx, instanceID, c.hash, c.savePath)
+	candidateData, ok := b.get(ctx, c.instanceID, c.hash, c.savePath)
 	if !ok {
 		return "", fmt.Errorf("read the file list of torrent %s", c.hash)
 	}
-	var linkUnread bool
-	tier := localMatchTier(true, p.nameOrRelease, sourceData.data, candidateData.data, func() string {
-		linked := b.linkedTier(ctx, source, instanceID, c)
-		linkUnread = linked.unread
+	var linkErr error
+	tier := localMatchTier(c.instanceID == sourceInstanceID, p.nameOrRelease, sourceData.data, candidateData.data, func() string {
+		linked := b.linkedTier(ctx, source, sourceInstanceID, c)
+		linkErr = linked.err
 		return linked.tier
 	})
-	if linkUnread {
-		return "", fmt.Errorf("check the links of torrent %s", c.hash)
+	if linkErr != nil {
+		return "", fmt.Errorf("check the links of torrent %s: %w", c.hash, linkErr)
 	}
 	return tier, nil
 }

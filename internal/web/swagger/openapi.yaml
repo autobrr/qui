@@ -5608,17 +5608,10 @@ paths:
       tags:
         - Cross-Seed
       summary: Find local cross-seed matches
-      description: Find torrents across all qBittorrent instances that match the specified torrent (by content path, name, or release metadata)
+      description: Find torrents across all active qBittorrent instances that match the specified torrent (by content path, name, release metadata, hardlink, or reflink). Fails when a file list or a link check cannot be read.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
-        - name: strict
-          in: query
-          description: When true, fail if file overlap checks cannot complete (use for delete dialogs to avoid false negatives)
-          required: false
-          schema:
-            type: boolean
-            default: false
       responses:
         '200':
           description: List of matching torrents

@@ -50,7 +50,7 @@ const (
 	pathRetry        matchPath = "retry step"
 	pathApply        matchPath = "apply"
 	pathSeasonPack   matchPath = "season pack check"
-	pathLocalMatches matchPath = "Local matches"
+	pathCrossSeedTab matchPath = "Cross-Seed tab"
 	pathPrefilter    matchPath = "content prefilter"
 	pathCrossMatch   matchPath = "cross-match sets"
 	pathDedup        matchPath = "dedup"
@@ -154,14 +154,14 @@ func corpusResized(files qbt.TorrentFiles, size int64) qbt.TorrentFiles {
 // a HYBRID tag on one side, inside the size tolerance.
 func hybridSearchOnlyDifferences() map[matchPath]corpusDifference {
 	differences := make(map[matchPath]corpusDifference)
-	for _, path := range []matchPath{pathLocalMatches, pathPrefilter, pathCrossMatch, pathDedup, pathWebhook} {
+	for _, path := range []matchPath{pathCrossSeedTab, pathPrefilter, pathCrossMatch, pathDedup, pathWebhook} {
 		differences[path] = allowedDifference(corpusNoMatch, reasonOnlySearchComparesFiles)
 	}
 	return differences
 }
 
 // corpusEpisodeWithNFO is an episode with an NFO file, so its total size is not
-// equal to the bare episode. Local matches then cannot rescue the title, and
+// equal to the bare episode. The Batch matcher then cannot rescue the title, and
 // the name rules alone decide.
 func corpusEpisodeWithNFO(name string) qbt.TorrentFiles {
 	return qbt.TorrentFiles{
@@ -177,7 +177,7 @@ func corpusEpisodeWithNFO(name string) qbt.TorrentFiles {
 // adds the differences of the row itself.
 func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpusDifference {
 	differences := make(map[matchPath]corpusDifference)
-	for _, path := range []matchPath{pathSearch, pathRetry, pathLocalMatches, pathPrefilter, pathCrossMatch, pathDedup, pathWebhook} {
+	for _, path := range []matchPath{pathSearch, pathRetry, pathCrossSeedTab, pathPrefilter, pathCrossMatch, pathDedup, pathWebhook} {
 		differences[path] = allowedDifference(corpusNoMatch, "A season pack and one episode are different torrents. Only the season pack check and the apply hint pair them, because qui can build the pack from the local episodes.")
 	}
 	maps.Copy(differences, extra)
@@ -190,7 +190,7 @@ const (
 	reasonNoTitleRescue           = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
 	reasonDedupNoRelabel          = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
 	reasonDedupNoExactSize        = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
-	reasonRetitledSameSizes       = "Local matches and the Batch matcher pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonRetitledSameSizes       = "The Batch matcher pairs a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonDedupNoSizes            = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize         = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonOnlySearchComparesFiles = "Only search and apply compare files before deciding."
@@ -232,7 +232,7 @@ var corpusRows = []corpusRow{
 		episodeMap:    &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81},
 		want:          corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathCrossSeedTab: allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
 			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
 			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
 			pathDedup:        allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
@@ -387,9 +387,6 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
 		want:           corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
-		},
 	},
 	{
 		name:           "slash title",
@@ -426,9 +423,10 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathPrefilter:  allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
-			pathCrossMatch: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
-			pathDedup:      allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathCrossSeedTab: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathDedup:        allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
 		},
 	},
 	{
@@ -692,7 +690,7 @@ var corpusRows = []corpusRow{
 		searchSource: "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
 		want:         corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+			pathCrossSeedTab: allowedDifference(corpusMatch, reasonRetitledSameSizes),
 			pathCrossMatch:   allowedDifference(corpusMatch, reasonRetitledSameSizes),
 		},
 	},
@@ -834,9 +832,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Season 2", "Harbor Lights (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
-		},
 	},
 	{
 		// Files of another season lend the season folder name nothing.
@@ -945,7 +940,7 @@ var corpusPaths = []struct {
 	{pathRetry, retryCorpusVerdict},
 	{pathApply, applyCorpusVerdict},
 	{pathSeasonPack, seasonPackCorpusVerdict},
-	{pathLocalMatches, localMatchesCorpusVerdict},
+	{pathCrossSeedTab, crossSeedTabCorpusVerdict},
 	{pathPrefilter, prefilterCorpusVerdict},
 	{pathCrossMatch, crossMatchCorpusVerdict},
 	{pathDedup, dedupCorpusVerdict},
@@ -1163,10 +1158,10 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
 }
 
-func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
+func crossSeedTabCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
-	resp, err := svc.FindLocalMatches(t.Context(), corpusInstanceID, corpusSourceHash, true)
+	resp, err := svc.FindCrossSeeds(t.Context(), corpusInstanceID, corpusSourceHash)
 	require.NoError(t, err)
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match LocalMatch) bool { return match.Hash == corpusCandidateHash }))
 }

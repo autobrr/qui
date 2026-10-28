@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"maps"
 	"path"
@@ -281,8 +282,8 @@ type batchFiles struct {
 }
 
 type localLinkResult struct {
-	tier   string
-	unread bool
+	tier string
+	err  error // the check could not be read, so an empty tier is unknown
 }
 
 type batchFileData struct {
@@ -585,9 +586,9 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 		b.links[key] = matchCtx
 	}
 	tier := b.svc.localLinkedMatchType(matchCtx, candidateInstance, c.view)
-	result := localLinkResult{
-		tier:   tier,
-		unread: tier == "" && (matchCtx.verificationErr != nil || matchCtx.sourceFilesErr != nil || matchCtx.candidateFilesErr != nil),
+	result := localLinkResult{tier: tier}
+	if tier == "" {
+		result.err = cmp.Or(matchCtx.sourceFilesErr, matchCtx.candidateFilesErr, matchCtx.verificationErr)
 	}
 	b.linkTiers[pair] = result
 	return result
@@ -816,7 +817,7 @@ func (s *Service) classifyCandidates(
 		if tier == "" && p.nameOrRelease != "" {
 			linked := files.linkedTier(ctx, source, sourceInstanceID, c)
 			tier = linked.tier
-			result.unread = result.unread || linked.unread
+			result.unread = result.unread || linked.err != nil
 		}
 		if tier == "" {
 			continue
