@@ -144,6 +144,6 @@ type cacheTouchDB struct {
 }
 
 func (db *cacheTouchDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	defer close(db.done)
+	defer func() { db.done <- struct{}{} }()
 	return db.DB.ExecContext(ctx, query, args...)
 }
