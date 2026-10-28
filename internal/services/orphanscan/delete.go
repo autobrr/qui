@@ -165,7 +165,7 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 	// followed the link, so compare where it points.
 	if entry.IsSymlink && protected.inUse != nil {
 		var err error
-		if info, err = followSymlink(ctx, entry.Path, backend); err != nil {
+		if info, err = followSymlink(ctx, entry.Path, backend); err != nil || info == nil {
 			return err
 		}
 	}
@@ -180,14 +180,15 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 }
 
 // followSymlink returns what the symlink at p points to. A link that leads
-// nowhere returns an empty info, since no torrent can use a file through it.
+// nowhere, dangling or in a loop, returns nil, since no torrent can use a file
+// through it.
 // Any other failure is returned, as for a regular entry whose identity cannot
 // be read, because the target could be a torrent's file.
 func followSymlink(ctx context.Context, p string, backend fsops.Backend) (*fsops.LstatInfo, error) {
 	info, err := backend.Stat(ctx, p)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-			return &fsops.LstatInfo{}, nil
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+			return nil, nil
 		}
 		return nil, fmt.Errorf("follow symlink %s: %w", p, err)
 	}

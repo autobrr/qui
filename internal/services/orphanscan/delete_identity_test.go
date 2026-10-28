@@ -237,6 +237,69 @@ func TestExecuteDeletion_KeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAli
 	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, f.runID)[unit])
 }
 
+// A symlink in a disc unit that leads to no file, dangling or in a loop,
+// cannot be a torrent's path, so the unit is deleted while the run holds
+// torrent identities. A link qui cannot follow could be one, so its unit
+// stays and says why.
+// regression: #3596
+func TestExecuteDeletion_DiscUnitHoldingASymlinkToNoFile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// link makes the symlink at link and returns what to run after the scan.
+		link       func(t *testing.T, link, base string) func()
+		wantFailed string
+	}{
+		{"dangling", func(t *testing.T, link, base string) func() {
+			symlinkOrSkip(t, filepath.Join(base, "gone.m2ts"), link)
+			return func() {}
+		}, ""},
+		{"loop", func(t *testing.T, link, _ string) func() {
+			if runtime.GOOS == "windows" {
+				t.Skip("a self-loop link reports differently on Windows")
+			}
+			symlinkOrSkip(t, link, link)
+			return func() {}
+		}, ""},
+		{"target qui may not read", func(t *testing.T, link, base string) func() {
+			if runtime.GOOS == "windows" {
+				t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
+			}
+			if os.Geteuid() == 0 {
+				t.Skip("root bypasses permission checks")
+			}
+			locked := filepath.Join(base, "locked")
+			writeFile(t, filepath.Join(locked, "00001.m2ts"))
+			symlinkOrSkip(t, filepath.Join(locked, "00001.m2ts"), link)
+			return func() {
+				require.NoError(t, os.Chmod(locked, 0o000))
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
+			}
+		}, "failed: check directory contents: follow symlink"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var unit string
+			var afterScan func()
+			f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-no-file", orphanOnlyOptions{}, func(defaultSavePath string) {
+				unit = filepath.Join(defaultSavePath, "Movie")
+				writeFile(t, filepath.Join(unit, "BDMV", "STREAM", "00000.m2ts"))
+				afterScan = tc.link(t, filepath.Join(unit, "BDMV", "STREAM", "00001.m2ts"), filepath.Dir(defaultSavePath))
+			})
+			require.Contains(t, fileStatuses(t, f.store, f.runID), unit, "the scan lists it")
+
+			afterScan()
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+			status := fileStatuses(t, f.store, f.runID)[unit]
+			if tc.wantFailed == "" {
+				require.NoDirExists(t, unit, "status: %s", status)
+				return
+			}
+			require.DirExists(t, unit)
+			require.Contains(t, status, tc.wantFailed)
+		})
+	}
+}
+
 // noWalkIdentityBackend walks root without the identity of its files, as the
 // sftp walk does.
 type noWalkIdentityBackend struct {
