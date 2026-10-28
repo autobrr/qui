@@ -1433,6 +1433,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// disabled directory cleanup after the scan.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	scope.AbandonedDirs = true
+	scope.TorrentPaths = true
 
 	// Build fresh file map for re-checking
 	fileMapResult, err := s.buildFileMap(ctx, instance, deleteBackend, scope)
@@ -1479,6 +1480,29 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		for _, e := range entries {
 			s.updateFileStatus(ctx, e.ID, "skipped", "the SSH settings changed during the deletion")
 		}
+	}
+
+	// The map protects by path. A torrent added since the scan can reach a
+	// listed file through another path, so the files are also compared by
+	// identity, as the scan compared them. Abandoned directories need no
+	// identities, since they go only when empty.
+	if len(fileEntries) > 0 {
+		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, fileMapResult.torrentPaths)
+		if err != nil {
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent file")
+			switch {
+			// A redial reaches the instance's current row, so a moved
+			// endpoint is the likelier story than a dropped link.
+			case checkSSH():
+				s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+			case errors.Is(err, fsops.ErrConnectionLost):
+				s.failRun(ctx, runID, instanceID, "Deletion stopped before deleting anything: the connection to the remote instance was lost while qui checked which files torrents use. Run a new scan to try again.")
+			default:
+				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which files torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", err))
+			}
+			return
+		}
+		protected.inUse = inUse
 	}
 
 	// Track deletion failures for user-facing error reporting
@@ -1530,6 +1554,10 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		switch disp {
 		case deleteDispositionSkippedInUse:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file is now in use by a torrent")
+		case deleteDispositionSkippedInUseThroughAlias:
+			s.updateFileStatus(ctx, f.ID, "skipped", "a torrent now uses this file through another path")
+		case deleteDispositionSkippedFolderInUseThroughAlias:
+			s.updateFileStatus(ctx, f.ID, "skipped", "a torrent now uses a file in this folder through another path")
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
 		case deleteDispositionSkippedIgnored:
@@ -2068,14 +2096,42 @@ type buildFileMapResult struct {
 	// allowed to be absent and say nothing about the health of the library.
 	declaredOnlyRoots []string
 	torrentCount      int
+	// torrentPaths are the map's files as spelled for the backend, not folded,
+	// so the delete can read their identities. Peers' files join on merge.
+	// Filled only when the scope asks for them.
+	torrentPaths []string
 }
 
-func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
+// extraSavePath is the folder a torrent's files sit in when it is not the save
+// path, or "" when it is the save path or cannot be told.
+func extraSavePath(d fsops.PathDialect, torrent *qbt.Torrent, files qbt.TorrentFiles) string {
+	savePath := d.Clean(torrent.SavePath)
+	actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
+	if actualSavePath == savePath {
+		return ""
+	}
+	return actualSavePath
+}
+
+func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
 	metadataRoots := make(map[string]struct{})
 	stableMissingFiles := 0
+	var torrentPaths []string
+	if wantPaths {
+		n := 0
+		for i := range torrents {
+			files := filesByHash[canonicalizeHash(torrents[i].Hash)]
+			n += len(files)
+			// An Auto TMM torrent's files also come under its content path.
+			if extraSavePath(d, &torrents[i], files) != "" {
+				n += len(files)
+			}
+		}
+		torrentPaths = make([]string, 0, n)
+	}
 
 	for i := range torrents {
 		torrent := torrents[i]
@@ -2109,16 +2165,23 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 
 		scanRoots[savePath] = struct{}{}
 		for _, f := range files {
-			tfm.Add(fsops.NormalizePath(d, d.Join(savePath, d.FromSlash(f.Name))))
+			p := d.Join(savePath, d.FromSlash(f.Name))
+			if wantPaths {
+				torrentPaths = append(torrentPaths, p)
+			}
+			tfm.Add(fsops.NormalizePath(d, p))
 		}
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
-		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
-		if actualSavePath != "" && actualSavePath != savePath {
+		if actualSavePath := extraSavePath(d, &torrent, files); actualSavePath != "" {
 			scanRoots[actualSavePath] = struct{}{}
 			for _, f := range files {
-				tfm.Add(fsops.NormalizePath(d, d.Join(actualSavePath, d.FromSlash(f.Name))))
+				p := d.Join(actualSavePath, d.FromSlash(f.Name))
+				if wantPaths {
+					torrentPaths = append(torrentPaths, p)
+				}
+				tfm.Add(fsops.NormalizePath(d, p))
 			}
 		}
 	}
@@ -2136,6 +2199,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 		skippedRoots:  skippedRootList,
 		metadataRoots: sortedRoots(metadataRoots),
 		torrentCount:  len(torrents),
+		torrentPaths:  torrentPaths,
 	}, nil
 }
 
@@ -2243,7 +2307,7 @@ func (s *Service) instanceScanRootsForOverlap(ctx context.Context, d fsops.PathD
 // buildInstanceFileMap reads instanceID's torrents and checks their roots through
 // backend, which was built from scanned. A peer walk passes the peer's ID with the
 // scanning instance's backend, so identities are scoped to the filesystem read.
-func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scanned *models.Instance, timeout time.Duration, backend fsops.Backend) (*buildFileMapResult, error) {
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scanned *models.Instance, timeout time.Duration, backend fsops.Backend, wantPaths bool) (*buildFileMapResult, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -2269,7 +2333,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
-	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash)
+	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash, wantPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -2284,7 +2348,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, backend fsops.Backend, scope scanScope) (*buildFileMapResult, error) {
 	instanceID := scanned.ID
 	d := backend.Paths()
-	result, err := s.buildInstanceFileMap(ctx, instanceID, scanned, 5*time.Minute, backend)
+	result, err := s.buildInstanceFileMap(ctx, instanceID, scanned, 5*time.Minute, backend, scope.TorrentPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -2329,12 +2393,13 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			}
 		}
 
-		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, scanned, 2*time.Minute, backend)
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, scanned, 2*time.Minute, backend, scope.TorrentPaths)
 		if err != nil {
 			return nil, fmt.Errorf("overlapping %s unavailable (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 		}
 
 		added := result.fileMap.MergeFrom(otherResult.fileMap)
+		result.torrentPaths = append(result.torrentPaths, otherResult.torrentPaths...)
 		result.skippedRoots = mergeRootLists(d, result.skippedRoots, otherResult.skippedRoots)
 		result.metadataRoots = mergeRootLists(d, result.metadataRoots, otherResult.metadataRoots)
 		result.scanRoots = filterCoveredScanRoots(d, result.scanRoots, result.skippedRoots)
