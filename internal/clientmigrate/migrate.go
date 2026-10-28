@@ -247,11 +247,12 @@ func archiveDir(dir, archiveName string) error {
 // replacePath rewrites the prefix of a source client path with the first
 // matching rule and returns it in host form, or returns p unchanged. Matches
 // end at a path separator, so /data does not match /database. Windows-style
-// paths match case-insensitively with either slash, which lets a library move
-// between Windows and Unix hosts
+// rules (drive letters and UNC shares) match case-insensitively with either
+// slash, which lets a library move between Windows and Unix hosts
 func replacePath(p string, rules []PathReplace) string {
 	src := sourceSlash(p)
 	for _, r := range rules {
+		posix := strings.HasPrefix(r.From, "/") && !strings.HasPrefix(r.From, "//")
 		from := strings.TrimRight(sourceSlash(r.From), "/")
 		if len(src) < len(from) {
 			continue
@@ -261,7 +262,7 @@ func replacePath(p string, rules []PathReplace) string {
 		if rest != "" && rest[0] != '/' {
 			continue
 		}
-		if prefix != from && (strings.HasPrefix(from, "/") || !strings.EqualFold(prefix, from)) {
+		if prefix != from && (posix || !strings.EqualFold(prefix, from)) {
 			continue
 		}
 
@@ -269,6 +270,22 @@ func replacePath(p string, rules []PathReplace) string {
 	}
 
 	return p
+}
+
+// foreignAbs reports whether p is absolute on another OS but not on this
+// host: a Windows drive or UNC path on Unix, a POSIX path on Windows. libtorrent
+// would resolve such a path against the save path
+func foreignAbs(p string) bool {
+	if filepath.IsAbs(p) {
+		return false
+	}
+
+	s := sourceSlash(p)
+	if strings.HasPrefix(s, "/") {
+		return true
+	}
+
+	return len(s) >= 3 && s[1] == ':' && s[2] == '/' && ('a' <= s[0]|0x20 && s[0]|0x20 <= 'z')
 }
 
 // sourceSlash turns the backslashes of a Windows-style path into slashes.

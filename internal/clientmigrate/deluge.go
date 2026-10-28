@@ -174,6 +174,12 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
+		if idx := slices.IndexFunc(fastResume.MappedFiles, foreignAbs); idx >= 0 {
+			log.Warn().Msgf("(%d/%d) %s has a moved file at unusable path %q, skipping, map it with --replace-path", positionNum, totalJobs, torrentID, fastResume.MappedFiles[idx])
+			skipped++
+			continue
+		}
+
 		// complete means every piece of every wanted file has its have-bit
 		// set; files with priority 0 may legitimately be missing
 		pieces, complete := delugePieces(&fastResume, &metaInfo)

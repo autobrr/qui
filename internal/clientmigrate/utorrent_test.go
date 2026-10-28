@@ -3,6 +3,7 @@ package clientmigrate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/autobrr/go-torrent/bencode"
@@ -142,10 +143,30 @@ func TestUTorrentLayout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			savePath, mapped := utorrentLayout(&tt.item, tt.path, tt.info, tt.rules)
+			savePath, mapped, err := utorrentLayout(&tt.item, tt.path, tt.info, tt.rules)
+			require.NoError(t, err)
 			assert.Equal(t, base, savePath)
 			assert.Equal(t, tt.wantMapped, mapped)
 		})
+	}
+}
+
+func TestUTorrentLayoutUnmappedTarget(t *testing.T) {
+	t.Parallel()
+
+	info := testInfo()
+	contentPath := filepath.Join(t.TempDir(), info.Name)
+
+	// a file moved to a drive no rule maps would land under the content
+	// root as Name/E:/Extras/b.mkv on Unix
+	for _, target := range []string{`E:\Extras\b.mkv`, `\\nas\share\b.mkv`} {
+		item := UTorrentResumeItem{Targets: [][]any{{int64(1), target}}}
+		_, _, err := utorrentLayout(&item, contentPath, &info, nil)
+		if runtime.GOOS == "windows" {
+			assert.NoError(t, err, target)
+		} else {
+			assert.Error(t, err, target)
+		}
 	}
 }
 

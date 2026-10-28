@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/autobrr/go-torrent/bencode"
@@ -607,6 +608,7 @@ func TestReplacePath(t *testing.T) {
 		{name: "windows case and slashes", path: `d:/downloads/tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows drive root", path: `D:\tv`, rules: []PathReplace{{From: `D:\`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows unc", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc case", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\NAS\Share`, To: data}}, want: filepath.Join(data, "tv")},
 		{name: "windows component boundary", path: `D:\Downloads2\tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: `D:\Downloads2\tv`},
 		{
 			name: "first match wins",
@@ -640,5 +642,28 @@ func TestParsePathReplace(t *testing.T) {
 	for _, rule := range []string{`D:\Downloads`, `D:\Downloads=`, "=" + to, `D:\Downloads=data`} {
 		_, err := ParsePathReplace(rule)
 		assert.Error(t, err, rule)
+	}
+}
+
+func TestForeignAbs(t *testing.T) {
+	t.Parallel()
+
+	windows := runtime.GOOS == "windows"
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "Name/a.mkv", want: false},
+		{path: `Name\a.mkv`, want: false},
+		{path: `E:\Extras\b.mkv`, want: !windows},
+		{path: "e:/Extras/b.mkv", want: !windows},
+		{path: `\\nas\share\b.mkv`, want: !windows},
+		{path: "/mnt/extras/b.mkv", want: windows},
+		{path: filepath.Join(t.TempDir(), "b.mkv"), want: false},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, foreignAbs(tt.path), tt.path)
 	}
 }

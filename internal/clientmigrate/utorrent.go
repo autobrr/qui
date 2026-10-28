@@ -113,13 +113,20 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
+		savePath, mappedFiles, err := utorrentLayout(&item, contentPath, &metaInfo, i.opts.PathReplaces)
+		if err != nil {
+			log.Warn().Err(err).Msgf("(%d/%d) %s has a moved file at an unusable path, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.BestName())
+			skipped++
+			continue
+		}
+
 		if i.opts.DryRun {
 			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
 			imported++
 			continue
 		}
 
-		newFastResume := utorrentFastresume(&item, file, &metaInfo, contentPath, pieces, i.opts.PathReplaces)
+		newFastResume := utorrentFastresume(&item, file, &metaInfo, savePath, mappedFiles, pieces)
 
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
@@ -180,7 +187,7 @@ func (i *UTorrentImport) loadResume() (map[string]bencode.Bytes, error) {
 
 // utorrentFastresume builds the qBittorrent resume data for a complete
 // uTorrent resume entry
-func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, contentPath, pieces string, rules []PathReplace) Fastresume {
+func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, savePath string, mappedFiles []string, pieces string) Fastresume {
 	completedTime := firstNonZero(item.CompletedOn, item.AddedOn)
 
 	// stopped (0) and paused (3) stay paused out of auto-management;
@@ -199,8 +206,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 	if item.OverrideSeedSettings != 0 {
 		ratioLimit = item.WantedRatio
 	}
-
-	savePath, mappedFiles := utorrentLayout(item, contentPath, info, rules)
 
 	fr := Fastresume{
 		ActiveTime:                item.Runtime,
@@ -364,16 +369,17 @@ func utorrentFilePriorities(prio string, fileCount int) []int {
 // torrents, the torrent folder for multi-file ones. A renamed root and the
 // per-file targets renames only exist in the resume data, so the data on disk
 // needs mapped_files. Targets moved out of the content root are absolute and
-// go through the same --replace-path rules as the content path
-func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo.Info, rules []PathReplace) (string, []string) {
+// go through the same --replace-path rules as the content path; one that stays
+// absolute for another OS is an error
+func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo.Info, rules []PathReplace) (string, []string, error) {
 	savePath := filepath.Dir(contentPath)
 	root := filepath.Base(contentPath)
 
 	if !info.IsDir() {
 		if root != info.BestName() {
-			return savePath, []string{root}
+			return savePath, []string{root}, nil
 		}
-		return savePath, nil
+		return savePath, nil, nil
 	}
 
 	// targets entries are [index, path...]; the path is relative to the
@@ -398,6 +404,9 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 		}
 
 		target := replacePath(strings.Join(parts, "/"), rules)
+		if foreignAbs(target) {
+			return "", nil, errors.Errorf("file %d target %q is not an absolute path on this OS", idx, target)
+		}
 		if filepath.IsAbs(target) {
 			targets[int(idx)] = filepath.Clean(target)
 		} else {
@@ -406,7 +415,7 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 	}
 
 	if root == info.BestName() && len(targets) == 0 {
-		return savePath, nil
+		return savePath, nil, nil
 	}
 
 	files := info.UpvertedFiles()
@@ -419,7 +428,7 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 		}
 	}
 
-	return savePath, mapped
+	return savePath, mapped, nil
 }
 
 // utorrentName returns the renamed torrent name, or "" when the torrent keeps
