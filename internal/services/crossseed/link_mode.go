@@ -365,7 +365,7 @@ func (s *Service) processLinkMode(
 		})
 	}
 
-	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
+	pooledCompletion := s.partialPool.joinEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	var poolReplaceablePaths map[string]struct{}
@@ -519,7 +519,7 @@ func (s *Service) processLinkMode(
 			if poolDescriptorErr != nil {
 				poolRegistrationErr = fmt.Errorf("describe partial pool files: %w", poolDescriptorErr)
 			} else {
-				_, pooledMember, poolRegistrationErr = s.registerPartialPoolAdmission(
+				_, pooledMember, poolRegistrationErr = s.partialPool.join(
 					ctx,
 					candidate,
 					torrentBytes,
@@ -576,7 +576,7 @@ func (s *Service) processLinkMode(
 	}
 	statusMsg += added.Message
 	if added.Outcome == AddPooled {
-		s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
+		s.partialPool.wake(partialPoolWake{poolID: pooledMember.PoolID})
 		statusMsg += " - pooled completion pending"
 	}
 	// Add note about low completion behavior

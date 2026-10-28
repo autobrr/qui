@@ -103,6 +103,9 @@ linters:
           msg: use crossseed.Adder
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
+        - pattern: ^models\.CrossSeedStore\.\w*PartialPool\w*$
+          pkg: ^github\.com/autobrr/qui/internal/models$
+          msg: ask the partial pool coordinator in internal/services/crossseed/partial_pool.go
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -188,6 +191,13 @@ linters:
         linters:
           - forbidigo
         text: use crossseed\.Aligner
+
+      # Only the partial pool coordinator and the store itself call the partial
+      # pool store methods.
+      - path: internal/services/crossseed/partial_pool\.go$|internal/models/crossseed_partial_pool\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: partial pool coordinator
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.

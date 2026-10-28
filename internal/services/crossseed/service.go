@@ -428,16 +428,14 @@ type Service struct {
 	backendPool atomic.Value // stores *fsops.Pool
 
 	// test hooks
-	crossSeedInvoker               func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier              func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
-	torrentDownloadFunc            func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker        func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator          func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	partialPoolPropagationRollback func(*hardlinktree.Created) error
-	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
-	postInjectionHook              func(context.Context, int, []string)
-	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
+	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	reflinkMaterializer     func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	postInjectionHook       func(context.Context, int, []string)
+	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
 	// settler rechecks and resumes each torrent that this service adds.
 	settler *Settler
@@ -446,15 +444,8 @@ type Service struct {
 	// aligner renames each added torrent to the layout of its match.
 	aligner *Aligner
 
-	// Durable partial link-mode completion coordinator.
-	partialPoolWake                       chan partialPoolWake
-	partialPoolFullScanPending            atomic.Bool
-	partialPoolAdmissionMaterializationMu sync.Mutex
-	partialPoolCreatedMu                  sync.Mutex
-	partialPoolCreated                    map[int64]*hardlinktree.Created
-	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
-	// one source/target file pair until either root path changes or qui restarts.
-	partialPoolRejectedPairs sync.Map
+	// partialPool is nil when the pool is off.
+	partialPool *partialPoolCoordinator
 
 	// Returns the season's episode total, the show's alias titles from the same
 	// lookup (series-wide + same-season), and whether the total resolved.
@@ -571,8 +562,6 @@ func NewService(
 		completionRetryDelay:          defaultCompletionCheckingRetryDelay,
 		completionMaxAttempts:         maxCompletionCheckingAttempts,
 		settler:                       settler,
-		partialPoolWake:               make(chan partialPoolWake, 100),
-		partialPoolCreated:            make(map[int64]*hardlinktree.Created),
 		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
@@ -580,17 +569,26 @@ func NewService(
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		instanceStore:   instanceStore,
+		syncManager:     syncManager,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
+	}
 
 	return svc
 }
 
 // NewServiceWithAutomationStore creates a minimal service for settings-only callers.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
-	return &Service{
-		automationStore:    automationStore,
-		partialPoolWake:    make(chan partialPoolWake, 100),
-		partialPoolCreated: make(map[int64]*hardlinktree.Created),
+	svc := &Service{automationStore: automationStore}
+	svc.partialPool = &partialPoolCoordinator{
+		automationStore: automationStore,
+		settings:        svc.GetAutomationSettings,
+		partialPoolWake: make(chan partialPoolWake, 100),
 	}
+	return svc
 }
 
 // SetMediaIDCacheStore wires the media_id_cache store that backs the
@@ -1588,7 +1586,7 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	}
 
 	s.signalAutomationWake()
-	s.signalPartialPoolWake(partialPoolWake{})
+	s.partialPool.wake(partialPoolWake{})
 
 	return updated, nil
 }
@@ -1952,7 +1950,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	if s == nil || instanceID <= 0 {
 		return
 	}
-	s.signalPartialPoolWake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
+	s.partialPool.wake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
 
 	if ctx == nil {
 		ctx = context.Background()

@@ -120,15 +120,28 @@ func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automatio
 
 var parityDeleteTag = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "delete"}
 
+func parityCategoryRule(action models.CategoryAction) *models.Automation {
+	action.Enabled = true
+	action.Category = "archive"
+	action.Condition = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"}
+	return &models.Automation{
+		Name:           "parity",
+		TrackerPattern: "*",
+		Enabled:        true,
+		Conditions:     &models.ActionConditions{Category: &action},
+	}
+}
+
 // A manual dry run must report the same torrents the live impact preview shows.
 // Both take the same payload; only service-side state can split them.
 func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 	tests := []struct {
-		name    string
-		fixture func(t *testing.T) parityFixture
-		rule    *models.Automation
-		state   func(svc *Service, instanceID int)
-		want    []string
+		name           string
+		fixture        func(t *testing.T) parityFixture
+		rule           *models.Automation
+		state          func(svc *Service, instanceID int)
+		want           []string
+		wantCrossSeeds int
 	}{
 		{
 			name: "torrent touched by a live rule within SkipWithin",
@@ -227,6 +240,75 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityDeleteRule(DeleteModeWithFilesPreserveCrossSeeds, parityDeleteTag),
 			want: []string{"a"},
 		},
+		{
+			name: "category with include cross-seeds",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"done":    {"name": "done", "category": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "category": "tv", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b", "done"}, "b": {"a", "done"}, "done": {"a", "b"}},
+				}
+			},
+			rule:           parityCategoryRule(models.CategoryAction{IncludeCrossSeeds: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "category of a rule that is turned off",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: func() *models.Automation {
+				rule := parityCategoryRule(models.CategoryAction{})
+				rule.Enabled = false
+				return rule
+			}(),
+			want: []string{"a"},
+		},
+		{
+			name: "category for a group that every member matches",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a":       {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"b":       {"name": "b", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"outside": {"name": "outside", "category": "tv", "save_path": "/data", "content_path": "/data/other"},
+				}}
+			},
+			rule: parityCategoryRule(models.CategoryAction{GroupID: GroupCrossSeedContentPath}),
+			want: []string{"a", "b"},
+		},
+		{
+			name: "category for a group that one member blocks",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"b": {"name": "b", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: parityCategoryRule(models.CategoryAction{GroupID: GroupCrossSeedContentPath}),
+			want: []string{},
+		},
+		{
+			name: "category that a cross-seed in a protected category blocks",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":    {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"kept": {"name": "kept", "category": "keep", "save_path": "/data", "content_path": "/data/show"},
+						"solo": {"name": "solo", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/solo"},
+					},
+					sameContent: map[string][]string{"a": {"kept"}, "kept": {"a"}},
+				}
+			},
+			rule: parityCategoryRule(models.CategoryAction{BlockIfCrossSeedInCategories: []string{"keep"}}),
+			want: []string{"solo"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,14 +318,22 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			}
 			svc, instanceID := newDryRunParityService(t, fixture)
 
-			preview, err := svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
+			wantAction := models.ActivityActionDeletedCondition
+			var preview *PreviewResult
+			var err error
+			if tt.rule.Conditions.Category != nil {
+				wantAction = models.ActivityActionCategoryChanged
+				preview, err = svc.PreviewCategoryRule(t.Context(), instanceID, tt.rule, 100, 0)
+			} else {
+				preview, err = svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
+			}
 			require.NoError(t, err)
 			previewHashes := make([]string, 0, len(preview.Examples))
 			for _, example := range preview.Examples {
 				previewHashes = append(previewHashes, example.Hash)
 			}
 			require.ElementsMatch(t, tt.want, previewHashes)
-			require.Zero(t, preview.CrossSeedCount, "only an include-cross-seeds expansion counts cross-seeds")
+			require.Equal(t, tt.wantCrossSeeds, preview.CrossSeedCount)
 
 			if tt.state != nil {
 				tt.state(svc, instanceID)
@@ -252,12 +342,16 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			activities, err := svc.ApplyRuleDryRun(t.Context(), instanceID, tt.rule)
 			require.NoError(t, err)
 			require.Len(t, activities, 1)
-			require.Equal(t, models.ActivityActionDeletedCondition, activities[0].Action)
-			run, err := svc.GetActivityRun(instanceID, activities[0].ID, 100, 0)
-			require.NoError(t, err)
-			dryRunHashes := make([]string, 0, len(run.Items))
-			for _, item := range run.Items {
-				dryRunHashes = append(dryRunHashes, item.Hash)
+			dryRunHashes := make([]string, 0)
+			if len(tt.want) == 0 {
+				require.Equal(t, models.ActivityActionDryRunNoMatch, activities[0].Action)
+			} else {
+				require.Equal(t, wantAction, activities[0].Action)
+				run, err := svc.GetActivityRun(instanceID, activities[0].ID, 100, 0)
+				require.NoError(t, err)
+				for _, item := range run.Items {
+					dryRunHashes = append(dryRunHashes, item.Hash)
+				}
 			}
 			require.ElementsMatch(t, previewHashes, dryRunHashes, "the dry run must select the torrents that the preview shows")
 		})

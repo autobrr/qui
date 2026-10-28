@@ -104,6 +104,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Alignment**: The renames after an add that make the file and folder names of a torrent match the files that are already on disk. _Avoid_: content path alignment, rename alignment.
 - **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
 - **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
+- **Partial pool**: Related partial cross-seeds that share one source torrent. qui lets one member download at a time and links each completed file into the other members. _Avoid_: Pooled group.
+- **Pool member**: One torrent in a partial pool.
+- **Pool admission**: The step that makes a new partial add a pool member, and the window after it during which more members can join. _Avoid_: Admission alone (see Admitted Execution and Pre-add check).
 
 ## Automations
 
@@ -113,7 +116,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
 - **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.
 - **Deletion selection**: The torrents that the delete rules of a run choose to remove: the Delete triggers and the torrents that their expansion pulls in. The preview shows the Deletion selection of one rule. _Avoid_: Shared-file group (when referring to selected torrents).
-- **Run plan**: What one run of the Automation rules will do: for each Action, the torrents it reaches and the rule that chose each torrent. The live run carries it out. The dry run records it. The Deletion selection is the delete part of the Run plan. _Avoid_: Desired state, batches.
+- **Run plan**: What one run of the Automation rules will do: for each Action, the torrents it reaches and the rule that chose each torrent. The live run carries it out. The dry run records it. The Deletion selection is the delete part of the Run plan. The category preview shows the plan of one rule. _Avoid_: Desired state, batches.
 - **Projected freed bytes**: The estimated space recovered by removing the selected files. Shared paths count once. _Avoid_: Actual freed space.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
 
