@@ -90,7 +90,8 @@ their identity in two round trips. `StatBatch` adds `-L`. A single `Stat` or
 `Lstat` answers each path that `find` did not print, such as a missing path,
 so the errors are the same as for one path. `find -L` prints a broken link as
 the link itself, so `StatBatch` sends that path to `Stat` too. On the sftp
-tier, a single call answers each path.
+tier, a single call answers each path. An orphan scan delete reads the
+identity of every torrent file through `StatBatch` on the exec tier.
 
 The single calls of a batch run 32 at a time on the one sftp client, so they
 share round trips. In the tests, 64 paths at 25 ms of delay take about 50 ms,

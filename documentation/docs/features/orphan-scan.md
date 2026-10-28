@@ -17,7 +17,8 @@ Orphan scan finds and removes files in your download directories that no torrent
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
 2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too.
 3. Before you confirm deletion, you preview the list.
-4. qui deletes the files, then removes the directories the preview listed.
+4. qui re-checks each listed file against the files your torrents use now, by path and by file identity. A file that a torrent started to use through another path since the preview, such as a hardlink, a bind mount or a symlinked folder, stays. qui skips a file your torrents use when it is not allowed to look that file up, so another path to that file is not protected. If qui cannot read one of those files for any other reason, the deletion stops before qui deletes anything.
+5. qui deletes the files, then removes the directories the preview listed.
 
 :::note
 When matching paths, qui normalizes Unicode paths to canonical NFC form. If the filesystem and qBittorrent report composed and decomposed forms of the same name, this normalization prevents false orphans. On normalization-sensitive filesystems, qui treats two byte-distinct canonical-equivalent names as one logical path.
@@ -103,7 +104,7 @@ Paths skipped before scanning appear in the warning.
 
 Partial scans skip automatic cleanup.
 You can review the warning and delete the listed orphan files manually.
-Before deletion, qui refreshes torrent ownership data and applies its normal deletion checks.
+Before deletion, qui refreshes torrent ownership data, re-checks the listed files as [How it works](#how-it-works) describes, and applies its normal deletion checks.
 After successful manual deletion, the run keeps its **Partial scan** label.
 If all deletion attempts fail, the run shows **Failed** and keeps both the scan warning and the deletion error.
 
