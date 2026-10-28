@@ -27,6 +27,14 @@ func TestProcessTorrents_Uncategorized(t *testing.T) {
 		{Hash: "peer", Category: "protected", SavePath: "data", ContentPath: "data/show"},
 		{Hash: "uncategorized", SavePath: "other", ContentPath: "other/show"},
 	}
+	fixture := parityFixture{
+		torrents: map[string]map[string]any{
+			"source":        {"name": "source", "category": "archive", "save_path": "data", "content_path": "data/show"},
+			"peer":          {"name": "peer", "category": "protected", "save_path": "data", "content_path": "data/show"},
+			"uncategorized": {"name": "uncategorized", "save_path": "other", "content_path": "other/show"},
+		},
+		sameContent: sharingByContentPath(torrents),
+	}
 
 	for _, tc := range []struct {
 		name                string
@@ -56,8 +64,12 @@ func TestProcessTorrents_Uncategorized(t *testing.T) {
 				},
 			}
 			states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+			svc, instanceID := newDryRunParityService(t, fixture)
+			preview, err := svc.PreviewCategoryRule(t.Context(), instanceID, rule, 100, 0)
+			require.NoError(t, err)
 			if !tc.wantMatch {
 				require.Empty(t, states)
+				require.Empty(t, previewRows(preview))
 				return
 			}
 			require.Len(t, states, 1)
@@ -65,15 +77,13 @@ func TestProcessTorrents_Uncategorized(t *testing.T) {
 			require.Empty(t, *states["source"].category)
 			require.Equal(t, tc.includeCrossSeeds, states["source"].categoryIncludeCrossSeeds)
 
-			service := &Service{syncManager: sm}
-			preview := newCategoryPreviewState("")
-			action := getCategoryAction(rule)
-			crossSeeds := testCrossSeedGroups(torrents)
-			service.findDirectCategoryMatches(rule, torrents, nil, crossSeeds, action, preview)
-			service.findCategoryCrossSeeds(torrents, crossSeeds, action, preview)
-			require.Equal(t, map[string]struct{}{"source": {}}, preview.directMatchSet)
-			_, included := preview.crossSeedSet["peer"]
-			require.Equal(t, tc.includeCrossSeeds, included)
+			want := map[string]bool{"source": false}
+			if tc.includeCrossSeeds {
+				want["peer"] = true
+			}
+			require.Equal(t, want, previewRows(preview))
+			require.Equal(t, len(want), preview.TotalMatches)
+			require.Equal(t, len(want)-1, preview.CrossSeedCount)
 		})
 	}
 }
@@ -94,10 +104,23 @@ func TestProcessTorrents_UncategorizedLastRuleWins(t *testing.T) {
 	require.Empty(t, *states["source"].category)
 	require.Equal(t, 2, states["source"].categoryRuleID)
 
-	service := &Service{syncManager: sm}
-	preview := newCategoryPreviewState("")
-	service.findDirectCategoryMatches(rules[1], torrents, nil, nil, getCategoryAction(rules[1]), preview)
-	require.Empty(t, preview.directMatchSet)
+	// The preview checks only the edited rule: the first rule still shows the torrent.
+	svc, instanceID := newDryRunParityService(t, parityFixture{torrents: map[string]map[string]any{"source": {"name": "source"}}})
+	preview, err := svc.PreviewCategoryRule(t.Context(), instanceID, rules[0], 100, 0)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"source": false}, previewRows(preview))
+	preview, err = svc.PreviewCategoryRule(t.Context(), instanceID, rules[1], 100, 0)
+	require.NoError(t, err)
+	require.Empty(t, previewRows(preview))
+}
+
+// previewRows maps each row of a preview to its cross-seed badge.
+func previewRows(result *PreviewResult) map[string]bool {
+	rows := make(map[string]bool, len(result.Examples))
+	for _, example := range result.Examples {
+		rows[example.Hash] = example.IsCrossSeed
+	}
+	return rows
 }
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {

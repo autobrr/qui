@@ -1230,25 +1230,9 @@ func (s *Service) buildDeletePreviewResult(
 	return result
 }
 
-// categoryPreviewState tracks state during category preview processing.
-type categoryPreviewState struct {
-	directMatchSet map[string]struct{}
-	crossSeedSet   map[string]struct{}
-	matchedKeys    map[string]struct{}
-	targetCategory string
-}
-
-func newCategoryPreviewState(targetCategory string) *categoryPreviewState {
-	return &categoryPreviewState{
-		directMatchSet: make(map[string]struct{}),
-		crossSeedSet:   make(map[string]struct{}),
-		matchedKeys:    make(map[string]struct{}),
-		targetCategory: targetCategory,
-	}
-}
-
 // PreviewCategoryRule returns torrents that would have their category changed by the given rule.
-// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
+// It shows the category part of the Run plan of the rule, with the group members and cross-seeds
+// that the plan takes along.
 func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
@@ -1275,33 +1259,33 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, err
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
 
-	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	// The plan step activates the grouping of the rule and sorts torrents in the sort order of the rule.
+	plan, own := s.planPreview(ctx, instanceID, rule, models.ActionConditions{Category: rule.Conditions.Category}, torrents, evalCtx, crossSeeds)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
-	catAction := getCategoryAction(rule)
-	state := newCategoryPreviewState(catAction.targetCategory)
-
-	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeeds, catAction, state)
-	if catAction.groupID != "" {
-		s.findCategoryGroupMembers(ctx, instanceID, rule, torrents, evalCtx, catAction, state)
-	} else {
-		s.findCategoryCrossSeeds(torrents, crossSeeds, catAction, state)
+	directSet := make(map[string]struct{})
+	crossSeedSet := make(map[string]struct{})
+	for _, hashes := range plan.category.byTarget {
+		for _, hash := range hashes {
+			if _, ok := own[hash]; ok {
+				directSet[hash] = struct{}{}
+			} else {
+				crossSeedSet[hash] = struct{}{}
+			}
+		}
 	}
 
-	return s.buildMatchPreviewResult(torrents, state.directMatchSet, state.crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
+	return s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
 }
 
 // categoryActionConfig holds category action configuration.
 type categoryActionConfig struct {
-	targetCategory    string
 	includeCrossSeeds bool
-	groupID           string
 	blockCategories   []string
 	condition         *RuleCondition
 	enabled           bool
@@ -1315,9 +1299,7 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 	cat := rule.Conditions.Category
 	groupID := strings.TrimSpace(cat.GroupID)
 	return categoryActionConfig{
-		targetCategory:    cat.Category,
 		includeCrossSeeds: groupID == "" && cat.IncludeCrossSeeds,
-		groupID:           groupID,
 		blockCategories:   cat.BlockIfCrossSeedInCategories,
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
@@ -1336,137 +1318,6 @@ func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionCon
 		return false
 	}
 	return !shouldBlockCategoryChangeForCrossSeeds(*torrent, catAction.blockCategories, crossSeeds)
-}
-
-// findDirectCategoryMatches finds torrents that directly match the category rule.
-func (s *Service) findDirectCategoryMatches(
-	rule *models.Automation,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	for i := range torrents {
-		torrent := &torrents[i]
-
-		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-
-		if !shouldApplyCategoryAction(torrent, catAction, evalCtx, crossSeeds) {
-			continue
-		}
-
-		state.directMatchSet[torrent.Hash] = struct{}{}
-		if catAction.includeCrossSeeds {
-			state.matchedKeys[crossSeeds.key(*torrent)] = struct{}{}
-		}
-	}
-}
-
-// findCategoryCrossSeeds finds cross-seeds for matched torrents.
-func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, crossSeeds crossSeedGroups, catAction categoryActionConfig, state *categoryPreviewState) {
-	if !catAction.includeCrossSeeds || len(state.matchedKeys) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if _, matched := state.matchedKeys[crossSeeds.key(*torrent)]; matched {
-			state.crossSeedSet[torrent.Hash] = struct{}{}
-		}
-	}
-}
-
-func (s *Service) findCategoryGroupMembers(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	if rule == nil || evalCtx == nil || state == nil {
-		return
-	}
-	groupID := strings.TrimSpace(catAction.groupID)
-	if groupID == "" {
-		return
-	}
-	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
-	if idx == nil {
-		return
-	}
-
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, t := range torrents {
-		torrentByHash[t.Hash] = t
-	}
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-
-	keySet := make(map[string]struct{})
-	keyEligibility := make(map[string]bool)
-	for h := range state.directMatchSet {
-		gk := idx.KeyForHash(h)
-		if gk == "" {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		eligible, computed := keyEligibility[gk]
-		if !computed {
-			eligible = true
-			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
-				eligible = false
-			}
-			if eligible {
-				if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-					evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-				}
-				activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-				members := idx.MembersForHash(h)
-				if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeeds) {
-					eligible = false
-				}
-			}
-			keyEligibility[gk] = eligible
-		}
-		if !eligible {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		keySet[gk] = struct{}{}
-	}
-	if len(keySet) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if gk := idx.KeyForHash(torrent.Hash); gk != "" {
-			if _, ok := keySet[gk]; ok {
-				state.crossSeedSet[torrent.Hash] = struct{}{}
-			}
-		}
-	}
 }
 
 // buildMatchPreviewResult builds a paginated preview result from direct-match

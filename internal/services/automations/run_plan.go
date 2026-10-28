@@ -653,3 +653,42 @@ func (m *moveExpansion) legacyCrossSeeds(keys map[string]struct{}, normalizedDes
 	}
 	return expandedHashes
 }
+
+// planPreview builds the Run plan of the one rule that a preview shows, with only the actions
+// in keep. It also returns the torrents whose category the rule changes on its own, before the
+// cross-seed expansion. The preview checks every torrent, also one that a run skips as recently processed.
+func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) (runPlan, map[string]struct{}) {
+	keep.SchemaVersion = rule.Conditions.SchemaVersion
+	keep.Grouping = rule.Conditions.Grouping
+	only := *rule
+	only.Conditions = &keep
+	// The editor can preview a rule that is turned off.
+	only.Enabled = true
+
+	states := make(map[string]*torrentDesiredState)
+	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, s.syncManager, nil, nil, states)
+
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, t := range torrents {
+		torrentByHash[t.Hash] = t
+	}
+	own := make(map[string]struct{})
+	for hash, state := range states {
+		if state.category != nil && torrentByHash[hash].Category != *state.category {
+			own[hash] = struct{}{}
+		}
+	}
+
+	// Delete runs alone, so a preview of another Action has no Deletion selection.
+	plan := s.buildRunPlan(ctx, runPlanInput{
+		instanceID:    instanceID,
+		states:        states,
+		deletions:     &deletionSelection{},
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      map[int]*models.Automation{only.ID: &only},
+		crossSeeds:    crossSeeds,
+		evalCtx:       evalCtx,
+	})
+	return plan, own
+}
