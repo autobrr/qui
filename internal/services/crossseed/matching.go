@@ -1386,13 +1386,14 @@ func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string
 
 	dir, base := path.Split(lower)
 	for segment := range strings.SplitSeq(dir, "/") {
-		if slices.Contains(DefaultIgnoredPathKeywords, segment) || slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "s")) {
+		if slices.Contains(DefaultIgnoredPathKeywords, segment) || slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "s")) ||
+			slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "es")) {
 			return true
 		}
 	}
 	stem := strings.TrimSuffix(base, path.Ext(base))
 	for _, keyword := range DefaultIgnoredPathKeywords {
-		if after, ok := strings.CutPrefix(stem, keyword); ok && (after == "" || after[0] == '-') {
+		if after, ok := strings.CutPrefix(stem, keyword); ok && (strings.TrimLeft(after, "0123456789") == "" || after[0] == '-') {
 			return true
 		}
 		if before, ok := strings.CutSuffix(stem, keyword); ok && strings.IndexByte("-._ ", before[len(before)-1]) >= 0 {

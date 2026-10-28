@@ -20,9 +20,11 @@ func TestShouldIgnoreFile(t *testing.T) {
 	}{
 		{"Show.S02/Extras/Behind the Scenes.mkv", true},
 		{"Movie.2024/Featurettes/Making Of.mkv", true},
+		{"Movie.2024/Bonuses/Behind the Scenes.mkv", true},
 		{"Movie.2024/!sample/grp-movie.mkv", true},
 		{"Movie.2024/sample.mkv", true},
 		{"Movie.2024/sample-grp-movie.mkv", true},
+		{"Movie.2024/sample1.mkv", true},
 		{"Show.S02/show.s02e01-sample.mkv", true},
 		{"Movie.2024/Movie.2024.Sample.mkv", true},
 		{"Movie.2024/Movie_sample.mkv", true},
