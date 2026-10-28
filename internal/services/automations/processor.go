@@ -195,6 +195,7 @@ func processTorrents(
 	torrents []qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	stats map[int]*ruleRunStats,
@@ -206,8 +207,6 @@ func processTorrents(
 	} else {
 		states = make(map[string]*torrentDesiredState)
 	}
-
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed

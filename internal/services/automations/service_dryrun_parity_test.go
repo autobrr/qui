@@ -294,6 +294,21 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityCategoryRule(models.CategoryAction{GroupID: GroupCrossSeedContentPath}),
 			want: []string{},
 		},
+		{
+			name: "category that a cross-seed in a protected category blocks",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":    {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"kept": {"name": "kept", "category": "keep", "save_path": "/data", "content_path": "/data/show"},
+						"solo": {"name": "solo", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/solo"},
+					},
+					sameContent: map[string][]string{"a": {"kept"}, "kept": {"a"}},
+				}
+			},
+			rule: parityCategoryRule(models.CategoryAction{BlockIfCrossSeedInCategories: []string{"keep"}}),
+			want: []string{"solo"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

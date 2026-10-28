@@ -666,7 +666,7 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 	only.Enabled = true
 
 	states := make(map[string]*torrentDesiredState)
-	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, s.syncManager, nil, nil, states)
+	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, s.syncManager, nil, nil, states)
 
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, t := range torrents {
