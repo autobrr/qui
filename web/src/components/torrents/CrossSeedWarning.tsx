@@ -266,11 +266,9 @@ export function CrossSeedWarning({
           <div className="mt-2 space-y-2 overflow-hidden">
             {Object.entries(byInstance).map(([instanceName, torrents]) => (
               <div key={instanceName} className="min-w-0">
-                {instanceCount > 1 && (
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                    {instanceName}
-                  </p>
-                )}
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  {instanceName}
+                </p>
                 <div className="space-y-1 min-w-0">
                   {torrents.slice(0, 8).map((torrent) => {
                     const trackerDomain = getTrackerDomain(torrent.tracker)
