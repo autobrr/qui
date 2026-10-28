@@ -627,10 +627,21 @@ func TestRecordDryRunActivities_Tags_IncludeCrossSeeds_CountsSiblings(t *testing
 	assert.Equal(t, 2, details.Added["managed"], "expected trigger and expanded sibling to be counted")
 }
 
-func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{syncManager: sm}
+// previewTagForTest runs PreviewTagRule against a stub qBittorrent that serves
+// the torrents. Torrents with the same content path are cross-seeds.
+func previewTagForTest(t *testing.T, torrents []qbt.Torrent, rule *models.Automation) *PreviewResult {
+	t.Helper()
+	fixture := parityFixture{torrents: make(map[string]map[string]any, len(torrents)), sameContent: sharingByContentPath(torrents)}
+	for _, torrent := range torrents {
+		fixture.torrents[torrent.Hash] = map[string]any{"name": torrent.Name, "tags": torrent.Tags, "save_path": torrent.SavePath, "content_path": torrent.ContentPath}
+	}
+	svc, instanceID := newDryRunParityService(t, fixture)
+	preview, err := svc.PreviewTagRule(t.Context(), instanceID, rule, 100, 0)
+	require.NoError(t, err)
+	return preview
+}
 
+func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
 		{Hash: "sibling", Name: "Cross Seed Copy", SavePath: "/data", ContentPath: "/data/show"},
@@ -649,39 +660,16 @@ func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
 			Value:    "abcd",
 		},
 	})
-	evalCtx := &EvalContext{}
 
-	// PreviewTagRule's classification: direct = the rule's own decision,
-	// cross-seed = changed only through expansion.
-	states := s.evalTagStatesForPreview(rule, torrents, evalCtx, crossSeedGroupsForTest(torrents))
-	ownDecision := tagStatesChanging(states)
-	require.Equal(t, map[string]struct{}{"trigger": {}}, ownDecision)
-
-	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
-
-	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
-	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet)
-	require.Equal(t, map[string]struct{}{"sibling": {}}, crossSeedSet, "already-tagged sibling is a no-op and must be excluded")
-
-	result := s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, previewConfig{limit: 25}, rule, nil)
+	// Direct = the rule's own decision, cross-seed = changed only through expansion.
+	// The already-tagged sibling is a no-op and does not show.
+	result := previewTagForTest(t, torrents, rule)
+	assert.Equal(t, map[string]bool{"trigger": false, "sibling": true}, previewRows(result))
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Equal(t, 1, result.CrossSeedCount)
-	require.Len(t, result.Examples, 2)
-
-	byHash := make(map[string]PreviewTorrent, len(result.Examples))
-	for _, example := range result.Examples {
-		byHash[example.Hash] = example
-	}
-	require.Contains(t, byHash, "trigger")
-	require.Contains(t, byHash, "sibling")
-	assert.False(t, byHash["trigger"].IsCrossSeed)
-	assert.True(t, byHash["sibling"].IsCrossSeed)
 }
 
 func TestPreviewTag_ManagedResetCountsReAdds(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{syncManager: sm}
-
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd, managed"},
 		{Hash: "tagged-sibling", Name: "Already Tagged Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -700,28 +688,19 @@ func TestPreviewTag_ManagedResetCountsReAdds(t *testing.T) {
 			Value:    "abcd",
 		},
 	})
-	evalCtx := &EvalContext{}
 
 	// The live path deletes "managed" from the client first, so re-adding it to
 	// the trigger and its sibling is a real change the preview must count.
-	states := s.evalTagStatesForPreview(rule, torrents, evalCtx, crossSeedGroupsForTest(torrents))
-	ownDecision := tagStatesChanging(states)
-	require.Equal(t, map[string]struct{}{"trigger": {}}, ownDecision, "already-tagged trigger is re-added after the reset")
-
-	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
-
-	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
-	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet)
-	require.Equal(t, map[string]struct{}{"tagged-sibling": {}}, crossSeedSet, "already-tagged sibling is re-added after the reset")
+	result := previewTagForTest(t, torrents, rule)
+	assert.Equal(t, map[string]bool{"trigger": false, "tagged-sibling": true}, previewRows(result))
+	assert.Equal(t, 2, result.TotalMatches)
+	assert.Equal(t, 1, result.CrossSeedCount)
 }
 
 // A full-mode rule removes the tag from a non-matching sibling, and the
 // matching trigger's expansion adds it back: nothing changes for the
 // sibling, so the preview must count it as neither direct nor cross-seed.
 func TestPreviewTag_ExpansionCancellingOwnRemovalCountsNothing(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{syncManager: sm}
-
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
 		{Hash: "sibling", Name: "Tagged Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -739,24 +718,11 @@ func TestPreviewTag_ExpansionCancellingOwnRemovalCountsNothing(t *testing.T) {
 			Value:    "abcd",
 		},
 	})
-	evalCtx := &EvalContext{}
 
-	states := s.evalTagStatesForPreview(rule, torrents, evalCtx, crossSeedGroupsForTest(torrents))
-	ownDecision := tagStatesChanging(states)
-	require.Equal(t, map[string]struct{}{"trigger": {}, "sibling": {}, "unrelated": {}}, ownDecision, "full mode decides for every torrent")
-
-	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
-
-	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
-	assert.Equal(t, map[string]struct{}{"trigger": {}, "unrelated": {}}, directSet, "the sibling's own removal was cancelled by the trigger's expansion")
-	assert.Empty(t, crossSeedSet, "a cancelled removal is not a cross-seed change either")
-
-	result := s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, previewConfig{limit: 25}, rule, nil)
+	result := previewTagForTest(t, torrents, rule)
+	assert.Equal(t, map[string]bool{"trigger": false, "unrelated": false}, previewRows(result), "the sibling's own removal was cancelled by the trigger's expansion")
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Equal(t, 0, result.CrossSeedCount)
-	for _, example := range result.Examples {
-		assert.NotEqual(t, "sibling", example.Hash, "a torrent nothing changes for is not an example")
-	}
 }
 
 func TestProcessTagAction_DeleteFromClient_UnknownGroupKeepsTag(t *testing.T) {
