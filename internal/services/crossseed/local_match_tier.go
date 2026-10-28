@@ -9,7 +9,6 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -89,8 +88,8 @@ func (d sameDataFiles) sharesPath(other sameDataFiles) bool {
 	return false
 }
 
-// localMatchTier decides the match type of a candidate that passed
-// localMatchPrefilter, in this order:
+// localMatchTier decides the match type of a candidate that the batch
+// matcher selected, in this order:
 //
 //  1. Content: on the same instance, a source file has the same path on disk.
 //  2. Hardlink or Reflink: linked returns the tier. Only a Name or Release
@@ -122,61 +121,3 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 // add nothing to qBittorrent, so equal file sizes or a link decide, and they
 // rescue a title at any title rescue setting of searches.
 var localMatchPolicy = matchPolicy{TitleRescue: true, SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
-
-// localMatchPrefilter selects the candidates whose file lists are worth a
-// fetch, from the cached torrent fields and the Read releases. nameOrRelease
-// is the tier the candidate gets if its file sizes pair with the source. ok is
-// false for a candidate that cannot be a cross-seed.
-func (s *Service) localMatchPrefilter(
-	sameInstance bool,
-	source *qbt.Torrent,
-	sourceRead namedRelease,
-	candidate *qbittorrent.CrossInstanceTorrentView,
-	candidateRead namedRelease,
-	normalizedContentPath string,
-) (nameOrRelease string, ok bool) {
-	sourceName := normalizeLowerTrim(source.Name)
-	if sourceName != "" && sourceName == normalizeLowerTrim(candidate.Name) {
-		return matchTypeName, true
-	}
-
-	verdict := s.matcher().matchVerdict(sourceRead, candidateRead,
-		matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(candidate.Torrent)},
-		localMatchPolicy,
-	)
-	if verdict.Matched {
-		return matchTypeRelease, true
-	}
-	// A retitled upload of the same data keeps its own name, so it fails the
-	// release match on the title alone. Local matches adds no torrent, so it
-	// rescues the title at any setting and torrent size, and the file sizes
-	// decide.
-	if !verdict.Strict.matched() && verdict.Strict.differences.first() == differenceTitle {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRead, candidateRead, false); ok {
-			return matchTypeRelease, true
-		}
-	}
-
-	if !sameInstance {
-		return "", false
-	}
-	candidateContentPath := normalizePathForComparison(candidate.ContentPath)
-	if normalizedContentPath != "" && normalizedContentPath == candidateContentPath {
-		return "", true
-	}
-	// qui adds an episode cross-seed inside the folder of its season pack.
-	if normalizedContentPath != "" && candidateContentPath != "" &&
-		(strings.HasPrefix(candidateContentPath, normalizedContentPath+"/") ||
-			strings.HasPrefix(normalizedContentPath, candidateContentPath+"/")) {
-		return "", true
-	}
-	// qBittorrent reports the save path as the content path of a multi-file
-	// torrent without a subfolder, so its files can sit next to the other
-	// torrent's files.
-	sourceSavePath := normalizePathForComparison(source.SavePath)
-	if sourceSavePath != "" && sourceSavePath == normalizePathForComparison(candidate.SavePath) &&
-		(normalizedContentPath == sourceSavePath || candidateContentPath == sourceSavePath) {
-		return "", true
-	}
-	return "", false
-}
