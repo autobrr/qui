@@ -6283,8 +6283,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 	// Edit trackers for each torrent
 	for _, hash := range hashes {
 		if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
 			lastErr = err
 			continue
 		}
@@ -6296,6 +6295,10 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 			return fmt.Errorf("failed to edit trackers: %w", lastErr)
 		}
 		return errors.New("failed to edit trackers")
+	}
+	if failed := len(hashes) - len(updatedHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(updatedHashes)).Int("failed", failed).
+			Msg("Failed to edit trackers for some torrents")
 	}
 
 	client.invalidateTrackerCache(updatedHashes...)
@@ -6338,8 +6341,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 	// Add trackers to each torrent
 	for _, hash := range hashes {
 		if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
 			lastErr = err
 			continue
 		}
@@ -6351,6 +6353,10 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 			return fmt.Errorf("failed to add trackers: %w", lastErr)
 		}
 		return errors.New("failed to add trackers")
+	}
+	if failed := len(hashes) - len(successfulHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(successfulHashes)).Int("failed", failed).
+			Msg("Failed to add trackers to some torrents")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)
@@ -6390,8 +6396,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 	// Remove trackers from each torrent
 	for _, hash := range hashes {
 		if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
 			lastErr = err
 			continue
 		}
@@ -6403,6 +6408,10 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 			return fmt.Errorf("failed to remove trackers: %w", lastErr)
 		}
 		return errors.New("failed to remove trackers")
+	}
+	if failed := len(hashes) - len(successfulHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(successfulHashes)).Int("failed", failed).
+			Msg("Failed to remove trackers from some torrents")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)
