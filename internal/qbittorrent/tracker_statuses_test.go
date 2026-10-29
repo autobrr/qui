@@ -215,6 +215,7 @@ func TestTrackerHealthOf(t *testing.T) {
 		{name: "unregistered while updating beside a working tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUpdating, "Torrent not registered on tracker"), tracker(qbt.TrackerStatusOK, "")}},
 		{name: "down keyword inside a URL", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Trumped: https://tracker.example.com/torrents/example-show-2025-s02e07-the-final-countdown-1080p")}, want: TrackerHealthUnregistered},
 		{name: "unregistered inside the grace hour beside an unreachable tracker", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent"), tracker(qbt.TrackerStatusUnreachable, "")}, want: TrackerHealthDown},
+		{name: "unregistered and down in one message inside the grace hour", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent, tracker is down")}, want: TrackerHealthDown},
 
 		// Tracker down.
 		{name: "unreachable", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUnreachable, "Connection timed out")}, want: TrackerHealthDown},

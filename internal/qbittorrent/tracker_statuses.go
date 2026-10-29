@@ -101,10 +101,12 @@ var trackerDownStatuses = []string{
 // an unregistered message gives no label, because a tracker can say that before
 // it registers a new upload.
 func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
-	if torrent == nil {
+	// Most torrents have no tracker data, so they skip the time math.
+	if torrent == nil || len(torrent.Trackers) == 0 {
 		return ""
 	}
 
+	graceOver := torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour
 	var working, updating, unregistered, down, failed, pending bool
 	for _, tracker := range torrent.Trackers {
 		switch tracker.Status {
@@ -118,7 +120,9 @@ func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
 		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			failed = true
 			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
-			down = down || TrackerMessageMatchesDown(tracker.Message)
+			// After the grace hour an unregistered message decides the verdict,
+			// so the down list is not read.
+			down = down || ((!unregistered || !graceOver) && TrackerMessageMatchesDown(tracker.Message))
 		case qbt.TrackerStatusUnreachable:
 			failed = true
 			down = true
@@ -131,7 +135,7 @@ func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
 	switch {
 	case working:
 		return ""
-	case unregistered && (torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour):
+	case unregistered && graceOver:
 		return TrackerHealthUnregistered
 	case down && !updating:
 		return TrackerHealthDown
