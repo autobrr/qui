@@ -99,7 +99,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "include hardlinks",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, IncludeHardlinks: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}}),
-			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
 		},
 		{
 			name:  "include hardlinks outside the include-cross-seeds mode",
@@ -122,7 +122,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "preserve cross-seeds delete",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}}),
-			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
 		},
 		{
 			name:  "plain delete with files counts free space once per cross-seed group",

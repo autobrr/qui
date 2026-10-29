@@ -134,6 +134,8 @@
     "error": "Verifica dei cross-seed non riuscita",
     "retry": "Riprova",
     "noCrossSeeds": "Nessun cross-seed trovato",
+    "uncheckedOffline": "Impossibile controllare {{instance}}: qui non riesce a raggiungerla.",
+    "uncheckedDisabled": "{{instance}} non è stata controllata: è disattivata in qui.",
     "deleteCrossSeeds": "Anche questi cross-seed verranno eliminati",
     "deletingFilesBreaks": "L'eliminazione dei file comprometterà questi cross-seed",
     "dataPreserved": "Cross-seed rilevati: i dati verranno preservati",

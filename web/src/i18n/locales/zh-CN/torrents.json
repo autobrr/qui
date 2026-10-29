@@ -130,6 +130,8 @@
     "error": "检查辅种失败",
     "retry": "重试",
     "noCrossSeeds": "未找到辅种",
+    "uncheckedOffline": "无法检查 {{instance}}：qui 无法连接到它。",
+    "uncheckedDisabled": "未检查 {{instance}}：它已在 qui 中停用。",
     "deleteCrossSeeds": "这些辅种也将被删除",
     "deletingFilesBreaks": "删除文件将破坏这些辅种",
     "dataPreserved": "检测到辅种——数据将被保留",

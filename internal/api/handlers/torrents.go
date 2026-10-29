@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -46,7 +45,7 @@ type torrentDownloader interface {
 }
 
 type deleteMatchFinder interface {
-	FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error)
+	FindDeleteMatches(ctx context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error)
 }
 
 type torrentContentResolver interface {
@@ -1428,22 +1427,18 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	matches := []crossseed.LocalMatch{}
-	for _, targetInstanceID := range slices.Sorted(maps.Keys(targetsByInstance)) {
-		found, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetInstanceID, targetsByInstance[targetInstanceID])
-		if findErr != nil {
-			// The dialog closed and the browser cancelled the request.
-			if r.Context().Err() != nil {
-				return
-			}
-			log.Error().Err(findErr).Int("instanceID", targetInstanceID).Msg("Failed to check cross-seeds for delete")
-			RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+	response, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetsByInstance)
+	if findErr != nil {
+		// The dialog closed and the browser cancelled the request.
+		if r.Context().Err() != nil {
 			return
 		}
-		matches = append(matches, found...)
+		log.Error().Err(findErr).Int("instanceID", instanceID).Msg("Failed to check cross-seeds for delete")
+		RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+		return
 	}
 
-	RespondJSON(w, http.StatusOK, crossseed.LocalMatchesResponse{Matches: matches})
+	RespondJSON(w, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {

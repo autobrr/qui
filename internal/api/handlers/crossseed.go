@@ -633,12 +633,11 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 
 // GetLocalMatches godoc
 // @Summary Find existing torrents that match the source torrent across all instances
-// @Description Returns torrents from all instances that match the source torrent using proper release metadata parsing (rls library), not fuzzy string matching.
+// @Description Returns the cross-seeds of the source torrent on every active instance, from the batch matcher. Fails when a file list or a link check cannot be read.
 // @Tags cross-seed
 // @Produce json
 // @Param instanceID path int true "Source instance ID"
 // @Param hash path string true "Source torrent hash"
-// @Param strict query bool false "When true, fail if file overlap checks cannot complete (use for delete dialogs)"
 // @Success 200 {object} crossseed.LocalMatchesResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
@@ -650,11 +649,7 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// strict=true for delete dialogs: fail if overlap checks can't complete
-	// ParseBool accepts true/TRUE/1/t etc., defaults to false when absent/invalid
-	strict, _ := strconv.ParseBool(r.URL.Query().Get("strict")) //nolint:errcheck // intentional: default to false
-
-	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash, strict)
+	response, err := h.service.FindCrossSeeds(r.Context(), instanceID, hash)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().

@@ -41,8 +41,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
     toast.info(t("hooks.filter.identifying"))
 
     try {
-      // Use backend API for proper release matching (rls library)
-      // This searches all instances in one call
+      // The same lookup as the Cross-Seed tab; it rejects rather than return a partial list.
       const matches = await api.getLocalCrossSeedMatches(instanceId, selectedTorrent.hash)
 
       if (matches.length === 0) {

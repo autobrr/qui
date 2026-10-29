@@ -134,6 +134,8 @@
     "error": "No s'ha pogut comprovar si hi ha cross-seed",
     "retry": "Torna-ho a provar",
     "noCrossSeeds": "No s'ha trobat cap cross-seed",
+    "uncheckedOffline": "No s'ha pogut comprovar {{instance}}: qui no hi pot accedir.",
+    "uncheckedDisabled": "No s'ha comprovat {{instance}}: està desactivada a qui.",
     "deleteCrossSeeds": "Aquests cross-seed també s'eliminaran",
     "deletingFilesBreaks": "Si elimines els fitxers, trencaràs aquests cross-seed",
     "dataPreserved": "S'han detectat cross-seed: les dades es conservaran",

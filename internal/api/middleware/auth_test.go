@@ -14,9 +14,24 @@ import (
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+// createUsedAPIKey creates an API key that was used just now, so that
+// ValidateAPIKey starts no background write of the last-used time. On Windows,
+// a write that still runs when the test ends keeps the database file open, and
+// the TempDir cleanup fails.
+func createUsedAPIKey(t *testing.T, db *database.DB) string {
+	t.Helper()
+	store := models.NewAPIKeyStore(db)
+	rawKey, apiKey, err := store.Create(t.Context(), "test-key")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateLastUsed(t.Context(), apiKey.ID))
+	return rawKey
+}
 
 func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	ctx := t.Context()
@@ -26,9 +41,7 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
 
-	// Create an API key for testing
-	apiKeyValue, _, err := authService.CreateAPIKey(ctx, "test-key")
-	require.NoError(t, err)
+	apiKeyValue := createUsedAPIKey(t, db)
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -177,8 +190,7 @@ func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "auth-middleware")
 	authService := auth.NewService(db)
-	rawKey, _, err := authService.CreateAPIKey(t.Context(), "test")
-	require.NoError(t, err)
+	rawKey := createUsedAPIKey(t, db)
 
 	sessionManager := scs.New()
 	handler := sessionManager.LoadAndSave(

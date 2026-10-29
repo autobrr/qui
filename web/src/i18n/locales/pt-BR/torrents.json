@@ -134,6 +134,8 @@
     "error": "Falha ao verificar cross-seeds",
     "retry": "Tentar novamente",
     "noCrossSeeds": "Nenhum cross-seed encontrado",
+    "uncheckedOffline": "Não foi possível verificar {{instance}}: o qui não consegue acessá-la.",
+    "uncheckedDisabled": "{{instance}} não foi verificada: ela está desativada no qui.",
     "deleteCrossSeeds": "Estes cross-seeds também serão excluídos",
     "deletingFilesBreaks": "Excluir os arquivos vai quebrar estes cross-seeds",
     "dataPreserved": "Cross-seeds detectados: os dados serão preservados",

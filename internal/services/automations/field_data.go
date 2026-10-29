@@ -163,6 +163,9 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 			if actionsGroupCrossSeeds(ac) {
 				needs.CrossMatch.SameContent = true
 			}
+			if deleteKeepsFilesForOtherInstances(ac.Delete) {
+				needs.CrossMatch.OtherShared = true
+			}
 		}
 	}
 	return needs
@@ -194,6 +197,13 @@ func actionsGroupCrossSeeds(ac *models.ActionConditions) bool {
 	}
 	cat := ac.Category
 	return cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)
+}
+
+// deleteKeepsFilesForOtherInstances reports whether the delete mode keeps the
+// files that a torrent on another instance needs.
+func deleteKeepsFilesForOtherInstances(del *models.DeleteAction) bool {
+	return del != nil && del.Enabled &&
+		(del.Mode == DeleteModeWithFilesPreserveCrossSeeds || del.Mode == DeleteModeWithFilesIncludeCrossSeeds)
 }
 
 // previewNeeds is NeedsFor of one rule as if it were enabled: the preview shows

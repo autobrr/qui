@@ -274,7 +274,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const handleDeleteWrapper = useCallback(async () => {
     const crossSeedDeleteTargets = [
       ...actionTargets,
-      ...buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId),
+      ...(supportsCrossSeedDeleteTools && deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : []),
     ]
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")

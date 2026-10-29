@@ -11,7 +11,7 @@ The plan step only reads. It reads file lists for the overlap check and asks the
 
 Where the live run and the dry run disagreed, the live run's behavior became the behavior of the plan, as in ADR 0027.
 
-The category preview is an exception for now. It still has its own copy of the category expansion. #3496 moves it onto the Run plan and removes this paragraph.
+The category and tag previews build the Run plan of the one rule that the user edits and show their part of it.
 
 ## Consequences
 

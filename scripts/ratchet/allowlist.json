@@ -37,7 +37,6 @@
     "pkg/prowlarr/client.go": 3
   },
   "errchkjson": {
-    "internal/api/handlers/client_api_keys.go": 2,
     "internal/api/handlers/health.go": 3,
     "internal/services/automations/service.go": 16
   },
@@ -78,7 +77,7 @@
     "internal/services/automations/grouping.go": 1,
     "internal/services/automations/hardlink_index.go": 1,
     "internal/services/automations/processor.go": 5,
-    "internal/services/automations/service.go": 7,
+    "internal/services/automations/service.go": 6,
     "internal/services/automations/validate.go": 1,
     "internal/services/crossseed/align.go": 3,
     "internal/services/crossseed/batch_matching.go": 3,

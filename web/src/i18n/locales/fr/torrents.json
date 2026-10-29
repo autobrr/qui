@@ -134,6 +134,8 @@
     "error": "Échec de la vérification des cross-seeds",
     "retry": "Réessayer",
     "noCrossSeeds": "Aucun cross-seed trouvé",
+    "uncheckedOffline": "Impossible de vérifier {{instance}} : qui ne peut pas la joindre.",
+    "uncheckedDisabled": "{{instance}} n'a pas été vérifiée : elle est désactivée dans qui.",
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
     "dataPreserved": "Cross-seeds détectés : les données seront préservées",

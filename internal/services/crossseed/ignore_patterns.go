@@ -24,9 +24,8 @@ var DefaultIgnoredExtensions = []string{
 	".txt",
 }
 
-// DefaultIgnoredPathKeywords contains path substrings that indicate files
-// should be ignored during matching. These typically represent sample files,
-// proof screenshots, and bonus content.
+// DefaultIgnoredPathKeywords mark sample files, proof screenshots, and bonus
+// content. shouldIgnoreFile decides where in a path a keyword counts.
 var DefaultIgnoredPathKeywords = []string{
 	"sample",
 	"!sample",
