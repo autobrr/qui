@@ -34,9 +34,9 @@ export interface TorrentTableFilterExpr {
  * (`?q=`, already debounced by the header input), the column-filter-to-expr
  * conversion, the cross-seed detection, and the combined backend expression.
  *
- * The cross-seed early return is the one deliberate difference from
- * `selectAllFilters`, which always combines (#1925); both are pinned in their
- * hook tests.
+ * The cross-seed early return is the one deliberate difference from the
+ * select-all filters of the Action target, which always combine (#1925); both
+ * are pinned in their tests.
  */
 export function useTorrentTableFilterExpr({
   filters,

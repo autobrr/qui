@@ -5,334 +5,128 @@
 
 import type { AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 import type { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
-import { TORRENT_ACTIONS, type useTorrentActions } from "@/hooks/useTorrentActions"
+import type { TorrentAction, useTorrentActions } from "@/hooks/useTorrentActions"
 import type { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import type { ActionTarget } from "@/lib/torrent-selection"
 import { getTorrentHashesWithTag } from "@/lib/torrent-utils"
-import type { Torrent, TorrentFilters } from "@/types"
-import { type Dispatch, type SetStateAction, useCallback, useMemo } from "react"
+import type { Torrent } from "@/types"
+import { type Dispatch, type SetStateAction, useCallback } from "react"
 
 type TorrentActions = ReturnType<typeof useTorrentActions>
-type HandleAction = TorrentActions["handleAction"]
 
 export interface UseBulkActionWrappersParams {
-  // From useTorrentActions (threaded in — the hook stays a single parent-level call)
-  handleAction: HandleAction
-  handleDelete: TorrentActions["handleDelete"]
-  handleSetComment: TorrentActions["handleSetComment"]
-  handleUpdateTags: TorrentActions["handleUpdateTags"]
-  handleSetCategory: TorrentActions["handleSetCategory"]
-  handleSetLocation: TorrentActions["handleSetLocation"]
-  handleRenameTorrent: TorrentActions["handleRenameTorrent"]
-  handleRenameFile: TorrentActions["handleRenameFile"]
-  handleRenameFolder: TorrentActions["handleRenameFolder"]
-  handleRecheck: TorrentActions["handleRecheck"]
-  handleReannounce: TorrentActions["handleReannounce"]
-  handleTmmConfirm: TorrentActions["handleTmmConfirm"]
-  handleSetShareLimit: TorrentActions["handleSetShareLimit"]
-  handleSetSpeedLimits: TorrentActions["handleSetSpeedLimits"]
-  contextHashes: string[]
-  contextTorrents: Torrent[]
-  deleteCrossSeeds: boolean
-  // From useTorrentExporter
+  actions: TorrentActions
+  actionTarget: ActionTarget
   exportTorrents: ReturnType<typeof useTorrentExporter>["exportTorrents"]
-  // Selection state + derivations
-  isAllSelected: boolean
-  selectedHashes: string[]
-  selectedTorrents: Torrent[]
-  effectiveSelectionCount: number
-  selectAllFilters: TorrentFilters | undefined
-  selectAllExcludeHashes: string[] | undefined
-  selectAllExcludedTargets: TorrentActionTarget[]
-  // Filter / search / sort context
-  effectiveSearch: string
   activeSortField: string
   activeSortOrder: "asc" | "desc"
-  // Cross-seed orchestration
   crossSeedWarning: { affectedTorrents: Torrent[] }
   shouldBlockCrossSeeds: boolean
   blockCrossSeedHashes: ReturnType<typeof useCrossSeedBlocklistActions>["blockCrossSeedHashes"]
-  // Misc context
-  isCrossInstanceEndpoint?: boolean
-  instanceIds?: number[]
   instanceId: number
   setDropPayload: Dispatch<SetStateAction<AddTorrentDropPayload | null>>
   onAddTorrentModalChange?: (open: boolean) => void
 }
 
 /**
- * Adapts the raw useTorrentActions handlers into the bulk-action wrappers the
- * table's dialogs and context menu call. Each wrapper resolves the correct
- * select-all vs. context-selection targeting (hashes, filters, search,
- * exclusions, client metadata) before delegating.
+ * Dialog wiring for the desktop table: each wrapper passes the value of a menu
+ * item or a dialog, with the Action target of the selection, to its handler.
  */
 export function useBulkActionWrappers({
-  handleAction,
-  handleDelete,
-  handleSetComment,
-  handleUpdateTags,
-  handleSetCategory,
-  handleSetLocation,
-  handleRenameTorrent,
-  handleRenameFile,
-  handleRenameFolder,
-  handleRecheck,
-  handleReannounce,
-  handleTmmConfirm,
-  handleSetShareLimit,
-  handleSetSpeedLimits,
-  contextHashes,
-  contextTorrents,
-  deleteCrossSeeds,
+  actions,
+  actionTarget,
   exportTorrents,
-  isAllSelected,
-  selectedHashes,
-  selectedTorrents,
-  effectiveSelectionCount,
-  selectAllFilters,
-  selectAllExcludeHashes,
-  selectAllExcludedTargets,
-  effectiveSearch,
   activeSortField,
   activeSortOrder,
   crossSeedWarning,
   shouldBlockCrossSeeds,
   blockCrossSeedHashes,
-  isCrossInstanceEndpoint,
-  instanceIds,
   instanceId,
   setDropPayload,
   onAddTorrentModalChange,
 }: UseBulkActionWrappersParams) {
-  const selectAllOptions = useMemo(() => ({
-    instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-    selectAll: isAllSelected,
-    filters: selectAllFilters,
-    search: isAllSelected ? effectiveSearch : undefined,
-    excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
-    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-  }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
-  const contextClientMeta = useMemo(() => ({
-    clientHashes: contextHashes,
-    totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
-    actionTargets: buildTorrentActionTargets(contextTorrents, instanceId),
-    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-  }), [contextHashes, isAllSelected, effectiveSelectionCount, contextTorrents, instanceId, isCrossInstanceEndpoint, selectAllExcludedTargets])
+  const {
+    deleteCrossSeeds,
+    handleAction,
+    handleDelete,
+    handleSetComment,
+    handleUpdateTags,
+    handleSetCategory,
+    handleSetLocation,
+    handleRenameTorrent,
+    handleRenameFile,
+    handleRenameFolder,
+    handleRecheck,
+    handleReannounce,
+    handleTmmConfirm,
+    handleSetShareLimit,
+    handleSetSpeedLimits,
+    prepareRecheckAction,
+    prepareReannounceAction,
+  } = actions
+  // Rename acts on one torrent.
+  const renameHash = actionTarget.previewTorrents[0]?.hash
 
-  const runAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], hashes: string[], extra?: Parameters<HandleAction>[2]) => {
-    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
-    const clientCount = isAllSelected ? effectiveSelectionCount : (clientHashes.length || hashes.length || 1)
-    const defaultTargets = buildTorrentActionTargets(selectedTorrents, instanceId)
-    const actionTargets = isAllSelected ? undefined : (extra?.targets ?? defaultTargets)
-    const extraOptions = extra ?? {}
-    handleAction(action, isAllSelected ? [] : hashes, {
-      ...selectAllOptions,
-      ...extraOptions,
-      clientHashes,
-      clientCount,
-      targets: actionTargets,
-    })
-  }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount, selectedTorrents, instanceId])
+  const runAction = useCallback((action: TorrentAction, options?: { enable?: boolean }) => {
+    handleAction(action, actionTarget, options)
+  }, [handleAction, actionTarget])
 
-  const handleExportWrapper = useCallback((hashes: string[], torrentsForSelection: Torrent[]) => {
-    exportTorrents({
-      hashes,
-      torrents: torrentsForSelection,
-      isAllSelected,
-      filters: selectAllFilters,
-      search: effectiveSearch,
-      excludeHashes: selectAllExcludeHashes,
-      excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-      instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-      sortField: activeSortField,
-      sortOrder: activeSortOrder,
-    })
-  }, [
-    exportTorrents,
-    isAllSelected,
-    selectAllFilters,
-    effectiveSearch,
-    selectAllExcludeHashes,
-    selectAllExcludedTargets,
-    isCrossInstanceEndpoint,
-    instanceIds,
-    activeSortField,
-    activeSortOrder,
-  ])
+  const handleExportWrapper = useCallback(() => {
+    void exportTorrents(actionTarget, activeSortField, activeSortOrder)
+  }, [exportTorrents, actionTarget, activeSortField, activeSortOrder])
 
   const handleDeleteWrapper = useCallback(async () => {
-    const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-    const crossSeedDeleteTargets = [
-      ...(contextClientMeta.actionTargets ?? []),
-      ...(deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : []),
-    ]
+    const crossSeedTargets = deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : []
 
     if (shouldBlockCrossSeeds) {
-      const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
+      const taggedHashes = getTorrentHashesWithTag(actionTarget.previewTorrents, "cross-seed")
+      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      await blockCrossSeedHashes(
+        [...taggedHashes, ...crossSeedHashes],
+        [...buildTorrentActionTargets(actionTarget.previewTorrents, instanceId), ...crossSeedTargets]
+      )
     }
 
-    await handleDelete(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      {
-        ...contextClientMeta,
-        crossSeedTargets: deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
-      }
-    )
-  }, [
-    blockCrossSeedHashes,
-    contextClientMeta,
-    contextHashes,
-    contextTorrents,
-    crossSeedWarning.affectedTorrents,
-    deleteCrossSeeds,
-    effectiveSearch,
-    selectAllExcludeHashes,
-    handleDelete,
-    instanceId,
-    isAllSelected,
-    selectAllFilters,
-    shouldBlockCrossSeeds,
-  ])
+    await handleDelete(actionTarget, crossSeedTargets)
+  }, [actionTarget, blockCrossSeedHashes, crossSeedWarning.affectedTorrents, deleteCrossSeeds, handleDelete, instanceId, shouldBlockCrossSeeds])
 
   const handleSetCommentWrapper = useCallback((comment: string) => {
-    handleSetComment(
-      comment,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetComment, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+    void handleSetComment(comment, actionTarget)
+  }, [handleSetComment, actionTarget])
 
   const handleTagsWrapper = useCallback((plan: Parameters<TorrentActions["handleUpdateTags"]>[0]) => {
-    handleUpdateTags(
-      plan,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleUpdateTags, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+    void handleUpdateTags(plan, actionTarget)
+  }, [handleUpdateTags, actionTarget])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
-    handleSetCategory(
-      category,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  // Direct category handler for context menu submenu
-  const handleSetCategoryDirect = useCallback((category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => {
-    const usingSelectAll = isAllSelected
-    const resolvedFilters = usingSelectAll ? selectAllFilters : undefined
-    const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
-    const resolvedExclusions = usingSelectAll ? selectAllExcludeHashes : undefined
-    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
-    const totalSelected = usingSelectAll ? effectiveSelectionCount : (clientHashes.length || 1)
-
-    handleSetCategory(
-      category,
-      usingSelectAll ? [] : hashes,
-      usingSelectAll,
-      resolvedFilters,
-      resolvedSearch,
-      resolvedExclusions,
-      {
-        clientHashes,
-        totalSelected,
-        actionTargets: usingSelectAll ? undefined : targets,
-        excludeTargets: usingSelectAll ? selectAllExcludedTargets : undefined,
-      }
-    )
-  }, [
-    handleSetCategory,
-    isAllSelected,
-    selectAllFilters,
-    effectiveSearch,
-    selectAllExcludeHashes,
-    selectAllExcludedTargets,
-    selectedHashes,
-    effectiveSelectionCount,
-  ])
+    void handleSetCategory(category, actionTarget)
+  }, [handleSetCategory, actionTarget])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
-    handleSetLocation(
-      location,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+    void handleSetLocation(location, actionTarget)
+  }, [handleSetLocation, actionTarget])
 
   const handleRenameTorrentWrapper = useCallback(async (name: string) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    await handleRenameTorrent(hash, name)
-  }, [handleRenameTorrent, contextHashes])
+    if (!renameHash) return
+    await handleRenameTorrent(renameHash, name)
+  }, [handleRenameTorrent, renameHash])
 
   const handleRenameFileWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    if (!oldPath || !newPath) return
-    await handleRenameFile(hash, oldPath, newPath)
-  }, [handleRenameFile, contextHashes])
+    if (!renameHash || !oldPath || !newPath) return
+    await handleRenameFile(renameHash, oldPath, newPath)
+  }, [handleRenameFile, renameHash])
 
   const handleRenameFolderWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    if (!oldPath || !newPath) return
-    await handleRenameFolder(hash, oldPath, newPath)
-  }, [handleRenameFolder, contextHashes])
+    if (!renameHash || !oldPath || !newPath) return
+    await handleRenameFolder(renameHash, oldPath, newPath)
+  }, [handleRenameFolder, renameHash])
 
-  const handleRecheckWrapper = useCallback(() => {
-    handleRecheck(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleReannounceWrapper = useCallback(() => {
-    handleReannounce(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleTmmConfirmWrapper = useCallback(() => {
-    handleTmmConfirm(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  const prepareRecheckWrapper = useCallback(() => prepareRecheckAction(actionTarget), [prepareRecheckAction, actionTarget])
+  const prepareReannounceWrapper = useCallback(() => prepareReannounceAction(actionTarget), [prepareReannounceAction, actionTarget])
+  const handleRecheckWrapper = useCallback(() => void handleRecheck(actionTarget), [handleRecheck, actionTarget])
+  const handleReannounceWrapper = useCallback(() => void handleReannounce(actionTarget), [handleReannounce, actionTarget])
+  const handleTmmConfirmWrapper = useCallback(() => handleTmmConfirm(actionTarget), [handleTmmConfirm, actionTarget])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -341,36 +135,12 @@ export function useBulkActionWrappers({
     shareLimitAction?: string,
     shareLimitsMode?: string
   ) => {
-    handleSetShareLimit(
-      ratioLimit,
-      seedingTimeLimit,
-      inactiveSeedingTimeLimit,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta,
-      shareLimitAction,
-      shareLimitsMode
-    )
-  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+    void handleSetShareLimit({ ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode }, actionTarget)
+  }, [handleSetShareLimit, actionTarget])
 
-  const handleSetSpeedLimitsWrapper = useCallback((
-    uploadLimit: number,
-    downloadLimit: number
-  ) => {
-    handleSetSpeedLimits(
-      uploadLimit,
-      downloadLimit,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  const handleSetSpeedLimitsWrapper = useCallback((uploadLimit: number, downloadLimit: number) => {
+    void handleSetSpeedLimits({ uploadLimit, downloadLimit }, actionTarget)
+  }, [handleSetSpeedLimits, actionTarget])
 
   const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
     setDropPayload(payload)
@@ -382,18 +152,19 @@ export function useBulkActionWrappers({
   }, [setDropPayload])
 
   return {
-    contextClientMeta,
+    renameHash,
     runAction,
     handleExportWrapper,
     handleDeleteWrapper,
     handleSetCommentWrapper,
     handleTagsWrapper,
     handleSetCategoryWrapper,
-    handleSetCategoryDirect,
     handleSetLocationWrapper,
     handleRenameTorrentWrapper,
     handleRenameFileWrapper,
     handleRenameFolderWrapper,
+    prepareRecheckWrapper,
+    prepareReannounceWrapper,
     handleRecheckWrapper,
     handleReannounceWrapper,
     handleTmmConfirmWrapper,

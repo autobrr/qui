@@ -37,9 +37,11 @@ vi.mock("react-i18next", () => ({
 import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { resetPendingListRefetchesForTests, scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
+import type { ActionTarget, SelectAllTarget } from "@/lib/torrent-selection"
+import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { TorrentFilters } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 
 const mockedApi = vi.mocked(api, true)
 const mockedToast = vi.mocked(toast, true)
@@ -77,6 +79,20 @@ function renderActions(opts?: {
   return { ...harness, result, onActionComplete }
 }
 
+// Ticks on one instance: plain hashes.
+function ticks(...hashes: string[]): ActionTarget {
+  return { kind: "ticks", hashes, count: hashes.length, previewTorrents: hashes.map(hash => makeTorrent({ hash })) }
+}
+
+// Ticks on the cross-instance endpoint: instance-and-hash pairs.
+function pairs(targets: TorrentActionTarget[], previewTorrents: Torrent[] = []): ActionTarget {
+  return { kind: "ticks", hashes: [], targets, count: targets.length, previewTorrents }
+}
+
+function selectAll(count: number, part: Partial<SelectAllTarget> = {}, loaded: string[] = []): ActionTarget {
+  return { kind: "selectAll", selectAll: { filters: makeFilters(), search: "", ...part }, count, previewTorrents: loaded.map(hash => makeTorrent({ hash })) }
+}
+
 const TORRENTS_LIST_KEY = (extra: unknown = "page-1") => ["torrents-list", INSTANCE_ID, extra]
 
 beforeEach(() => {
@@ -109,7 +125,7 @@ describe("useTorrentActions - delete", () => {
     })
 
     await act(async () => {
-      await result.current.handleDelete(["h1", "h2"], false)
+      await result.current.handleDelete(ticks("h1", "h2"))
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
@@ -150,14 +166,7 @@ describe("useTorrentActions - delete", () => {
     } as unknown as TorrentFilters
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["a", "b"],
-        true,
-        filters,
-        "ubuntu",
-        ["zz"],
-        { clientHashes: ["a", "b"], totalSelected: 100 }
-      )
+      await result.current.handleDelete(selectAll(100, { filters, search: "ubuntu", excludeHashes: ["zz"] }, ["a", "b"]))
     })
 
     const payload = mockedApi.bulkAction.mock.calls[0][1]
@@ -187,7 +196,7 @@ describe("useTorrentActions - delete", () => {
     const { result, onActionComplete } = renderActions()
 
     act(() => {
-      result.current.prepareDeleteAction(["h1"], [makeTorrent({ hash: "h1" })])
+      result.current.prepareDeleteAction()
     })
     expect(result.current.showDeleteDialog).toBe(true)
 
@@ -196,13 +205,11 @@ describe("useTorrentActions - delete", () => {
     })
 
     await act(async () => {
-      await result.current.handleDelete(["h1"], false)
+      await result.current.handleDelete(ticks("h1"))
     })
 
     expect(result.current.showDeleteDialog).toBe(false)
     expect(result.current.deleteCrossSeeds).toBe(false)
-    expect(result.current.contextHashes).toEqual([])
-    expect(result.current.contextTorrents).toEqual([])
     expect(onActionComplete).toHaveBeenCalledWith("delete")
     // Single-hash delete resolves the plain key with count=1.
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/1")
@@ -216,7 +223,7 @@ describe("useTorrentActions - delete", () => {
     const { result, refetchSpy } = renderActions()
 
     await act(async () => {
-      await result.current.handleDelete(["h1"], false)
+      await result.current.handleDelete(ticks("h1"))
     })
 
     const payload = mockedApi.bulkAction.mock.calls[0][1]
@@ -243,7 +250,7 @@ describe("useTorrentActions - delete", () => {
     const { result, refetchSpy } = renderActions()
 
     await act(async () => {
-      await result.current.handleDelete(["h1"], false)
+      await result.current.handleDelete(ticks("h1"))
     })
 
     refetchSpy.mockClear()
@@ -270,7 +277,7 @@ describe("useTorrentActions - delete", () => {
     mockedApi.bulkAction.mockRejectedValueOnce(new Error("boom"))
 
     await act(async () => {
-      await result.current.handleDelete(["h1", "h2"], false).catch(() => undefined)
+      await result.current.handleDelete(ticks("h1", "h2")).catch(() => undefined)
     })
 
     expect(mockedToast.error).toHaveBeenCalledWith(
@@ -296,14 +303,7 @@ describe("useTorrentActions - delete", () => {
     ]
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["a"],
-        true,
-        undefined,
-        "",
-        undefined,
-        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets }
-      )
+      await result.current.handleDelete(selectAll(50, {}, ["a"]), crossSeedTargets)
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
@@ -330,14 +330,7 @@ describe("useTorrentActions - delete", () => {
     ]
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["a"],
-        true,
-        undefined,
-        "",
-        undefined,
-        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets }
-      )
+      await result.current.handleDelete(selectAll(50, {}, ["a"]), crossSeedTargets)
     })
 
     expect(mockedApi.bulkAction.mock.calls[0][1].deleteFiles).toBe(true)
@@ -350,14 +343,7 @@ describe("useTorrentActions - delete", () => {
     const { result } = renderActions()
 
     await act(async () => {
-      await result.current.handleDelete(
-        [],
-        true,
-        undefined,
-        "",
-        ["cs1"],
-        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets: [{ instanceId: 7, hash: "cs1" }] }
-      )
+      await result.current.handleDelete(selectAll(50, { excludeHashes: ["cs1"] }, ["a"]), [{ instanceId: 7, hash: "cs1" }])
     })
 
     expect(mockedApi.bulkAction.mock.calls[0][1].excludeHashes).toEqual(["cs1"])
@@ -369,44 +355,37 @@ describe("useTorrentActions - delete", () => {
     mockedApi.bulkAction.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("boom"))
 
     await act(async () => {
-      await expect(result.current.handleDelete(
-        [],
-        true,
-        undefined,
-        "",
-        undefined,
-        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets: [{ instanceId: 7, hash: "cs1" }] }
-      )).rejects.toThrow("boom")
+      await expect(result.current.handleDelete(selectAll(50, {}, ["a"]), [{ instanceId: 7, hash: "cs1" }])).rejects.toThrow("boom")
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
     expect(mockedToast.error).toHaveBeenCalledTimes(1)
   })
 
-  it("non-select-all delete lists the cross-seeds in the same request", async () => {
+  it("non-select-all delete lists the cross-seeds in the same request, as plain hashes on one instance", async () => {
     const { result } = renderActions()
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["h1"],
-        false,
-        undefined,
-        undefined,
-        undefined,
-        {
-          clientHashes: ["h1"],
-          totalSelected: 1,
-          actionTargets: [{ instanceId: 7, hash: "h1" }],
-          crossSeedTargets: [{ instanceId: 7, hash: "cs1" }],
-        }
-      )
+      await result.current.handleDelete(ticks("h1"), [{ instanceId: 7, hash: "cs1" }])
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
     const request = mockedApi.bulkAction.mock.calls[0][1]
     expect(request.hashes).toEqual(["h1", "cs1"])
-    expect(request.targets).toEqual([{ instanceId: 7, hash: "h1" }, { instanceId: 7, hash: "cs1" }])
+    expect(request.targets).toBeUndefined()
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
+  })
+
+  it("non-select-all delete lists the cross-seeds as pairs, and no bare hash, on the cross-instance endpoint", async () => {
+    const { result } = renderActions()
+
+    await act(async () => {
+      await result.current.handleDelete(pairs([{ instanceId: 7, hash: "h1" }]), [{ instanceId: 7, hash: "cs1" }])
+    })
+
+    const request = mockedApi.bulkAction.mock.calls[0][1]
+    expect(request.hashes).toEqual([])
+    expect(request.targets).toEqual([{ instanceId: 7, hash: "h1" }, { instanceId: 7, hash: "cs1" }])
   })
 
   // A request on one instance leaves out targets on other instances.
@@ -416,14 +395,7 @@ describe("useTorrentActions - delete", () => {
     const crossSeedTargets = [{ instanceId: 7, hash: "cs1" }, { instanceId: 9, hash: "cs2" }]
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["h1"],
-        false,
-        undefined,
-        undefined,
-        undefined,
-        { clientHashes: ["h1"], totalSelected: 1, actionTargets: [{ instanceId: 7, hash: "h1" }], crossSeedTargets }
-      )
+      await result.current.handleDelete(pairs([{ instanceId: 7, hash: "h1" }]), crossSeedTargets)
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
@@ -445,19 +417,7 @@ describe("useTorrentActions - delete", () => {
     })
 
     await act(async () => {
-      await result.current.handleDelete(
-        ["h1"],
-        false,
-        undefined,
-        undefined,
-        undefined,
-        {
-          clientHashes: ["h1"],
-          totalSelected: 1,
-          actionTargets: [{ instanceId: 7, hash: "h1" }],
-          crossSeedTargets: [{ instanceId: 7, hash: "cs1" }, { instanceId: 9, hash: "cs2" }],
-        }
-      )
+      await result.current.handleDelete(ticks("h1"), [{ instanceId: 7, hash: "cs1" }, { instanceId: 9, hash: "cs2" }])
     })
 
     const cache = queryClient.getQueryData(TORRENTS_LIST_KEY()) as { total: number; totalCount: number }
@@ -471,11 +431,7 @@ describe("useTorrentActions - tags", () => {
     const { result, onActionComplete } = renderActions()
 
     await act(async () => {
-      await result.current.handleUpdateTags(
-        { add: ["new1", "new2"], remove: ["old1"] },
-        ["h1", "h2"],
-        false
-      )
+      await result.current.handleUpdateTags({ add: ["new1", "new2"], remove: ["old1"] }, ticks("h1", "h2"))
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
@@ -494,33 +450,31 @@ describe("useTorrentActions - tags", () => {
     expect(onActionComplete).toHaveBeenCalledWith("setTags")
   })
 
-  it("empty plan short-circuits: no bulkAction call, dialog closed, context cleared", async () => {
+  it("empty plan short-circuits: no bulkAction call, dialog closed", async () => {
     const { result } = renderActions()
 
     act(() => {
-      result.current.prepareTagsAction(["h1"], [makeTorrent({ hash: "h1" })])
+      result.current.prepareTagsAction()
     })
     expect(result.current.showTagsDialog).toBe(true)
 
     await act(async () => {
-      await result.current.handleUpdateTags({ add: [], remove: [] }, ["h1"], false)
+      await result.current.handleUpdateTags({ add: [], remove: [] }, ticks("h1"))
     })
 
     expect(mockedApi.bulkAction).not.toHaveBeenCalled()
     expect(result.current.showTagsDialog).toBe(false)
-    expect(result.current.contextHashes).toEqual([])
   })
 
-  it("ERROR PATH (partial failure): removeTags resolves, addTags rejects -> partialTags toast, dialog closed, context cleared", async () => {
+  it("ERROR PATH (partial failure): removeTags resolves, addTags rejects -> partialTags toast, dialog closed", async () => {
     const { result } = renderActions()
 
-    // Open the dialog and seed context so we can prove the onError
-    // TagBulkActionError branch (not the mutationFn) tears them down.
+    // Open the dialog so we can prove the onError
+    // TagBulkActionError branch (not the mutationFn) closes it.
     act(() => {
-      result.current.prepareTagsAction(["h1"], [makeTorrent({ hash: "h1" })])
+      result.current.prepareTagsAction()
     })
     expect(result.current.showTagsDialog).toBe(true)
-    expect(result.current.contextHashes).toEqual(["h1"])
 
     // First call (removeTags) succeeds, second call (addTags) rejects.
     mockedApi.bulkAction
@@ -529,7 +483,7 @@ describe("useTorrentActions - tags", () => {
 
     await act(async () => {
       await result.current
-        .handleUpdateTags({ add: ["new1"], remove: ["old1"] }, ["h1"], false)
+        .handleUpdateTags({ add: ["new1"], remove: ["old1"] }, ticks("h1"))
         .catch(() => undefined)
     })
 
@@ -538,10 +492,8 @@ describe("useTorrentActions - tags", () => {
     expect(errorKeys).toContain("actionToasts.partialTags.title/1")
     expect(errorKeys.some(k => String(k).startsWith("actionToasts.updateTagsFailed"))).toBe(false)
 
-    // onError TagBulkActionError branch closes the dialog and clears context.
+    // onError TagBulkActionError branch closes the dialog.
     expect(result.current.showTagsDialog).toBe(false)
-    expect(result.current.contextHashes).toEqual([])
-    expect(result.current.contextTorrents).toEqual([])
   })
 })
 
@@ -550,7 +502,7 @@ describe("useTorrentActions - non-delete success transitions", () => {
     const { result, refetchSpy } = renderActions()
 
     await act(async () => {
-      result.current.handleAction("resume", ["h1"])
+      result.current.handleAction("resume", ticks("h1"))
     })
     // flush the resolved mutation's onSuccess
     await act(async () => {
@@ -580,13 +532,11 @@ describe("useTorrentActions - non-delete success transitions", () => {
     expect(result.current.showLocationDialog).toBe(true)
 
     await act(async () => {
-      await result.current.handleSetLocation("/data/new", ["h1"], false)
+      await result.current.handleSetLocation("/data/new", ticks("h1"))
     })
 
-    // Dialog closes and context clears on success.
+    // Dialog closes on success.
     expect(result.current.showLocationDialog).toBe(false)
-    expect(result.current.contextHashes).toEqual([])
-    expect(result.current.contextTorrents).toEqual([])
     expect(onActionComplete).toHaveBeenCalledWith("setLocation")
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setLocation/1")
 
@@ -655,14 +605,14 @@ describe("useTorrentActions - prepare helpers", () => {
 
     // count > 1 -> open dialog, no immediate bulkAction
     act(() => {
-      result.current.prepareRecheckAction(["h1", "h2"], 2)
+      result.current.prepareRecheckAction(ticks("h1", "h2"))
     })
     expect(result.current.showRecheckDialog).toBe(true)
     expect(mockedApi.bulkAction).not.toHaveBeenCalled()
 
     // count <= 1 -> immediate action
     await act(async () => {
-      result.current.prepareRecheckAction(["solo"], 1)
+      result.current.prepareRecheckAction(ticks("solo"))
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -673,10 +623,9 @@ describe("useTorrentActions - prepare helpers", () => {
 
   it("prepareRecheckAction pins the single-torrent recheck to its instance so the unified view does not fan out by hash", async () => {
     const { result } = renderActions({ instanceIds: [3, 4, 5] })
-    const torrent = { ...makeTorrent({ hash: "shared" }), instanceId: 3 }
 
     await act(async () => {
-      result.current.prepareRecheckAction(["shared"], 1, [torrent])
+      result.current.prepareRecheckAction(pairs([{ instanceId: 3, hash: "shared" }]))
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -684,39 +633,21 @@ describe("useTorrentActions - prepare helpers", () => {
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
     expect(mockedApi.bulkAction.mock.calls[0][1]).toMatchObject({
       action: "recheck",
-      hashes: ["shared"],
+      hashes: [],
       targets: [{ instanceId: 3, hash: "shared" }],
     })
   })
 
-  it("prepareRecheckAction stores the torrents in contextTorrents for the confirm dialog", async () => {
+  it("prepareTmmAction keeps the choice, and the confirm sends it for the Action target", async () => {
     const { result } = renderActions({ instanceIds: [3, 4, 5] })
-    const torrents = [
-      { ...makeTorrent({ hash: "a" }), instanceId: 3 },
-      { ...makeTorrent({ hash: "b" }), instanceId: 4 },
-    ]
 
     act(() => {
-      result.current.prepareRecheckAction(["a", "b"], 2, torrents)
-    })
-    expect(result.current.showRecheckDialog).toBe(true)
-    expect(result.current.contextTorrents).toEqual(torrents)
-  })
-
-  it("prepareTmmAction stores the torrents so the confirm dialog can pin targets in the unified view", async () => {
-    const { result } = renderActions({ instanceIds: [3, 4, 5] })
-    const torrents = [{ ...makeTorrent({ hash: "shared" }), instanceId: 3 }]
-
-    act(() => {
-      result.current.prepareTmmAction(["shared"], 1, true, torrents)
+      result.current.prepareTmmAction(true)
     })
     expect(result.current.showTmmDialog).toBe(true)
-    expect(result.current.contextTorrents).toEqual(torrents)
 
     await act(async () => {
-      result.current.handleTmmConfirm(["shared"], false, undefined, undefined, undefined, {
-        actionTargets: buildTorrentActionTargets(result.current.contextTorrents, 0),
-      })
+      result.current.handleTmmConfirm(pairs([{ instanceId: 3, hash: "shared" }]))
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
@@ -731,7 +662,7 @@ describe("useTorrentActions - prepare helpers", () => {
     const { result } = renderActions()
 
     await act(async () => {
-      await result.current.handleSetSpeedLimits(500, -1, ["h1"], false)
+      await result.current.handleSetSpeedLimits({ uploadLimit: 500, downloadLimit: -1 }, ticks("h1"))
     })
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
@@ -747,7 +678,7 @@ describe("useTorrentActions - dead query keys", () => {
     const { result, refetchSpy, invalidateSpy } = renderActions()
 
     await act(async () => {
-      result.current.handleAction("pause", ["h1"])
+      result.current.handleAction("pause", ticks("h1"))
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10000)
@@ -774,7 +705,7 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     const { result, refetchSpy } = renderActions()
 
     await act(async () => {
-      result.current.handleAction("pause", ["h1"])
+      result.current.handleAction("pause", ticks("h1"))
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -800,7 +731,7 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     // Five rapid actions: without debouncing this schedules 10 refetches.
     for (const action of ["pause", "resume", "pause", "resume", "pause"] as const) {
       await act(async () => {
-        result.current.handleAction(action, ["h1"])
+        result.current.handleAction(action, ticks("h1"))
       })
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -819,7 +750,7 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     const { result, refetchSpy } = renderActions()
 
     await act(async () => {
-      await result.current.handleUpdateTags({ add: ["tag1"], remove: [] }, ["h1"])
+      await result.current.handleUpdateTags({ add: ["tag1"], remove: [] }, ticks("h1"))
     })
 
     await act(async () => {
