@@ -216,9 +216,9 @@ type inUseIDs struct {
 
 // collectInUseIDs reads the identity of each torrent path through backend,
 // following links, as qBittorrent does. A path that is not on disk protects
-// nothing. A path qui may not read is skipped, as the scan skips a denied
-// subtree. Any other failure is returned, because a file the run cannot
-// identify could be one of the targets.
+// nothing. A path qui may not look up is skipped, as the scan skips a denied
+// subtree. Any other failure is returned, a denied identity read included,
+// because a file the run cannot identify could be one of the targets.
 func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string) (*inUseIDs, error) {
 	// Cross-seeds share files, so the same path comes once per torrent.
 	seen := make(map[string]struct{}, len(paths))
