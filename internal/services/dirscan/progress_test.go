@@ -81,16 +81,20 @@ func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
 	require.False(t, ok, "a pre-tag width decodes to no identity and is never indexed")
 }
 
-// stubTorrentFiles is a qBittorrent that answers the seeding index build
-// with err, or with no torrents when err is nil.
-type stubTorrentFiles struct{ err error }
+// stubTorrentFiles is a qBittorrent that seeds one other completed torrent.
+// It answers the torrent list with err, and the file lists with files.
+type stubTorrentFiles struct {
+	err   error
+	files map[string]qbt.TorrentFiles
+}
 
 func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	return nil, f.err
+	other := &qbt.Torrent{Hash: "bbbb", Progress: 1, SavePath: "/elsewhere"}
+	return []qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: other}}}, f.err
 }
 
 func (f stubTorrentFiles) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return nil, f.err
+	return f.files, nil
 }
 
 // A Full scan clears already_seeding only when the seeding index built in full.
@@ -98,12 +102,25 @@ func (f stubTorrentFiles) GetTorrentFilesBatch(context.Context, int, []string) (
 // regression: #3605
 func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) {
 	for _, tt := range []struct {
-		name     string
-		indexErr error
-		want     models.DirScanFileStatus
+		name string
+		qbt  stubTorrentFiles
+		want models.DirScanFileStatus
 	}{
-		{name: "qBittorrent does not answer", indexErr: errors.New("qBittorrent did not answer"), want: models.DirScanFileStatusAlreadySeeding},
-		{name: "torrent removed", want: models.DirScanFileStatusPending},
+		{
+			name: "qBittorrent does not answer",
+			qbt:  stubTorrentFiles{err: errors.New("qBittorrent did not answer")},
+			want: models.DirScanFileStatusAlreadySeeding,
+		},
+		{
+			name: "a file list is missing",
+			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{}},
+			want: models.DirScanFileStatusAlreadySeeding,
+		},
+		{
+			name: "torrent removed",
+			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}},
+			want: models.DirScanFileStatusPending,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
@@ -124,7 +141,7 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 			runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 			require.NoError(t, err)
 			svc.backendPool = testBackendPool(&models.Instance{ID: dir.TargetInstanceID, HasLocalFilesystemAccess: true})
-			svc.torrentFiles = stubTorrentFiles{err: tt.indexErr}
+			svc.torrentFiles = tt.qbt
 			l := zerolog.Nop()
 
 			scanResult, index, ok := svc.runScanPhase(ctx, dir, dir.Path, runID, &l)

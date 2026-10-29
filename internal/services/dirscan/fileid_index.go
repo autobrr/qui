@@ -6,6 +6,7 @@ package dirscan
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -20,8 +21,8 @@ import (
 // its torrent hash. Dirscan walks the qui host only, so the keys are unscoped.
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
-	// complete is set when qBittorrent answered every request of the build,
-	// so a file missing from byKey is known not to seed.
+	// complete is set when qBittorrent answered with the file list of every
+	// completed torrent, so a file missing from byKey is known not to seed.
 	complete bool
 }
 
@@ -56,7 +57,6 @@ type torrentFilesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
-// buildFileIDIndex returns an index with complete set, or an error.
 func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
 	start := time.Now()
 	torrents, err := s.torrentFiles.GetCachedInstanceTorrents(ctx, instanceID)
@@ -75,6 +75,14 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 	if err != nil {
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}
+	// The sync manager leaves out a torrent whose file list it could not
+	// fetch, and keys the map by the lowercased hash.
+	for _, hash := range hashes {
+		if _, ok := filesByHash[strings.ToLower(strings.TrimSpace(hash))]; !ok {
+			index.complete = false
+			break
+		}
+	}
 
 	statErrors := 0
 	for hash, files := range filesByHash {
@@ -90,6 +98,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 			Int("torrents", len(hashes)).
 			Int("fileIDs", index.len()).
 			Int("statErrors", statErrors).
+			Bool("complete", index.complete).
 			Dur("took", time.Since(start)).
 			Msg("dirscan: built FileID index")
 	}
