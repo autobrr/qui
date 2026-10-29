@@ -382,11 +382,7 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	)
 	require.NoError(t, err)
 
-	// The delete reads every path, and the slice is sized for both copies.
-	// The plain torrent keeps the count odd, so a slice that grew by doubling
-	// cannot land on the same capacity.
 	assert.Len(t, result.torrentPaths, 5)
-	assert.Equal(t, len(result.torrentPaths), cap(result.torrentPaths))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file1.mkv")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file2.srt")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(trackerDir, "My.Torrent", "file1.mkv")))

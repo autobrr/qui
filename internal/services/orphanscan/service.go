@@ -2102,17 +2102,6 @@ type buildFileMapResult struct {
 	torrentPaths []string
 }
 
-// extraSavePath is the folder a torrent's files sit in when it is not the save
-// path, or "" when it is the save path or cannot be told.
-func extraSavePath(d fsops.PathDialect, torrent *qbt.Torrent, files qbt.TorrentFiles) string {
-	savePath := d.Clean(torrent.SavePath)
-	actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
-	if actualSavePath == savePath {
-		return ""
-	}
-	return actualSavePath
-}
-
 func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
@@ -2120,18 +2109,6 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 	metadataRoots := make(map[string]struct{})
 	stableMissingFiles := 0
 	var torrentPaths []string
-	if wantPaths {
-		n := 0
-		for i := range torrents {
-			files := filesByHash[canonicalizeHash(torrents[i].Hash)]
-			n += len(files)
-			// An Auto TMM torrent's files also come under its content path.
-			if extraSavePath(d, &torrents[i], files) != "" {
-				n += len(files)
-			}
-		}
-		torrentPaths = make([]string, 0, n)
-	}
 
 	for i := range torrents {
 		torrent := torrents[i]
@@ -2174,7 +2151,8 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
-		if actualSavePath := extraSavePath(d, &torrent, files); actualSavePath != "" {
+		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
+		if actualSavePath != "" && actualSavePath != savePath {
 			scanRoots[actualSavePath] = struct{}{}
 			for _, f := range files {
 				p := d.Join(actualSavePath, d.FromSlash(f.Name))
