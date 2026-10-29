@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -95,6 +97,46 @@ func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbi
 
 func (f stubTorrentFiles) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 	return f.files, nil
+}
+
+// statBackend answers every Stat with info or err, for the files of the
+// seeding index.
+type statBackend struct {
+	fsops.Backend
+	info *fsops.LstatInfo
+	err  error
+}
+
+func (b statBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
+	return b.info, b.err
+}
+
+// A torrent file the index could not read, or read without an identity,
+// leaves the index incomplete. A missing one does not, since the torrent no
+// longer has it there.
+//
+// regression: #3613
+func TestBuildFileIDIndexCompleteness(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		info *fsops.LstatInfo
+		err  error
+		want bool
+	}{
+		{name: "missing file", err: &fs.PathError{Op: "stat", Err: fs.ErrNotExist}, want: true},
+		{name: "parent is a file", err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: true},
+		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false},
+		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &Service{torrentFiles: stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}}}
+			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
+
+			index, err := svc.buildFileIDIndex(t.Context(), 1, backend, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, index.complete)
+		})
+	}
 }
 
 // A Full scan clears already_seeding only when the seeding index built in full.

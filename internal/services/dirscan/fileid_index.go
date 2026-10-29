@@ -5,8 +5,11 @@ package dirscan
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
+	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -22,7 +25,8 @@ import (
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
 	// complete is set when qBittorrent answered with the file list of every
-	// completed torrent, so a file missing from byKey is known not to seed.
+	// completed torrent and qui read every one of those files that is on disk,
+	// so a file missing from byKey is known not to seed.
 	complete bool
 }
 
@@ -131,12 +135,21 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 		info, err := backend.Stat(ctx, absPath)
 		if err != nil {
 			statErrors++
+			// A missing file shows the torrent no longer has it there. A file
+			// qui could not read shows nothing, so the index cannot rule out
+			// that it is seeded.
+			if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
+				index.complete = false
+			}
 			continue
 		}
 
-		if key, ok := fsops.FileKeyOf(info.FileID, nil); ok {
-			index.byKey[key] = hash
+		key, ok := fsops.FileKeyOf(info.FileID, nil)
+		if !ok {
+			index.complete = false
+			continue
 		}
+		index.byKey[key] = hash
 	}
 
 	return statErrors
