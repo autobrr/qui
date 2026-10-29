@@ -121,6 +121,8 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     excludeHashes: selectionRequest?.excludeHashes ?? [],
     excludeTargets: selectionRequest?.excludeTargets ?? [],
   }), [selectionRequest])
+  // Keyed on the contents: the torrent list rebuilds the request arrays on each
+  // stream update, and a new reference must not restart the tag read.
   const selectionRequestSnapshot = useMemo(() => ({
     instanceId: selectionRequest?.instanceId ?? -1,
     instanceIds: selectionRequest?.instanceIds,
@@ -131,17 +133,8 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     search: selectionRequest?.search,
     excludeHashes: selectionRequest?.excludeHashes,
     excludeTargets: selectionRequest?.excludeTargets,
-  }), [
-    selectionRequest?.excludeHashes,
-    selectionRequest?.excludeTargets,
-    selectionRequest?.filters,
-    selectionRequest?.hashes,
-    selectionRequest?.instanceId,
-    selectionRequest?.instanceIds,
-    selectionRequest?.search,
-    selectionRequest?.selectAll,
-    selectionRequest?.targets,
-  ])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [selectionRequestKey])
   const selectedTorrentTagsKey = useMemo(
     () => JSON.stringify(selectedTorrents.map(torrent => torrent.tags)),
     [selectedTorrents]

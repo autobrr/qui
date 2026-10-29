@@ -3,14 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { RenameTorrentFileDialog } from "@/components/torrents/TorrentDialogs"
+import { RenameTorrentFileDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
+import { makeFilters } from "@/test/mockFilters"
 import { cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+const translation = vi.hoisted(() => ({ t: (key: string) => key }))
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => translation,
 }))
-vi.mock("@/lib/api", () => ({ api: {} }))
+const api = vi.hoisted(() => ({ getTorrentField: vi.fn(() => new Promise(() => {})) }))
+vi.mock("@/lib/api", () => ({ api }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: () => ({ getTotalSize: () => 0, getVirtualItems: () => [] }),
@@ -65,5 +68,29 @@ describe("RenameTorrentFileDialog", () => {
     const input = renderDialog("folder/NoExtensionFile")
     await waitFor(() => expect(input.selectionEnd).toBe("NoExtensionFile".length))
     expect(input.selectionStart).toBe(0)
+  })
+})
+
+describe("TagEditorDialog", () => {
+  // The torrent list rebuilds the request on each stream update. The same
+  // selection in new arrays must not restart the tag read, or a read slower
+  // than the updates never ends.
+  it("reads the tags of a Select all selection one time while the request contents stay the same", () => {
+    const onOpenChange = () => {}
+    const props = (filters = makeFilters()) => ({
+      open: true,
+      onOpenChange,
+      availableTags: [],
+      selectedTorrents: [],
+      hashCount: 7500,
+      onConfirm: () => {},
+      selectionRequest: { instanceId: 1, hashes: [], selectAll: true, filters, search: "", excludeHashes: [] },
+    })
+    const { rerender } = render(<TagEditorDialog {...props()} />)
+    rerender(<TagEditorDialog {...props()} />)
+    expect(api.getTorrentField).toHaveBeenCalledTimes(1)
+
+    rerender(<TagEditorDialog {...props(makeFilters({ status: ["paused"] }))} />)
+    expect(api.getTorrentField).toHaveBeenCalledTimes(2)
   })
 })
