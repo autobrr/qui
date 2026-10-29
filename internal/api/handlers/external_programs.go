@@ -200,10 +200,14 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 				// Return conflict with list of affected automations
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusConflict)
-				if err := json.NewEncoder(w).Encode(map[string]any{
-					"error":       "Program is referenced by automations",
-					"message":     "This program is used by one or more automation rules. Use force=true to delete anyway, which will remove the external program action from these automations.",
-					"automations": refs,
+				if err := json.NewEncoder(w).Encode(struct {
+					Error       string                        `json:"error"`
+					Message     string                        `json:"message"`
+					Automations []*models.AutomationReference `json:"automations"`
+				}{
+					Error:       "Program is referenced by automations",
+					Message:     "This program is used by one or more automation rules. Use force=true to delete anyway, which will remove the external program action from these automations.",
+					Automations: refs,
 				}); err != nil {
 					log.Error().Err(err).Msg("Failed to encode conflict response")
 				}
@@ -314,17 +318,14 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	}
 
 	// Execute for each torrent hash using the shared service
-	results := make([]map[string]any, 0, len(req.Hashes))
+	results := make([]externalProgramExecuteResult, 0, len(req.Hashes))
 	for _, hash := range req.Hashes {
-		result := map[string]any{
-			"hash":    hash,
-			"success": false,
-		}
+		result := externalProgramExecuteResult{Hash: hash}
 
 		// Look up torrent in the pre-built index (O(1) lookup)
 		torrent, found := torrentIndex[strings.ToLower(hash)]
 		if !found {
-			result["error"] = fmt.Sprintf("Torrent with hash %s not found", hash)
+			result.Error = fmt.Sprintf("Torrent with hash %s not found", hash)
 			results = append(results, result)
 			continue
 		}
@@ -335,18 +336,27 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 			Torrent:    torrent,
 			InstanceID: req.InstanceID,
 		})
-		result["success"] = execResult.Success
+		result.Success = execResult.Success
 		if execResult.Success {
-			result["message"] = execResult.Message
+			result.Message = execResult.Message
 		} else if execResult.Error != nil {
-			result["error"] = execResult.Error.Error()
+			result.Error = execResult.Error.Error()
 		}
 
 		results = append(results, result)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"results": results}); err != nil {
+	if err := json.NewEncoder(w).Encode(struct {
+		Results []externalProgramExecuteResult `json:"results"`
+	}{results}); err != nil {
 		log.Error().Err(err).Msg("Failed to encode execute response")
 	}
+}
+
+type externalProgramExecuteResult struct {
+	Hash    string `json:"hash"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
