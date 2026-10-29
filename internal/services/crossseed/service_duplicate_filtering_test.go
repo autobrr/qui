@@ -951,12 +951,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1006,12 +1001,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,

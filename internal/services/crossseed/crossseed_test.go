@@ -4113,7 +4113,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 				}, nil
 			}
 
-			state := &searchRunState{opts: tt.opts}
+			defaults := triggerDefaults{sourceFilter: sourceFilter{tt.opts.Categories, tt.opts.Tags, tt.opts.ExcludeCategories, tt.opts.ExcludeTags}}
 			torrent := &qbt.Torrent{
 				Hash:     "testhash",
 				Name:     "Test.Movie.2025.1080p.BluRay-GROUP",
@@ -4129,7 +4129,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 				Size:        1024,
 			}
 
-			_, err := service.executeCrossSeedSearchAttempt(ctx, state, torrent, match, time.Now().UTC())
+			_, err := service.executeCrossSeedSearchAttempt(ctx, tt.opts.InstanceID, defaults, torrent, match, time.Now().UTC())
 			require.NoError(t, err)
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 

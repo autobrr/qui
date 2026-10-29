@@ -1915,7 +1915,6 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 			return &CrossSeedResponse{Success: true}, nil
 		},
 	}
-	state := &searchRunState{opts: SearchRunOptions{InstanceID: 1}}
 	match := TorrentSearchResult{
 		Indexer:     "Indexer",
 		IndexerID:   7,
@@ -1931,7 +1930,8 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		state,
+		1,
+		triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		match,
 		time.Now(),
@@ -1960,7 +1960,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		&searchRunState{opts: SearchRunOptions{InstanceID: 1}},
+		1, triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{
 			Indexer:     "Indexer",
@@ -2502,7 +2502,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	t.Run("automated apply", func(t *testing.T) {
 		result, applyErr := service.executeCrossSeedSearchAttempt(
 			context.Background(),
-			&searchRunState{opts: SearchRunOptions{InstanceID: instanceID}},
+			instanceID, triggerDefaults{},
 			&source,
 			match,
 			time.Now(),
