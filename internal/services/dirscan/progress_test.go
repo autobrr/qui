@@ -157,34 +157,57 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 	}
 }
 
-// A file whose identity the run did not read keeps already_seeding, even
-// when the seeding index built in full.
+// A file already seeding keeps that status until a complete index, checked
+// against the file's identity, shows the torrent is gone. That holds when the
+// file changed on disk too.
 //
 // regression: #3605
-func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutIdentity(t *testing.T) {
-	ctx := t.Context()
-	svc, store, dir := newDirScanTestService(t)
-	movie := filepath.Join(dir.Path, "film.mkv")
-	modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
-		DirectoryID: dir.ID,
-		FilePath:    movie,
-		FileSize:    100,
-		FileModTime: modTime,
-		Status:      models.DirScanFileStatusAlreadySeeding,
-	}))
-	scanResult := &ScanResult{Searchees: []*Searchee{{
-		Name:  "film",
-		Path:  movie,
-		Files: []*ScannedFile{{Path: movie, RelPath: "film.mkv", Size: 100, ModTime: modTime}},
-	}}}
-	l := zerolog.Nop()
+func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
+	id := hardlink.UnixFileID(7, 42)
+	key, ok := fsops.FileKeyOf(id, nil)
+	require.True(t, ok)
+	seeding := &seedingIndex{byKey: map[fsops.FileKey]string{key: "aaaa"}, complete: true}
 
-	_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{complete: true}, &l)
-	require.NoError(t, err)
+	for _, tt := range []struct {
+		name    string
+		id      hardlink.FileID
+		size    int64
+		seeding *seedingIndex
+		want    models.DirScanFileStatus
+	}{
+		{name: "identity not read", size: 100, seeding: &seedingIndex{complete: true}, want: models.DirScanFileStatusAlreadySeeding},
+		// regression: #3613
+		{name: "changed, index incomplete", id: id, size: 200, seeding: &seedingIndex{}, want: models.DirScanFileStatusAlreadySeeding},
+		// regression: #3613
+		{name: "changed, still seeding", id: id, size: 200, seeding: seeding, want: models.DirScanFileStatusAlreadySeeding},
+		{name: "changed, torrent removed", id: id, size: 200, seeding: &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: true}, want: models.DirScanFileStatusPending},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			svc, store, dir := newDirScanTestService(t)
+			movie := filepath.Join(dir.Path, "film.mkv")
+			modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+			require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
+				DirectoryID: dir.ID,
+				FilePath:    movie,
+				FileSize:    100,
+				FileModTime: modTime,
+				Status:      models.DirScanFileStatusAlreadySeeding,
+			}))
+			scanResult := &ScanResult{Searchees: []*Searchee{{
+				Name:  "film",
+				Path:  movie,
+				Files: []*ScannedFile{{Path: movie, RelPath: "film.mkv", Size: tt.size, ModTime: modTime, FileID: tt.id}},
+			}}}
+			l := zerolog.Nop()
 
-	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, models.DirScanFileStatusAlreadySeeding, files[0].Status)
+			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, tt.seeding, &l)
+			require.NoError(t, err)
+
+			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+			require.Equal(t, tt.want, files[0].Status)
+		})
+	}
 }
