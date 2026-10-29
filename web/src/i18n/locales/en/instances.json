@@ -671,6 +671,24 @@
       },
       "exported": "Exported"
     },
+    "runWorkflowNow": {
+      "action": "Run now",
+      "title": "Run \"{{name}}\" now?",
+      "description": "qui runs the saved workflow one time now and applies its actions to the matching torrents. It also runs when the workflow is disabled.",
+      "dryRunDescription": "This workflow is set to dry-run, so qui only records what it would do. No torrent changes.",
+      "actions": "Actions",
+      "cancel": "Cancel",
+      "confirm": "Run now",
+      "toast": {
+        "running": "Running \"{{name}}\"…",
+        "completed": "Run completed for \"{{name}}\"",
+        "noChanges": "Run completed for \"{{name}}\". No torrent needed a change.",
+        "completedWithErrors": "Run completed for \"{{name}}\" with errors. See the activity log.",
+        "dryRunCompleted": "Dry-run completed for \"{{name}}\"",
+        "inProgress": "A run is in progress. Try again in a moment.",
+        "failed": "Failed to run the workflow"
+      }
+    },
     "workflowPreview": {
       "loadingPreview": "Loading preview. This might take a while...",
       "cancel": "Cancel",

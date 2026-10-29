@@ -686,6 +686,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Route("/{ruleID}", func(r chi.Router) {
 							r.Put("/", automationsHandler.Update)
 							r.Delete("/", automationsHandler.Delete)
+							r.Post("/apply", automationsHandler.ApplyRuleNow)
 						})
 					})
 

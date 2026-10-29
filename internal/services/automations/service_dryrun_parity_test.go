@@ -74,6 +74,8 @@ func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int)
 				files = qbt.TorrentFiles{}
 			}
 			_ = json.NewEncoder(w).Encode(files)
+		case "/api/v2/torrents/pause":
+			// A live run pauses; a dry run never sends this.
 		default:
 			http.NotFound(w, r)
 		}
