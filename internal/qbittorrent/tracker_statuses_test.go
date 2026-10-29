@@ -207,6 +207,7 @@ func TestTrackerHealthOf(t *testing.T) {
 		{name: "unregistered added 5 minutes ago", addedOn: addedAgo(5 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Torrent not registered on tracker")}},
 		{name: "unregistered added 59 minutes ago", addedOn: addedAgo(59 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}},
 		{name: "unregistered added 61 minutes ago", addedOn: addedAgo(61 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
+		{name: "unregistered added exactly one hour ago", addedOn: addedAgo(time.Hour), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		{name: "unregistered with no added time", trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		// regression: #3616
 		{name: "unregistered tracker error added 10 minutes ago", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Unregistered torrent")}},

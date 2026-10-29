@@ -98,8 +98,8 @@ var trackerDownStatuses = []string{
 }
 
 // trackerHealthOf decides the tracker health of a torrent. During the grace hour
-// an unregistered message gives no label, because a tracker can say that before
-// it registers a new upload.
+// an unregistered message gives no unregistered label, because a tracker can say
+// that before it registers a new upload. The tracker down label can still show.
 func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
 	// Most torrents have no tracker data, so they skip the time math.
 	if torrent == nil || len(torrent.Trackers) == 0 {
