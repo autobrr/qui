@@ -4,7 +4,7 @@
  */
 
 import { columnFiltersToExpr, type ColumnFilter } from "@/lib/column-filter-utils"
-import { combineFilterExpr, isCrossSeedExpr } from "@/lib/torrent-filters"
+import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type { TorrentFilters } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react"
@@ -23,7 +23,6 @@ export interface UserAction {
 export interface TorrentTableFilterExpr {
   effectiveSearch: string
   columnFiltersExpr: string | null
-  combinedFiltersExpr: string | null | undefined
   isDoingCrossSeedFiltering: boolean
   lastUserAction: UserAction | null
   setLastUserAction: Dispatch<SetStateAction<UserAction | null>>
@@ -32,11 +31,8 @@ export interface TorrentTableFilterExpr {
 /**
  * Owns the table's search + filter-expression derivation: the route search
  * (`?q=`, already debounced by the header input), the column-filter-to-expr
- * conversion, the cross-seed detection, and the combined backend expression.
- *
- * The cross-seed early return is the one deliberate difference from the
- * select-all filters of the Action target, which always combine (#1925); both
- * are pinned in their tests.
+ * conversion, and the cross-seed detection. useTorrentListController joins the
+ * column filters into the list request.
  */
 export function useTorrentTableFilterExpr({
   filters,
@@ -62,15 +58,6 @@ export function useTorrentTableFilterExpr({
 
   const isDoingCrossSeedFiltering = isCrossSeedExpr(filters?.expr)
 
-  // In cross-seed mode the column filters are applied client-side by TanStack
-  // Table, so the backend gets the hash expression alone.
-  const combinedFiltersExpr = useMemo(() => {
-    if (isDoingCrossSeedFiltering) {
-      return filters?.expr
-    }
-    return combineFilterExpr(columnFiltersExpr, filters?.expr)
-  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
-
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -93,7 +80,6 @@ export function useTorrentTableFilterExpr({
   return {
     effectiveSearch,
     columnFiltersExpr,
-    combinedFiltersExpr,
     isDoingCrossSeedFiltering,
     lastUserAction,
     setLastUserAction,

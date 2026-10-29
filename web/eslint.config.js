@@ -47,6 +47,23 @@ export default tseslint.config([
     }
   },
   {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      'src/hooks/useTorrentListController.ts',
+      'src/hooks/useTorrentListController.test.tsx',
+      'src/hooks/useTorrentsList.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '(^|/)useTorrentsList$',
+          allowTypeImports: true,
+          message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+        }],
+      }],
+    },
+  },
+  {
     files: ['scripts/**/*.mjs'],
     extends: [js.configs.recommended],
     languageOptions: {

@@ -7,7 +7,6 @@ import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
 import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
-import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
 import { useFilterLifecycle } from "@/hooks/torrent-table/useFilterLifecycle"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
@@ -22,7 +21,6 @@ import { useTorrentTableVirtualization } from "@/hooks/torrent-table/useTorrentT
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
-import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
@@ -31,7 +29,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
-import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListController, useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
 import { hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
@@ -348,7 +346,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const {
     effectiveSearch,
     columnFiltersExpr,
-    combinedFiltersExpr,
     lastUserAction,
     setLastUserAction,
   } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
@@ -356,16 +353,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
-
-  const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
-  const isVisibilitySettled = isHiddenDelayed || isVisible
-
-  // The list request; in cross-seed mode combinedFiltersExpr is the hash
-  // expression alone, unlike the Action target, which always joins the column filters.
-  const listFilters = useMemo(
-    () => ({ ...filters, expr: combinedFiltersExpr || undefined }),
-    [filters, combinedFiltersExpr]
-  )
 
   // Fetch torrents data with backend sorting
   const {
@@ -394,12 +381,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     streamRetryAttempt,
     isCrossSeedFiltering,
     isCrossInstanceEndpoint,
-  } = useTorrentsList(instanceId, {
-    enabled: true,
-    pollingEnabled: isVisibilitySettled,
+  } = useTorrentListController({
+    instanceId,
     instanceIds,
+    filters,
+    columnFiltersExpr,
     search: effectiveSearch,
-    filters: listFilters,
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -741,10 +728,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const effectiveSelectionCount = actionTarget.count
   const selectAllTarget = actionTarget.kind === "selectAll" ? actionTarget.selectAll : undefined
 
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useTorrentListCrossSeed({
     instanceId,
-    contextTorrents: actionTarget.previewTorrents,
-    selectAll: selectAllTarget,
+    actionTarget,
     blockCrossSeeds,
   })
   const queryClient = useQueryClient()
