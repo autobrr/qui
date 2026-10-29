@@ -20,6 +20,9 @@ import (
 // its torrent hash. Dirscan walks the qui host only, so the keys are unscoped.
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
+	// complete is set when qBittorrent answered every request of the build,
+	// so a file missing from byKey is known not to seed.
+	complete bool
 }
 
 func (idx *seedingIndex) len() int {
@@ -36,25 +39,39 @@ func (idx *seedingIndex) hash(id hardlink.FileID) (string, bool) {
 	return hash, ok
 }
 
-func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
-	if s == nil || s.syncManager == nil {
-		return nil, nil
+// knowsNotSeeding reports whether a file with this identity that is missing
+// from the index is known not to seed. An index that did not build in full,
+// or a file whose identity was not read, says nothing either way.
+func (idx *seedingIndex) knowsNotSeeding(id hardlink.FileID) bool {
+	if !idx.complete {
+		return false
 	}
+	_, ok := fsops.FileKeyOf(id, nil)
+	return ok
+}
 
+// torrentFilesReader is what the seeding index reads from qBittorrent.
+type torrentFilesReader interface {
+	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+}
+
+// buildFileIDIndex returns an index with complete set, or an error.
+func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
 	start := time.Now()
-	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
+	torrents, err := s.torrentFiles.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cached torrents: %w", err)
 	}
 
 	hashes, savePaths := collectCompletedTorrentSavePaths(torrents)
 
-	index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
+	index := &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: true}
 	if len(hashes) == 0 {
 		return index, nil
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.torrentFiles.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}

@@ -71,7 +71,7 @@ type Service struct {
 	store          *models.DirScanStore
 	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
-	syncManager    *qbittorrent.SyncManager
+	torrentFiles   torrentFilesReader // nil without qBittorrent
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
@@ -161,12 +161,17 @@ func NewService(
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
 	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
+	var torrentFiles torrentFilesReader
+	if syncManager != nil {
+		torrentFiles = syncManager
+	}
+
 	return &Service{
 		cfg:                       cfg,
 		store:                     store,
 		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
-		syncManager:               syncManager,
+		torrentFiles:              torrentFiles,
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
@@ -914,12 +919,13 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
-	// This is best-effort; if it fails, scanning continues without seeding skips.
+	// This is best-effort; if it fails, scanning continues without seeding skips,
+	// and files marked already seeding by an earlier run keep that status.
 	fileIDIndex := &seedingIndex{}
-	if s.syncManager != nil {
+	if s.torrentFiles != nil {
 		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else if index.len() > 0 {
+		} else {
 			fileIDIndex = index
 			scanner.SetFileIDIndex(index)
 		}
