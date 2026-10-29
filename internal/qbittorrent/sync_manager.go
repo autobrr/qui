@@ -3133,6 +3133,20 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 }
 
 func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
+	if !trackersReportUnregistered(torrent) {
+		return false
+	}
+
+	// A freshly added torrent can report "unregistered" before the tracker has
+	// acknowledged it, so ignore the first hour. Checked last because reading
+	// the clock costs more than scanning the trackers, and this runs once per
+	// torrent for the whole library.
+	return torrent.AddedOn <= 0 || time.Since(time.Unix(torrent.AddedOn, 0)) >= time.Hour
+}
+
+// trackersReportUnregistered reports whether the trackers say the torrent is
+// unregistered, without the one-hour grace for a new torrent.
+func trackersReportUnregistered(torrent *qbt.Torrent) bool {
 	if torrent == nil || len(torrent.Trackers) == 0 {
 		return false
 	}
@@ -3156,19 +3170,7 @@ func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
 		}
 	}
 
-	if !hasUnregistered || hasWorking {
-		return false
-	}
-
-	// A freshly added torrent can report "unregistered" before the tracker has
-	// acknowledged it, so ignore the first hour. Checked last because reading
-	// the clock costs more than scanning the trackers, and this runs once per
-	// torrent for the whole library.
-	if torrent.AddedOn > 0 && time.Since(time.Unix(torrent.AddedOn, 0)) < time.Hour {
-		return false
-	}
-
-	return true
+	return hasUnregistered && !hasWorking
 }
 
 func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
@@ -3205,7 +3207,8 @@ func (sm *SyncManager) torrentHasTrackerError(torrent *qbt.Torrent) bool {
 		return false
 	}
 
-	if sm.torrentIsUnregistered(torrent) || sm.torrentTrackerIsDown(torrent) {
+	// A torrent inside the unregistered grace hour is not a tracker error either.
+	if trackersReportUnregistered(torrent) || sm.torrentTrackerIsDown(torrent) {
 		return false
 	}
 

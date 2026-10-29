@@ -263,7 +263,7 @@ func TestFlagsPassRecomputesUnregisteredGraceEachPass(t *testing.T) {
 		down.trackers[0].Message = "Unregistered torrent"
 	})
 	rig.pass(t)
-	require.NotEqual(t, TrackerHealthUnregistered, rig.health(t)[flagsHashDown], "inside the grace period")
+	require.NotContains(t, rig.health(t), flagsHashDown, "inside the grace period")
 
 	rig.set(func() { rig.torrents[flagsHashDown].addedOn = time.Now().Add(-61 * time.Minute).Unix() })
 	require.Empty(t, rig.pass(t))
