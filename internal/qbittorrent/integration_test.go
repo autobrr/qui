@@ -234,6 +234,17 @@ func TestSyncManager_TorrentHasTrackerError(t *testing.T) {
 		assert.False(t, sm.torrentHasTrackerError(&torrent))
 	})
 
+	t.Run("ignores unregistered torrents inside the grace hour", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			AddedOn: time.Now().Add(-10 * time.Minute).Unix(),
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusTrackerError, Message: "Unregistered torrent"},
+			},
+		}
+
+		assert.Equal(t, TrackerHealth(""), sm.determineTrackerHealth(&torrent))
+	})
+
 	t.Run("ignores tracker errors classified as tracker down", func(t *testing.T) {
 		torrent := qbt.Torrent{
 			Trackers: []qbt.TorrentTracker{
