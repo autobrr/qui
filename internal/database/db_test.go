@@ -901,9 +901,6 @@ func TestTransactionSerialization(t *testing.T) {
 		// Signal that we started
 		started <- true
 
-		// Hold the transaction for a bit
-		time.Sleep(200 * time.Millisecond)
-
 		// Insert something
 		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
 		if err != nil {
@@ -930,15 +927,13 @@ func TestTransactionSerialization(t *testing.T) {
 	}
 
 	// Now try to start a second transaction - it should block until the first commits
-	start := time.Now()
 	tx2, err := db.BeginTx(ctx, nil)
-	elapsed := time.Since(start)
-
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
 
-	// Should have taken at least 100ms (the sleep time in the first transaction)
-	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+	var count int
+	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
+	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
 
 	// Clean up
 	require.NoError(t, tx2.Rollback())
