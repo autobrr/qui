@@ -56,6 +56,7 @@ import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
+  getRuleTagActions,
   parseImportJSON,
   toDuplicateInput,
   toExportFormat,
@@ -80,7 +81,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
@@ -88,6 +89,7 @@ import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
+import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 /**
@@ -147,16 +149,6 @@ function formatShareLimit(value: number | undefined, isRatio: boolean): string |
 function formatSpeedLimitCompact(kiB: number): string {
   if (kiB === 0) return "∞"
   return String(kiB)
-}
-
-function getRuleTagActions(rule: Automation) {
-  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
-    return rule.conditions.tags
-  }
-  if (rule.conditions?.tag) {
-    return [rule.conditions.tag]
-  }
-  return []
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
@@ -346,6 +338,7 @@ export function WorkflowsOverview() {
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
+  const [runNowTarget, setRunNowTarget] = useState<RunWorkflowNowTarget | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{
     instanceId: number
     rule: Automation
@@ -1021,6 +1014,7 @@ export function WorkflowsOverview() {
                                     onEdit={() => openEditDialog(instance.id, rule)}
                                     onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
                                     onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
+                                    onRunNow={() => setRunNowTarget({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
                                     onEditJson={() => setJsonEdit(rule)}
@@ -1557,6 +1551,8 @@ export function WorkflowsOverview() {
         />
       )}
 
+      <RunWorkflowNowDialog target={runNowTarget} onClose={() => setRunNowTarget(null)} />
+
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1709,6 +1705,7 @@ interface RulePreviewProps {
   onEdit: () => void
   onDelete: () => void
   onRunDryRun: () => void
+  onRunNow: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
   onEditJson: () => void
@@ -1727,6 +1724,7 @@ function SortableRulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1762,6 +1760,7 @@ function SortableRulePreview({
         onEdit={onEdit}
         onDelete={onDelete}
         onRunDryRun={onRunDryRun}
+        onRunNow={onRunNow}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
         onEditJson={onEditJson}
@@ -1798,6 +1797,7 @@ function RulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1959,6 +1959,10 @@ function RulePreview({
             <DropdownMenuItem onClick={onRunDryRun}>
               <RefreshCcw className="h-4 w-4 mr-2" />
               {t("preferences.workflowsOverview.runDryRunNow")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRunNow}>
+              <Zap className="h-4 w-4 mr-2" />
+              {t("preferences.runWorkflowNow.action")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>

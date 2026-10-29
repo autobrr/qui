@@ -19,6 +19,7 @@ qui evaluates automations in **sort order**. For exclusive actions such as delet
 - **Per-rule intervals**: Each rule can have its own interval (minimum 60 seconds, default 15 minutes).
 - **Per-rule notifications**: If you configure notification targets, each rule can opt in or out of automation notifications.
 - **Manual dry-run**: Run "Dry-run now" from the workflow dialog or "Run dry-run now" from the workflow menu.
+- **Manual run**: Run "Run now" from the workflow dialog or the workflow menu. See [Run a workflow now](#run-a-workflow-now).
 - **Debouncing**: qui does not process the same torrent again within 2 minutes.
 
 ## Query builder
@@ -364,6 +365,22 @@ No-match behavior:
 
 - If nothing matches, manual dry-runs log a `dry_run_no_match` summary row.
 - To avoid event noise, scheduled dry-run rules do **not** log no-match rows.
+
+### Run a workflow now
+
+To apply the actions of one saved workflow without a wait for its interval, use one of these controls:
+
+- **Workflow list menu:** `Run now`
+- **Workflow dialog:** `Run now`. The button shows only for a saved workflow. It runs the saved version, not the unsaved changes in the dialog.
+
+qui then shows a confirmation dialog with the name and the actions of the workflow. Nothing changes until you click **Run now** in that dialog.
+
+- The run applies the actions to the torrents that match at that moment. It writes the same activity rows as a scheduled run.
+- A disabled workflow also runs. It stays disabled after the run.
+- If the workflow is set to dry-run, the run is a simulation and writes dry-run activity rows.
+- After a delete rule with a Free Space condition deletes files, the same kind of rule waits 5 minutes before it deletes again. A manual run obeys this wait too.
+- If at least one torrent matches the trackers of the workflow, the next scheduled run of the workflow comes one full interval after the manual run. If no torrent matches, the schedule of the workflow does not change.
+- Only one run applies actions on an instance at a time. If a scheduled run is in progress, qui shows "A run is in progress. Try again in a moment." If a manual run is in progress, the scheduled run skips that instance until its next check.
 
 ## Torrent sorting and scoring
 

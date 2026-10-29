@@ -240,13 +240,69 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.ApplyOnceForInstance(r.Context(), instanceID); err != nil {
+	err = h.service.ApplyOnceForInstance(r.Context(), instanceID)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual apply failed")
 		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
 		return
 	}
 
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
+}
+
+// ApplyRuleNow runs one saved rule immediately and applies its actions. A rule with DryRun set stays a simulation.
+func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	ruleID, err := strconv.Atoi(chi.URLParam(r, "ruleID"))
+	if err != nil || ruleID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	rule, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for manual run")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+
+	activities, err := h.service.ApplyRuleNow(r.Context(), instanceID, rule)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automations: manual run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+
+	status := "applied"
+	if rule.DryRun {
+		status = "dry-run-completed"
+	}
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      status,
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
 }
 
 func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
@@ -277,19 +333,22 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activityIDs := make([]int, 0, len(activities))
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      "dry-run-completed",
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
+}
+
+func activityIDs(activities []*models.AutomationActivity) []int {
+	ids := make([]int, 0, len(activities))
 	for _, activity := range activities {
 		if activity == nil || activity.ID <= 0 {
 			continue
 		}
-		activityIDs = append(activityIDs, activity.ID)
+		ids = append(ids, activity.ID)
 	}
-
-	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
-		Status:      "dry-run-completed",
-		ActivityIDs: activityIDs,
-		Activities:  activities,
-	})
+	return ids
 }
 
 func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {

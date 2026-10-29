@@ -3416,6 +3416,80 @@ paths:
         '500':
           description: Failed to get active trackers
 
+  /api/instances/{instanceID}/automations/{ruleID}/apply:
+    post:
+      tags:
+        - Instances
+      summary: Run one automation now
+      description: |
+        Run one saved automation on the instance now and apply its actions. The run ignores the interval of the automation, and it also runs a disabled automation.
+        An automation with dryRun set stays a simulation and writes dry-run activity rows.
+        Only one run applies actions on an instance at a time. If a run is in progress, the request returns 409 and applies nothing.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: integer
+          description: Automation ID
+      responses:
+        '202':
+          description: The run is complete
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - applied
+                      - dry-run-completed
+                  activityIds:
+                    type: array
+                    description: The IDs of the activity rows that the run wrote.
+                    items:
+                      type: integer
+                  activities:
+                    type: array
+                    description: The activity rows that the run wrote.
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: Invalid instance ID or automation ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Automation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Another run applies actions on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The run failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The automations service is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/preferences:
     get:
       tags:

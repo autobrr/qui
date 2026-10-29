@@ -85,6 +85,7 @@ type automationSummary struct {
 	sampleErrors     []string
 	sampleSeen       map[string]struct{}
 	tagSampleSeen    map[string]struct{}
+	activities       []*models.AutomationActivity // the rows the run recorded, in order
 }
 
 type automationRuleSummary struct {
@@ -172,6 +173,10 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 	if count <= 0 {
 		count = 1
 	}
+	if activity.CreatedAt.IsZero() {
+		activity.CreatedAt = time.Now().UTC() // the store lets the database stamp the row and leaves this field unset
+	}
+	s.activities = append(s.activities, activity)
 	s.add(activity.Action, activity.Outcome, count)
 	s.addRuleAction(activity, count)
 	s.addSamplesFromActivity(activity)
@@ -555,6 +560,7 @@ type Service struct {
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
+	runningInstances      map[int]struct{}             // instances with a run that applies actions
 	mu                    sync.RWMutex
 
 	activityPublisher activity.Publisher
@@ -705,7 +711,9 @@ func (s *Service) applyAll(ctx context.Context) {
 		if !instance.IsActive {
 			continue
 		}
-		if err := s.applyForInstance(ctx, instance.ID, false); err != nil {
+		if err := s.applyForInstance(ctx, instance.ID, false); errors.Is(err, ErrRunInProgress) {
+			log.Debug().Int("instanceID", instance.ID).Msg("automations: run in progress, skipping instance until the next check")
+		} else if err != nil {
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
@@ -715,6 +723,69 @@ func (s *Service) applyAll(ctx context.Context) {
 // It bypasses per-rule interval checks (force=true).
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
 	return s.applyForInstance(ctx, instanceID, true)
+}
+
+// ErrRunInProgress means that another run applies actions on the instance.
+var ErrRunInProgress = errors.New("automations: a run is in progress on this instance")
+
+// tryLockRun claims the instance for a run that applies actions. Only one such run acts on an instance at a time.
+func (s *Service) tryLockRun(instanceID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, running := s.runningInstances[instanceID]; running {
+		return false
+	}
+	if s.runningInstances == nil {
+		s.runningInstances = make(map[int]struct{})
+	}
+	s.runningInstances[instanceID] = struct{}{}
+	return true
+}
+
+func (s *Service) unlockRun(instanceID int) {
+	s.mu.Lock()
+	delete(s.runningInstances, instanceID)
+	s.mu.Unlock()
+}
+
+// ApplyRuleNow runs a single saved rule immediately and applies its actions, unless the rule itself is a dry run.
+// The rule is forced enabled for this execution only, and its interval is ignored.
+// Returns the activity rows written for this run, or ErrRunInProgress when another run acts on the instance.
+func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
+	if s.syncManager == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+	if rule.DryRun {
+		activities, err := s.ApplyRuleDryRun(ctx, instanceID, rule)
+		s.publishActivity(instanceID, activities)
+		return activities, err
+	}
+
+	if !s.tryLockRun(instanceID) {
+		return nil, ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
+	liveRule := *rule
+	liveRule.Enabled = true
+	activities, err := s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{&liveRule}, false)
+	if err != nil {
+		return nil, err
+	}
+	s.publishActivity(instanceID, activities)
+	return activities, nil
+}
+
+// publishActivity signals connected clients that this instance's automation activity changed so
+// they refetch instead of polling. It sends nothing when the run wrote no activity rows.
+func (s *Service) publishActivity(instanceID int, activities []*models.AutomationActivity) {
+	if len(activities) == 0 || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindAutomationActivity,
+		InstanceID: instanceID,
+	})
 }
 
 // ApplyRuleDryRun executes a single rule immediately in dry-run mode.
@@ -1434,6 +1505,11 @@ func (s *Service) blockedDeleteCandidates(
 }
 
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
+	if !s.tryLockRun(instanceID) {
+		return ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
@@ -1463,18 +1539,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return err
 	}
 
-	// Signal connected clients that this instance's automation activity changed so
-	// they refetch instead of polling. Emitted only when activity rows were actually
-	// written this cycle (not on idle ticks), after writes and with no lock held.
-	if len(dryActivity) > 0 || len(liveActivity) > 0 {
-		if s.activityPublisher != nil {
-			s.activityPublisher.Publish(activity.Event{
-				Kind:       activity.KindAutomationActivity,
-				InstanceID: instanceID,
-			})
-		}
-	}
-
+	s.publishActivity(instanceID, append(dryActivity, liveActivity...))
 	return nil
 }
 
@@ -2680,7 +2745,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return nil, nil
+	return summary.activities, nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {

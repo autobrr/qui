@@ -653,6 +653,24 @@
       },
       "exported": "已导出"
     },
+    "runWorkflowNow": {
+      "action": "立即运行",
+      "title": "立即运行“{{name}}”？",
+      "description": "qui 会立即运行一次已保存的工作流，并对匹配的种子应用其操作。即使工作流已禁用也会运行。",
+      "dryRunDescription": "此工作流设置为模拟运行，qui 只记录将要执行的操作，不会更改任何种子。",
+      "actions": "操作",
+      "cancel": "取消",
+      "confirm": "立即运行",
+      "toast": {
+        "running": "正在运行“{{name}}”…",
+        "completed": "“{{name}}”运行完成",
+        "noChanges": "“{{name}}”运行完成。没有需要更改的种子。",
+        "completedWithErrors": "“{{name}}”运行完成，但有错误。请查看活动日志。",
+        "dryRunCompleted": "“{{name}}”的模拟运行已完成",
+        "inProgress": "已有运行正在进行。请稍后再试。",
+        "failed": "运行工作流失败"
+      }
+    },
     "workflowPreview": {
       "loadingPreview": "正在加载预览，这可能需要一些时间...",
       "cancel": "取消",

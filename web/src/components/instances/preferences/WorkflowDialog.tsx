@@ -66,7 +66,7 @@ import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/categor
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, getTrackerMatchMode, getTrackerTokens, type ActionType, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -92,6 +92,7 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
+import { RunWorkflowNowDialog } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 let ruleIdCounter = 0
@@ -123,26 +124,8 @@ const CONTENT_LAYOUT_OPTIONS = [
 
 const CONTENT_LAYOUT_VALUES = CONTENT_LAYOUT_OPTIONS.map(o => o.value)
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
-
 // Actions that can be combined (Delete must be standalone)
 const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
-
-const ACTION_LABEL_KEYS: Record<ActionType, string> = {
-  speedLimits: "preferences.workflowDialog.actions.speedLimits",
-  shareLimits: "preferences.workflowDialog.actions.shareLimits",
-  pause: "preferences.workflowDialog.actions.pause",
-  resume: "preferences.workflowDialog.actions.resume",
-  recheck: "preferences.workflowDialog.actions.recheck",
-  reannounce: "preferences.workflowDialog.actions.reannounce",
-  autoManagement: "preferences.workflowDialog.actions.autoManagement",
-  delete: "preferences.workflowDialog.actions.delete",
-  tag: "preferences.workflowDialog.actions.tag",
-  category: "preferences.workflowDialog.actions.category",
-  move: "preferences.workflowDialog.actions.move",
-  externalProgram: "preferences.workflowDialog.actions.externalProgram",
-  exportToInstance: "preferences.workflowDialog.actions.exportToInstance",
-}
 
 const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
   deleted_ratio: "preferences.workflowDialog.dryRun.actions.deletedRatio",
@@ -692,6 +675,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
   const [livePreviewError, setLivePreviewError] = useState<string | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showRunNowDialog, setShowRunNowDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
   const [dryRunPromptedForNew, setDryRunPromptedForNew] = useState(false)
@@ -4282,6 +4266,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {t("preferences.workflowDialog.runDryRunNow")}
                 </Button>
+                {rule && (
+                  <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" onClick={() => setShowRunNowDialog(true)}>
+                    {t("preferences.runWorkflowNow.action")}
+                  </Button>
+                )}
                 <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending || movePathBlocksSave}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {rule ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.create")}
@@ -4291,6 +4280,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           </form>
         </DialogContent>
       </Dialog>
+
+      <RunWorkflowNowDialog
+        target={showRunNowDialog && rule ? { instanceId, rule } : null}
+        onClose={() => setShowRunNowDialog(false)}
+      />
 
       <WorkflowPreviewDialog
         open={showConfirmDialog}
