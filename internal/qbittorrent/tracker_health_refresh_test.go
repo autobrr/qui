@@ -73,13 +73,8 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 }
 
 func (rig *trackerHealthRig) unhealthy() bool {
-	counts := rig.sm.GetTrackerHealthCounts(1)
-	if counts == nil {
-		return false
-	}
-	_, down := counts.TrackerDownSet[trackerHealthTestHash]
-	_, errored := counts.TrackerErrorSet[trackerHealthTestHash]
-	return down || errored
+	health := rig.sm.GetTrackerHealthSnapshot(1).Health(trackerHealthTestHash)
+	return health == TrackerHealthDown || health == TrackerHealthError
 }
 
 // A health pass must ask qBittorrent again rather than re-serve the tracker

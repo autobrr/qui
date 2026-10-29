@@ -846,9 +846,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 	}
 
 	if evalCtx != nil {
-		if evalCtx.UnregisteredSet != nil {
-			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
+		pt.IsUnregistered = evalCtx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
@@ -889,11 +887,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	if s.syncManager != nil {
-		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
-		}
+		evalCtx.TrackerHealth = s.syncManager.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	// The cached index provides scope detection AND hardlink grouping in a single build.
@@ -1763,7 +1757,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
-			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("tagMissingTrackerHealth", stats.TagSkippedMissingTrackerHealth).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 			Int("deleteNoMatch", stats.DeleteConditionNotMet).
 			Int("moveNoMatch", stats.MoveConditionNotMet).

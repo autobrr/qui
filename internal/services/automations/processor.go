@@ -136,7 +136,7 @@ type ruleRunStats struct {
 	AutoManageConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
-	TagSkippedMissingUnregisteredSet int
+	TagSkippedMissingTrackerHealth   int
 	CategoryApplied                  int
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
@@ -438,10 +438,10 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 		// Skip if condition uses IS_UNREGISTERED but health data isn't available
 		if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) &&
-			(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
+			(evalCtx == nil || evalCtx.TrackerHealth == nil) {
 			// Skip tag processing for this rule
 			if stats != nil {
-				stats.TagSkippedMissingUnregisteredSet++
+				stats.TagSkippedMissingTrackerHealth++
 			}
 			continue
 		}
