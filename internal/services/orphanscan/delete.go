@@ -259,7 +259,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		ids.keys[key] = struct{}{}
 	}
 	if denied > 0 {
-		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent files qui may not read")
+		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent files qui may not look up")
 	}
 	return ids, nil
 }

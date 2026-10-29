@@ -346,7 +346,7 @@ func TestExecuteDeletion_DiscUnitWithoutFileIdentitiesFails(t *testing.T) {
 	require.Contains(t, fileStatuses(t, f.store, f.runID)[unit], "failed: check directory contents: cannot read the identity of the files in this folder")
 }
 
-// A torrent file qui may not read is skipped, as the scan skips a denied
+// A torrent file qui may not look up is skipped, as the scan skips a denied
 // subtree, and the run goes on.
 // regression: #3596
 func TestExecuteDeletion_TorrentFileWithoutReadPermissionIsSkipped(t *testing.T) {
