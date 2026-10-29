@@ -157,10 +157,11 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 		searchee := top.searchee
 		// A folder holds its other files only until the walk has shown
 		// whether it is a disc layout, since the marker can come after them.
+		// The clone frees the slots they took.
 		if !searchee.IsDisc {
-			searchee.Files = slices.DeleteFunc(searchee.Files, func(f *ScannedFile) bool {
+			searchee.Files = slices.Clone(slices.DeleteFunc(searchee.Files, func(f *ScannedFile) bool {
 				return !isMediaFile(d.Base(f.Path))
-			})
+			}))
 		}
 		if len(searchee.Files) == 0 {
 			continue
@@ -175,7 +176,9 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 // name, or returns nil for an entry that is not a searchee.
 func newRootEntry(d fsops.PathDialect, rootPath, name string, entry *fsops.WalkEntry, nested bool) *rootEntry {
 	if entry.IsDir || nested || entry.Err != nil {
-		return &rootEntry{searchee: &Searchee{Name: name, Path: d.Join(rootPath, name)}}
+		// name is cut from the walk entry's path, so it is cloned to keep
+		// that path from staying alive with the searchee.
+		return &rootEntry{searchee: &Searchee{Name: strings.Clone(name), Path: d.Join(rootPath, name)}}
 	}
 	if !isMediaFile(name) {
 		return nil
