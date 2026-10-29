@@ -720,7 +720,7 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents 
 	}
 	for i := range torrents {
 		// Health counts are mutually exclusive.
-		switch sm.determineTrackerHealth(&torrents[i]) {
+		switch trackerHealthOf(&torrents[i], counts.UpdatedAt) {
 		case TrackerHealthUnregistered:
 			counts.Unregistered++
 			counts.UnregisteredSet[torrents[i].Hash] = struct{}{}
@@ -1351,6 +1351,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var filteredTorrents []qbt.Torrent
 	var allTorrentsForCounts []qbt.Torrent
 	var err error
+	// One clock read for the grace hour, so the filter, the sort, and the rows agree.
+	now := time.Now()
 
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -1511,7 +1513,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// new slice whenever it narrows.
 		allTorrentsForCounts = filteredTorrents
 
-		filteredTorrents = sm.applyManualFiltersWithTrackerHealth(client, filteredTorrents, filters, mainData, categories, useSubcategories, cachedHealth)
+		filteredTorrents = sm.applyManualFiltersWithTrackerHealth(client, filteredTorrents, filters, mainData, categories, useSubcategories, cachedHealth, now)
 	default:
 		// Use library filtering for single selections
 		log.Trace().
@@ -1586,7 +1588,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	summary := SummaryRequested(ctx)
 	if sort != "" && !summary {
-		sm.sortTorrents(filteredTorrents, sort, order == "desc", trackerHealthSupported, cachedHealth)
+		sm.sortTorrents(filteredTorrents, sort, order == "desc", trackerHealthSupported, cachedHealth, now)
 	}
 
 	// Calculate stats from filtered torrents
@@ -1636,7 +1638,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i := range paginatedTorrents {
 			view := TorrentView{Torrent: &paginatedTorrents[i]}
-			if health := sm.resolveTrackerHealth(&paginatedTorrents[i], cachedHealth); health != "" {
+			if health := sm.resolveTrackerHealth(&paginatedTorrents[i], cachedHealth, now); health != "" {
 				view.TrackerHealth = health
 			}
 			paginatedViews[i] = view
@@ -1737,12 +1739,13 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
 	}
 
+	now := time.Now()
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		torrent := &torrents[i]
 		view := &TorrentView{Torrent: torrent}
 		// First try to determine health from enriched tracker data
-		if health := sm.determineTrackerHealth(torrent); health != "" {
+		if health := trackerHealthOf(torrent, now); health != "" {
 			view.TrackerHealth = health
 		} else if cachedHealth != nil {
 			// Fall back to cached hash sets if torrent wasn't enriched
@@ -3132,132 +3135,10 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 		statusFiltersRequireTrackerData(filters.ExcludeStatus)
 }
 
-func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
-	if !trackersReportUnregistered(torrent) {
-		return false
-	}
-
-	// A freshly added torrent can report "unregistered" before the tracker has
-	// acknowledged it, so ignore the first hour. Checked last because reading
-	// the clock costs more than scanning the trackers, and this runs once per
-	// torrent for the whole library.
-	return torrent.AddedOn <= 0 || time.Since(time.Unix(torrent.AddedOn, 0)) >= time.Hour
-}
-
-// trackersReportUnregistered reports whether the trackers say the torrent is
-// unregistered, without the one-hour grace for a new torrent.
-func trackersReportUnregistered(torrent *qbt.Torrent) bool {
-	if torrent == nil || len(torrent.Trackers) == 0 {
-		return false
-	}
-
-	var hasWorking bool
-	var hasUnregistered bool
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusOK:
-			hasWorking = true
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
-			if TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasUnregistered = true
-			}
-		default:
-			// Anything else says nothing about registration either way.
-		}
-	}
-
-	return hasUnregistered && !hasWorking
-}
-
-func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
-	if torrent == nil {
-		return false
-	}
-	var hasWorking bool
-	var hasDown bool
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
-			hasWorking = true
-		case qbt.TrackerStatusUnreachable:
-			hasDown = true
-		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
-			if TrackerMessageMatchesDown(tracker.Message) {
-				hasDown = true
-			}
-		default:
-			// Other statuses (e.g. not contacted yet) neither confirm nor deny a failure.
-			continue
-		}
-	}
-
-	return hasDown && !hasWorking
-}
-
-func (sm *SyncManager) torrentHasTrackerError(torrent *qbt.Torrent) bool {
-	if torrent == nil {
-		return false
-	}
-
-	// A torrent inside the unregistered grace hour is not a tracker error either.
-	if trackersReportUnregistered(torrent) || sm.torrentTrackerIsDown(torrent) {
-		return false
-	}
-
-	var erroredTrackers int
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError, qbt.TrackerStatusUnreachable:
-			erroredTrackers++
-		case qbt.TrackerStatusNotContacted, qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
-			return false
-		default:
-			// Any non-disabled tracker that is not in an error state means the torrent
-			// does not belong in the "all trackers errored" bucket.
-			return false
-		}
-	}
-
-	return erroredTrackers > 0
-}
-
-func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealth {
-	// Without tracker data every health check below is false by construction,
-	// and most torrents reach here unhydrated.
-	if torrent == nil || len(torrent.Trackers) == 0 {
-		return ""
-	}
-	if sm.torrentIsUnregistered(torrent) {
-		return TrackerHealthUnregistered
-	}
-
-	if sm.torrentTrackerIsDown(torrent) {
-		return TrackerHealthDown
-	}
-
-	if sm.torrentHasTrackerError(torrent) {
-		return TrackerHealthError
-	}
-
-	return ""
-}
-
 // resolveTrackerHealth returns live tracker health first, then falls back to
 // cached hash sets for cache-only torrent rows.
-func (sm *SyncManager) resolveTrackerHealth(torrent *qbt.Torrent, cachedHealth *TrackerHealthCounts) TrackerHealth {
-	if health := sm.determineTrackerHealth(torrent); health != "" {
+func (sm *SyncManager) resolveTrackerHealth(torrent *qbt.Torrent, cachedHealth *TrackerHealthCounts, now time.Time) TrackerHealth {
+	if health := trackerHealthOf(torrent, now); health != "" {
 		return health
 	}
 	if torrent == nil || cachedHealth == nil || torrent.Hash == "" {
@@ -3518,10 +3399,10 @@ type statusCounter struct {
 }
 
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
-func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counter *statusCounter) {
+func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counter *statusCounter, now time.Time) {
 	counter.byState[torrent.State]++
 
-	switch sm.determineTrackerHealth(torrent) {
+	switch trackerHealthOf(torrent, now) {
 	case TrackerHealthUnregistered:
 		counter.unregistered++
 	case TrackerHealthDown:
@@ -3832,6 +3713,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	categoryStats := make(map[string]*countWithSize)
 	tagStats := make(map[string]*countWithSize)
 	statusCounts := &statusCounter{byState: map[qbt.TorrentState]int{}}
+	now := time.Now()
 
 	// Process each torrent for other counts (status, categories, tags)
 	for i := range allTorrents {
@@ -3839,7 +3721,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		sharedPath := sharedContentPaths[i]
 
 		// Count statuses
-		sm.countTorrentStatuses(torrent, statusCounts)
+		sm.countTorrentStatuses(torrent, statusCounts, now)
 
 		// Category count and size (deduplicated by ContentPath)
 		addStat(categoryStats, torrent.Category, torrent, sharedPath)
@@ -4712,7 +4594,7 @@ func (sm *SyncManager) applyManualFilters(
 	categories map[string]qbt.Category,
 	useSubcategories bool,
 ) []qbt.Torrent {
-	return sm.applyManualFiltersWithTrackerHealth(client, torrents, filters, mainData, categories, useSubcategories, nil)
+	return sm.applyManualFiltersWithTrackerHealth(client, torrents, filters, mainData, categories, useSubcategories, nil, time.Now())
 }
 
 // applyManualFiltersWithTrackerHealth applies manual filters and lets
@@ -4726,6 +4608,7 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	categories map[string]qbt.Category,
 	useSubcategories bool,
 	cachedHealth *TrackerHealthCounts,
+	now time.Time,
 ) []qbt.Torrent {
 	var matched []int
 
@@ -4935,7 +4818,7 @@ torrentsLoop:
 		if len(filters.Status) > 0 {
 			matched := false
 			for _, status := range filters.Status {
-				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
+				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth, now) {
 					matched = true
 					break
 				}
@@ -4947,7 +4830,7 @@ torrentsLoop:
 
 		if len(filters.ExcludeStatus) > 0 {
 			for _, status := range filters.ExcludeStatus {
-				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
+				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth, now) {
 					continue torrentsLoop
 				}
 			}
@@ -5302,14 +5185,14 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 // matchTorrentStatusWithTrackerHealth uses cached tracker-health data only for
 // tracker-health statuses; all qBittorrent state filters keep their normal
 // state-based matching.
-func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthCounts) bool {
+func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthCounts, now time.Time) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthUnregistered
+		return sm.resolveTrackerHealth(torrent, cachedHealth, now) == TrackerHealthUnregistered
 	case "tracker_down":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthDown
+		return sm.resolveTrackerHealth(torrent, cachedHealth, now) == TrackerHealthDown
 	case "tracker_error":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthError
+		return sm.resolveTrackerHealth(torrent, cachedHealth, now) == TrackerHealthError
 	}
 
 	// Handle special cases first

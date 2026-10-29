@@ -66,7 +66,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		for _, tc := range testCases {
 			count := 0
 			for _, torrent := range torrents {
-				if sm.matchTorrentStatusWithTrackerHealth(&torrent, tc.status, nil) {
+				if sm.matchTorrentStatusWithTrackerHealth(&torrent, tc.status, nil, time.Now()) {
 					count++
 				}
 			}
@@ -103,159 +103,6 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	})
 }
 
-func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
-	sm := &SyncManager{}
-	addedOn := time.Now().Add(-2 * time.Hour).Unix()
-
-	t.Run("marks unregistered when updating message matches", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			AddedOn: addedOn,
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusUpdating, Message: "Torrent not registered on tracker"},
-			},
-		}
-
-		assert.True(t, sm.torrentIsUnregistered(&torrent))
-	})
-
-	t.Run("ignores when working tracker present", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			AddedOn: addedOn,
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusUpdating, Message: "Torrent not registered on tracker"},
-				{Status: qbt.TrackerStatusOK, Message: ""},
-			},
-		}
-
-		assert.False(t, sm.torrentIsUnregistered(&torrent))
-	})
-}
-
-func TestSyncManager_DetermineTrackerHealth_UnknownHTTPError(t *testing.T) {
-	sm := &SyncManager{}
-	// libtorrent reports an HTTP status without a reason phrase as
-	// "<code> (unknown HTTP error)". The tracker failed to answer, so the
-	// torrent is not unregistered.
-	torrent := qbt.Torrent{
-		AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
-		Trackers: []qbt.TorrentTracker{
-			{Status: qbt.TrackerStatusNotWorking, Message: "429 (unknown HTTP error)"},
-		},
-	}
-
-	assert.Equal(t, TrackerHealthDown, sm.determineTrackerHealth(&torrent))
-}
-
-func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
-	sm := &SyncManager{}
-
-	t.Run("does not mark tracker down when updating", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusUpdating, Message: "Tracker is down for maintenance"},
-			},
-		}
-
-		assert.False(t, sm.torrentTrackerIsDown(&torrent))
-	})
-
-	t.Run("marks tracker down when not working", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
-			},
-		}
-
-		assert.True(t, sm.torrentTrackerIsDown(&torrent))
-	})
-
-	t.Run("ignores when working tracker present", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
-				{Status: qbt.TrackerStatusOK, Message: ""},
-			},
-		}
-
-		assert.False(t, sm.torrentTrackerIsDown(&torrent))
-	})
-
-	t.Run("does not mark tracker down from down keyword inside URL", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
-			Trackers: []qbt.TorrentTracker{
-				{
-					Status:  qbt.TrackerStatusNotWorking,
-					Message: "Trumped: https://tracker.example.com/torrents/example-show-2025-s02e07-the-final-countdown-1080p",
-				},
-			},
-		}
-
-		assert.True(t, sm.torrentIsUnregistered(&torrent))
-		assert.False(t, sm.torrentTrackerIsDown(&torrent))
-		assert.Equal(t, TrackerHealthUnregistered, sm.determineTrackerHealth(&torrent))
-	})
-}
-
-func TestSyncManager_TorrentHasTrackerError(t *testing.T) {
-	sm := &SyncManager{}
-
-	t.Run("marks generic tracker errors when all trackers are errored", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusNotWorking, Message: "Invalid tracker response payload"},
-				{Status: qbt.TrackerStatusTrackerError, Message: "Tracker reply failed checksum validation"},
-			},
-		}
-
-		assert.True(t, sm.torrentHasTrackerError(&torrent))
-		assert.Equal(t, TrackerHealthError, sm.determineTrackerHealth(&torrent))
-	})
-
-	t.Run("ignores tracker errors when a working tracker is present", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusNotWorking, Message: "Invalid tracker response payload"},
-				{Status: qbt.TrackerStatusOK, Message: ""},
-			},
-		}
-
-		assert.False(t, sm.torrentHasTrackerError(&torrent))
-	})
-
-	t.Run("ignores tracker errors classified as unregistered", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusNotWorking, Message: "Torrent not registered on tracker"},
-			},
-		}
-
-		assert.False(t, sm.torrentHasTrackerError(&torrent))
-	})
-
-	t.Run("ignores unregistered torrents inside the grace hour", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			AddedOn: time.Now().Add(-10 * time.Minute).Unix(),
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusTrackerError, Message: "Unregistered torrent"},
-			},
-		}
-
-		assert.Equal(t, TrackerHealth(""), sm.determineTrackerHealth(&torrent))
-	})
-
-	t.Run("ignores tracker errors classified as tracker down", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusUnreachable, Message: "Connection timed out"},
-			},
-		}
-
-		assert.False(t, sm.torrentHasTrackerError(&torrent))
-	})
-}
-
 func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 	sm := &SyncManager{}
 	counts := map[string]int{}
@@ -272,7 +119,7 @@ func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 		},
 	}
 
-	sm.countTorrentStatuses(&torrent, counter)
+	sm.countTorrentStatuses(&torrent, counter, time.Now())
 	counter.expandInto(counts)
 
 	assert.Equal(t, 1, counts["all"])
@@ -846,10 +693,10 @@ func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "Error"},
 	}
 
-	filtered := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, nil, false, cachedHealth)
+	filtered := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, nil, false, cachedHealth, time.Now())
 	assert.Equal(t, []qbt.Torrent{torrents[1], torrents[3]}, filtered)
 
-	excluded := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, nil, false, cachedHealth)
+	excluded := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, nil, false, cachedHealth, time.Now())
 	assert.Equal(t, []qbt.Torrent{torrents[0], torrents[1], torrents[3]}, excluded)
 
 	withoutCache := sm.applyManualFilters(nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, nil, false)
@@ -930,10 +777,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", true, true, nil)
+	sm.sortTorrents(torrents, "state", true, true, nil, time.Now())
 	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, true, nil)
+	sm.sortTorrents(torrents, "state", false, true, nil, time.Now())
 	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
 }
 
@@ -959,7 +806,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
+	sm.sortTorrents(torrents, "state", false, true, cachedHealth, time.Now())
 	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
 
 	unsupportedTorrents := []qbt.Torrent{
@@ -969,7 +816,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
-	sm.sortTorrents(unsupportedTorrents, "state", false, false, cachedHealth)
+	sm.sortTorrents(unsupportedTorrents, "state", false, false, cachedHealth, time.Now())
 	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
@@ -999,10 +846,10 @@ func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", true, false, nil)
+	sm.sortTorrents(torrents, "state", true, false, nil, time.Now())
 	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sm.sortTorrents(torrents, "state", false, false, nil, time.Now())
 	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
 }
 
@@ -1023,7 +870,7 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sm.sortTorrents(torrents, "state", false, false, nil, time.Now())
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 

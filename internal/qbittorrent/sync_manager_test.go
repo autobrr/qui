@@ -1665,7 +1665,7 @@ func TestSortTorrentsByTracker_WithCustomDisplayNames(t *testing.T) {
 		{Hash: "hash5", Tracker: "", Name: "Torrent E"},
 	}
 
-	sm.sortTorrents(torrents, "tracker", false, false, nil)
+	sm.sortTorrents(torrents, "tracker", false, false, nil, time.Now())
 
 	// Expected order (ascending):
 	// 1. "another tracker" (another.tracker.org)
@@ -1681,7 +1681,7 @@ func TestSortTorrentsByTracker_WithCustomDisplayNames(t *testing.T) {
 	require.Equal(t, "hash5", torrents[4].Hash, "Empty tracker should be last")
 
 	// Test descending order - note: torrents without trackers always sort to end (hasDomain check is not reversed)
-	sm.sortTorrents(torrents, "tracker", true, false, nil)
+	sm.sortTorrents(torrents, "tracker", true, false, nil, time.Now())
 
 	require.Equal(t, "hash2", torrents[0].Hash, "Unknown tracker should be first in desc (z > u > m > a)")
 	require.Equal(t, "hash3", torrents[1].Hash, "My Tracker (tracker2) should be second in desc")
@@ -1710,7 +1710,7 @@ func TestSortTorrentsByTracker_MergedDomainsStayTogether(t *testing.T) {
 		{Hash: "hash4", Tracker: "https://other.site.net/announce", Name: "From Other"},
 	}
 
-	sm.sortTorrents(torrents, "tracker", false, false, nil)
+	sm.sortTorrents(torrents, "tracker", false, false, nil, time.Now())
 
 	// "other.site.net" (o) comes before "private tracker" (p) alphabetically
 	// Within "Private Tracker" group, domains are sorted alphabetically (backup < new < old)
@@ -1732,7 +1732,7 @@ func TestSortTorrentsByTracker_NoCustomizations(t *testing.T) {
 		{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"},
 	}
 
-	sm.sortTorrents(torrents, "tracker", false, false, nil)
+	sm.sortTorrents(torrents, "tracker", false, false, nil, time.Now())
 
 	// Should sort by domain alphabetically
 	require.Equal(t, "hash2", torrents[0].Hash, "apple.com should be first")
@@ -1756,7 +1756,7 @@ func TestSortTorrentsByTracker_EqualKeysKeepInputOrder(t *testing.T) {
 	}
 	torrents = append(torrents, qbt.Torrent{Hash: "hash1", Tracker: "https://apple.com/announce", Name: "has-tracker"})
 
-	sm.sortTorrents(torrents, "tracker", false, false, nil)
+	sm.sortTorrents(torrents, "tracker", false, false, nil, time.Now())
 
 	require.Equal(t, "has-tracker", torrents[0].Name, "the row with a tracker sorts ahead of the pending ones")
 	for i := range pending {
@@ -1986,7 +1986,7 @@ func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {
 	}
 
 	// Ascending: state priority (downloading < uploading < paused), then name, then hash
-	sm.sortTorrents(torrents, "last_activity", false, false, nil)
+	sm.sortTorrents(torrents, "last_activity", false, false, nil, time.Now())
 
 	// Downloading has lower priority than uploading, which has lower than paused
 	// hash2 and hash4 both downloading with name "Apple", sorted by hash
@@ -1997,7 +1997,7 @@ func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {
 
 	// Descending: same fallback order (state priority, name A-Z, hash)
 	// All have same timestamp, so order is identical to ascending
-	sm.sortTorrents(torrents, "last_activity", true, false, nil)
+	sm.sortTorrents(torrents, "last_activity", true, false, nil, time.Now())
 
 	require.Equal(t, "hash2", torrents[0].Hash, "downloading 'Apple' first by state")
 	require.Equal(t, "hash4", torrents[1].Hash, "downloading 'Apple' second by hash")
@@ -2017,14 +2017,14 @@ func TestSortTorrentsByTimestamp_ZeroSortsNaturally(t *testing.T) {
 	}
 
 	// Ascending (oldest first): 0 at start as it's the smallest value
-	sm.sortTorrents(torrents, "last_activity", false, false, nil)
+	sm.sortTorrents(torrents, "last_activity", false, false, nil, time.Now())
 
 	require.Equal(t, "hash2", torrents[0].Hash, "0 (no activity) should be at start for ascending")
 	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
 	require.Equal(t, "hash3", torrents[2].Hash, "2000 should be last")
 
 	// Descending (newest first): 0 at end as it's the smallest value
-	sm.sortTorrents(torrents, "last_activity", true, false, nil)
+	sm.sortTorrents(torrents, "last_activity", true, false, nil, time.Now())
 
 	require.Equal(t, "hash3", torrents[0].Hash, "2000 should be first for descending")
 	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
@@ -2043,14 +2043,14 @@ func TestSortTorrentsByTimestamp_NegativeOneSortsNaturally(t *testing.T) {
 	}
 
 	// Ascending: -1 at start as it's the smallest value
-	sm.sortTorrents(torrents, "completion_on", false, false, nil)
+	sm.sortTorrents(torrents, "completion_on", false, false, nil, time.Now())
 
 	require.Equal(t, "hash2", torrents[0].Hash, "-1 (never completed) should be at start for ascending")
 	require.Equal(t, "hash1", torrents[1].Hash, "the early completion should be second")
 	require.Equal(t, "hash3", torrents[2].Hash, "the late completion should be last")
 
 	// Descending: -1 at end as it's the smallest value
-	sm.sortTorrents(torrents, "completion_on", true, false, nil)
+	sm.sortTorrents(torrents, "completion_on", true, false, nil, time.Now())
 
 	require.Equal(t, "hash3", torrents[0].Hash, "the late completion should be first for descending")
 	require.Equal(t, "hash1", torrents[1].Hash, "the early completion should be second")
@@ -2072,7 +2072,7 @@ func TestSortTorrentsByTimestamp_TruncationGroupsSameInterval(t *testing.T) {
 
 	// Ascending: bucket 1 (61, 119) before bucket 2 (120)
 	// Within bucket 1: falls back to state priority (downloading < uploading)
-	sm.sortTorrents(torrents, "last_activity", false, false, nil)
+	sm.sortTorrents(torrents, "last_activity", false, false, nil, time.Now())
 
 	require.Equal(t, "hash3", torrents[0].Hash, "bucket 1: downloading 'Mango' first by state")
 	require.Equal(t, "hash2", torrents[1].Hash, "bucket 1: uploading 'Apple' second by state")
@@ -2080,7 +2080,7 @@ func TestSortTorrentsByTimestamp_TruncationGroupsSameInterval(t *testing.T) {
 
 	// Descending: bucket 2 (120) before bucket 1 (61, 119)
 	// Within bucket 1: same fallback order (state priority, name A-Z)
-	sm.sortTorrents(torrents, "last_activity", true, false, nil)
+	sm.sortTorrents(torrents, "last_activity", true, false, nil, time.Now())
 
 	require.Equal(t, "hash1", torrents[0].Hash, "bucket 2: paused 'Zebra' first")
 	require.Equal(t, "hash3", torrents[1].Hash, "bucket 1: downloading 'Mango' by state")
@@ -2144,7 +2144,7 @@ func TestSortTorrentsByTimestampTiebreak(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Feed both orderings so the assertion cannot pass by luck.
 			for _, torrents := range [][]qbt.Torrent{{tt.a, tt.b}, {tt.b, tt.a}} {
-				sm.sortTorrents(torrents, "added_on", false, false, nil)
+				sm.sortTorrents(torrents, "added_on", false, false, nil, time.Now())
 
 				first := tt.a.Hash
 				if tt.expected > 0 {
