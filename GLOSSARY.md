@@ -29,6 +29,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Tracker health**: qui's verdict on the trackers of one torrent: healthy, unregistered, tracker down, or tracker error. _Avoid_: tracker status.
 - **Tracker status**: The status that qBittorrent reports for one tracker of a torrent, such as working, not working, or updating. _Avoid_: tracker health.
+- **Grace hour**: The first hour after a torrent is added. During it, qui shows no unregistered label, but it can still show tracker down. _Avoid_: grace period.
 
 ## Themes
 

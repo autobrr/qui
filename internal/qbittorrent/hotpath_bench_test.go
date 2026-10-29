@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -261,11 +262,11 @@ func BenchmarkHotSort(b *testing.B) {
 		name string
 		run  func(t []qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, nil) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
-		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
+		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil, time.Now()) }},
+		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, nil, time.Now()) }},
+		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil, time.Now()) }},
+		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil, time.Now()) }},
+		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil, time.Now()) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {

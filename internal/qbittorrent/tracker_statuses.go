@@ -6,6 +6,9 @@ package qbittorrent
 import (
 	"regexp"
 	"strings"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 )
 
 // urlPattern matches http:// and https:// URLs to strip them from tracker messages.
@@ -92,6 +95,54 @@ var trackerDownStatuses = []string{
 	"your request could not be processed, please try again later",
 	"unable to process your request",
 	"<none>",
+}
+
+// trackerHealthOf decides the tracker health of a torrent. During the grace hour
+// an unregistered message gives no unregistered label, because a tracker can say
+// that before it registers a new upload. The tracker down label can still show.
+func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
+	// Most torrents have no tracker data, so they skip the time math.
+	if torrent == nil || len(torrent.Trackers) == 0 {
+		return ""
+	}
+
+	graceOver := torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour
+	var working, updating, unregistered, down, failed, pending bool
+	for _, tracker := range torrent.Trackers {
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			// Skip DHT/PeX entries
+		case qbt.TrackerStatusOK:
+			working = true
+		case qbt.TrackerStatusUpdating:
+			updating = true
+			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
+		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
+			failed = true
+			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
+			// After the grace hour an unregistered message decides the verdict,
+			// so the down list is not read.
+			down = down || ((!unregistered || !graceOver) && TrackerMessageMatchesDown(tracker.Message))
+		case qbt.TrackerStatusUnreachable:
+			failed = true
+			down = true
+		default:
+			// Not contacted yet, or a status qui does not know.
+			pending = true
+		}
+	}
+
+	switch {
+	case working:
+		return ""
+	case unregistered && graceOver:
+		return TrackerHealthUnregistered
+	case down && !updating:
+		return TrackerHealthDown
+	case failed && !updating && !pending && !unregistered:
+		return TrackerHealthError
+	}
+	return ""
 }
 
 // TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.

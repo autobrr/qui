@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -35,7 +36,7 @@ var torrentSortFields = func() map[string]int {
 
 // sortTorrents sorts the rows of one instance in place. cachedHealth fills in
 // the tracker health of rows whose trackers were not fetched.
-func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) {
+func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts, now time.Time) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		rows[i] = &torrents[i]
@@ -44,7 +45,7 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc 
 		if !trackerHealthSupported {
 			return ""
 		}
-		return sm.resolveTrackerHealth(rows[i], cachedHealth)
+		return sm.resolveTrackerHealth(rows[i], cachedHealth, now)
 	}
 	sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, func(a, b int) int { return a - b }))
 }
@@ -57,6 +58,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 		rows[i] = torrents[i].Torrent
 	}
 	var cachedByInstance map[int]*TrackerHealthCounts
+	now := time.Now()
 	health := func(i int) TrackerHealth {
 		id := torrents[i].InstanceID
 		cached, ok := cachedByInstance[id]
@@ -67,7 +69,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 			cached = sm.GetTrackerHealthCounts(id)
 			cachedByInstance[id] = cached
 		}
-		return sm.resolveTrackerHealth(rows[i], cached)
+		return sm.resolveTrackerHealth(rows[i], cached, now)
 	}
 	compareInstance := func(a, b int) int {
 		return cmp.Or(
