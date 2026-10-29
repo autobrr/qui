@@ -153,19 +153,9 @@ func (rig *flagsRig) set(fn func()) {
 
 func (rig *flagsRig) health(t *testing.T) map[string]TrackerHealth {
 	t.Helper()
-	counts := rig.sm.GetTrackerHealthCounts(1)
-	require.NotNil(t, counts)
-	out := map[string]TrackerHealth{}
-	for hash := range counts.UnregisteredSet {
-		out[hash] = TrackerHealthUnregistered
-	}
-	for hash := range counts.TrackerDownSet {
-		out[hash] = TrackerHealthDown
-	}
-	for hash := range counts.TrackerErrorSet {
-		out[hash] = TrackerHealthError
-	}
-	return out
+	snapshot := rig.sm.GetTrackerHealthSnapshot(1)
+	require.NotNil(t, snapshot)
+	return snapshot.byHash
 }
 
 func sortedRequests(requests [][]string) [][]string {
@@ -334,7 +324,13 @@ func TestFlagsPassRefetchesEditedTorrents(t *testing.T) {
 	rig := newFlagsRig(t)
 	rig.pass(t)
 
-	rig.sm.RemoveHashesFromTrackerHealthCache(1, []string{flagsHashDown})
+	require.Equal(t, TrackerHealthDown, rig.health(t)[flagsHashDown])
+	require.Equal(t, 1, rig.sm.GetTrackerHealthSnapshot(1).Count(TrackerHealthDown))
+
+	rig.sm.clearTrackerHealthAndRefetch(1, []string{flagsHashDown})
+	require.Empty(t, rig.health(t)[flagsHashDown], "the edit drops the label at once")
+	require.Zero(t, rig.sm.GetTrackerHealthSnapshot(1).Count(TrackerHealthDown), "the edit drops the count at once")
+
 	require.Equal(t, [][]string{{flagsHashDown}}, rig.pass(t))
 	require.Equal(t, TrackerHealthDown, rig.health(t)[flagsHashDown])
 	require.Empty(t, rig.pass(t), "the edit is handled once")
@@ -376,7 +372,7 @@ func TestHydrateTorrentTrackersFetchesByHashOnFlagsVersions(t *testing.T) {
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashDown}}, requests, "a flag change fetches that torrent")
 
-	rig.sm.RemoveHashesFromTrackerHealthCache(1, []string{flagsHashHealthy})
+	rig.sm.clearTrackerHealthAndRefetch(1, []string{flagsHashHealthy})
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashHealthy}}, requests, "an edit fetches that torrent")
 }

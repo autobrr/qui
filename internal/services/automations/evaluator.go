@@ -55,12 +55,9 @@ type EvalContext struct {
 	torrentsByHash map[string]qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
 
-	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
-	UnregisteredSet map[string]struct{}
-	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
-	TrackerDownSet map[string]struct{}
-	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
-	TrackerErrorSet map[string]struct{}
+	// TrackerHealth is the tracker health snapshot of the instance. It is nil
+	// when the instance has no tracker health yet.
+	TrackerHealth *qbittorrent.TrackerHealthSnapshot
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
@@ -619,11 +616,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldSuperSeeding:
 		return compareBool(torrent.SuperSeeding, cond)
 	case FieldIsUnregistered:
-		isUnregistered := false
-		if ctx != nil && ctx.UnregisteredSet != nil {
-			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
-		}
-		return compareBool(isUnregistered, cond)
+		return compareBool(ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered, cond)
 
 	case FieldHardlinkScope:
 		return compareHardlinkScope(ctx.HardlinkScopeByHash[torrent.Hash], cond)
@@ -798,24 +791,8 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 		return torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles
 	case "missingfiles":
 		return torrent.State == qbt.TorrentStateMissingFiles
-	case "unregistered":
-		if ctx == nil || ctx.UnregisteredSet == nil {
-			return false
-		}
-		_, ok := ctx.UnregisteredSet[torrent.Hash]
-		return ok
-	case "tracker_down":
-		if ctx == nil || ctx.TrackerDownSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerDownSet[torrent.Hash]
-		return ok
-	case "tracker_error":
-		if ctx == nil || ctx.TrackerErrorSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerErrorSet[torrent.Hash]
-		return ok
+	case "unregistered", "tracker_down", "tracker_error":
+		return ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealth(strings.ToLower(normalized))
 	}
 
 	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").

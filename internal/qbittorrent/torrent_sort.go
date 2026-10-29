@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -34,9 +33,9 @@ var torrentSortFields = func() map[string]int {
 	return fields
 }()
 
-// sortTorrents sorts the rows of one instance in place. cachedHealth fills in
-// the tracker health of rows whose trackers were not fetched.
-func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts, now time.Time) {
+// sortTorrents sorts the rows of one instance in place. The state sort reads
+// the tracker health from cachedHealth.
+func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		rows[i] = &torrents[i]
@@ -45,7 +44,7 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc 
 		if !trackerHealthSupported {
 			return ""
 		}
-		return sm.resolveTrackerHealth(rows[i], cachedHealth, now)
+		return cachedHealth.Health(rows[i].Hash)
 	}
 	sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, func(a, b int) int { return a - b }))
 }
@@ -57,19 +56,18 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 	for i := range torrents {
 		rows[i] = torrents[i].Torrent
 	}
-	var cachedByInstance map[int]*TrackerHealthCounts
-	now := time.Now()
+	var cachedByInstance map[int]*TrackerHealthSnapshot
 	health := func(i int) TrackerHealth {
 		id := torrents[i].InstanceID
 		cached, ok := cachedByInstance[id]
 		if !ok {
 			if cachedByInstance == nil {
-				cachedByInstance = make(map[int]*TrackerHealthCounts)
+				cachedByInstance = make(map[int]*TrackerHealthSnapshot)
 			}
-			cached = sm.GetTrackerHealthCounts(id)
+			cached = sm.GetTrackerHealthSnapshot(id)
 			cachedByInstance[id] = cached
 		}
-		return sm.resolveTrackerHealth(rows[i], cached, now)
+		return cached.Health(rows[i].Hash)
 	}
 	compareInstance := func(a, b int) int {
 		return cmp.Or(

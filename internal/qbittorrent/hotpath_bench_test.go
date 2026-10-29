@@ -104,6 +104,19 @@ func benchTorrents(count int) []qbt.Torrent {
 	return torrents
 }
 
+// benchTrackerHealth builds the snapshot that a refresh stores for these
+// torrents, so the state sort reads real verdicts.
+func benchTrackerHealth(torrents []qbt.Torrent) *TrackerHealthSnapshot {
+	now := time.Now()
+	byHash := make(map[string]TrackerHealth)
+	for i := range torrents {
+		if health := trackerHealthOf(&torrents[i], now); health != "" {
+			byHash[torrents[i].Hash] = health
+		}
+	}
+	return NewTrackerHealthSnapshot(byHash)
+}
+
 func benchSilence(b *testing.B) {
 	b.Helper()
 	old := zerolog.GlobalLevel()
@@ -256,17 +269,18 @@ func BenchmarkHotSort(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	src := benchTorrents(benchSize)
+	health := benchTrackerHealth(src)
 	work := make([]qbt.Torrent, len(src))
 
 	for _, tc := range []struct {
 		name string
 		run  func(t []qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil, time.Now()) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, nil, time.Now()) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil, time.Now()) }},
-		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil, time.Now()) }},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil, time.Now()) }},
+		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
+		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, health) }},
+		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
+		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
+		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
@@ -297,7 +311,10 @@ func benchCrossInstanceViews(count int) []CrossInstanceTorrentView {
 
 func BenchmarkHotSortCrossInstance(b *testing.B) {
 	benchSilence(b)
-	sm := &SyncManager{}
+	// benchTorrents is deterministic, so this snapshot holds the hashes of the
+	// views. Each instance gets all of them, and a lookup finds its own rows.
+	health := benchTrackerHealth(benchTorrents(benchSize))
+	sm := &SyncManager{trackerHealthCache: map[int]*TrackerHealthSnapshot{0: health, 1: health, 2: health}}
 	src := benchCrossInstanceViews(benchSize)
 	work := make([]CrossInstanceTorrentView, len(src))
 
