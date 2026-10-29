@@ -173,6 +173,9 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 	if count <= 0 {
 		count = 1
 	}
+	if activity.CreatedAt.IsZero() {
+		activity.CreatedAt = time.Now().UTC() // the store lets the database stamp the row and leaves this field unset
+	}
 	s.activities = append(s.activities, activity)
 	s.add(activity.Action, activity.Outcome, count)
 	s.addRuleAction(activity, count)

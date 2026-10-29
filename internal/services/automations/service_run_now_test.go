@@ -60,6 +60,7 @@ func TestApplyRuleNow_AppliesDisabledRule(t *testing.T) {
 	require.Equal(t, models.ActivityActionPaused, activities[0].Action)
 	require.Equal(t, models.ActivityOutcomeSuccess, activities[0].Outcome)
 	require.Positive(t, activities[0].ID, "the reply names the stored activity row")
+	require.False(t, activities[0].CreatedAt.IsZero(), "the reply carries a timestamp")
 	require.False(t, rule.Enabled, "the stored rule stays disabled")
 
 	stored, err := svc.activityStore.ListByInstance(t.Context(), instanceID, 10)

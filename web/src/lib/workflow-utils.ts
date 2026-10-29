@@ -40,9 +40,16 @@ export function getRuleTagActions(rule: Automation) {
 
 /** Returns the actions that a saved workflow has turned on, in the order of the action picker. */
 export function getRuleActions(rule: Automation): ActionType[] {
-  return (Object.keys(ACTION_LABEL_KEYS) as ActionType[]).filter(action =>
-    action === "tag"? getRuleTagActions(rule).some(tag => tag.enabled): Boolean(rule.conditions?.[action]?.enabled)
-  )
+  return (Object.keys(ACTION_LABEL_KEYS) as ActionType[]).filter(action => {
+    if (action === "tag") {
+      return getRuleTagActions(rule).some(tag => tag.enabled)
+    }
+    if (action === "autoManagement") {
+      // enabled is the value that the action sets, so a saved action with enabled false still runs.
+      return rule.conditions?.autoManagement != null
+    }
+    return Boolean(rule.conditions?.[action]?.enabled)
+  })
 }
 
 /**

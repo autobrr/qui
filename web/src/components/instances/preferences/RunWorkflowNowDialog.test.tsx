@@ -47,11 +47,11 @@ const rule: Automation = {
   sortOrder: 0,
 }
 
-function renderDialog(onClose = vi.fn()) {
+function renderDialog(onClose = vi.fn(), target = rule) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <RunWorkflowNowDialog target={{ instanceId: 2, rule }} onClose={onClose} />
+      <RunWorkflowNowDialog target={{ instanceId: 2, rule: target }} onClose={onClose} />
     </QueryClientProvider>
   )
   return onClose
@@ -86,6 +86,21 @@ describe("RunWorkflowNowDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
 
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.noChanges", { id: "toast-id" }))
+  })
+
+  it("lists an auto-management action that turns management off", () => {
+    renderDialog(vi.fn(), { ...rule, conditions: { schemaVersion: "1", autoManagement: { enabled: false } } })
+
+    expect(screen.getAllByRole("listitem").map(item => item.textContent)).toEqual(["preferences.workflowDialog.actions.autoManagement"])
+  })
+
+  it("does not claim no changes while exports still run", async () => {
+    mocks.apply.mockResolvedValue({ status: "applied" })
+    renderDialog(vi.fn(), { ...rule, conditions: { schemaVersion: "1", exportToInstance: { enabled: true, targetInstanceId: 3, savePath: "" } } })
+
+    fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
+
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.completed", { id: "toast-id" }))
   })
 
   it("shows the run-in-progress message on 409", async () => {

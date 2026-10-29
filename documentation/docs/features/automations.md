@@ -379,7 +379,7 @@ qui then shows a confirmation dialog with the name and the actions of the workfl
 - A disabled workflow also runs. It stays disabled after the run.
 - If the workflow is set to dry-run, the run is a simulation and writes dry-run activity rows.
 - After a delete rule with a Free Space condition deletes files, the same kind of rule waits 5 minutes before it deletes again. A manual run obeys this wait too.
-- The next scheduled run of the workflow comes one full interval after the manual run.
+- If at least one torrent matches the trackers of the workflow, the next scheduled run of the workflow comes one full interval after the manual run. If no torrent matches, the scheduler checks the workflow again at its next check.
 - Only one run applies actions on an instance at a time. If a scheduled run is in progress, qui shows "A run is in progress. Try again in a moment." If a manual run is in progress, the scheduled run skips that instance until its next check.
 
 ## Torrent sorting and scoring
