@@ -88,6 +88,8 @@ On every platform, orphan file scans skip symbolic links and other non-regular e
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
+qui lists a Blu-ray or DVD folder (`BDMV` or `VIDEO_TS`) as one item. If that folder holds a symbolic link to a file that a torrent uses, deletion keeps the whole folder, even when the torrent uses its own path to the file and not the link. The run reports "a torrent now uses a file in this folder through another path", and each new scan lists the folder again. Remove the link to let qui delete the folder.
+
 Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
 
 ## Partial scans
