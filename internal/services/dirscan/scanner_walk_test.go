@@ -210,7 +210,7 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 			result, err := NewScanner(backend).ScanDirectory(t.Context(), root)
 			require.NoError(t, err)
 
-			var names []string
+			names := make([]string, 0, len(result.Searchees))
 			for _, s := range result.Searchees {
 				names = append(names, s.Name)
 			}
