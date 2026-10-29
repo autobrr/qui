@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,6 +99,9 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "Disc.Film.2023", "cover.jpg"), 1)
 	writeTestFile(t, filepath.Join(root, "lower.disc", "video_ts", "VTS_01_1.VOB"), 2)
 	writeTestFile(t, filepath.Join(root, "lower.disc", "info.txt"), 1)
+	// A file named like a marker does not make a disc either.
+	writeTestFile(t, filepath.Join(root, "File.Marker", "BDMV"), 1)
+	writeTestFile(t, filepath.Join(root, "File.Marker", "movie.mkv"), 2)
 	// A marker below the top level does not make a disc.
 	writeTestFile(t, filepath.Join(root, "Deep.Folder", "Extras", "BDMV", "x.m2ts"), 3)
 	writeTestFile(t, filepath.Join(root, "Deep.Folder", "extra.txt"), 1)
@@ -131,6 +135,8 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 		`  Disc.Film.2023/BDMV/index.bdmv rel=BDMV/index.bdmv size=7 id=true`,
 		`  Disc.Film.2023/CERTIFICATE/id.bdmv rel=CERTIFICATE/id.bdmv size=9 id=true`,
 		`  Disc.Film.2023/cover.jpg rel=cover.jpg size=1 id=true`,
+		`File.Marker name="File.Marker" disc=false`,
+		`  File.Marker/movie.mkv rel=movie.mkv size=2 id=true`,
 		`Linked.Film.2022.mkv name="Linked.Film.2022" disc=false`,
 		`  Linked.Film.2022.mkv rel=Linked.Film.2022.mkv size=13 id=true`,
 		`Single.Episode.S01E01.mkv name="Single.Episode.S01E01" disc=false`,
@@ -138,7 +144,7 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 		`lower.disc name="lower.disc" disc=true`,
 		`  lower.disc/info.txt rel=info.txt size=1 id=true`,
 		`  lower.disc/video_ts/VTS_01_1.VOB rel=video_ts/VTS_01_1.VOB size=2 id=true`,
-		`total files=13 size=69 skipped=0`,
+		`total files=14 size=71 skipped=0`,
 	}, describeScan(root, result))
 
 	// A scan root that is a link to the folder finds the same searchees
@@ -148,6 +154,69 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	viaAlias, err := NewScanner(local.NewBackend()).ScanDirectory(t.Context(), aliasRoot)
 	require.NoError(t, err)
 	require.Equal(t, describeScan(root, result), describeScan(aliasRoot, viaAlias))
+}
+
+// failingDirBackend is the local backend, and it reports a read error for
+// one directory after that directory's own entry, as a walk does when it
+// cannot list a directory.
+type failingDirBackend struct {
+	fsops.Backend
+	dir string
+	err error
+}
+
+func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	in, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			batch := []fsops.WalkEntry{e}
+			if e.Path == b.dir {
+				batch = append(batch, fsops.WalkEntry{Path: e.Path, RelPath: e.RelPath, Err: b.err})
+			}
+			for _, e := range batch {
+				select {
+				case out <- e:
+				case <-ctx.Done():
+				}
+			}
+		}
+	}()
+	return out, nil
+}
+
+// A denied subfolder inside a searchee is skipped, and any other read error
+// drops the searchee, as one walk per searchee did.
+func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want []string
+	}{
+		{name: "permission denied", err: &fs.PathError{Op: "open", Err: fs.ErrPermission}, want: []string{"Film", "Other"}},
+		{name: "input/output error", err: &fs.PathError{Op: "readdirent", Err: syscall.EIO}, want: []string{"Other"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTestFile(t, filepath.Join(root, "Film", "film.mkv"), 1)
+			require.NoError(t, os.Mkdir(filepath.Join(root, "Film", "Extras"), 0o750))
+			writeTestFile(t, filepath.Join(root, "Other", "other.mkv"), 1)
+			backend := failingDirBackend{Backend: local.NewBackend(), dir: filepath.Join(root, "Film", "Extras"), err: tt.err}
+
+			result, err := NewScanner(backend).ScanDirectory(t.Context(), root)
+			require.NoError(t, err)
+
+			var names []string
+			for _, s := range result.Searchees {
+				names = append(names, s.Name)
+			}
+			require.Equal(t, tt.want, names)
+		})
+	}
 }
 
 // A Full scan of N searchees walks the backend once, where it walked each
