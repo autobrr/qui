@@ -193,12 +193,15 @@ func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.
 // drops the searchee, as one walk per searchee did.
 func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	for _, tt := range []struct {
-		name string
-		err  error
-		want []string
+		name    string
+		err     error
+		want    []string
+		wantErr error
 	}{
 		{name: "permission denied", err: &fs.PathError{Op: "open", Err: fs.ErrPermission}, want: []string{"Film", "Other"}},
 		{name: "input/output error", err: &fs.PathError{Op: "readdirent", Err: syscall.EIO}, want: []string{"Other"}},
+		// regression: #3613
+		{name: "connection lost", err: fmt.Errorf("read directory: %w", fsops.ErrConnectionLost), wantErr: fsops.ErrConnectionLost},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -208,6 +211,11 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 			backend := failingDirBackend{Backend: local.NewBackend(), dir: filepath.Join(root, "Film", "Extras"), err: tt.err}
 
 			result, err := NewScanner(backend).ScanDirectory(t.Context(), root)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Nil(t, result)
+				return
+			}
 			require.NoError(t, err)
 
 			names := make([]string, 0, len(result.Searchees))
@@ -217,6 +225,31 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 			require.Equal(t, tt.want, names)
 		})
 	}
+}
+
+// lostStatBackend loses the connection on every Stat, as a remote backend
+// does when the link drops between the walk and the batch stat.
+type lostStatBackend struct{ fsops.Backend }
+
+func (lostStatBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
+	return nil, fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
+}
+
+// A lost connection while the root links are read fails the scan, where the
+// links would otherwise be dropped as if they led nowhere.
+// regression: #3613
+func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	target := filepath.Join(t.TempDir(), "Film.2024.mkv")
+	writeTestFile(t, target, 1)
+	symlinkOrSkip(t, target, filepath.Join(root, "Film.2024.mkv"))
+	writeTestFile(t, filepath.Join(root, "Other", "other.mkv"), 1)
+
+	result, err := NewScanner(lostStatBackend{Backend: local.NewBackend()}).ScanDirectory(t.Context(), root)
+	require.ErrorIs(t, err, fsops.ErrConnectionLost)
+	require.Nil(t, result)
 }
 
 // A Full scan of N searchees walks the backend once, where it walked each

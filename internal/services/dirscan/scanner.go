@@ -115,13 +115,15 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 	byName := map[string]*rootEntry{} // nil for a name that is not a searchee
 	for entry := range ch {
 		if entry.Path == rootPath {
-			if entry.Err != nil {
-				return nil, fmt.Errorf("read directory %s: %w", rootPath, entry.Err)
-			}
-			if !entry.IsDir {
-				return nil, fmt.Errorf("read directory %s: not a directory", rootPath)
+			if err := checkScanRoot(&entry, rootPath); err != nil {
+				return nil, err
 			}
 			continue
+		}
+		// A lost connection ends the walk, so the folders it had not finished
+		// would read as complete.
+		if errors.Is(entry.Err, fsops.ErrConnectionLost) {
+			return nil, fmt.Errorf("scan directory: %w", entry.Err)
 		}
 
 		name, rest, nested := strings.Cut(entry.RelPath, d.Separator())
@@ -144,7 +146,9 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 			top.add(&entry, rest, d)
 		}
 	}
-	s.resolveRootSymlinks(ctx, order)
+	if err := s.resolveRootSymlinks(ctx, order); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("scan directory: %w", err)
 	}
@@ -216,9 +220,22 @@ func (top *rootEntry) add(entry *fsops.WalkEntry, rest string, d fsops.PathDiale
 	})
 }
 
+// checkScanRoot fails the scan when the walk could not read the root or the
+// root is not a directory, as listing the root did before the single walk.
+func checkScanRoot(entry *fsops.WalkEntry, rootPath string) error {
+	if entry.Err != nil {
+		return fmt.Errorf("read directory %s: %w", rootPath, entry.Err)
+	}
+	if !entry.IsDir {
+		return fmt.Errorf("read directory %s: not a directory", rootPath)
+	}
+	return nil
+}
+
 // resolveRootSymlinks stats every root-level link in one batch and keeps
-// the ones whose target is a regular file.
-func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) {
+// the ones whose target is a regular file. A lost connection fails the scan,
+// since the links it left unread would be dropped as if they led nowhere.
+func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) error {
 	var links []*rootEntry
 	var paths []string
 	for _, top := range order {
@@ -228,11 +245,14 @@ func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) {
 		}
 	}
 	if len(paths) == 0 {
-		return
+		return nil
 	}
 
 	infos, errs := fsops.StatAll(ctx, s.backend, paths)
 	for i, top := range links {
+		if errors.Is(errs[i], fsops.ErrConnectionLost) {
+			return fmt.Errorf("scan directory: %w", errs[i])
+		}
 		if errs[i] != nil || !infos[i].Mode.IsRegular() {
 			top.failed = true
 			continue
@@ -240,6 +260,7 @@ func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) {
 		base := s.backend.Paths().Base(paths[i])
 		top.searchee = singleFileSearchee(paths[i], base, infos[i])
 	}
+	return nil
 }
 
 // singleFileSearchee is the searchee of one root-level media file.
