@@ -5,6 +5,7 @@
 
 import { RenameTorrentFileDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
 import { makeFilters } from "@/test/mockFilters"
+import { makeTorrent } from "@/test/mockTorrent"
 import { cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -92,5 +93,19 @@ describe("TagEditorDialog", () => {
 
     rerender(<TagEditorDialog {...props(makeFilters({ status: ["paused"] }))} />)
     expect(api.getTorrentField).toHaveBeenCalledTimes(2)
+  })
+  // A live sort reorders the loaded rows. Their tags do not decide the tags of
+  // a selection past the loaded rows, so the reorder must not restart the read.
+  it("keeps the Select all tag read when the loaded rows change order", () => {
+    api.getTorrentField.mockClear()
+    const onOpenChange = () => {}
+    const request = { instanceId: 1, hashes: [], selectAll: true, filters: makeFilters(), search: "", excludeHashes: [] }
+    const rows = [makeTorrent({ hash: "h0", tags: "a" }), makeTorrent({ hash: "h1", tags: "b" })]
+    const props = (selectedTorrents = rows) => ({
+      open: true, onOpenChange, availableTags: [], selectedTorrents, hashCount: 7500, onConfirm: () => {}, selectionRequest: request,
+    })
+    const { rerender } = render(<TagEditorDialog {...props()} />)
+    rerender(<TagEditorDialog {...props([rows[1], rows[0]])} />)
+    expect(api.getTorrentField).toHaveBeenCalledTimes(1)
   })
 })
