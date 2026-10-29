@@ -107,7 +107,9 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, protected *pro
 	return deleteDispositionDeleted, nil
 }
 
-// checkDirContainsInUseFile walks a directory and returns ErrInUse if a torrent owns any file in it.
+// checkDirContainsInUseFile returns ErrInUse if a torrent owns a file in the
+// directory, by path or by identity. It also fails when it cannot read an
+// entry, its identity or a symlink's target, since that could be a torrent's file.
 func checkDirContainsInUseFile(ctx context.Context, target string, protected *protectedPaths, backend fsops.Backend) error {
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, target, fsops.WalkOptions{EmitStatErrors: true, WantFileID: protected.inUse != nil})
