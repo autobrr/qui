@@ -288,7 +288,9 @@ func TestCrossSeedRouteSaveRefusesBrokenRules(t *testing.T) {
 			rec := f.save(source, crossSeed, rows...)
 
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-			assert.Contains(t, rec.Body.String(), tc.want)
+			var body struct{ Error string }
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			assert.Contains(t, body.Error, tc.want)
 			route, err := f.routes.Get(t.Context(), source.ID)
 			require.NoError(t, err)
 			assert.Nil(t, route, "a refused route is not stored")
