@@ -59,8 +59,18 @@ export default tseslint.config([
           regex: '(^|/)useTorrentsList$',
           allowTypeImports: true,
           message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+        }, {
+          regex: '^@radix-ui/react-(alert-)?dialog$',
+          allowTypeImports: true,
+          message: 'Use @/components/ui/dialog or @/components/ui/alert-dialog.',
         }],
       }],
+    },
+  },
+  {
+    files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
   {

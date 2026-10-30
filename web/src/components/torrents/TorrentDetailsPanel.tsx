@@ -1959,7 +1959,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("detailsPanel.crossSeed.deleteThisTorrent")}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="wrap-anywhere">
               {t("detailsPanel.deleteCurrent.description", { name: incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name })}
             </DialogDescription>
           </DialogHeader>
