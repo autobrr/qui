@@ -59,6 +59,10 @@ export default tseslint.config([
           regex: '(^|/)useTorrentsList$',
           allowTypeImports: true,
           message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+        }, {
+          // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
+          regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
+          message: 'The list controller owns this. Use useTorrentListController or useTorrentListActions from "@/hooks/useTorrentListController" instead.',
         }],
       }],
     },
