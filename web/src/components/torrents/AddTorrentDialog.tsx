@@ -36,6 +36,8 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
+import { resolveDestinationPath } from "@/lib/save-path"
+import { DestinationFreeSpace } from "@/components/torrents/DestinationFreeSpace"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useAddTorrentPreferences } from "@/hooks/usePreferenceValues"
@@ -1507,6 +1509,20 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   )}
                 </form.Field>
 
+                <form.Subscribe selector={(state) => [state.values.autoTMM, state.values.savePath, state.values.category] as const}>
+                  {([autoTMM, savePath, category]) => (
+                    <DestinationFreeSpace
+                      instanceId={instanceId}
+                      path={resolveDestinationPath({
+                        autoTMM,
+                        savePath,
+                        category,
+                        categories,
+                        defaultSavePath: preferenceDefaults.savePath,
+                      })}
+                    />
+                  )}
+                </form.Subscribe>
 
                 {/* Advanced Options */}
                 <div className="space-y-4">

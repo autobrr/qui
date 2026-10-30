@@ -46,6 +46,7 @@ var (
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
+	freeSpaceAtPathMinVersion            = semver.MustParse("2.15.2")
 	partialCategoryEditMinVersion        = semver.MustParse("2.16.1") // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 )
 
@@ -102,6 +103,7 @@ type Client struct {
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
+	supportsFreeSpaceAtPath    bool
 	partialCategoryEdit        bool
 	lastHealthCheck            time.Time
 	isHealthy                  bool
@@ -493,6 +495,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
+	c.supportsFreeSpaceAtPath = !v.LessThan(freeSpaceAtPathMinVersion)
 	c.partialCategoryEdit = !v.LessThan(partialCategoryEditMinVersion)
 }
 
@@ -671,6 +674,14 @@ func (c *Client) SupportsShareLimitsMode() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsShareLimitsMode
+}
+
+// SupportsFreeSpaceAtPath reports whether app/getFreeSpaceAtPath is available
+// (freeSpaceAtPathMinVersion, qBittorrent 5.3 / Web API 2.15.2+).
+func (c *Client) SupportsFreeSpaceAtPath() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsFreeSpaceAtPath
 }
 
 func (c *Client) GetWebAPIVersion() string {

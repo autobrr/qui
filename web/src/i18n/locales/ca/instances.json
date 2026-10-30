@@ -943,17 +943,21 @@
       "freeSpace": {
         "title": "Origen de l'espai lliure",
         "aria": "Sobre l'origen de l'espai lliure",
-        "description": "Tria d'on s'ha de llegir l'espai lliure. El valor predeterminat fa servir l'espai lliure que informa qBittorrent. Fes servir «Camí al servidor» per comprovar l'espai lliure d'un disc o d'un punt de muntatge concret.",
+        "description": "Tria d'on s'ha de llegir l'espai lliure. El valor predeterminat fa servir l'espai lliure que informa qBittorrent. Fes servir «Camí al servidor» per comprovar l'espai lliure d'un disc o d'un punt de muntatge concret. «Camí a l'amfitrió de qBittorrent» ho pregunta al mateix qBittorrent i necessita qBittorrent 5.3.",
         "selectSource": "Selecciona un origen",
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
         "pathSourceLocalAccessRequired": "Camí al servidor (cal accés local)",
+        "qbitPathSource": "Camí a l'amfitrió de qBittorrent",
+        "qbitPathSourceUnsupported": "Camí a l'amfitrió de qBittorrent (necessita qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
+        "qbitPathHelp": "Introdueix un camí a l'amfitrió de qBittorrent. qBittorrent mesura l'espai lliure, de manera que qui no necessita accés a aquest disc.",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
           "localAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local.",
+          "qbitPathUnsupported": "Aquesta instància és anterior a qBittorrent 5.3 i no pot informar de l'espai lliure d'un camí.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor»."
         }
       },
@@ -1133,6 +1137,7 @@
         "switchedDeleteModeForFreeSpace": "S'ha canviat a «Suprimeix amb els fitxers» perquè la condició d'espai lliure necessita alliberar espai real al disc",
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
+        "qbitPathSourceUnsupported": "Aquesta instància no pot informar de l'espai lliure d'un camí. S'ha canviat a l'origen predeterminat.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "enableLocalAccessOrDefault": "Activa l'accés al sistema de fitxers local a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",

@@ -645,6 +645,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
 					r.Get("/transfer-info", instancesHandler.GetTransferInfo)
+					r.Get("/free-space", instancesHandler.GetFreeSpaceAtPath)
 					r.Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 

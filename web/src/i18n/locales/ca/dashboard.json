@@ -41,7 +41,7 @@
     "upload": "Pujada",
     "totalSize": "Mida total",
     "totalSizeTooltip": "Mida total de tots els torrents, inclosos els cross-seed",
-    "freeSpace": "Espai lliure",
+    "freeSpace": "Espai lliure (camí predeterminat)",
     "showMore": "Mostra'n més",
     "showLess": "Mostra'n menys",
     "uptime": "Temps actiu",

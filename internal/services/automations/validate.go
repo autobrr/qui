@@ -414,8 +414,16 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 	switch source.Type {
 	case models.FreeSpaceSourcePath:
 		return validateFreeSpacePathSource(source, instance)
+	case models.FreeSpaceSourceQbitPath:
+		// qBittorrent resolves this path on its own host, so qui neither needs
+		// filesystem access nor knows the server's path syntax. Unsupported servers
+		// surface at read time as a failed source read, never as zero free space.
+		if strings.TrimSpace(source.Path) == "" {
+			return "Free space path source requires a path", errors.New("path required")
+		}
+		return "", nil
 	default:
-		return "Invalid free space source type. Use 'qbittorrent' or 'path'.", errors.New("invalid source type")
+		return "Invalid free space source type. Use 'qbittorrent', 'path' or 'qbitPath'.", errors.New("invalid source type")
 	}
 }
 

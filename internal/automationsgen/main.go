@@ -61,7 +61,7 @@ var keyValues = map[string][]string{
 	"ExportToInstanceAction.contentLayout": automations.ContentLayouts,
 	"SortingConfig.field":                  conditionFieldNames(func(f models.ConditionField) bool { return f.IsNumeric() || f.IsString() }),
 	"FieldMultiplierScoreRule.field":       conditionFieldNames(models.ConditionField.IsNumeric),
-	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath)},
+	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath)},
 	"SortingConfig.type":                   {string(models.SortingTypeSimple), string(models.SortingTypeScore)},
 	"SortingConfig.direction":              {string(models.SortDirectionASC), string(models.SortDirectionDESC)},
 	"ScoreRule.type":                       {string(models.ScoreRuleTypeFieldMultiplier), string(models.ScoreRuleTypeConditional)},

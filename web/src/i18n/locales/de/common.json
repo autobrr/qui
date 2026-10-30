@@ -127,6 +127,7 @@
     "updating": "Wird aktualisiert",
     "error": "Fehler",
     "unknown": "Unbekannt",
+    "unavailable": "Nicht verfügbar",
     "trackerError": "Tracker-Fehler",
     "unreachable": "Nicht erreichbar"
   },
