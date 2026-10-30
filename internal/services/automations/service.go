@@ -1923,7 +1923,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": speedLimits}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2005,7 +2005,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			limitCounts[limitKey] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": limitCounts}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2051,7 +2051,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated pause activity
 	if pausedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": pausedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2097,7 +2097,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated resume activity
 	if resumedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": resumedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2143,7 +2143,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated recheck activity
 	if recheckedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": recheckedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": recheckedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
