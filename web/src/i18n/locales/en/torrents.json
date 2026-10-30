@@ -1680,6 +1680,7 @@
         "no_episode_files": "No playable episode files were found in this pack.",
         "target_not_found": "Target not found in this instance.",
         "incomplete": "Target download is incomplete.",
+        "not_settled": "This torrent is still moving or being checked. Try again when it is done.",
         "no_episode_identity": "The episode number could not be parsed.",
         "file_list_unavailable": "The target file list is unavailable.",
         "episode_file_invalid": "The target must contain one playable file with the selected episode identity.",

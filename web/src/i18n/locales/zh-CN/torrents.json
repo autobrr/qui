@@ -1602,6 +1602,7 @@
         "no_episode_files": "此整季包中未找到可播放的单集文件。",
         "target_not_found": "此实例中未找到目标种子。",
         "incomplete": "目标种子尚未下载完成。",
+        "not_settled": "此种子仍在移动或校验中。请在完成后重试。",
         "no_episode_identity": "无法解析集数。",
         "file_list_unavailable": "无法获取目标种子的文件列表。",
         "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",

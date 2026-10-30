@@ -1680,6 +1680,7 @@
         "no_episode_files": "In diesem Paket wurden keine abspielbaren Episodendateien gefunden.",
         "target_not_found": "Ziel in dieser Instanz nicht gefunden.",
         "incomplete": "Der Download des Ziels ist unvollständig.",
+        "not_settled": "Dieser Torrent wird noch verschoben oder geprüft. Versuche es erneut, wenn der Vorgang abgeschlossen ist.",
         "no_episode_identity": "Die Episodennummer konnte nicht erkannt werden.",
         "file_list_unavailable": "Die Dateiliste des Ziels ist nicht verfügbar.",
         "episode_file_invalid": "Das Ziel muss genau eine abspielbare Datei mit der ausgewählten Episodenkennung enthalten.",
