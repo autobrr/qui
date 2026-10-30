@@ -10,6 +10,7 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvid
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
+import "@/i18n"
 
 const { metadataResult, translationResult } = vi.hoisted(() => ({
   metadataResult: { data: undefined },
@@ -22,7 +23,7 @@ vi.mock("@/lib/api", () => ({ api: {
 } }))
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/lib/manual-cross-seed", () => ({ fileToBase64: async () => "torrent", overlapPercent: (fraction: number) => Math.round(fraction * 100) }))
-vi.mock("react-i18next", () => ({ useTranslation: () => translationResult }))
+vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => translationResult }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 afterEach(() => { cleanup(); vi.resetAllMocks() })
@@ -51,7 +52,7 @@ it.each(["unsafe_piece_boundary", "layout_mismatch"])("explains %s and links onl
   expect(ui.getByRole("button", { name: "manualCrossSeed.apply" }).hasAttribute("disabled")).toBe(true)
   const link = ui.queryByRole("link", { name: "manualCrossSeed.pack.reviewRules" })
   if (reason === "unsafe_piece_boundary") {
-    expect(link?.getAttribute("href")).toBe("/cross-seed?tab=rules")
+    expect(link?.getAttribute("href")).toBe("/cross-seed?tab=matching")
   } else {
     expect(link).toBeNull()
   }

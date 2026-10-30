@@ -4,8 +4,31 @@
  */
 
 import type { CrossSeedSearchDecisionTrace } from "@/types"
-import { describe, expect, it } from "vitest"
-import { buildCrossSeedTraceReport } from "./CrossSeedDialog"
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { buildCrossSeedTraceReport, CrossSeedDialog, type CrossSeedDialogProps } from "./CrossSeedDialog"
+
+const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock("react-i18next", async (importOriginal) => ({ ...(await importOriginal<object>()), useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }) }))
+vi.mock("sonner", () => ({ toast }))
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.unstubAllGlobals()
+  Reflect.deleteProperty(document, "execCommand")
+})
+
+const noop = () => {}
+const baseProps = {
+  open: true, onOpenChange: noop, torrent: null, results: [], selectedKeys: new Set<string>(), selectionCount: 0,
+  isLoading: false, isSubmitting: false, error: null, applyResult: null, indexerOptions: [], gazelleConfigured: false,
+  indexerMode: "all", selectedIndexerIds: [], indexerNameMap: {}, onIndexerModeChange: noop, onToggleIndexer: noop,
+  onSelectAllIndexers: noop, onClearIndexerSelection: noop, onScopeSearch: noop, getResultKey: () => "",
+  onToggleSelection: noop, onSelectAll: noop, onClearSelection: noop, onRetry: noop, onClose: noop, onApply: noop,
+  useTag: false, onUseTagChange: noop, tagName: "", onTagNameChange: noop, startPaused: false,
+  onStartPausedChange: noop, hasSearched: false,
+} satisfies CrossSeedDialogProps
 
 describe("buildCrossSeedTraceReport", () => {
   it("renders counts, indexer outcomes, and capped rejection detail", () => {
@@ -59,5 +82,68 @@ describe("buildCrossSeedTraceReport", () => {
 
     expect(report).not.toContain("indexers:")
     expect(report).not.toContain("rejections:")
+  })
+})
+
+describe("CrossSeedDialog copy report", () => {
+  it("copies the report on plain HTTP, where navigator.clipboard does not exist", async () => {
+    vi.stubGlobal("isSecureContext", false)
+    vi.stubGlobal("navigator", { ...navigator, clipboard: undefined })
+    // jsdom has no execCommand, so the test defines it and afterEach deletes it.
+    const execCommand = vi.fn().mockReturnValue(true)
+    document.execCommand = execCommand
+
+    const props = {
+      ...baseProps,
+      hasSearched: true,
+      decisionTrace: {
+        sourceSize: 0, tolerancePercent: 0, totalResults: 0, sizeFiltered: 0, releaseFiltered: 0,
+        lateContentFiltered: 0, duplicateFiltered: 0, finalMatches: 0,
+      },
+    } satisfies CrossSeedDialogProps
+    const { getByText } = render(<CrossSeedDialog {...props} />)
+
+    fireEvent.click(getByText("crossSeedDialog.trace.title"))
+    fireEvent.click(getByText("crossSeedDialog.trace.copyReport"))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("crossSeedDialog.trace.copied"))
+    expect(execCommand).toHaveBeenCalledWith("copy")
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+describe("CrossSeedDialog search scope", () => {
+  it("searches RED/OPS when no Torznab indexer is available", () => {
+    const onScopeSearch = vi.fn()
+    const { getByText, queryByText } = render(
+      <CrossSeedDialog {...baseProps} gazelleConfigured onScopeSearch={onScopeSearch} />
+    )
+
+    expect(getByText("crossSeedDialog.gazelleOnlySearch")).toBeTruthy()
+    expect(queryByText("crossSeedDialog.noIndexersHelp")).toBeNull()
+    fireEvent.click(getByText("crossSeedDialog.scope.search"))
+    expect(onScopeSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows the note when RED/OPS did not answer in time", () => {
+    const { getByText, rerender, queryByText } = render(<CrossSeedDialog {...baseProps} hasSearched gazelleTimedOut />)
+
+    expect(getByText("crossSeedDialog.gazelleTimedOut")).toBeTruthy()
+    rerender(<CrossSeedDialog {...baseProps} hasSearched />)
+    expect(queryByText("crossSeedDialog.gazelleTimedOut")).toBeNull()
+  })
+
+  it("shows no indexers and no search button without RED/OPS keys or Torznab indexers", () => {
+    const { getByText, queryByText } = render(<CrossSeedDialog {...baseProps} />)
+
+    expect(getByText("crossSeedDialog.noIndexers")).toBeTruthy()
+    expect(getByText("crossSeedDialog.noIndexersHelp")).toBeTruthy()
+    expect(queryByText("crossSeedDialog.scope.search")).toBeNull()
+  })
+
+  it("shows that Torznab failed next to the RED/OPS results", () => {
+    const { getByText } = render(<CrossSeedDialog {...baseProps} hasSearched torznabFailed />)
+
+    expect(getByText("crossSeedDialog.torznabFailed")).toBeTruthy()
   })
 })

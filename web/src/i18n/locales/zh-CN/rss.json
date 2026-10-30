@@ -23,8 +23,6 @@
   "feeds": {
     "title": "订阅源",
     "refreshAll": "全部刷新",
-    "addFolder": "添加文件夹",
-    "addFeed": "添加订阅源",
     "articles": "文章",
     "unread": "{{count}} 条未读",
     "markAllAsRead": "全部标记为已读",
@@ -48,7 +46,6 @@
     "toggleDetails": "切换详情"
   },
   "rules": {
-    "title": "规则",
     "reprocess": "重新处理",
     "reprocessTooltip": "对所有未读文章重新检查规则",
     "addRule": "添加规则",
@@ -144,14 +141,10 @@
     "saveChanges": "保存更改"
   },
   "settingsPopover": {
-    "title": "RSS 设置",
     "refreshInterval": "刷新间隔",
-    "min": "分钟",
     "maxArticles": "每个订阅源最大文章数",
     "autoDownload": "自动下载",
-    "downloadRepack": "下载 REPACK/PROPER",
-    "saving": "保存中……",
-    "save": "保存"
+    "downloadRepack": "下载 REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE 已连接",
@@ -197,8 +190,6 @@
     "ruleCreated": "规则已创建",
     "failedToCreateRule": "创建规则失败",
     "ruleUpdated": "规则已更新",
-    "failedToUpdateRuleEdit": "更新规则失败",
-    "rssSettingsSaved": "RSS 设置已保存",
-    "failedToSaveRssSettings": "保存 RSS 设置失败"
+    "failedToUpdateRuleEdit": "更新规则失败"
   }
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -49,31 +50,25 @@ func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string
 	store := models.NewOrphanScanStore(db)
 
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
 			{Hash: "present", SavePath: presentRoot, State: qbt.TorrentStatePausedUp},
 			{Hash: "missing", SavePath: missingRoot, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
 			"present": {{Name: "owned.mkv", Size: 1}},
 			"missing": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: base}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: base})
 
 	return svc, store, presentRoot, missingRoot
 }
@@ -142,6 +137,28 @@ func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	assert.Equal(t, "no scan roots left: ignore paths cover every scan path", run.ErrorMessage)
 }
 
+// Ignoring "/" keeps the scan roots. The walk then ignores every file, so the
+// run completes with zero orphans instead of failing with "no scan roots left".
+func TestExecuteScan_RootIgnorePathKeepsScanRoots(t *testing.T) {
+	t.Parallel()
+
+	svc, store, presentRoot, missingRoot := newScanTestService(t)
+	if protected, err := newProtectedPaths(fsops.HostPaths, []string{"/"}, nil); err != nil || !protected.ignored(presentRoot) {
+		t.Skip("ignore / does not cover host scan roots")
+	}
+	require.NoError(t, os.MkdirAll(missingRoot, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(presentRoot, "orphan.mkv"), []byte("orphan"), 0o600))
+	setIgnorePaths(t, store, []string{"/"})
+
+	run := runScanForTest(t, svc, store)
+	assert.Equal(t, "completed", run.Status)
+	assert.Empty(t, run.ErrorMessage)
+	assert.False(t, run.Partial)
+	assert.Equal(t, 0, run.FilesFound)
+	assert.Contains(t, run.ScanPaths, filepath.Clean(presentRoot))
+	assert.Contains(t, run.ScanPaths, filepath.Clean(missingRoot))
+}
+
 type scanNotifier struct {
 	events chan notifications.Event
 }
@@ -171,8 +188,8 @@ func TestExecuteScan_PathDisappearsDuringScan(t *testing.T) {
 				require.NoError(t, os.WriteFile(orphanPath, []byte("orphan"), 0o600))
 			}
 			require.NoError(t, os.MkdirAll(missingRoot, 0o755))
-			filesProvider := svc.getTorrentFilesBatchProvider
-			svc.getTorrentFilesBatchProvider = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+			filesProvider := stubSync(svc).getTorrentFilesBatch
+			stubSync(svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 				// The torrent snapshot still contains this path when its directory disappears.
 				if err := os.RemoveAll(missingRoot); err != nil {
 					return nil, err
@@ -289,8 +306,8 @@ func TestExecuteScan_PrunedRootsWithFailedWalk(t *testing.T) {
 	svc, store, presentRoot, _ := newScanTestService(t)
 	nestedRoot := filepath.Join(presentRoot, "nested")
 	require.NoError(t, os.MkdirAll(nestedRoot, 0o755))
-	torrentsProvider := svc.getAllTorrentsProvider
-	svc.getAllTorrentsProvider = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	torrentsProvider := stubSync(svc).getAllTorrents
+	stubSync(svc).getAllTorrents = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 		torrents, err := torrentsProvider(ctx, instanceID)
 		torrents[1].SavePath = nestedRoot
 		return torrents, err
@@ -319,16 +336,14 @@ func TestExecuteScan_AbsentDeclaredRoot(t *testing.T) {
 			t.Parallel()
 			svc, store, _, missingRoot := newScanTestService(t)
 			declaredRoot := filepath.Join(t.TempDir(), "unused")
-			svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-				return qbt.AppPreferences{SavePath: declaredRoot}, nil
-			}
-			svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+			stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: declaredRoot})
+			stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 				if skippedTorrent {
 					return []qbt.Torrent{{Hash: "missing", SavePath: missingRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
 				}
 				return nil, nil
 			}
-			svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+			stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 				return nil, nil
 			}
 			setIgnorePaths(t, store, nil)
@@ -355,8 +370,8 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 	t.Parallel()
 	svc, store, _, missingRoot := newScanTestService(t)
 	setIgnorePaths(t, store, []string{missingRoot})
-	torrentsProvider := svc.getAllTorrentsProvider
-	svc.getAllTorrentsProvider = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	torrentsProvider := stubSync(svc).getAllTorrents
+	stubSync(svc).getAllTorrents = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 		torrents, err := torrentsProvider(ctx, instanceID)
 		for i := range torrents {
 			if torrents[i].Hash == "missing" {
@@ -365,8 +380,8 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 		}
 		return torrents, err
 	}
-	filesProvider := svc.getTorrentFilesBatchProvider
-	svc.getTorrentFilesBatchProvider = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	filesProvider := stubSync(svc).getTorrentFilesBatch
+	stubSync(svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 		files, err := filesProvider(ctx, instanceID, hashes)
 		delete(files, "missing")
 		return files, err
@@ -402,13 +417,7 @@ func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
 	svc, store, _, missingRoot := newScanTestService(t)
 	unusedCategory := filepath.Join(t.TempDir(), "unused")
 
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"unused": {Name: "unused", SavePath: unusedCategory}}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: filepath.Dir(missingRoot), CategorySaveFolders: []string{unusedCategory}})
 
 	defaults := DefaultSettings()
 	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -435,14 +444,8 @@ func TestExecuteScan_AbsentCategoryPathWithTorrentStillWarns(t *testing.T) {
 
 	svc, store, _, missingRoot := newScanTestService(t)
 
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
-		// The same path the "missing" torrent saves into.
-		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: missingRoot}}, nil
-	}
+	// The same path the "missing" torrent saves into.
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: filepath.Dir(missingRoot), CategorySaveFolders: []string{missingRoot}})
 
 	defaults := DefaultSettings()
 	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{

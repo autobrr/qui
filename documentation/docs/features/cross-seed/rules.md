@@ -1,23 +1,32 @@
 ---
 sidebar_position: 2
-title: Rules
-description: Rules that decide which cross-seed candidates qui adds.
+title: Cross-seed matching rules
+sidebar_label: Matching rules
+description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, category naming, source tags, and auto-start limits."
 ---
 
-# Cross-Seed Rules
+# Cross-seed matching rules
 
-Configure matching behavior in the **Rules** tab on the Cross-Seed page.
+The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags, live on that source's tab: **RSS**, **Webhook**, **Completion**, **Library**, or **Season packs**.
 
 ## Matching
 
+These settings sit in **Matching rules**.
+
 - **Cross-seed episodes from packs**: If enabled, season packs also match individual episodes. If disabled, season packs only match other season packs. qui adds episodes with AutoTMM disabled to prevent save path conflicts.
-- **Skip recheck**: If enabled, qui skips any cross-seed that requires a recheck. This includes renamed paths, extra files, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes.
+- **Skip recheck**: If enabled, qui skips any cross-seed that requires a recheck. See [Skip cross-seeds with extra files](#skip-cross-seeds-with-extra-files).
 - **Rescue title mismatches**: Disabled by default. If only the title differs and the positive reported size matches, this rule tests that result. Each source search tries at most three rescue downloads across all indexers. RSS and autobrr use this rule only when the announcement provides an exact size. qui adds rescued torrents in a paused state and starts them only after a full qBittorrent recheck reaches 100%. **Skip recheck** disables this rule.
 - **Piece boundary safety check**: Off by default. Turn the switch on to block cross-seeds whose extra files share torrent pieces with content files. With the switch off, qBittorrent can corrupt your existing seeded data if the content differs. Reflink mode protects the original files. If hardlink or reflink mode falls back to regular mode, qui runs the check even when the switch is off. This fallback check covers matches that are not exact, need renames, or have extra files.
 
 :::note
-If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%.
+If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%. With **Skip recheck** on, a byte-complete filesystem fallback is the exception. qui renames the paths if necessary and adds it without a recheck. If **Auto-resume after injection** is on, qui then resumes it.
 :::
+
+### Skip cross-seeds with extra files
+
+To stop qui from adding a cross-seed that has extra files, such as samples, `.nfo` files, or subtitles, enable **Skip recheck**. qBittorrent must download the extra files that you do not have, and the torrent needs a recheck. With **Skip recheck** on, qui does not add the torrent.
+
+**Skip recheck** also skips the other matches that require a recheck: renamed paths, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. A byte-complete match is the exception. In a byte-complete match, each file has a file of the same size, and the torrent has no extra files. The paths are the same (an exact match), or only the paths differ (a rename-only match). If two or more files have the same size and their names do not show which file is which, the match is not a byte-complete match. A sidecar file, such as an `.nfo` file or a subtitle, matches only by name, not by size. An episode in a season pack, a disc layout, and a title rescue are never byte-complete matches. An exact-size match with different season, episode, or release-group details is also never a byte-complete match. qui renames the paths of a byte-complete match if necessary and adds the torrent without a recheck. This rule applies to regular, hardlink, and reflink modes. You get fewer cross-seeds. In the row details of a search run, these matches have the `skipped_recheck` status. See [Cross-seed search run statuses](./troubleshooting.md#cross-seed-search-run-statuses).
 
 ### Reported-size fallback
 
@@ -27,7 +36,9 @@ Reported size does not prove that two torrents contain the same bytes. qui still
 
 If torrents have title, season, episode, or split release-group differences, qui requires a full piece check. qui adds these torrents paused and resumes them only at 100%.
 
-Soft descriptive differences keep the normal fast path. These differences include codec, source, HDR, edition, and one-sided checksum data.
+Soft descriptive differences keep the normal fast path. These differences include codec, source, HDR, and edition.
+
+A checksum tag, such as `[ABCD1234]`, on one name only is not a difference. Indexer titles often leave it out. The file check after the download decides. Two checksum tags that differ prevent a match.
 
 **Skip recheck** removes only matches that need verification. RSS and autobrr reject those matches before the planned torrent download.
 
@@ -50,8 +61,8 @@ In both examples, the torrent is in a category that you control. A rule on that 
 
 ### Add a rule
 
-1. Open the **Rules** tab on the Cross-Seed page.
-2. Find **Search category rules** under the **Matching** heading.
+1. Open **Matching rules** on the Cross-Seed page.
+2. Find **Search category rules**.
 3. Select **Add rule**.
 4. Select or type one or more qBittorrent categories.
 5. Select the content type in the **search as** list.
@@ -74,15 +85,13 @@ Manual search, Library Scan, completion search, RSS matching, and autobrr matchi
 Audiobook and Music request the same categories from indexers, and both send an artist and an album parameter. Only the text of the search query differs.
 :::
 
-## Season Pack Threshold
+## Season packs
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. qui gets season episode totals from Sonarr first. If Sonarr cannot resolve the release, qui uses TVDB or TVMaze. If torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. qui adds incomplete packs paused and rechecks them. When the recheck reports progress close to the share of bytes qui linked, qui resumes the pack. If progress lands well below that share, the links failed and the pack stays paused for manual review. Configure this in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
-
-Season-pack matching rules live in **Rules > Season packs** and affect every season pack flow: the autobrr webhook, automatic assembly, and library search runs.
+Season pack settings have their own **Season packs** tab. See [Season Packs](./season-packs.md).
 
 ## Categories
 
-These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
+These modes sit in **Categories and tags**. They set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
 Choose one of four mutually exclusive category modes:
 
@@ -126,19 +135,23 @@ Uses a fixed category name for all cross-seeds (for example `cross-seed`). qui a
 
 ## Source Tagging
 
-Configure the tags that qui applies to cross-seed torrents, based on the discovery method:
+Each source tab has a **Cross-seed tags** field for the torrents that source adds. The default is `cross-seed` for every source.
 
-| Tag Setting | Description | Default |
-|-------------|-------------|---------|
-| RSS Automation Tags | Torrents added via RSS feed polling | `["cross-seed"]` |
-| Seeded Search Tags | Torrents added via seeded torrent search | `["cross-seed"]` |
-| Completion Search Tags | Torrents added via completion-triggered search | `["cross-seed"]` |
-| Webhook Tags | Torrents added via `/apply` webhook | `["cross-seed"]` |
-| Inherit source torrent tags | Also copy tags from the matched source torrent | - |
+| Source | Where |
+|--------|-------|
+| RSS automation | **RSS** tab |
+| `/apply` webhook | **Webhook** tab, "Webhook / autobrr" card |
+| Completion-triggered search | **Completion** tab, "On completion" card |
+| Library Scan | **Library** tab |
+| Season packs | **Season packs** tab |
+
+**Inherit source torrent tags** in **Categories and tags** also copies the tags of the matched source torrent. It applies to every source.
+
+The **RSS**, **Webhook**, **Completion**, and **Library** tabs each have an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
 
 ## Max Auto-Start Download
 
-After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
+This limit sits in **After injection**. After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
 
 If only ignorable files are missing (samples, `.nfo`, subtitles, and similar sidecar files), qui starts the torrent anyway. This exception has a fixed 200 MiB ceiling.
 
@@ -146,7 +159,9 @@ This limit applies to new cross-seed additions from RSS, seeded search, completi
 
 ## External Program
 
-qui can run an external program after it injects a cross-seed torrent.
+In **After injection**, qui can run an external program after it injects a cross-seed torrent.
+
+If you select a program, each cross-seed add sends one execution request (a request to run the program for one torrent). This includes season-pack adds, manual assemblies, and Dir Scan adds. A Dir Scan full scan sends one execution request for each torrent that it adds. A refused add or a failed add sends no execution request.
 
 ## Category Behavior Details
 

@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -498,7 +497,11 @@ func (h *DirScanHandler) RequeueNoMatch(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
 }
 
-// GetStatus returns the status of the current or most recent scan.
+type dirScanStatusResponse struct {
+	Runs []*models.DirScanRun `json:"runs"`
+}
+
+// GetStatus returns the queued and running scans, or the most recent scan.
 func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -509,19 +512,17 @@ func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, err := h.service.GetStatus(r.Context(), dirID)
+	runs, err := h.service.GetStatus(r.Context(), dirID)
 	if err != nil {
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to get status")
 		RespondError(w, http.StatusInternalServerError, "Failed to get status")
 		return
 	}
-
-	if run == nil {
-		RespondJSON(w, http.StatusOK, map[string]string{"status": "idle"})
-		return
+	if runs == nil {
+		runs = []*models.DirScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, http.StatusOK, dirScanStatusResponse{Runs: runs})
 }
 
 // ListRuns returns recent scan runs for a directory.
@@ -680,7 +681,7 @@ func parseRunID(w http.ResponseWriter, r *http.Request) (int64, error) {
 func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) error {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusBadRequest, "Target instance not found")
 			return fmt.Errorf("instance not found: %w", err)
 		}
@@ -922,10 +923,6 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 	scanRoot := normalizeScanRoot(cleanPath)
 	runID, err := h.service.StartWebhookScan(r.Context(), bestMatch.ID, scanRoot)
 	if err != nil {
-		if errors.Is(err, models.ErrDirScanRunAlreadyActive) {
-			RespondError(w, http.StatusConflict, "A scan is already in progress for this directory")
-			return
-		}
 		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Msg("dirscan: webhook failed to start scan")
 		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
 		return

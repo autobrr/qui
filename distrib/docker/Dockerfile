@@ -42,7 +42,6 @@ COPY --from=frontend-builder /app/web/dist ./web/dist
 ARG VERSION=dev
 ARG GIT_COMMIT=""
 ARG BUILD_DATE=""
-ARG POLAR_ORG_ID=""
 
 # Set cross-compilation environment variables
 ENV GOOS=${TARGETOS} \
@@ -60,7 +59,7 @@ RUN case "${TARGETARCH}" in \
 
 # Build the application
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} -X github.com/autobrr/qui/internal/buildinfo.Commit=${GIT_COMMIT} -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILD_DATE} -X main.PolarOrgID=${POLAR_ORG_ID}" \
+    -ldflags "-s -w -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} -X github.com/autobrr/qui/internal/buildinfo.Commit=${GIT_COMMIT} -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILD_DATE}" \
     -o qui ./cmd/qui
 
 # Final stage

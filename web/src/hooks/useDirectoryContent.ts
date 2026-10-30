@@ -6,10 +6,12 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import { normalizeDirectoryPath } from "@/lib/paths"
 
 type UseDirectoryContentOptions = {
   enabled?: boolean
   staleTimeMs?: number
+  mode?: "dirs" | "files"
 }
 
 export function useDirectoryContent(
@@ -17,18 +19,12 @@ export function useDirectoryContent(
   dirPath: string,
   options: UseDirectoryContentOptions = {}
 ) {
-  const { enabled = true, staleTimeMs = 30000 } = options
-
-  // Normalize the path for consistent cache keys
-  let normalizedPath = ""
-  if (dirPath) {
-    const withLeadingSlash = dirPath.startsWith("/") ? dirPath : `/${dirPath}`
-    normalizedPath = withLeadingSlash.replace(/\/*$/, "/")
-  }
+  const { enabled = true, staleTimeMs = 30000, mode = "dirs" } = options
+  const normalizedPath = normalizeDirectoryPath(dirPath)
 
   return useQuery<string[]>({
-    queryKey: ["directory-content", instanceId, normalizedPath],
-    queryFn: ({ signal }) => api.getDirectoryContent(instanceId, normalizedPath, signal),
+    queryKey: ["directory-content", instanceId, normalizedPath, mode],
+    queryFn: ({ signal }) => api.getDirectoryContent(instanceId, normalizedPath, mode, signal),
     staleTime: staleTimeMs,
     enabled: Boolean(enabled && instanceId && normalizedPath),
   })

@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { HARDLINK_SCOPE_VALUES, TORRENT_STATES } from "@/components/query-builder/constants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,11 +29,8 @@ import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 // Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-// Helper to get human-readable label from value/label arrays
-function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
-  const found = values.find(v => v.value === value)
-  if (found) return found.label
-  // Fallback: capitalize and humanize
+// Labels a value with no translation key, such as a raw qBittorrent state.
+function humanizeValue(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
 }
 
@@ -288,11 +284,11 @@ export function WorkflowPreviewDialog({
       t,
       (value: string) => i18n.t(`queryBuilder.torrentStates.${value}`, {
         ns: "automations",
-        defaultValue: getLabelFromValues(TORRENT_STATES, value),
+        defaultValue: humanizeValue(value),
       }),
       (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, {
         ns: "automations",
-        defaultValue: getLabelFromValues(HARDLINK_SCOPE_VALUES, value),
+        defaultValue: humanizeValue(value),
       })
     ),
     [i18n, t]

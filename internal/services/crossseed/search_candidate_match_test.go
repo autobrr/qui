@@ -18,7 +18,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -58,11 +58,11 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "season mismatch",
-			RelaxedDifferences:   []string{"season"},
+			Class:               searchCandidateClassExactSizeFallback,
+			SearchCandidateName: targetName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+			Relaxed:             differencesOf(differenceSeason),
 		},
 	})
 	require.NoError(t, err)
@@ -70,7 +70,9 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 }
 
-func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T) {
+// A CRC tag on one name is no difference, so the web source relabel stays the
+// only one, and apply keeps that verdict.
+func TestFindCandidatesKeepsOneSidedChecksumWithWebRelabel(t *testing.T) {
 	const (
 		instanceID    = 1
 		sourceHash    = "existing-no-crc"
@@ -94,7 +96,7 @@ func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T
 	require.NotEmpty(t, candidate.Sum)
 	require.NotEqual(t, source.Source, candidate.Source)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: source, rawName: sourceName},
 		Candidate:        namedRelease{release: candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -102,18 +104,18 @@ func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T
 		TolerancePercent: 5,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, searchCandidateClassWebSourceRelabel, decision.Class)
 	require.Equal(t, sourceMismatchReason, decision.StrictMismatchReason)
-	require.ElementsMatch(t, []string{"source", "checksum"}, decision.RelaxedDifferences)
+	require.Empty(t, decision.RelaxedDifferences)
 
-	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+	response, err := service.FindCandidates(t.Context(), &FindCandidatesRequest{
 		TorrentName:       candidateName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
-		"the exact-size checksum decision must survive the apply direction reversal")
+		"apply must keep the web source relabel when the download carries a CRC tag")
 }
 
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
@@ -162,9 +164,10 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       sourceHash,
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: targetName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
 			},
 		})
 		require.NoError(t, err)
@@ -191,11 +194,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:               searchCandidateClassExactSizeFallback,
+				SearchCandidateName: targetName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
+				Relaxed:             differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -218,11 +221,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:               searchCandidateClassExactSizeFallback,
+				SearchCandidateName: "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
+				Relaxed:             differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -240,13 +243,12 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, strictReason := service.releasesMatchWithReasonAndNamesAndTitles(
-		&source, &candidate, sourceName, candidateName, nil, nil, false,
-	)
+	strictComparison := service.matcher().compareReleases(namedRelease{release: &source, rawName: sourceName}, namedRelease{release: &candidate, rawName: candidateName}, nil, nil, false, true)
+	strict, strictReason := strictComparison.matched(), strictComparison.reason()
 	require.False(t, strict)
 	require.NotEmpty(t, strictReason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -263,6 +265,53 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "relaxed hdr")
 }
 
+// A Season numeral is a second season marker. Exact size does not relax a
+// season that the numeral of the candidate confirms, and title rescue does not
+// read the numeral of another title as a season.
+func TestClassifySearchCandidateSeasonNumeral(t *testing.T) {
+	m := matcher{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	for _, tt := range []struct {
+		name      string
+		source    string
+		candidate string
+		rescue    bool
+		// reason is "" for an accepted pair.
+		reason string
+	}{
+		{
+			name:      "exact size relaxes the season of two packs",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor S03 1080p BluRay x264-GRP",
+		},
+		{
+			name:      "exact size keeps a season that the numeral confirms",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor III S03 1080p BluRay x264-GRP",
+			reason:    seasonMismatchReason,
+		},
+		{
+			name:      "title rescue reads no numeral season of another title",
+			source:    "Kaiju Squad Zero S02 1080p WEB H264-GRP",
+			candidate: "Kaiju.Squad.II.1080p.WEB.H264-GRP",
+			rescue:    true,
+			reason:    "candidate not recognized as TV",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := m.classifySearchCandidate(searchCandidateInput{
+				Source:                namedRelease{release: m.parseReleaseName(tt.source), rawName: tt.source},
+				Candidate:             namedRelease{release: m.parseReleaseName(tt.candidate), rawName: tt.candidate},
+				SourceSize:            corpusPackSize,
+				CandidateSize:         corpusPackSize,
+				TolerancePercent:      5,
+				RescueTitleMismatches: tt.rescue,
+			})
+			require.Equal(t, tt.reason == "", decision.Accepted, "reject reason: %s", decision.RejectReason)
+			require.Equal(t, tt.reason, decision.RejectReason)
+		})
+	}
+}
+
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -274,7 +323,7 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       sourceSize,
@@ -288,7 +337,7 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 }
 
 // Anime torrent names carry a CRC32 tag that indexer titles routinely drop, so
-// one side alone holding a checksum is absence of evidence. Two checksums that
+// one side alone holding a checksum is no difference. Two checksums that
 // disagree stay fatal; TestClassifySearchCandidateExactSizeHardIdentity pins that.
 func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -300,7 +349,7 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -308,9 +357,9 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 		TolerancePercent: 5,
 	})
 
-	require.True(t, decision.Accepted)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Contains(t, decision.RelaxedDifferences, "checksum")
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.StrictMismatchReason)
 }
 
 func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing.T) {
@@ -323,12 +372,11 @@ func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, reason := service.releasesMatchWithReasonAndNames(
-		&source, &candidate, sourceName, candidateName, false,
-	)
+	strictComparison := service.matcher().compareReleases(namedRelease{release: &source, rawName: sourceName}, namedRelease{release: &candidate, rawName: candidateName}, nil, nil, false, true)
+	strict, reason := strictComparison.matched(), strictComparison.reason()
 	require.True(t, strict, "candidate-only metadata already passes strict search matching: %s", reason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: &source, rawName: sourceName},
 		Candidate:     namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:    size,
@@ -339,12 +387,11 @@ func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing
 	require.Equal(t, searchCandidateClassStrict, decision.Class,
 		"candidate-only checksum metadata must keep strict search ranking")
 	require.Empty(t, decision.StrictMismatchReason)
-	require.True(t, decision.StrictChecksumReplay)
 	require.Empty(t, decision.RelaxedDifferences)
 	require.Contains(t, decision.MatchReason, "strict metadata")
 }
 
-func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
+func TestFindCandidatesKeepsSourceChecksumWithoutGroup(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-checksum-without-group"
@@ -369,16 +416,15 @@ func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
 	require.Empty(t, existingRelease.Group)
 	require.Empty(t, downloadedRelease.Group)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.False(t, decision.StrictChecksumReplay)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -390,7 +436,10 @@ func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
 		"a one-sided checksum is missing evidence even when neither title has a group")
 }
 
-func TestFindCandidatesSourceChecksumReplayRejectsDownloadedGroup(t *testing.T) {
+// Neither the local name nor the listing has a group, so a group in the
+// downloaded name is no new difference. The stored verdict holds, and the file
+// check decides.
+func TestFindCandidatesKeepsVerdictWhenDownloadAddsGroup(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-checksum-without-group"
@@ -414,15 +463,15 @@ func TestFindCandidatesSourceChecksumReplayRejectsDownloadedGroup(t *testing.T) 
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -430,11 +479,10 @@ func TestFindCandidatesSourceChecksumReplayRejectsDownloadedGroup(t *testing.T) 
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates,
-		"checksum replay must not authorize a group added after search")
+	require.Len(t, response.Candidates, 1)
 }
 
-func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) {
+func TestFindCandidatesKeepsStrictCandidateOnlyChecksumMetadata(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-without-tags"
@@ -463,7 +511,7 @@ func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) 
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
@@ -481,7 +529,7 @@ func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) 
 		"apply must preserve the bound strict search match when only the downloaded side adds metadata")
 }
 
-func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testing.T) {
+func TestFindCandidatesStrictChecksumVerdictRejectsAdvertisedGroupDrift(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-with-group"
@@ -505,7 +553,7 @@ func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testin
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -513,7 +561,6 @@ func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testin
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
 	require.Equal(t, searchCandidateClassStrict, decision.Class)
-	require.True(t, decision.StrictChecksumReplay)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -522,10 +569,10 @@ func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testin
 	})
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates,
-		"checksum replay must not authorize a downloaded group that differs from the listing")
+		"a stored checksum verdict must not authorize a downloaded group that differs from the listing")
 }
 
-func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+func TestFindCandidatesChecksumVerdictRejectsNewUnrecordedDifference(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-without-checksum"
@@ -549,7 +596,7 @@ func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -557,21 +604,7 @@ func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
 	require.Equal(t, searchCandidateClassStrict, decision.Class)
-	require.True(t, decision.StrictChecksumReplay)
 	require.Empty(t, decision.RelaxedDifferences)
-
-	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
-		downloadedRelease, existingRelease, downloadedName, existingName, false,
-	)
-	require.False(t, reverseMatch)
-	require.Equal(t, checksumMismatchReason, reverseReason,
-		"the reverse comparison would hide the new codec difference behind the checksum")
-	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
-		existingRelease, downloadedRelease, existingName, downloadedName, false,
-	)
-	require.False(t, originalMatch)
-	require.Equal(t, "codec mismatch", originalReason)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -579,7 +612,7 @@ func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+	require.Empty(t, response.Candidates, "a CRC tag on one name cannot authorize a new codec difference")
 }
 
 func TestFindCandidatesRejectsAdvertisedCodecDrift(t *testing.T) {
@@ -638,7 +671,7 @@ func TestFindCandidatesRejectsAdvertisedCodecDrift(t *testing.T) {
 			searchedRelease := service.releaseCache.Parse(tt.searchedName)
 			require.Empty(t, existingRelease.Codec)
 			require.NotEmpty(t, searchedRelease.Codec)
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
 				Candidate:     namedRelease{release: searchedRelease, rawName: tt.searchedName},
 				SourceSize:    size,
@@ -681,7 +714,7 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceTitles:  []string{"Money Heist"},
@@ -690,7 +723,6 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
 	require.Equal(t, searchCandidateClassStrict, decision.Class)
-	require.True(t, decision.StrictChecksumReplay)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -702,7 +734,7 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 		"the downloaded source title remains valid through the cached ARR alias")
 }
 
-func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+func TestFindCandidatesSourceChecksumVerdictRejectsNewUnrecordedDifference(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-with-checksum"
@@ -726,27 +758,15 @@ func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *tes
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
-
-	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
-		existingRelease, downloadedRelease, existingName, downloadedName, false,
-	)
-	require.False(t, originalMatch)
-	require.Equal(t, checksumMismatchReason, originalReason,
-		"the search-orientation comparison would hide the new codec difference behind the checksum")
-	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
-		downloadedRelease, existingRelease, downloadedName, existingName, false,
-	)
-	require.False(t, reverseMatch)
-	require.Equal(t, "codec mismatch", reverseReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -754,7 +774,7 @@ func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *tes
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+	require.Empty(t, response.Candidates, "a CRC tag on one name cannot authorize a new codec difference")
 }
 
 func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
@@ -781,7 +801,7 @@ func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -800,7 +820,10 @@ func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
 		"a recorded collection difference cannot authorize a new codec difference")
 }
 
-func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T) {
+// The listing omits the codec, so the codec in the downloaded name is no
+// difference from the listing. The stored verdict holds, and the file check
+// decides.
+func TestFindCandidatesLeavesOmittedListingFieldToFileCheck(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-with-codec"
@@ -824,7 +847,7 @@ func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -832,7 +855,7 @@ func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
 	require.Equal(t, []string{"collection"}, decision.RelaxedDifferences,
-		"an omitted codec is not a strict rejection and must not become replay authority")
+		"an omitted codec is not a strict rejection")
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -840,11 +863,10 @@ func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates,
-		"a codec omitted by the search title cannot authorize a conflicting downloaded codec")
+	require.Len(t, response.Candidates, 1)
 }
 
-func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T) {
+func TestSearchRecordsOverlappingVariantDifference(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := &rls.Release{
 		Title:      "Example Show",
@@ -861,23 +883,13 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		Candidate: namedRelease{release: &searched},
 	}
 
-	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
-	require.ElementsMatch(t, []string{"collection", "variant"}, observed)
-	used, ok, reason := service.validateExactSizeFallback(input, "collection mismatch", observed)
-	require.True(t, ok, reason)
-	require.ElementsMatch(t, []string{"collection", "variant"}, used,
-		"normalizing the shared Collection field must not hide the independent IMAX rule")
-
-	downloaded := searched
-	downloaded.Collection = ""
-	input.Candidate.release = &downloaded
-	used, ok, reason = service.validateExactSizeFallback(input, "IMAX", used)
-	require.True(t, ok, reason)
-	require.Equal(t, []string{"variant"}, used,
-		"apply may spend the variant authority that search independently established")
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
+	require.ElementsMatch(t, []string{"collection", "variant"}, observed,
+		"the shared Collection field must not hide the independent IMAX rule")
 }
 
-func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) {
+func TestSearchRecordsStrictCollectionMismatch(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := &rls.Release{
 		Title:      "Example Show",
@@ -896,19 +908,18 @@ func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) 
 		Candidate: namedRelease{release: &candidate},
 	}
 
-	strict, reason := service.releasesMatchWithReason(source, &candidate, false)
+	strictComparison := service.matcher().strictCompare(source, &candidate, false)
+	strict, reason := strictComparison.matched(), strictComparison.reason()
 	require.False(t, strict)
 	require.Equal(t, "collection mismatch", reason)
 
-	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
 	require.Contains(t, observed, "collection",
-		"the observation key must use the same Collection field as strict matching")
-	used, ok, reason := service.validateExactSizeFallback(input, reason, observed)
-	require.True(t, ok, reason)
-	require.Equal(t, []string{"collection"}, used)
+		"search must record the Collection field that strict matching rejects")
 }
 
-func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
+func TestFindCandidatesKeepsDirectionalVariantMismatch(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-imax"
@@ -931,14 +942,16 @@ func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	searchMatch, searchReason := service.releasesMatchWithReason(existingRelease, downloadedRelease, false)
+	searchMatchComparison := service.matcher().strictCompare(existingRelease, downloadedRelease, false)
+	searchMatch, searchReason := searchMatchComparison.matched(), searchMatchComparison.reason()
 	require.False(t, searchMatch)
 	require.Equal(t, "IMAX", searchReason)
-	applyMatch, applyReason := service.releasesMatchWithReason(downloadedRelease, existingRelease, false)
+	applyMatchComparison := service.matcher().strictCompare(downloadedRelease, existingRelease, false)
+	applyMatch, applyReason := applyMatchComparison.matched(), applyMatchComparison.reason()
 	require.False(t, applyMatch)
 	require.Equal(t, "HYBRID", applyReason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
@@ -954,13 +967,12 @@ func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
-		"apply must replay a recorded variant when the reverse comparison reports its other label")
+		"apply must keep a recorded variant when the reverse comparison reports its other label")
 }
 
-// Search and apply call the asymmetric checksum gate in opposite directions.
-// Exact-size evidence must preserve a one-sided-checksum decision whichever
-// release carries the CRC.
-func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
+// A CRC tag on one name is no difference, whichever release carries it, so
+// search gives a strict verdict and apply keeps it.
+func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 	const (
 		instanceID   = 1
 		checksumName = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
@@ -972,9 +984,8 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 		name           string
 		existingName   string
 		downloadedName string
-		searchStrict   bool
 	}{
-		{name: "downloaded torrent carries checksum", existingName: plainName, downloadedName: checksumName, searchStrict: true},
+		{name: "downloaded torrent carries checksum", existingName: plainName, downloadedName: checksumName},
 		{name: "existing torrent carries checksum", existingName: checksumName, downloadedName: plainName},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1001,36 +1012,20 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			downloadedRelease := service.releaseCache.Parse(tt.downloadedName)
 			require.NotEqual(t, existingRelease.Sum == "", downloadedRelease.Sum == "")
 
-			strict, reason := service.releasesMatchWithReasonAndNames(
-				existingRelease, downloadedRelease, tt.existingName, tt.downloadedName, false,
-			)
-			require.Equal(t, tt.searchStrict, strict, reason)
-			if !strict {
-				require.Equal(t, checksumMismatchReason, reason)
-			}
-
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
 				Candidate:     namedRelease{release: downloadedRelease, rawName: tt.downloadedName},
 				SourceSize:    size,
 				CandidateSize: size,
 			})
-			require.True(t, decision.Accepted)
-			if tt.searchStrict {
-				require.Equal(t, searchCandidateClassStrict, decision.Class)
-				require.True(t, decision.StrictChecksumReplay)
-				require.Empty(t, decision.StrictMismatchReason)
-				require.Empty(t, decision.RelaxedDifferences)
-			} else {
-				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-				require.False(t, decision.StrictChecksumReplay)
-				require.Equal(t, checksumMismatchReason, decision.StrictMismatchReason)
-				require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
-			}
+			require.True(t, decision.Accepted, decision.RejectReason)
+			require.Equal(t, searchCandidateClassStrict, decision.Class)
+			require.Empty(t, decision.StrictMismatchReason)
+			require.Empty(t, decision.RelaxedDifferences)
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
-			require.NotEmpty(t, service.getMatchTypeFromTitle(
-				tt.downloadedName, tt.existingName, downloadedRelease, existingRelease, existingFiles,
-			), "the fixture must pass file validation once the release gate is replayed")
+			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
+				downloadedRelease, existingRelease, existingFiles,
+			), "the fixture must pass file validation once apply keeps the stored verdict")
 
 			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 				TorrentName:       tt.downloadedName,
@@ -1039,15 +1034,14 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Len(t, response.Candidates, 1,
-				"apply must preserve search's exact-size one-sided-checksum decision")
+				"apply must keep the strict verdict of a CRC tag on one name")
 		})
 	}
 }
 
-// The checksum tolerance belongs to the exact-size fallback alone. This fails if
-// it is ever widened into validateGroupSiteAndChecksum, where strict matching
-// would inherit it.
-func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) {
+// A CRC tag on one name decides nothing in either direction, also without exact
+// sizes. The file check after the download decides.
+func TestClassifySearchCandidateIgnoresOneSidedChecksumWithoutExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
 		sourceName    = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
@@ -1060,7 +1054,6 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 		name      string
 		source    namedRelease
 		candidate namedRelease
-		accepted  bool
 	}{
 		{
 			name:      "source carries checksum",
@@ -1071,11 +1064,10 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 			name:      "candidate carries checksum",
 			source:    namedRelease{release: &candidate, rawName: candidateName},
 			candidate: namedRelease{release: &source, rawName: sourceName},
-			accepted:  true,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           tt.source,
 				Candidate:        tt.candidate,
 				SourceSize:       1_424_466_789,
@@ -1083,12 +1075,8 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 				TolerancePercent: 5,
 			})
 
-			require.Equal(t, tt.accepted, decision.Accepted)
-			if tt.accepted {
-				require.Equal(t, searchCandidateClassStrict, decision.Class)
-				return
-			}
-			require.Equal(t, "checksum mismatch", decision.RejectReason)
+			require.True(t, decision.Accepted, decision.RejectReason)
+			require.Equal(t, searchCandidateClassStrict, decision.Class)
 		})
 	}
 }
@@ -1121,7 +1109,7 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 			source := rls.ParseString(tt.source)
 			candidate := rls.ParseString(candidateName)
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: tt.source},
 				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       tt.sourceSize,
@@ -1140,7 +1128,7 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	}
 }
 
-// validateTVStructure reports a season mismatch before it compares pack against
+// compareTVStructure reports a season mismatch before it compares pack against
 // episode, so a differing season would otherwise skip the shape check. Only a
 // like-for-like shape may retire a season or episode number.
 func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) {
@@ -1166,7 +1154,7 @@ func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) 
 			source := rls.ParseString(tt.source)
 			candidate := rls.ParseString(tt.candidate)
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:                 namedRelease{release: &source, rawName: tt.source},
 				Candidate:              namedRelease{release: &candidate, rawName: tt.candidate},
 				SourceSize:             size,
@@ -1198,24 +1186,24 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 	require.Equal(t, "Title rescue · full check required", decision.MatchReason)
 
 	input.RescueTitleMismatches = false
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.matcher().classifySearchCandidate(input).Accepted)
 
 	input.RescueTitleMismatches = true
 	input.CandidateSize--
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.matcher().classifySearchCandidate(input).Accepted)
 
 	input.CandidateSize = size
 	differentGroup := candidate
 	differentGroup.Group = "OTHER"
 	input.Candidate.release = &differentGroup
-	rejected := service.classifySearchCandidate(input)
+	rejected := service.matcher().classifySearchCandidate(input)
 	require.False(t, rejected.Accepted)
 	require.Equal(t, "group mismatch", rejected.RejectReason)
 }
@@ -1244,14 +1232,15 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 
-	ok, reason := service.validateGroupSiteAndChecksum(&source, &candidate, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing group")
-	require.Equal(t, "group mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, input.Source, input.Candidate)
+	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing group")
+	require.Equal(t, "group mismatch", comparison.reason())
 }
 
 func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
@@ -1262,16 +1251,16 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 	require.NotEmpty(t, source.Sum)
 	require.Empty(t, bare.Sum)
 
-	ok, reason := service.releasesMatchExceptTitleWithReason(&source, &bare, false)
+	ok, reason := service.matcher().releasesMatchExceptTitleWithReason(namedRelease{release: &source}, namedRelease{release: &bare}, false)
 	require.True(t, ok, "reason: %s", reason)
 
-	ok, reason = service.releasesMatchExceptTitleWithReason(&source, &conflicting, false)
+	ok, reason = service.matcher().releasesMatchExceptTitleWithReason(namedRelease{release: &source}, namedRelease{release: &conflicting}, false)
 	require.False(t, ok)
 	require.Equal(t, "checksum mismatch", reason)
 
-	ok, reason = service.validateGroupSiteAndChecksum(&source, &bare, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
-	require.Equal(t, "checksum mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: &source}, namedRelease{release: &bare})
+	require.False(t, comparison.differences.has(differenceChecksum), "the strict compare ignores a CRC tag on one name")
 }
 
 func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {
@@ -1313,7 +1302,7 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	candidate := rls.ParseString(candidateName)
 	sourceTitles := []string{"Money Heist"}
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     sourceTitles,
@@ -1341,24 +1330,17 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, []string{"Money Heist"}, results[0].SearchDecision.SourceTitles)
 	require.Equal(t, candidateName, results[0].SearchDecision.SearchCandidateName)
-	results[0].SearchDecision.StrictChecksumReplay = true
-	results[0].SearchDecision.RelaxedDifferences = []string{"collection"}
 
 	service.cacheSearchResults(1, "source", results)
 	results[0].SearchDecision.SourceTitles[0] = "mutated after cache write"
-	results[0].SearchDecision.RelaxedDifferences[0] = "mutated after cache write"
 	cached := service.getCachedSearchResults(1, "source")
 	require.NotNil(t, cached)
 	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchDecision.SourceTitles)
 	require.Equal(t, candidateName, cached.results[0].SearchDecision.SearchCandidateName)
-	require.True(t, cached.results[0].SearchDecision.StrictChecksumReplay)
-	require.Equal(t, []string{"collection"}, cached.results[0].SearchDecision.RelaxedDifferences)
 	cached.results[0].SearchDecision.SourceTitles[0] = "mutated after cache read"
-	cached.results[0].SearchDecision.RelaxedDifferences[0] = "mutated after cache read"
 	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.SourceTitles)
-	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.RelaxedDifferences)
 
-	rejected := service.classifySearchCandidate(searchCandidateInput{
+	rejected := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     []string{"Unrelated Show"},
@@ -1393,7 +1375,7 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: sourceName},
 				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       test.sourceSize,
@@ -1434,7 +1416,7 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 				source.Sum = "AAAAAAAA"
 			}
 			test.mutate(&candidate)
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: source.Title},
 				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
@@ -1463,6 +1445,18 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			name:          "source year with missing candidate year",
 			sourceYear:    2024,
 			candidateYear: 0,
+			accepted:      true,
+		},
+		{
+			name:          "candidate year with missing source year",
+			sourceYear:    0,
+			candidateYear: 2024,
+			accepted:      true,
+		},
+		{
+			name:          "different years",
+			sourceYear:    2023,
+			candidateYear: 2024,
 			reason:        "year mismatch",
 		},
 		{
@@ -1498,7 +1492,7 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			source.Year, source.Month, source.Day = test.sourceYear, test.sourceMonth, test.sourceDay
 			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: source.Title},
 				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
@@ -1527,7 +1521,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("different episode is relaxed and recorded", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:           namedRelease{release: &source, rawName: source.Title},
 			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
@@ -1542,7 +1536,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("forbidden season pack from episode", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:                 namedRelease{release: &source, rawName: source.Title},
 			Candidate:              namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:             size,
@@ -1559,7 +1553,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		candidate := source
 		candidate.Type = rls.Music
 		candidate.Collection = "ATVP"
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:           namedRelease{release: &source, rawName: source.Title},
 			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
@@ -1575,33 +1569,27 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
 		Title: "candidate",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "secret mismatch",
-			RelaxedDifferences:   []string{"secret difference"},
-			SourceTitles:         []string{"ARR secret result alias"},
+			Class:        searchCandidateClassTitleRescue,
+			SourceTitles: []string{"ARR secret result alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "title-rescue")
-	require.NotContains(t, string(resultBytes), "secret mismatch")
 	require.NotContains(t, string(resultBytes), "secret difference")
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     12345,
-			SourceHash:           "secret source hash",
-			StrictMismatchReason: "secret request mismatch",
-			RelaxedDifferences:   []string{"secret request difference"},
-			SourceTitles:         []string{"ARR secret request alias"},
+			Class:            searchCandidateClassTitleRescue,
+			SourceInstanceID: 12345,
+			SourceHash:       "secret source hash",
+			SourceTitles:     []string{"ARR secret request alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "title-rescue")
 	require.NotContains(t, string(requestBytes), "12345")
 	require.NotContains(t, string(requestBytes), "secret source hash")
-	require.NotContains(t, string(requestBytes), "secret request mismatch")
 	require.NotContains(t, string(requestBytes), "secret request difference")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 
@@ -1734,8 +1722,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	duplicate := result
@@ -1756,6 +1743,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		DownloadURL: duplicate.DownloadURL,
 	}
 
+	withAdder(service)
 	response, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{duplicateSelection, selection, selection, selection, selection},
 	})
@@ -1780,6 +1768,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 	require.Equal(t, 1, limitErrors)
 	require.Equal(t, 1, existsErrors)
 
+	withAdder(service)
 	repeated, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1819,8 +1808,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{result})
@@ -1831,6 +1819,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		DownloadURL: result.DownloadURL,
 	}
 
+	withAdder(service)
 	blocked, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1843,6 +1832,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	// The block must not consume a rescue slot: with Skip recheck off again,
 	// all three attempts remain available.
 	settings = models.DefaultCrossSeedAutomationSettings()
+	withAdder(service)
 	allowed, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection, selection, selection},
 	})
@@ -1925,7 +1915,6 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 			return &CrossSeedResponse{Success: true}, nil
 		},
 	}
-	state := &searchRunState{opts: SearchRunOptions{InstanceID: 1}}
 	match := TorrentSearchResult{
 		Indexer:     "Indexer",
 		IndexerID:   7,
@@ -1933,16 +1922,16 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		Size:        size,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         sourceTitles,
+			Class:        searchCandidateClassExactSizeFallback,
+			Relaxed:      differencesOf(differenceCollection),
+			SourceTitles: sourceTitles,
 		},
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		state,
+		1,
+		triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		match,
 		time.Now(),
@@ -1954,8 +1943,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, 1, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, "source", captured.SearchDecision.SourceHash)
-	require.Equal(t, "collection mismatch", captured.SearchDecision.StrictMismatchReason)
-	require.Equal(t, []string{"collection"}, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, differencesOf(differenceCollection), captured.SearchDecision.Relaxed)
 	require.Equal(t, sourceTitles, captured.SearchDecision.SourceTitles)
 }
 
@@ -1972,7 +1960,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		&searchRunState{opts: SearchRunOptions{InstanceID: 1}},
+		1, triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{
 			Indexer:     "Indexer",
@@ -1980,8 +1968,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 			Title:       "candidate",
 			DownloadURL: "https://example.invalid/candidate.torrent",
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassTitleRescue,
-				StrictMismatchReason: "title mismatch",
+				Class: searchCandidateClassTitleRescue,
 			},
 		},
 		time.Now(),
@@ -2024,10 +2011,10 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "title mismatch",
+			Class:               searchCandidateClassTitleRescue,
+			SearchCandidateName: targetName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	}
 	rescued, err := service.FindCandidates(context.Background(), request)
@@ -2058,6 +2045,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: instance.Name, Torrents: []qbt.Torrent{existing}, titleRescue: true},
@@ -2125,7 +2113,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	}
 	sourceRelease := rls.ParseString(existingName)
 	targetRelease := rls.ParseString(targetName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &sourceRelease, rawName: existingName},
 		Candidate:        namedRelease{release: &targetRelease, rawName: targetName},
 		SourceSize:       torrentSize,
@@ -2141,13 +2129,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		return &FindCandidatesRequest{
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
-			SearchDecision: searchDecisionProvenance{
-				Class:                decision.Class,
-				SourceInstanceID:     instanceID,
-				SourceHash:           existingHash,
-				StrictMismatchReason: decision.StrictMismatchReason,
-				RelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
-			},
+			SearchDecision:    decision.provenance().bindSource(instanceID, existingHash),
 		}
 	}
 
@@ -2164,14 +2146,6 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.Len(t, fallbackResponse.Candidates[0].Torrents, 1)
 	require.Equal(t, existingHash, fallbackResponse.Candidates[0].Torrents[0].Hash)
 	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
-
-	unrecordedDifferenceRequest := fallbackRequest()
-	// The live strict mismatch for this pair is "hdr"; recording only an
-	// unrelated relaxation must keep the apply stage strict.
-	unrecordedDifferenceRequest.SearchDecision.RelaxedDifferences = []string{"collection"}
-	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
-	require.NoError(t, err)
-	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")
 
 	for name, hardMismatchTitle := range map[string]string{
 		"title":      "Different.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
@@ -2232,15 +2206,18 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	// The listing names the local show, and the download uses the other title.
+	// Only the aliases let the download read as the listing.
 	request := func(hash string) *FindCandidatesRequest {
 		return &FindCandidatesRequest{
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       hash,
-				SourceTitles:     []string{"Money Heist"},
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: sourceName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          hash,
+				SourceTitles:        []string{"Money Heist"},
 			},
 		}
 	}
@@ -2262,6 +2239,13 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 
+	// Without the aliases the download does not read as the listing.
+	noAliases := request(sourceHash)
+	noAliases.SearchDecision.SourceTitles = nil
+	response, err = service.FindCandidates(context.Background(), noAliases)
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates)
+
 	// Without a matching source hash the aliases attach to nothing.
 	response, err = service.FindCandidates(context.Background(), request("different-hash"))
 	require.NoError(t, err)
@@ -2275,6 +2259,8 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	require.Empty(t, response.Candidates)
 }
 
+// The listing named the local show, and the downloaded info.name uses the
+// other title. Only the stored aliases let the download read as the listing.
 func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -2305,14 +2291,16 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	}
 
 	apply := func(sourceTitles []string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       existingHash,
-				SourceTitles:     sourceTitles,
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: existingName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          existingHash,
+				SourceTitles:        sourceTitles,
 			},
 		})
 		require.NoError(t, applyErr)
@@ -2329,9 +2317,8 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 }
 
 // TestCrossSeedRevalidatesARRCandidateTitles mirrors the SourceTitles
-// revalidation above for announce-origin aliases: CandidateTitles describe the
-// incoming (target) release, so apply widens the target side with them, still
-// bound to the decision's source torrent.
+// revalidation above for announce-origin aliases. The aliases stay bound to
+// the decision's source torrent.
 func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -2362,14 +2349,16 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	}
 
 	apply := func(candidateTitles []string, sourceHash string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       sourceHash,
-				CandidateTitles:  candidateTitles,
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: existingName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
+				CandidateTitles:     candidateTitles,
 			},
 		})
 		require.NoError(t, applyErr)
@@ -2382,7 +2371,7 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	// The aliases stay bound to the decision's source torrent.
 	require.Equal(t, "no_match", apply([]string{"La Casa de Papel"}, "different-hash").Results[0].Status)
 
-	aliased := apply([]string{"La Casa de Papel"}, existingHash)
+	aliased := apply([]string{"Money Heist", "La Casa de Papel"}, existingHash)
 	require.NotEqual(t, "no_match", aliased.Results[0].Status)
 	require.Contains(t, aliased.Results[0].Message, "torrent properties")
 }
@@ -2471,10 +2460,8 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 			context.Background(),
 			instanceID,
 			sourceHash,
-			TorrentSearchOptions{
-				IndexerIDs:  []int{1},
-				SkipGazelle: true,
-			},
+			TorrentSearchOptions{},
+			searchScope{torznabIndexerIDs: []int{1}},
 			nil,
 		)
 		require.NoError(t, searchErr)
@@ -2492,6 +2479,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	require.Equal(t, aliases, match.SearchDecision.SourceTitles)
 
 	t.Run("manual apply", func(t *testing.T) {
+		withAdder(service)
 		applyResponse, applyErr := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 			Selections: []TorrentSearchSelection{
 				{
@@ -2514,7 +2502,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	t.Run("automated apply", func(t *testing.T) {
 		result, applyErr := service.executeCrossSeedSearchAttempt(
 			context.Background(),
-			&searchRunState{opts: SearchRunOptions{InstanceID: instanceID}},
+			instanceID, triggerDefaults{},
 			&source,
 			match,
 			time.Now(),
@@ -2531,4 +2519,204 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		errResponse := search(nil)
 		require.Equal(t, QueryDegradedARRLookupFailed, errResponse.QueryDegraded)
 	})
+}
+
+// The download must read as the listing that search judged, apart from the
+// fields that the stored verdict lists as different.
+func TestDownloadReadsAsListing(t *testing.T) {
+	t.Parallel()
+
+	m := (&Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}).matcher()
+	for _, tt := range []struct {
+		name     string
+		class    searchCandidateClass
+		listing  string
+		local    string
+		download string
+		titles   []string
+		want     bool
+	}{
+		{
+			name:     "the download keeps the web source that the relabel accepted",
+			class:    searchCandidateClassWebSourceRelabel,
+			listing:  "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.H264-GRP",
+			download: "Kaiju.Squad.S02E05.1080p.AMZN.WEBRip.H264-GRP",
+			want:     true,
+		},
+		{
+			name:     "the download keeps the HYBRID tag that search let pass",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			want:     true,
+		},
+		{
+			name:     "the download drops the HYBRID tag that search let pass",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			want:     true,
+		},
+		{
+			name:     "the HYBRID tolerance keeps a CRC tag that only the listing has",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			local:    "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			want:     true,
+		},
+		{
+			name:     "the HYBRID tolerance does not admit an IMAX download",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
+		},
+		{
+			name:     "a strict verdict lists no web source difference",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.H264-GRP",
+			download: "Kaiju.Squad.S02E05.1080p.AMZN.WEBRip.H264-GRP",
+		},
+		{
+			name:     "the download keeps the title that title rescue accepted",
+			class:    searchCandidateClassTitleRescue,
+			listing:  "Monster.Unit.S02E05.1080p.WEB.H264-GRP",
+			download: "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
+			want:     true,
+		},
+		{
+			name:     "title rescue still compares the fields after the title",
+			class:    searchCandidateClassTitleRescue,
+			listing:  "Monster.Unit.S02E05.1080p.WEB.H264-GRP",
+			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
+		},
+		{
+			name:     "a CRC tag on the listing only",
+			class:    searchCandidateClassStrict,
+			listing:  "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234]",
+			download: "[KaijuSubs] Kaiju Squad - 81 (1080p)",
+			want:     true,
+		},
+		{
+			name:     "two CRC tags that differ",
+			class:    searchCandidateClassStrict,
+			listing:  "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234]",
+			download: "[KaijuSubs] Kaiju Squad - 81 (1080p) [EF567890]",
+		},
+		{
+			name:     "the listing drops the CRC tag, and the download carries another",
+			class:    searchCandidateClassExactSizeFallback,
+			listing:  "[KaijuSubs] Kaiju Squad - 81 (1080p)",
+			local:    "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234]",
+			download: "[KaijuSubs] Kaiju Squad - 81 (1080p) [EF567890]",
+		},
+		{
+			name:     "the listing drops the fansub tag, and the download carries another",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju Squad - 81 (1080p)",
+			local:    "[KaijuSubs] Kaiju Squad - 81 (1080p)",
+			download: "[OtherSubs] Kaiju Squad - 81 (1080p)",
+		},
+		{
+			name:     "the listing drops the group, and the download carries another",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju.Squad.S02E06.1080p.WEB.H264",
+			local:    "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
+			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-OTHER",
+		},
+		{
+			name:     "the download names another title of the resolved show",
+			class:    searchCandidateClassStrict,
+			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
+			download: "Luces.del.Puerto.S01E05.1080p.WEB.H264-GRP",
+			titles:   []string{"Luces del Puerto", "Harbor Lights"},
+			want:     true,
+		},
+		{
+			name:     "the download names the local torrent",
+			class:    searchCandidateClassStrict,
+			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
+			local:    "Luces.del.Puerto.S01E05.1080p.WEB.H264-GRP",
+			download: "Luces.del.Puerto.S01E05.1080p.WEB.H264-GRP",
+			titles:   []string{"Harbor Lights"},
+			want:     true,
+		},
+		{
+			name:     "an alias of the listing does not admit another show",
+			class:    searchCandidateClassStrict,
+			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
+			local:    "Luces.del.Puerto.S01E05.1080p.WEB.H264-GRP",
+			download: "Unrelated.Show.S01E05.1080p.WEB.H264-GRP",
+			titles:   []string{"Luces del Puerto", "Harbor Lights"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := searchDecisionProvenance{Class: tt.class, SearchCandidateName: tt.listing, SourceTitles: tt.titles}
+			require.Equal(t, tt.want, m.downloadReadsAsListing(decision, m.readName(tt.local), m.readName(tt.download), false))
+		})
+	}
+}
+
+func TestClassifySearchCandidateHybridOutsideToleranceNamesSizeGap(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.x264-GRP"
+		candidateName = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    9_200,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.False(t, decision.Accepted)
+	require.Equal(t, "HYBRID (size differs by 8.00%)", decision.RejectReason)
+}
+
+func TestClassifySearchCandidateHybridExactSizeWithoutGroupUsesTolerance(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.2019.1080p.BluRay.x264"
+		candidateName = "Kaiju.Squad.2019.1080p.BluRay.HYBRID.x264"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    10_000,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
+	require.Equal(t, []string{"variant"}, decision.RelaxedDifferences)
+}
+
+func TestClassifySearchCandidateHybridPackAgainstEpisodeSkipsSizeCheck(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+		candidateName = "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP"
+	)
+
+	// Cross-seed episodes from packs skips the size check, as it does for a
+	// strict match.
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:                 namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:              namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:             10_000,
+		CandidateSize:          1_000,
+		TolerancePercent:       defaultSizeMismatchTolerancePercent,
+		FindIndividualEpisodes: true,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
 }

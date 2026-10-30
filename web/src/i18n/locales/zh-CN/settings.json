@@ -16,6 +16,11 @@
     "security": "安全",
     "logs": "日志"
   },
+  "nav": {
+    "general": "常规",
+    "connections": "连接",
+    "access": "访问"
+  },
   "language": {
     "cardTitle": "语言",
     "cardDescription": "选择您偏好的显示语言"
@@ -419,10 +424,6 @@
       "loadingDescription": "正在加载可用主题...",
       "description": "从可用主题中选择。高级主题需要有效的许可证。",
       "verificationUnavailable": "许可证验证不可用。高级主题切换暂时禁用。",
-      "freeBadge": "免费",
-      "freeThemes": "免费主题",
-      "premiumBadge": "高级",
-      "premiumThemes": "高级主题",
       "notLoaded": "高级主题未加载",
       "notLoadedDescription": "配置",
       "notLoadedAnd": "并运行",
@@ -442,9 +443,7 @@
       "managementTitle": "许可证管理",
       "managementDescription": "管理您的主题许可证和高级访问权限",
       "providers": {
-        "dodoPortal": "Dodo 门户",
-        "polarPortal": "Polar 门户",
-        "legacyPolarPortal": "旧版 Polar 门户"
+        "licensePortal": "许可证门户"
       },
       "status": {
         "unlockTitle": "解锁高级主题",
@@ -452,7 +451,9 @@
         "activeTitle": "高级访问已激活",
         "activeDescription": "您可以访问所有当前和未来的高级主题",
         "activationRequiredTitle": "需要激活许可证",
-        "activationRequiredDescription": "您的许可证需要在此设备上激活"
+        "activationRequiredDescription": "您的许可证需要在此设备上激活",
+        "offlineTitle": "无法连接许可证服务",
+        "offlineDescription": "qui 已有 7 天无法连接许可证服务，因此高级主题已锁定。qui 会在启动时及每天检查一次。许可证服务响应后，主题会再次解锁。您无需重新激活许可证。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 购买，然后在此输入您的许可证密钥。如果丢失了密钥，可通过",
@@ -474,12 +475,31 @@
       },
       "details": {
         "productAdded": "{{productName}} · 添加于 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}",
+        "statusLabels": {
+          "invalid": "无效",
+          "offline": "离线",
+          "unknown": "未知"
+        }
       },
       "invalid": {
-        "polarPrefix": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台已激活的设备上停用，或通过",
-        "polarSuffix": "管理激活。",
-        "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台当前已激活的设备上停用。"
+        "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录，然后在 Machine Instances 中停用一台不再使用的设备。"
+      },
+      "errors": {
+        "expired": "您的许可证密钥已过期。",
+        "notActive": "此许可证密钥已不再有效。",
+        "invalid": "此许可证密钥无效。",
+        "notFound": "您输入的许可证密钥无效。",
+        "databaseCopied": "此许可证已在另一台设备上激活。数据库似乎是复制过来的。",
+        "conditionsMismatch": "许可证密钥不符合要求的条件。",
+        "activationLimit": "已达到许可证激活上限。请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录。打开 Machine Instances，停用一台不再使用的设备，然后重试。",
+        "limitReached": "已达到许可证激活上限。",
+        "usageLimit": "已超出许可证使用上限。",
+        "unreachable": "无法连接许可证服务。请稍后重试。",
+        "tooManyAttempts": "尝试次数过多。请稍候再试。",
+        "rateLimited": "请稍候再试。",
+        "generic": "验证许可证密钥失败。请重试。",
+        "deleteFailed": "移除许可证失败。请重试。"
       },
       "actions": {
         "addLicense": "添加许可证",
@@ -492,7 +512,7 @@
         "activate": "激活许可证",
         "validating": "验证中...",
         "openDodoCheckout": "打开 DodoPayments 结账",
-        "openDodoPortal": "打开 Dodo 门户"
+        "openLicensePortal": "打开许可证门户"
       },
       "deleteDialog": {
         "title": "移除许可证？",
@@ -532,7 +552,7 @@
           },
           "findLicenseKey": {
             "title": "找到您的许可证密钥",
-            "description": "许可证密钥会在结账后显示。您也可以稍后从 Dodo 客户门户找回。"
+            "description": "许可证密钥会在结账后显示。您也可以稍后从许可证门户找回。"
           },
           "activateLicense": {
             "title": "激活您的许可证",
@@ -543,16 +563,13 @@
       "copiedVerify": "验证命令已复制",
       "failedCopyVerify": "复制验证命令失败",
       "toasts": {
-        "activationSuccess": "许可证激活成功！",
         "activationSuccessPremium": "高级访问已激活！感谢您的支持！",
         "paymentCompleted": "支付完成。请添加您的高级许可证密钥以完成设置。",
         "paymentNotCompleted": "支付未成功完成。",
         "returnedFromCheckout": "已从结账返回。准备好后请添加您的高级许可证密钥。",
         "keyCopied": "许可证密钥已复制到剪贴板",
         "copyFailed": "复制许可证密钥失败",
-        "removedFromMachine": "许可证已从此设备移除",
-        "refreshedAll": "所有许可证刷新成功",
-        "refreshFailed": "刷新许可证失败"
+        "removedFromMachine": "许可证已从此设备移除"
       }
     },
     "custom": {
@@ -561,12 +578,22 @@
       "lockedTitle": "自定义主题是高级功能",
       "lockedDescription": "解锁高级版即可从磁盘目录加载你自己的主题 CSS 文件。",
       "unlockCta": "解锁高级版",
-      "directoryLabel": "主题目录",
       "refresh": "刷新",
       "detectedCount": "找到的主题：{{total}}",
       "parseErrorsTitle": "无法解析以下文件：",
       "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。",
       "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。"
+    },
+    "layout": {
+      "mobileSplit": "为移动布局使用单独的主题",
+      "mobileSplitHelp": "移动布局（宽度小于 768 px 的窗口）和桌面布局各自保留自己的主题、模式和变体。此设置适用于所有浏览器。",
+      "localOnly": "在此浏览器中本地保留主题",
+      "localOnlyHelp": "此浏览器不从服务器获取主题，也不会将其主题更改发送到服务器。此设置仅适用于此浏览器。",
+      "changesMobile": "更改移动主题",
+      "changesDesktop": "更改桌面主题",
+      "changesLocal": "仅更改此浏览器的主题。要更改移动布局设置，请关闭本地设置。",
+      "saveError": "保存主题设置失败",
+      "mobileSplitOffWarning": "关闭此设置会删除移动主题。"
     }
   },
   "arrInstances": {
@@ -664,10 +691,6 @@
   },
   "indexers": {
     "title": "Torznab 索引器",
-    "addIndexer": "添加索引器",
-    "autodiscoverProwlarr": "从 Prowlarr 自动发现",
-    "noIndexers": "尚未配置索引器。",
-    "noIndexersDescription": "添加一个 Torznab 兼容的索引器以启用自动 cross-seed 搜索。",
     "deleteIndexer": "删除索引器",
     "deleteIndexerDescription": "确定要删除「{{name}}」吗？此操作无法撤销。",
     "deleteAllIndexers": "删除所有索引器",
@@ -676,8 +699,6 @@
       "loadFailed": "加载索引器失败",
       "deletedSuccess": "索引器已删除",
       "deleteFailed": "删除索引器失败",
-      "allDeletedSuccess": "所有索引器已删除",
-      "allDeletedFailed": "删除所有索引器失败",
       "deleteAllSuccess": "已删除全部 {{count}} 个索引器",
       "deleteAllPartial": "已删除 {{success}} 个索引器，{{failed}} 个失败：{{names}}",
       "testSuccess": "连接测试成功",
@@ -823,7 +844,6 @@
         "importSuccess": "成功：{{details}}",
         "importWithWarnings": "{{details}}（{{warningCount}} 个有警告）",
         "moreWarnings": "...还有 {{count}} 个警告",
-        "importErrors": "{{details}}",
         "moreErrors": "...还有 {{count}} 个错误",
         "created": "{{count}} 个已创建",
         "updated": "{{count}} 个已更新",
@@ -883,10 +903,6 @@
     },
     "activity": {
       "title": "调度器活动",
-      "idle": "空闲",
-      "queueLength": "队列",
-      "workers": "工作线程",
-      "cooldown": "冷却",
       "running": "运行中",
       "queued": "排队中",
       "rateLimited": "速率受限",
@@ -928,6 +944,20 @@
         "episode": "集"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle（OPS/RED）",
+    "description": "启用对 Orpheus 和 Redacted 的直接 API 匹配。这与 Torznab 并行运行；OPS/RED Torznab 索引器将被忽略。",
+    "enableMatching": "启用 Gazelle 匹配",
+    "enableDescription": "应用于所有源种子。如果可能，qui 还会通过 Gazelle 检查 RED/OPS。",
+    "redactedApiKey": "Redacted API 密钥",
+    "orpheusApiKey": "Orpheus API 密钥",
+    "pasteRedKey": "粘贴 RED API 密钥",
+    "pasteOpsKey": "粘贴 OPS API 密钥",
+    "enableToConfigure": "启用后进行配置",
+    "redDescription": "用于 redacted.sh 查询。粘贴以替换，清空以移除。",
+    "opsDescription": "用于 orpheus.network 查询。粘贴以替换，清空以移除。",
+    "save": "保存"
   },
   "searchCache": {
     "title": "搜索缓存",
@@ -984,6 +1014,68 @@
         "upToDateDetail": "正在运行最新版本",
         "notCheckedYet": "尚未检查",
         "lastChecked": "上次检查 {{date}}"
+      }
+    },
+    "restart": {
+      "button": "重启",
+      "confirmTitle": "重启 qui？",
+      "confirmDescription": "qui 会像正常停止时一样关闭，然后重新启动。正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。qui 恢复后页面会自动重新加载。",
+      "confirm": "重启",
+      "overlay": {
+        "restartingTitle": "正在重启 qui…",
+        "restartingDetail": "qui 再次响应后页面会重新加载。",
+        "slowTitle": "qui 尚未响应",
+        "slowDetail": "qui 可能仍在启动，此页面会继续等待。请查看 qui 日志。如果你更改了端口或基础 URL，请在新地址打开 qui。"
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "正在检查支持情况",
+        "checkingDescription": "正在检查 qui 是否可以安装此更新。",
+        "failedTitle": "无法检查更新支持情况",
+        "failedDescription": "无法检查是否支持自我更新。",
+        "retryDescription": "安装更新前，请重试支持检查。",
+        "retry": "重试"
+      },
+      "unavailable": {
+        "description": "此环境不支持自动安装。",
+        "nextStep": "如何更新",
+        "guide": "更新指南",
+        "container": {
+          "reason": "qui 在容器中运行。更新通过容器镜像提供。",
+          "step": "拉取新的 qui 镜像，然后使用现有配置和数据卷重新创建容器。"
+        },
+        "disabled": {
+          "reason": "qui 配置中已禁用自我更新。",
+          "step": "使用安装 qui 时所用的包管理器或安装方式进行更新。"
+        },
+        "development": {
+          "reason": "此 qui 构建不是发布版本。自动安装需要发布版本。",
+          "step": "停止 qui，将二进制文件替换为官方发布版本或新构建，然后重新启动 qui。"
+        },
+        "directory": {
+          "reason": "qui 无法访问或写入其二进制文件所在的目录。",
+          "step": "停止 qui，使用有写入权限的账户将二进制文件替换为新版本，然后重新启动 qui。"
+        }
+      },
+      "button": "安装更新",
+      "confirmTitle": "安装更新？",
+      "confirmDescription": "qui 会下载新版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。qui 恢复后页面会自动重新加载。",
+      "runningWork": "正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。",
+      "currentVersion": "当前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "发行说明",
+      "confirm": "安装更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢复，但运行的是其他版本。请查看 qui 日志。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新加载页面以打开新版本。",
+        "reload": "重新加载页面",
+        "noBackup": "qui 已更新，但未保留备份：{{error}}。如需回滚，请手动下载旧版本。",
+        "rollbackIntro": "如果新版本无法启动，请运行此命令，然后再次启动 qui：",
+        "rollbackLabel": "回滚命令",
+        "rollbackDocs": "回滚步骤"
       }
     },
     "runtime": {

@@ -23,7 +23,7 @@ func TestLogsHandler_GetLogSettings(t *testing.T) {
 	// Create a minimal config for testing
 	appConfig := createTestConfig(t)
 
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/log-settings", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func TestLogsHandler_GetLogSettings(t *testing.T) {
 
 func TestLogsHandler_UpdateLogSettings_InvalidLevel(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
 	body := strings.NewReader(`{"level": "INVALID"}`)
 	req := httptest.NewRequest(http.MethodPut, "/log-settings", body)
@@ -62,7 +62,7 @@ func TestLogsHandler_UpdateLogSettings_InvalidLevel(t *testing.T) {
 
 func TestLogsHandler_UpdateLogSettings_InvalidMaxSize(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
 	body := strings.NewReader(`{"maxSize": 0}`)
 	req := httptest.NewRequest(http.MethodPut, "/log-settings", body)
@@ -78,7 +78,7 @@ func TestLogsHandler_UpdateLogSettings_InvalidMaxSize(t *testing.T) {
 
 func TestLogsHandler_UpdateLogSettings_InvalidMaxBackups(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
 	body := strings.NewReader(`{"maxBackups": -1}`)
 	req := httptest.NewRequest(http.MethodPut, "/log-settings", body)
@@ -94,7 +94,7 @@ func TestLogsHandler_UpdateLogSettings_InvalidMaxBackups(t *testing.T) {
 
 func TestLogsHandler_UpdateLogSettings_InvalidJSON(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
 	body := strings.NewReader(`{invalid json}`)
 	req := httptest.NewRequest(http.MethodPut, "/log-settings", body)
@@ -110,32 +110,15 @@ func TestLogsHandler_UpdateLogSettings_InvalidJSON(t *testing.T) {
 
 func TestLogsHandler_StreamLogs_SSEHeaders(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 
-	// Use a cancellable context to stop the SSE handler
+	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// Run in a goroutine since SSE blocks
-	done := make(chan struct{})
-	go func() {
-		handler.StreamLogs(rec, req)
-		close(done)
-	}()
-
-	// Give it a moment to set headers
-	time.Sleep(50 * time.Millisecond)
-
-	// Cancel the context to stop the handler
-	cancel()
-
-	// Wait for handler to finish before checking
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handler did not stop within timeout")
-	}
+	handler.StreamLogs(rec, req)
 
 	// Check headers were set
 	headers := rec.Header()
@@ -152,37 +135,20 @@ func TestLogsHandler_StreamLogs_SSEHeaders(t *testing.T) {
 
 func TestLogsHandler_StreamLogs_WritesToHub(t *testing.T) {
 	appConfig := createTestConfig(t)
-	handler := NewLogsHandler(appConfig)
+	handler := NewLogsHandler(appConfig, nil)
 	hub := handler.GetHub()
 
 	// Write some log lines before connecting
 	hub.Write("test line 1")
 	hub.Write("test line 2")
 
-	// Use a cancellable context to stop the SSE handler
+	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream?limit=10", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// Run in a goroutine
-	done := make(chan struct{})
-	go func() {
-		handler.StreamLogs(rec, req)
-		close(done)
-	}()
-
-	// Give time for initial history to be sent
-	time.Sleep(100 * time.Millisecond)
-
-	// Cancel the context to stop the handler
-	cancel()
-
-	// Wait for handler to finish before reading body
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handler did not stop within timeout")
-	}
+	handler.StreamLogs(rec, req)
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "test line 1") {
@@ -190,6 +156,27 @@ func TestLogsHandler_StreamLogs_WritesToHub(t *testing.T) {
 	}
 	if !strings.Contains(body, "test line 2") {
 		t.Error("expected body to contain 'test line 2'")
+	}
+}
+
+func TestLogsHandler_StreamLogs_EndsOnShutdown(t *testing.T) {
+	shutdown := make(chan struct{})
+	handler := NewLogsHandler(createTestConfig(t), shutdown)
+
+	// The request context stays open: http.Server.Shutdown does not cancel it.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/stream", http.NoBody)
+	done := make(chan struct{})
+	go func() {
+		handler.StreamLogs(httptest.NewRecorder(), req)
+		close(done)
+	}()
+
+	close(shutdown)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("log stream did not end on shutdown")
 	}
 }
 
@@ -218,7 +205,7 @@ func TestIsQuiLogFile(t *testing.T) {
 }
 
 func TestLogsHandler_ListLogFiles_NoLogPath(t *testing.T) {
-	handler := NewLogsHandler(createTestConfig(t))
+	handler := NewLogsHandler(createTestConfig(t), nil)
 
 	rec := httptest.NewRecorder()
 	logsTestRouter(handler).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/files", http.NoBody))
@@ -471,7 +458,7 @@ logPath = "` + logPath + `"
 		t.Fatalf("failed to create config: %v", err)
 	}
 
-	return NewLogsHandler(cfg), logDir
+	return NewLogsHandler(cfg, nil), logDir
 }
 
 // createTestConfig creates a minimal AppConfig for testing.

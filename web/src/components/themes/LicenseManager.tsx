@@ -23,16 +23,15 @@ import {
   useLicenseDetails
 } from "@/hooks/useLicense"
 import { withBasePath } from "@/lib/base-url"
-import { getLicenseErrorMessage } from "@/lib/license-errors"
-import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { DODO_CHECKOUT_URL, DODO_PORTAL_URL } from "@/lib/dodo-constants"
+import { DODO_CHECKOUT_URL, LICENSE_PORTAL_URL } from "@/lib/dodo-constants"
+import { LicenseError, LicensePortalLink } from "./LicenseError"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -71,24 +70,37 @@ export function LicenseManager({
   const { data: licenses } = useLicenseDetails()
   const activateLicense = useActivateLicense()
   const deleteLicense = useDeleteLicense()
+  const { reset: resetActivation, isError: activationFailed } = activateLicense
+  // The card and the dialog share one activate mutation. Clear a failed activation when the dialog opens or closes.
+  // Never reset a pending one: that enables the activate buttons again, and a second click sends a second activation.
+  const setAddLicenseOpen = useCallback((open: boolean) => {
+    if (activationFailed) {
+      resetActivation()
+    }
+    setShowAddLicense(open)
+  }, [activationFailed, resetActivation])
   const primaryLicense = licenses?.[0]
   const hasStoredLicense = Boolean(primaryLicense)
-  const provider = primaryLicense?.provider ?? "dodo"
-  const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
-  const selectedPortalUrl = (selectedLicense?.provider ?? provider) === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar"? t("themes.license.providers.polarPortal"): t("themes.license.providers.dodoPortal")
 
-  // Check if we have an invalid license (exists but not active)
-  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
+  // An offline license comes back without user action when the license server answers, so it needs no re-activation.
+  const isOfflineLicense = primaryLicense?.status === "offline"
+  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" && !isOfflineLicense : false
+  const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
   let accessDescription = t("themes.license.status.unlockDescription")
   if (hasPremiumAccess) {
     accessTitle = t("themes.license.status.activeTitle")
     accessDescription = t("themes.license.status.activeDescription")
+  } else if (isOfflineLicense) {
+    accessTitle = t("themes.license.status.offlineTitle")
+    accessDescription = t("themes.license.status.offlineDescription")
   } else if (hasInvalidLicense) {
     accessTitle = t("themes.license.status.activationRequiredTitle")
     accessDescription = t("themes.license.status.activationRequiredDescription")
+  }
+  const statusLabels: Record<string, string> = {
+    invalid: t("themes.license.details.statusLabels.invalid"),
+    offline: t("themes.license.details.statusLabels.offline"),
   }
   const canAddLicense = !hasStoredLicense || hasInvalidLicense
   const checkoutUrl = useMemo(() => {
@@ -98,8 +110,8 @@ export function LicenseManager({
   }, [])
   const openAddLicenseDialog = useCallback(() => {
     setShowPaymentDialog(false)
-    setShowAddLicense(true)
-  }, [])
+    setAddLicenseOpen(true)
+  }, [setAddLicenseOpen])
 
   useEffect(() => {
     if (checkoutStatus !== "success") {
@@ -127,7 +139,7 @@ export function LicenseManager({
     onSubmit: async ({ value }) => {
       await activateLicense.mutateAsync(value.licenseKey)
       form.reset()
-      setShowAddLicense(false)
+      setAddLicenseOpen(false)
     },
   })
 
@@ -171,7 +183,7 @@ export function LicenseManager({
         <CardHeader className="px-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CardTitle className="flex items-center gap-2">
                 <Key className="h-4 w-4 sm:h-5 sm:w-5" />
                 {t("themes.license.managementTitle")}
               </CardTitle>
@@ -183,7 +195,7 @@ export function LicenseManager({
               {canAddLicense && (
                 <Button
                   size="sm"
-                  onClick={() => setShowAddLicense(true)}
+                  onClick={() => setAddLicenseOpen(true)}
                   className="text-xs sm:text-sm"
                 >
                   <Key className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -203,16 +215,16 @@ export function LicenseManager({
                 <div className="space-y-1">
                   <p className="font-medium text-base">{accessTitle}</p>
                   <p className="text-sm text-muted-foreground">{accessDescription}</p>
-                  {!hasPremiumAccess && !hasInvalidLicense && (
+                  {showPurchase && (
                     <p className="text-xs text-muted-foreground">
                       {t("themes.license.portalHelp.prefix")}{" "}
                       <a
-                        href={DODO_PORTAL_URL}
+                        href={LICENSE_PORTAL_URL}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline hover:no-underline"
                       >
-                        {t("themes.license.providers.dodoPortal")}
+                        {t("themes.license.providers.licensePortal")}
                       </a>
                       {t("themes.license.portalHelp.suffix")}
                     </p>
@@ -231,7 +243,7 @@ export function LicenseManager({
                     {t("themes.license.actions.remove")}
                   </Button>
                 )}
-                {!hasPremiumAccess && !hasInvalidLicense && (
+                {showPurchase && (
                   <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
                     <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                     <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 -ml-1 mr-1 sm:mr-2" />
@@ -289,7 +301,7 @@ export function LicenseManager({
                 <div className="text-xs text-muted-foreground">
                   {primaryLicense.status !== "active"? t("themes.license.details.productStatusAndAdded", {
                     productName: primaryLicense.productName,
-                    status: primaryLicense.status,
+                    status: statusLabels[primaryLicense.status] ?? t("themes.license.details.statusLabels.unknown"),
                     date: formatDate(new Date(primaryLicense.createdAt)),
                   }): t("themes.license.details.productAdded", {
                     productName: primaryLicense.productName,
@@ -298,26 +310,16 @@ export function LicenseManager({
                 </div>
                 {hasInvalidLicense && (
                   <div className="space-y-2">
-                    <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
-                      <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                      {provider === "polar" ? (
+                    {activateLicense.isError ? (
+                      <LicenseError error={activateLicense.error} className="text-xs mt-2" />
+                    ) : (
+                      <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
                         <span>
-                          {t("themes.license.invalid.polarPrefix")}{" "}
-                          <a
-                            href={portalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:no-underline inline-flex items-center gap-0.5"
-                          >
-                            {portalUrl.replace("https://", "")}
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                          {t("themes.license.invalid.polarSuffix")}
+                          <Trans ns="settings" i18nKey="themes.license.invalid.dodo" components={{ portal: <LicensePortalLink /> }} />
                         </span>
-                      ) : (
-                        <span>{t("themes.license.invalid.dodo")}</span>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -379,12 +381,12 @@ export function LicenseManager({
               <div className="text-sm text-muted-foreground">
                 {t("themes.license.deleteDialog.recoverPrefix")}{" "}
                 <a
-                  href={selectedPortalUrl}
+                  href={LICENSE_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  {selectedPortalLabel}
+                  {t("themes.license.providers.licensePortal")}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
@@ -407,7 +409,7 @@ export function LicenseManager({
       </Dialog>
 
       {/* Add License Dialog */}
-      <Dialog open={showAddLicense} onOpenChange={setShowAddLicense}>
+      <Dialog open={showAddLicense} onOpenChange={setAddLicenseOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("themes.license.addDialog.title")}</DialogTitle>
@@ -445,35 +447,23 @@ export function LicenseManager({
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                   )}
-                  {activateLicense.isError && (
-                    <p className="text-sm text-destructive">
-                      {getLicenseErrorMessage(activateLicense.error)}
-                    </p>
-                  )}
+                  <LicenseError error={activateLicense.error} />
                 </div>
               )}
             </form.Field>
 
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
-                <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                <a href={LICENSE_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                   {t("themes.license.addDialog.recoverKey")}
                 </a>
               </Button>
-              <a
-                href={POLAR_PORTAL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-muted-foreground hover:underline sm:mr-auto"
-              >
-                {t("themes.license.providers.legacyPolarPortal")}
-              </a>
 
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setShowAddLicense(false)}
+                  onClick={() => setAddLicenseOpen(false)}
                   className="flex-1 sm:flex-none"
                 >
                   {t("common:actions.cancel")}
@@ -594,9 +584,9 @@ export function LicenseManager({
                   {t("themes.license.paymentDialog.steps.findLicenseKey.description")}
                 </p>
                 <Button size="sm" variant="outline" asChild>
-                  <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                  <a href={LICENSE_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    {t("themes.license.actions.openDodoPortal")}
+                    {t("themes.license.actions.openLicensePortal")}
                   </a>
                 </Button>
               </div>

@@ -4,130 +4,94 @@
  */
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
-import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { buildActionTarget, EMPTY_ACTION_TARGET, rememberTickedTorrents, type ActionTargetScope, type TorrentSelectionState } from "@/lib/torrent-selection"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useMemo, useRef } from "react"
 
-// Stable results for the no-selection steady state. The memos below depend on
-// sortedTorrents, which is a fresh array on every stream tick; without these
-// constants an empty selection would still produce a new [] per tick and defeat
-// the referential stability that row/menu memoization relies on.
-const EMPTY_HASHES: string[] = []
-const EMPTY_TORRENTS: Torrent[] = []
-const EMPTY_TARGETS: TorrentActionTarget[] = []
-
 export interface UseTorrentSelectionDerivationsParams {
-  isAllSelected: boolean
-  excludedFromSelectAll: Set<string>
-  selectedRowIds: string[]
-  selectedRowIdSet: Set<string>
+  selection: TorrentSelectionState
   getSelectionIdentity: (torrent: Torrent) => string
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
   columnFiltersExpr: string | null
-  filters?: TorrentFilters
+  // True when the table, not the backend, applies the column filters (cross-seed mode).
+  clientSideFiltering?: boolean
+  filters: TorrentFilters
+  search: string
   stats?: { totalSize?: number }
   totalCount: number
   isCrossInstanceEndpoint?: boolean
   instanceId: number
-  contextTorrents: Torrent[]
+  instanceIds?: number[]
 }
 
 /**
- * Derives everything bulk actions and dialogs need from the current selection:
- * the resolved hashes/torrents, counts, sizes, and the select-all targeting
- * filters/excludes.
- *
- * #1925 PIN: `selectAllFilters` must ALWAYS combine `columnFiltersExpr` with
- * `filters.expr` when both are present. This is deliberately DIFFERENT from
- * `useTorrentTableFilterExpr`'s `combinedFiltersExpr`, which early-returns the
- * cross-seed expression alone. Collapsing the two re-introduces #1925 (bulk
- * actions matching more torrents than the user sees).
+ * Derives the Action target of the desktop table (ADR 0034) and the sizes that
+ * the status bar and the delete dialog show.
  */
 export function useTorrentSelectionDerivations({
-  isAllSelected,
-  excludedFromSelectAll,
-  selectedRowIds,
-  selectedRowIdSet,
+  selection,
   getSelectionIdentity,
   getVisibleRows,
   sortedTorrents,
   columnFiltersExpr,
+  clientSideFiltering = false,
   filters,
+  search,
   stats,
   totalCount,
-  isCrossInstanceEndpoint,
+  isCrossInstanceEndpoint = false,
   instanceId,
-  contextTorrents,
+  instanceIds,
 }: UseTorrentSelectionDerivationsParams) {
   // Read the latest row accessor without making it a memo dependency.
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
-  // Get selected torrent hashes - handle both regular selection and "select all" mode
-  const selectedHashes = useMemo((): string[] => {
-    if (isAllSelected) {
-      // When all are selected, return all currently loaded hashes minus exclusions
-      // This is needed for actions to work properly
-      return sortedTorrents
-        .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-        .map(torrent => torrent.hash)
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_HASHES
-      }
-      // Regular selection mode - get hashes from selected torrents directly
-      const tableRows = getVisibleRowsRef.current()
-      return tableRows
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original.hash)
-    }
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, getSelectionIdentity])
+  const tickedTorrentsRef = useRef(new Map<string, Torrent>())
 
-  // Calculate the effective selection count for display
-  const effectiveSelectionCount = useMemo(() => {
-    if (isAllSelected) {
-      // When all selected, count is total minus exclusions
-      return Math.max(0, totalCount - excludedFromSelectAll.size)
-    } else {
-      // Regular selection mode - use the computed selectedHashes length
-      return selectedRowIds.length
+  const actionTarget = useMemo(() => {
+    const { isAllSelected, selected } = selection
+    if (!isAllSelected && selected.size === 0) {
+      // A stable result for the steady state: sortedTorrents is a fresh array on
+      // every stream tick, and row and menu memoization compares this reference.
+      tickedTorrentsRef.current.clear()
+      return EMPTY_ACTION_TARGET
     }
-  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
-
-  // Get selected torrents
-  const selectedTorrents = useMemo((): Torrent[] => {
-    if (isAllSelected) {
-      // When all are selected, return all torrents minus exclusions
-      return sortedTorrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_TORRENTS
-      }
-      // Regular selection mode
-      return getVisibleRowsRef.current()
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original)
+    // The table's row model, not sortedTorrents: in cross-seed mode the column
+    // filter applies client-side, and select-all is the visible set (#1925).
+    const loaded = getVisibleRowsRef.current().map(row => row.original)
+    const ticked = isAllSelected ? [] : rememberTickedTorrents(tickedTorrentsRef.current, selected, loaded, getSelectionIdentity)
+    const scope: ActionTargetScope = {
+      instanceId,
+      instanceIds,
+      filters,
+      columnFilters: { expr: columnFiltersExpr, inBrowser: clientSideFiltering },
+      search,
+      isCrossInstance: isCrossInstanceEndpoint,
     }
-  }, [selectedRowIdSet, sortedTorrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
+    return buildActionTarget(selection, scope, { loaded, ticked, totalCount })
+    // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection, sortedTorrents, columnFiltersExpr, clientSideFiltering, filters, search, totalCount, isCrossInstanceEndpoint, instanceId, instanceIds, getSelectionIdentity])
 
-  // Calculate total size of selected torrents
+  const { isAllSelected, excluded } = selection
   const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
+    if (isAllSelected && !clientSideFiltering) {
       const aggregateTotalSize = stats?.totalSize ?? 0
 
       if (aggregateTotalSize <= 0) {
         return 0
       }
 
-      if (excludedFromSelectAll.size === 0) {
+      if (excluded.size === 0) {
         return aggregateTotalSize
       }
 
       const excludedSize = sortedTorrents.reduce((total, torrent) => {
-        if (excludedFromSelectAll.has(getSelectionIdentity(torrent))) {
+        if (excluded.has(getSelectionIdentity(torrent))) {
           return total + (torrent.size || 0)
         }
         return total
@@ -136,93 +100,19 @@ export function useTorrentSelectionDerivations({
       return Math.max(aggregateTotalSize - excludedSize, 0)
     }
 
-    return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
+    return getTotalSize(actionTarget.previewTorrents)
+  }, [isAllSelected, clientSideFiltering, stats?.totalSize, excluded, sortedTorrents, actionTarget.previewTorrents, getSelectionIdentity])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  // Size shown in destructive dialogs - prefer the aggregate when select-all is active
-  const deleteDialogTotalSize = useMemo(() => {
-    if (isAllSelected) {
-      if (selectedTotalSize > 0) {
-        return selectedTotalSize
-      }
-
-      if (contextTorrents.length > 0) {
-        return getTotalSize(contextTorrents)
-      }
-
-      return 0
-    }
-
-    if (contextTorrents.length > 0) {
-      return getTotalSize(contextTorrents)
-    }
-
-    return selectedTotalSize
-  }, [isAllSelected, selectedTotalSize, contextTorrents])
+  // Without an aggregate size, the delete dialog shows the size of the loaded torrents.
+  const deleteDialogTotalSize = selectedTotalSize > 0 ? selectedTotalSize : getTotalSize(actionTarget.previewTorrents)
   const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
 
-  const selectAllFilters = useMemo(() => {
-    if (!isAllSelected) {
-      return undefined
-    }
-
-    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
-    // so select-all operations target exactly the visible set.
-    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
-    // causing bulk actions to match more torrents than the user sees.
-    const combinedExpr = (columnFiltersExpr && filters?.expr)? `(${columnFiltersExpr}) && (${filters.expr})`: (columnFiltersExpr || filters?.expr)
-
-    if (filters) {
-      return {
-        ...filters,
-        expr: combinedExpr ?? filters.expr ?? "",
-      }
-    }
-
-    if (combinedExpr == null) {
-      return undefined
-    }
-
-    return {
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: combinedExpr,
-    }
-  }, [isAllSelected, filters, columnFiltersExpr])
-
-  const selectAllExcludedTargets = useMemo(() => {
-    if (!isAllSelected || excludedFromSelectAll.size === 0) {
-      return EMPTY_TARGETS
-    }
-    const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-    return buildTorrentActionTargets(excludedTorrents, instanceId)
-  }, [isAllSelected, excludedFromSelectAll, sortedTorrents, instanceId, getSelectionIdentity])
-
-  const selectAllExcludeHashes = useMemo(() => {
-    if (!isAllSelected || excludedFromSelectAll.size === 0 || isCrossInstanceEndpoint) {
-      return undefined
-    }
-
-    return Array.from(excludedFromSelectAll)
-  }, [isAllSelected, excludedFromSelectAll, isCrossInstanceEndpoint])
-
   return {
-    selectedHashes,
-    effectiveSelectionCount,
-    selectedTorrents,
+    actionTarget,
     selectedTotalSize,
     selectedFormattedSize,
     deleteDialogTotalSize,
     deleteDialogFormattedSize,
-    selectAllFilters,
-    selectAllExcludedTargets,
-    selectAllExcludeHashes,
   }
 }

@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -77,7 +77,7 @@ func TestJoinNormalizedCodecSlice(t *testing.T) {
 }
 
 func TestReleasesMatch_CodecAliasing(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name        string
@@ -288,7 +288,7 @@ func TestReleasesMatch_CodecAliasing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {
@@ -303,7 +303,7 @@ func TestReleasesMatch_CodecAliasing(t *testing.T) {
 // indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the actual
 // file is DDP5.1). The downstream file size matching will catch real mismatches.
 func TestReleasesMatch_AudioRelaxed(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name        string
@@ -395,7 +395,7 @@ func TestReleasesMatch_AudioRelaxed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			if tt.wantMatch {
 				require.True(t, result, tt.description)
 			} else {

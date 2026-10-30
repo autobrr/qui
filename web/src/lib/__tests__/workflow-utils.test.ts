@@ -10,9 +10,11 @@ import {
   getTrackerTokens,
   parseImportJSON,
   toDuplicateInput,
+  toEditInput,
   toExportFormat,
   toExportJSON,
-  type WorkflowExport
+  type WorkflowExport,
+  type WorkflowImport
 } from "@/lib/workflow-utils"
 import type { ActionConditions, Automation } from "@/types"
 import { describe, expect, it } from "vitest"
@@ -25,7 +27,6 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     instanceId: 1,
     name: "My workflow",
     trackerPattern: "",
-    trackerDomains: [],
     conditions,
     enabled: true,
     dryRun: false,
@@ -48,19 +49,12 @@ describe("toExportFormat", () => {
     expect(result).not.toHaveProperty("enabled")
   })
 
-  it("derives trackerPattern from trackerDomains when domains are present", () => {
-    const result = toExportFormat(makeAutomation({ trackerDomains: ["a.com", "b.org"], trackerPattern: "ignored" }))
-    expect(result.trackerPattern).toBe("a.com,b.org")
-    expect(result.trackerDomains).toEqual(["a.com", "b.org"])
-  })
-
-  it("preserves the '*' wildcard pattern when domains are empty", () => {
-    const result = toExportFormat(makeAutomation({ trackerDomains: [], trackerPattern: "*" }))
-    expect(result.trackerPattern).toBe("*")
-  })
-
-  it("preserves trackerPattern when domains are empty", () => {
-    expect(toExportFormat(makeAutomation({ trackerDomains: [], trackerPattern: "foo,!bar" })).trackerPattern).toBe("foo,!bar")
+  it("copies trackerPattern as is and has no trackerDomains", () => {
+    for (const trackerPattern of ["a.com,b.org", "*", "foo,!bar"]) {
+      const result = toExportFormat(makeAutomation({ trackerPattern }))
+      expect(result.trackerPattern).toBe(trackerPattern)
+      expect(result).not.toHaveProperty("trackerDomains")
+    }
   })
 
   it("omits intervalSeconds when it equals the 900 default", () => {
@@ -80,6 +74,16 @@ describe("toExportFormat", () => {
     expect(toExportFormat(makeAutomation({ notify: false })).notify).toBe(false)
     expect(toExportFormat(makeAutomation({ notify: true }))).not.toHaveProperty("notify")
   })
+
+  it("carries freeSpaceSource through export and import; omits the key when unset", () => {
+    const source = { type: "path" as const, path: "/data" }
+    const exported = toExportFormat(makeAutomation({ freeSpaceSource: source }))
+    expect(exported.freeSpaceSource).toEqual(source)
+    const parsed = parseImportJSON(toExportJSON(exported))
+    expect(parsed.data?.freeSpaceSource).toEqual(source)
+    expect(fromImportFormat(parsed.data!, []).freeSpaceSource).toEqual(source)
+    expect(toExportFormat(makeAutomation())).not.toHaveProperty("freeSpaceSource")
+  })
 })
 
 // Intent: turn clipboard JSON back into an AutomationInput. Two safety
@@ -87,38 +91,52 @@ describe("toExportFormat", () => {
 // can't immediately fire side-effects) and the imported name is uniquified
 // so it can't clobber an existing automation by accident.
 describe("fromImportFormat", () => {
-  const baseExport = (overrides: Partial<WorkflowExport> = {}): WorkflowExport => ({
+  const baseExport = (overrides: Partial<WorkflowImport> = {}): WorkflowImport => ({
     name: "Imported",
-    trackerPattern: "",
-    trackerDomains: ["a.com"],
+    trackerPattern: "a.com",
     conditions,
     ...overrides,
   })
 
   it("forces enabled=false on every import", () => {
     expect(fromImportFormat(baseExport(), []).enabled).toBe(false)
+    expect(fromImportFormat(baseExport({ enabled: true }), []).enabled).toBe(false)
+  })
+
+  // A rule pasted from an API response carries its old position; the import must still go to the end.
+  it("drops sortOrder so the backend appends the rule", () => {
+    const result = fromImportFormat(baseExport({ sortOrder: 3 }), [])
+    expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("sortOrder")
   })
 
   it("uniquifies the name against existing names", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["My workflow"]).name).toBe("My workflow (copy)")
   })
 
-  it("rebuilds trackerPattern from trackerDomains (domains are authoritative)", () => {
-    expect(
-      fromImportFormat(baseExport({ trackerDomains: ["a.com", "b.com"], trackerPattern: "stale" }), []).trackerPattern
-    ).toBe("a.com,b.com")
+  // The backend resolves the two fields: a non-empty trackerPattern wins.
+  it("passes trackerPattern and trackerDomains through unchanged", () => {
+    const result = fromImportFormat(baseExport({ trackerPattern: "a.com", trackerDomains: ["b.com"] }), [])
+    expect(result.trackerPattern).toBe("a.com")
+    expect(result).toHaveProperty("trackerDomains", ["b.com"])
   })
 
   it("preserves pattern-only tracker imports", () => {
-    const result = fromImportFormat(baseExport({ trackerDomains: [], trackerPattern: "a.com,!b.com" }), [])
+    const result = fromImportFormat(baseExport({ trackerPattern: "a.com,!b.com" }), [])
     expect(result.trackerPattern).toBe("a.com,!b.com")
-    expect(result.trackerDomains).toEqual([])
+    expect(result).not.toHaveProperty("trackerDomains")
   })
 
-  it("defaults dryRun to false and notify to true when omitted", () => {
+  // The backend checks every key and lists each problem, so unknown keys must reach it.
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = fromImportFormat(baseExport({ enabeld: true, extra: { a: 1 } }), [])
+    expect(result).toHaveProperty("enabeld", true)
+    expect(result).toHaveProperty("extra", { a: 1 })
+  })
+
+  it("leaves omitted dryRun and notify to the backend defaults", () => {
     const result = fromImportFormat(baseExport(), [])
-    expect(result.dryRun).toBe(false)
-    expect(result.notify).toBe(true)
+    expect(result).not.toHaveProperty("dryRun")
+    expect(result).not.toHaveProperty("notify")
   })
 
   it("preserves explicit dryRun and notify from the import", () => {
@@ -127,9 +145,9 @@ describe("fromImportFormat", () => {
     expect(result.notify).toBe(false)
   })
 
-  it("includes intervalSeconds only when present and not equal to default", () => {
-    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), [])).not.toHaveProperty("intervalSeconds")
-    expect(fromImportFormat(baseExport({ intervalSeconds: 60 }), []).intervalSeconds).toBe(60)
+  it("passes intervalSeconds as written", () => {
+    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), []).intervalSeconds).toBe(900)
+    expect(fromImportFormat(baseExport({ intervalSeconds: 30 }), []).intervalSeconds).toBe(30)
   })
 })
 
@@ -155,6 +173,30 @@ describe("toDuplicateInput", () => {
     expect(result.name).toBe("Source (copy)")
     expect(result.enabled).toBe(false)
     expect(result.dryRun).toBe(true)
+  })
+})
+
+// Intent: "Edit as JSON" sends the JSON as written and keeps the state the
+// JSON never carries: enabled and sortOrder. An omitted optional key resets to
+// its backend default, the same as an import would.
+describe("toEditInput", () => {
+  it("keeps enabled and sortOrder from the rule and takes every other key from the JSON", () => {
+    const rule = makeAutomation({ id: 5, enabled: true, sortOrder: 3, dryRun: true, intervalSeconds: 60, name: "Old" })
+    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions, enabled: false, sortOrder: 9 })
+    expect(result).toEqual({
+      name: "New",
+      enabled: true,
+      sortOrder: 3,
+      trackerPattern: "",
+      trackerDomains: ["a.com"],
+      conditions,
+    })
+    expect(result).not.toHaveProperty("id")
+  })
+
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = toEditInput(makeAutomation(), { name: "x", trackerPattern: "*", conditions, notfy: false })
+    expect(result).toHaveProperty("notfy", false)
   })
 })
 
@@ -208,61 +250,62 @@ describe("parseImportJSON", () => {
   it("rejects unparseable JSON", () => {
     const result = parseImportJSON("{not json")
     expect(result.data).toBeNull()
-    expect(result.error).toBe("Invalid JSON format")
+    expect(result.error).toBe("preferences.workflowsOverview.importDialog.errors.invalidJson")
   })
 
   it("rejects non-object root values", () => {
-    expect(parseImportJSON("123").error).toBe("Expected a JSON object")
-    expect(parseImportJSON("null").error).toBe("Expected a JSON object")
+    expect(parseImportJSON("123").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
+    expect(parseImportJSON("null").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
     // Arrays pass the typeof === "object" check, then fail on missing 'name'.
     // Pinning this behavior so future readers know arrays aren't a special case.
-    expect(parseImportJSON("[]").error).toBe("Missing or invalid 'name' field")
+    expect(parseImportJSON("[]").error).toBe("preferences.workflowsOverview.importDialog.errors.missingName")
   })
 
   it("rejects missing/empty name", () => {
-    expect(parseImportJSON(JSON.stringify({ conditions: { schemaVersion: "1" }, trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'name' field"
+    expect(parseImportJSON(JSON.stringify({ conditions: { schemaVersion: "1" } })).error).toBe(
+      "preferences.workflowsOverview.importDialog.errors.missingName"
     )
-    expect(parseImportJSON(JSON.stringify({ name: "   ", conditions: { schemaVersion: "1" }, trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'name' field"
+    expect(parseImportJSON(JSON.stringify({ name: "   ", conditions: { schemaVersion: "1" } })).error).toBe(
+      "preferences.workflowsOverview.importDialog.errors.missingName"
     )
   })
 
   it("rejects missing conditions", () => {
-    expect(parseImportJSON(JSON.stringify({ name: "x", trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'conditions' field"
+    expect(parseImportJSON(JSON.stringify({ name: "x" })).error).toBe(
+      "preferences.workflowsOverview.importDialog.errors.missingConditions"
     )
   })
 
-  it("requires at least one of trackerDomains or trackerPattern", () => {
-    expect(parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } })).error).toBe(
-      "Must specify either 'trackerDomains' (array of strings) or 'trackerPattern'"
-    )
-  })
-
-  it("includes intervalSeconds only when it's a number >= 60", () => {
-    const withInterval = parseImportJSON(JSON.stringify({
+  it("keeps every key as written, unknown keys too", () => {
+    const input = {
       name: "x",
       conditions: { schemaVersion: "1" },
-      trackerDomains: [],
-      intervalSeconds: 120,
-    }))
-    expect(withInterval.data?.intervalSeconds).toBe(120)
-
-    const tooSmall = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      trackerDomains: [],
+      trackerDomains: ["b.com", 1],
       intervalSeconds: 30,
+      enabeld: true,
+    }
+    expect(parseImportJSON(JSON.stringify(input)).data).toEqual(input)
+  })
+
+  it("leaves a missing tracker to the backend", () => {
+    const result = parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } }))
+    expect(result.error).toBeNull()
+    expect(result.data).not.toHaveProperty("trackerPattern")
+  })
+
+  it("keeps dryRun: true from the export shape", () => {
+    const result = parseImportJSON(JSON.stringify({
+      name: "x",
+      conditions: { schemaVersion: "1" },
+      dryRun: true,
     }))
-    expect(tooSmall.data?.intervalSeconds).toBeUndefined()
+    expect(result.data?.dryRun).toBe(true)
   })
 
   it("includes notify only when it's an explicit boolean", () => {
     const withNotify = parseImportJSON(JSON.stringify({
       name: "x",
       conditions: { schemaVersion: "1" },
-      trackerDomains: [],
       notify: false,
     }))
     expect(withNotify.data?.notify).toBe(false)
@@ -276,7 +319,6 @@ describe("toExportJSON", () => {
     const data: WorkflowExport = {
       name: "x",
       trackerPattern: "*",
-      trackerDomains: [],
       conditions,
     }
     expect(toExportJSON(data)).toBe(JSON.stringify(data, null, 2))

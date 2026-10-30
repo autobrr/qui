@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feed",
     "refreshAll": "Aggiorna tutto",
-    "addFolder": "Aggiungi cartella",
-    "addFeed": "Aggiungi feed",
     "articles": "Articoli",
     "unread": "{{count}} non letti",
     "markAllAsRead": "Segna tutti come letti",
@@ -48,7 +46,6 @@
     "toggleDetails": "Mostra/nascondi dettagli"
   },
   "rules": {
-    "title": "Regole",
     "reprocess": "Rielabora",
     "reprocessTooltip": "Riverifica tutti gli articoli non letti rispetto alle regole",
     "addRule": "Aggiungi regola",
@@ -144,14 +141,10 @@
     "saveChanges": "Salva modifiche"
   },
   "settingsPopover": {
-    "title": "Impostazioni RSS",
     "refreshInterval": "Intervallo di aggiornamento",
-    "min": "min",
     "maxArticles": "Max articoli per feed",
     "autoDownload": "Download automatico",
-    "downloadRepack": "Scarica REPACK/PROPER",
-    "saving": "Salvataggio...",
-    "save": "Salva"
+    "downloadRepack": "Scarica REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE In diretta",
@@ -197,8 +190,6 @@
     "ruleCreated": "Regola creata correttamente",
     "failedToCreateRule": "Creazione della regola non riuscita",
     "ruleUpdated": "Regola aggiornata correttamente",
-    "failedToUpdateRuleEdit": "Aggiornamento della regola non riuscito",
-    "rssSettingsSaved": "Impostazioni RSS salvate",
-    "failedToSaveRssSettings": "Salvataggio delle impostazioni RSS non riuscito"
+    "failedToUpdateRuleEdit": "Aggiornamento della regola non riuscito"
   }
 }

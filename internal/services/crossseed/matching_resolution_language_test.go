@@ -15,7 +15,7 @@ import (
 func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 	t.Parallel()
 
-	svc := &Service{
+	svc := matcher{
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
@@ -116,7 +116,7 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			sourceRelease := svc.releaseCache.Parse(tt.sourceName)
 			candidateRelease := svc.releaseCache.Parse(tt.candidateName)
 
-			result := svc.releasesMatch(sourceRelease, candidateRelease, false)
+			result := svc.strictCompare(sourceRelease, candidateRelease, false).matched()
 			require.Equal(t, tt.wantMatch, result)
 		})
 	}

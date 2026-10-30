@@ -14,9 +14,24 @@ import (
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+// createUsedAPIKey creates an API key that was used just now, so that
+// ValidateAPIKey starts no background write of the last-used time. On Windows,
+// a write that still runs when the test ends keeps the database file open, and
+// the TempDir cleanup fails.
+func createUsedAPIKey(t *testing.T, db *database.DB) string {
+	t.Helper()
+	store := models.NewAPIKeyStore(db)
+	rawKey, apiKey, err := store.Create(t.Context(), "test-key")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateLastUsed(t.Context(), apiKey.ID))
+	return rawKey
+}
 
 func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	ctx := t.Context()
@@ -26,9 +41,7 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
 
-	// Create an API key for testing
-	apiKeyValue, _, err := authService.CreateAPIKey(ctx, "test-key")
-	require.NoError(t, err)
+	apiKeyValue := createUsedAPIKey(t, db)
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -172,4 +185,70 @@ func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 	handler.ServeHTTP(resp, req)
 
 	assert.Equal(t, http.StatusForbidden, resp.Code)
+}
+
+func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "auth-middleware")
+	authService := auth.NewService(db)
+	rawKey := createUsedAPIKey(t, db)
+
+	sessionManager := scs.New()
+	handler := sessionManager.LoadAndSave(
+		IsAuthenticated(authService, sessionManager, &domain.Config{})(
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
+		),
+	)
+
+	// Mint a session cookie the way login does.
+	loginRec := httptest.NewRecorder()
+	sessionManager.LoadAndSave(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		sessionManager.Put(r.Context(), "authenticated", true)
+		sessionManager.Put(r.Context(), "username", "alice")
+	})).ServeHTTP(loginRec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/login", nil))
+	cookies := loginRec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	cookie := cookies[0]
+
+	tests := []struct {
+		name          string
+		method        string
+		cookie        bool
+		apiKey        bool
+		requestedWith bool
+		want          int
+	}{
+		{name: "cookie GET without header", method: http.MethodGet, cookie: true, want: http.StatusOK},
+		{name: "cookie POST without header", method: http.MethodPost, cookie: true, want: http.StatusForbidden},
+		{name: "cookie PUT without header", method: http.MethodPut, cookie: true, want: http.StatusForbidden},
+		{name: "cookie PATCH without header", method: http.MethodPatch, cookie: true, want: http.StatusForbidden},
+		{name: "cookie DELETE without header", method: http.MethodDelete, cookie: true, want: http.StatusForbidden},
+		{name: "cookie POST with header", method: http.MethodPost, cookie: true, requestedWith: true, want: http.StatusOK},
+		{name: "API key POST without header", method: http.MethodPost, apiKey: true, want: http.StatusOK},
+		{name: "API key and cookie POST without header", method: http.MethodPost, apiKey: true, cookie: true, want: http.StatusOK},
+		{name: "no credentials POST", method: http.MethodPost, want: http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, "/api/instances", nil)
+			if tt.cookie {
+				req.AddCookie(cookie)
+			}
+			if tt.apiKey {
+				req.Header.Set("X-API-Key", rawKey)
+			}
+			if tt.requestedWith {
+				req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.want, rec.Code)
+			if tt.cookie && tt.want == http.StatusForbidden {
+				// The frontend treats a bare 403 "Unauthorized" as an expired
+				// session and bounces to login; a missing header must not.
+				assert.Contains(t, rec.Body.String(), "X-Requested-With")
+			}
+		})
+	}
 }

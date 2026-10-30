@@ -33,9 +33,9 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -51,13 +51,10 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sqlite3store"
+	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
-	"github.com/autobrr/qui/pkg/sqlite3store"
-)
-
-var (
-	// PolarOrgID Publisher credentials - set during build via ldflags
-	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
@@ -67,6 +64,11 @@ func main() {
 	// process umask controls the final permissions of content directories
 	// (see discussion #1704). No-op when UMASK is unset or on Windows.
 	applyUmask()
+
+	if buildinfo.Tray == "true" {
+		runTray()
+		return
+	}
 
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
@@ -111,8 +113,22 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
-		app.runServer()
+		if buildinfo.Tray != "true" {
+			// On Windows the first process only supervises; the child returns here.
+			update.Supervise(nil)
+			NewApplication(configDir, dataDir, logPath, pprofFlag).runServer()
+			return
+		}
+		update.Supervise(tray.ShowError)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
+		app.tray = make(chan tray.Menu, 1)
+		app.quit = make(chan struct{}, 1)
+		go app.runServer()
+		// The tray library needs the main goroutine's OS thread.
+		tray.Run(<-app.tray)
+		// Run returns after Remove, while the serve loop still shuts down. The
+		// serve loop sets the exit code: 75 asks the supervisor for a Restart.
+		select {}
 	}
 
 	return command
@@ -418,40 +434,55 @@ Flags:
 
 func RunMigrateCommand() *cobra.Command {
 	var command = &cobra.Command{
-		Use:   "migrate {deluge | rtorrent | transmission} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
-		Short: "Migrate from deluge,rtorrent or transmission to qBittorrent",
-		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission]`,
+		Use:   "migrate {deluge | rtorrent | transmission | utorrent} --source-dir dir --qbit-dir dir2 [--replace-path from=to] [--skip-backup] [--dry-run]",
+		Short: "Migrate from deluge, rtorrent, transmission or utorrent to qBittorrent",
+		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission,utorrent]`,
 		Example: `  qui migrate deluge --source-dir ~/.config/deluge/state/ --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
   qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
   qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate utorrent --source-dir %APPDATA%\uTorrent --qbit-dir %LOCALAPPDATA%\qBittorrent\BT_backup --dry-run
+  qui migrate utorrent --source-dir /mnt/uTorrent --qbit-dir /config/qBittorrent/BT_backup --replace-path 'D:\Downloads=/data' --dry-run
 `,
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission)},
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission), string(clientmigrate.ClientTypeUTorrent)},
 	}
 
 	var (
-		sourceDir  string
-		qbitDir    string
-		dryRun     bool
-		skipBackup bool
+		sourceDir    string
+		qbitDir      string
+		dryRun       bool
+		skipBackup   bool
+		replacePaths []string
 	)
 
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "Run without importing anything")
 	command.Flags().StringVar(&sourceDir, "source-dir", "", "source client state dir (required)")
 	command.Flags().StringVar(&qbitDir, "qbit-dir", "", "qBittorrent BT_backup dir. Commonly ~/.local/share/qBittorrent/BT_backup (required)")
 	command.Flags().BoolVar(&skipBackup, "skip-backup", false, "Skip backup before import")
+	command.Flags().StringArrayVar(&replacePaths, "replace-path", nil, "Rewrite a save path prefix as from=to, e.g. 'D:\\Downloads=/data'. Repeatable, the first match wins")
 
 	_ = command.MarkFlagRequired("source-dir")
 	_ = command.MarkFlagRequired("qbit-dir")
 
 	command.RunE = func(cmd *cobra.Command, args []string) error {
 		source := args[0]
+
+		pathReplaces := make([]clientmigrate.PathReplace, 0, len(replacePaths))
+		for _, rule := range replacePaths {
+			r, err := clientmigrate.ParsePathReplace(rule)
+			if err != nil {
+				return err
+			}
+			pathReplaces = append(pathReplaces, r)
+		}
+
 		opts := clientmigrate.Options{
-			Source:     clientmigrate.ClientType(source),
-			SourceDir:  sourceDir,
-			QbitDir:    qbitDir,
-			DryRun:     dryRun,
-			SkipBackup: skipBackup,
+			Source:       clientmigrate.ClientType(source),
+			SourceDir:    sourceDir,
+			QbitDir:      qbitDir,
+			DryRun:       dryRun,
+			SkipBackup:   skipBackup,
+			PathReplaces: pathReplaces,
 		}
 
 		mig := clientmigrate.New(opts)
@@ -471,18 +502,18 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
-
-	// Publisher credentials - set during build via ldflags
-	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
+	// tray receives the Tray menu once qui listens, and quit carries the Tray's
+	// Quit. Both are nil outside qui-tray.exe.
+	tray chan tray.Menu
+	quit chan struct{}
 }
 
-func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
 	return &Application{
-		configDir:  configDir,
-		dataDir:    dataDir,
-		logPath:    logPath,
-		pprofFlag:  pprofFlag,
-		polarOrgID: polarOrgID,
+		configDir: configDir,
+		dataDir:   dataDir,
+		logPath:   logPath,
+		pprofFlag: pprofFlag,
 	}
 }
 
@@ -506,6 +537,10 @@ func (app *Application) runServer() {
 	if app.pprofFlag {
 		cfg.Config.PprofEnabled = true
 	}
+	if app.tray != nil {
+		// qui-tray.exe has no console, so it keeps a log file for bug reports.
+		cfg.SetDefaultLogPath("log/qui.log")
+	}
 
 	if err := cfg.ApplyLogConfig(); err != nil {
 		log.Warn().Err(err).Str("logPath", cfg.Config.LogPath).Msg("Failed to apply log configuration, continuing with the previous log settings")
@@ -521,6 +556,9 @@ func (app *Application) runServer() {
 		log.Warn().Strs("authDisabledAllowedCIDRs", cfg.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
 	case cfg.Config.AuthDisabled != cfg.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
+	}
+	if cfg.Config.IsAuthDisabled() && len(cfg.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
 	}
 
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
@@ -547,14 +585,6 @@ func (app *Application) runServer() {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
-
-	// init polar client
-	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
-	if app.polarOrgID != "" {
-		log.Trace().Msg("Initializing Polar client for license validation")
-	} else {
-		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-	}
 
 	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
 	if dodoEnv == "" {
@@ -610,7 +640,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -718,6 +748,10 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
+	settler := crossseed.NewSettler(syncManager, seasonPackRunStore)
+	settleCtx, settleCancel := context.WithCancel(context.Background())
+	defer settleCancel()
+	settler.Start(settleCtx)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -733,6 +767,7 @@ func (app *Application) runServer() {
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
+		settler,
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
@@ -741,9 +776,11 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 
-	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
+	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+		return remotebackend.New(sshPool, inst)
+	})
 	crossSeedService.SetBackendPool(backendPool)
-	syncManager.SetBackendPool(backendPool)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
@@ -752,21 +789,24 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 
+	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
+	syncManager.SetFolderCleanup(folderCleanup)
+	folderCleanup.Start(context.Background())
+
 	discScanStore := models.NewDiscScanStore(db)
 	discScanService := discscan.NewService(discScanStore)
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
-	})
+	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -855,8 +895,17 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Secure = cfg.Config.SecureSessionCookie()
+	sessionManager.Cookie.Path = cfg.Config.BaseURL
 	sessionManager.Cookie.Persist = false
+
+	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
+	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	selfUpdater := update.NewUpdater(update.Config{
+		Repository: "autobrr/qui",
+		Version:    buildinfo.Version,
+		BinaryPath: updateInputs.BinaryPath,
+	})
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
@@ -875,6 +924,9 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
+		UpdateAvailability:               update.Decide(updateInputs),
+		Restarter:                        restarter,
+		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
@@ -899,6 +951,7 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		BackendPool:                      backendPool,
+		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
@@ -928,6 +981,9 @@ func (app *Application) runServer() {
 		}()
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
+	}
+	if app.tray != nil {
+		app.tray <- app.trayMenu(cfg, updateInputs.BinaryPath, restarter)
 	}
 
 	if cfg.Config.MetricsEnabled {
@@ -972,36 +1028,49 @@ func (app *Application) runServer() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
+	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
+	shutdown := func() error {
+		tray.Remove()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		partialPoolCancel()
+		select {
+		case <-partialPoolDone:
+		case <-ctx.Done():
+			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		// Deferred so it also runs when Shutdown returns an error. Stop
+		// ignores snapshots a request still hands in.
+		defer folderCleanup.Stop()
+		if err := httpServer.Shutdown(ctx); err != nil {
+			return err
+		}
+
+		// Closed here because os.Exit below means a defer would never fire. A
+		// job's next read gets ErrConnectionLost with ErrPoolClosed in its
+		// chain, a read in flight gets ErrConnectionLost, and either ends with
+		// the process.
+		sshPool.Close()
+		return nil
+	}
+
 	select {
 	case sig := <-sigCh:
 		log.Info().Msgf("got signal %v, shutting down server", sig.String())
 	case err := <-errorChannel:
 		log.Error().Err(err).Msg("got unexpected error from server")
+	case <-app.quit:
+		log.Info().Msg("quit from the Tray, shutting down server")
+	case <-restarter.Requested():
+		log.Info().Msg("restart requested, shutting down server")
+		restarter.Restart(log.Logger, shutdown)
 	}
 
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	partialPoolCancel()
-	select {
-	case <-partialPoolDone:
-	case <-ctx.Done():
-		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
-	}
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		// log.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := shutdown(); err != nil {
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
-
 		os.Exit(1)
 	}
-
-	// if err := srv.Shutdown(context.Background()); err != nil {
-	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
-	//
-	//	os.Exit(1)
-	//}
-
 	os.Exit(0)
 }
 

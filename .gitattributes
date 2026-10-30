@@ -1,3 +1,9 @@
 # Go tooling writes LF and gofmt normalises it, so a file committed with CRLF
 # shows up as a whole-file diff the first time anyone formats it.
 *.go text eol=lf
+
+# These generated references and golden fixtures are compared byte for byte.
+web/src/components/query-builder/fields.generated.ts text eol=lf
+documentation/docs/_partials/_automations-json-reference.mdx text eol=lf
+internal/qbittorrent/testdata/single_instance_sort.golden text eol=lf
+web/src/lib/preference-catalog-keys.json text eol=lf

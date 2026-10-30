@@ -3,19 +3,26 @@ package crossseed
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
@@ -246,194 +253,109 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	}
 }
 
-func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
-	// Not parallel: the test stubs the package-level findGazelleMatch.
-	stubGazelleMatchLookup(t)
+// With only a RED key, a completion search for an OPS torrent asks RED one
+// time, through the API, and asks the other Torznab indexers.
+func TestExecuteCompletionSearch_OPSSourceAsksREDThroughTheAPIAndTorznab(t *testing.T) {
+	// Not parallel: the test replaces the package-level newGazelleClient.
+	const (
+		instanceID = 1
+		sourceHash = "0123456789abcdef0123456789abcdef01234567"
+		sourceName = "Lumen Harbor - Quiet Tides (2024) [FLAC]"
+	)
 
-	db := testdb.NewMigratedSQLite(t, "completion-gazelle-search")
+	var redAPIRequests, otherAPIRequests atomic.Int32
+	gazelleAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "red-key" {
+			redAPIRequests.Add(1)
+		} else {
+			otherAPIRequests.Add(1)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","response":{"results":[]}}`)
+	}))
+	t.Cleanup(gazelleAPI.Close)
+	prevNewClient := newGazelleClient
+	newGazelleClient = func(host, _, apiKey string) (*gazellemusic.Client, error) {
+		return gazellemusic.NewClient(host, gazelleAPI.URL, apiKey)
+	}
+	t.Cleanup(func() { newGazelleClient = prevNewClient })
 
+	torznabFake := func(searches *atomic.Int32) *httptest.Server {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("t") == "caps" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, `<caps><limits default="100" max="100"/><searching>
+					<search available="yes" supportedParams="q"/>
+					<music-search available="yes" supportedParams="q"/>
+				</searching><categories><category id="3000" name="Audio"/></categories></caps>`)
+				return
+			}
+			searches.Add(1)
+			w.Header().Set("Content-Type", "application/rss+xml")
+			_, _ = fmt.Fprint(w, `<rss version="2.0"><channel><title>Torznab</title></channel></rss>`)
+		}))
+		t.Cleanup(server.Close)
+		return server
+	}
+	var genericSearches, redTorznabSearches atomic.Int32
+	genericIndexer := torznabFake(&genericSearches)
+	redTorznab := torznabFake(&redTorznabSearches)
+
+	db := testdb.NewMigratedSQLite(t, "completion-ops-source-red-key")
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
 	}
 	store, err := models.NewCrossSeedStore(db, key)
-	if err != nil {
-		t.Fatalf("new cross-seed store: %v", err)
+	require.NoError(t, err)
+	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"}
+	_, err = store.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     sourceName,
+		Size:     123,
+		Progress: 1,
+		Tracker:  "https://home.opsfet.ch/announce",
 	}
-	_, err = store.UpsertSettings(context.Background(), &models.CrossSeedAutomationSettings{
-		GazelleEnabled: true,
-		OrpheusAPIKey:  "ops-key",
-	})
-	if err != nil {
-		t.Fatalf("persist cross-seed settings: %v", err)
+	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
+	filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{7, 8},
+		FilteredIndexers:      []int{7, 8},
+		contentType:           "music",
+	}, ttlcache.DefaultTTL)
+
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: {ID: instanceID, Name: "music"}}},
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 7, Name: "Music Indexer", BaseURL: genericIndexer.URL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5, Enabled: true},
+			{ID: 8, Name: "Redacted", BaseURL: redTorznab.URL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5, Enabled: true},
+		}),
+		syncManager: &hashFilteringSyncManager{gazelleSkipHashSyncManager{
+			torrents:    []qbt.Torrent{source},
+			filesByHash: map[string]qbt.TorrentFiles{sourceHash: {{Name: sourceName + "/01 - Lumen Harbor - Quiet Tides.flac", Size: 123}}},
+		}},
+		automationStore:     store,
+		asyncFilteringCache: filterCache,
+		releaseCache:        NewReleaseCache(),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
+		stringNormalizer:    stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
 	}
 
-	src := qbt.Torrent{
-		Hash:     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		Name:     "test (2026) [FLAC]",
-		Tracker:  "https://flacsfor.me/announce",
-		Progress: 1.0,
-	}
-	syncMock := &completionGazelleSyncMock{torrent: src}
-
-	svc := &Service{
-		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:     syncMock,
-		jackettService:  newFailingJackettService(errors.New("jackett indexer probe should be skipped")),
-		automationStore: store,
-		releaseCache:    NewReleaseCache(),
-	}
-
-	err = svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
-		GazelleEnabled:         true,
-		OrpheusAPIKey:          "ops-key",
-		FindIndividualEpisodes: true,
-	}, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: 1,
+	err = service.executeCompletionSearch(t.Context(), instanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: instanceID,
 		Enabled:    true,
-		IndexerIDs: []int{999},
 	})
-	if err != nil {
-		t.Fatalf("expected gazelle completion path to skip torznab probe, got error: %v", err)
-	}
-}
 
-func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyMissing(t *testing.T) {
-	t.Parallel()
-
-	src := qbt.Torrent{
-		Hash:     "cccccccccccccccccccccccccccccccccccccccc",
-		Name:     "test (2026) [FLAC]",
-		Tracker:  "https://flacsfor.me/announce",
-		Progress: 1.0,
-	}
-	syncMock := &completionGazelleSyncMock{torrent: src}
-
-	const fallbackErrMsg = "expected torznab fallback path"
-	svc := &Service{
-		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:    syncMock,
-		jackettService: newFailingJackettService(errors.New(fallbackErrMsg)),
-		releaseCache:   NewReleaseCache(),
-	}
-
-	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
-		GazelleEnabled:         true,
-		FindIndividualEpisodes: true,
-	}, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: 1,
-		Enabled:    true,
-		IndexerIDs: []int{999},
-	})
-	if err == nil {
-		t.Fatalf("expected completion path to fall back to torznab when opposite-site Gazelle key is missing")
-	}
-	if !strings.Contains(err.Error(), fallbackErrMsg) {
-		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
-	}
-}
-
-func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUndecryptable(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	db := testdb.NewMigratedSQLite(t, "completion-gazelle-undecryptable")
-
-	key := make([]byte, 32)
-	for i := range key {
-		key[i] = byte(i)
-	}
-	goodStore, err := models.NewCrossSeedStore(db, key)
-	if err != nil {
-		t.Fatalf("new cross-seed store: %v", err)
-	}
-	_, err = goodStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		GazelleEnabled: true,
-		OrpheusAPIKey:  "ops-key",
-	})
-	if err != nil {
-		t.Fatalf("persist cross-seed settings: %v", err)
-	}
-
-	badKey := make([]byte, 32)
-	for i := range badKey {
-		badKey[i] = byte(i + 1)
-	}
-	badStore, err := models.NewCrossSeedStore(db, badKey)
-	if err != nil {
-		t.Fatalf("new cross-seed store (bad key): %v", err)
-	}
-	settings, err := badStore.GetSettings(ctx)
-	if err != nil {
-		t.Fatalf("load settings with bad key: %v", err)
-	}
-
-	src := qbt.Torrent{
-		Hash:     "dddddddddddddddddddddddddddddddddddddddd",
-		Name:     "test (2026) [FLAC]",
-		Tracker:  "https://flacsfor.me/announce",
-		Progress: 1.0,
-	}
-	syncMock := &completionGazelleSyncMock{torrent: src}
-
-	const fallbackErrMsg = "expected torznab fallback path"
-	svc := &Service{
-		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:     syncMock,
-		jackettService:  newFailingJackettService(errors.New(fallbackErrMsg)),
-		automationStore: badStore,
-		releaseCache:    NewReleaseCache(),
-	}
-
-	err = svc.executeCompletionSearch(ctx, 1, &src, settings, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: 1,
-		Enabled:    true,
-		IndexerIDs: []int{999},
-	})
-	if err == nil {
-		t.Fatalf("expected completion path to fall back to torznab when opposite-site Gazelle key is undecryptable")
-	}
-	if !strings.Contains(err.Error(), fallbackErrMsg) {
-		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
-	}
-}
-
-func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testing.T) {
-	t.Parallel()
-
-	src := qbt.Torrent{
-		Hash:     "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-		Name:     "Velocity.Circuit.Chronicles.S03.1080p.WEB-DL.DDP5.1.H.264-TESTGRP",
-		Tracker:  "https://tracker.example/announce",
-		Progress: 1.0,
-	}
-	syncMock := &completionGazelleSyncMock{torrent: src}
-	const expectedTorznabErr = "expected torznab non-gazelle path"
-
-	svc := &Service{
-		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "main"}},
-		syncManager:    syncMock,
-		jackettService: newFailingJackettService(errors.New(expectedTorznabErr)),
-		releaseCache:   NewReleaseCache(),
-	}
-
-	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
-		GazelleEnabled:         true,
-		OrpheusAPIKey:          "ops-key",
-		FindIndividualEpisodes: true,
-	}, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: 1,
-		Enabled:    true,
-		IndexerIDs: []int{999},
-	})
-	if err == nil {
-		t.Fatalf("expected torznab failure to verify non-gazelle completion path execution")
-	}
-	if !strings.Contains(err.Error(), expectedTorznabErr) {
-		t.Fatalf("expected torznab error %q, got: %v", expectedTorznabErr, err)
-	}
-
-	if syncMock.exportHits != 0 {
-		t.Fatalf("expected non-gazelle completion path to skip gazelle pre-search, got %d export attempts", syncMock.exportHits)
-	}
+	require.NoError(t, err)
+	require.Positive(t, redAPIRequests.Load(), "the OPS torrent must ask RED through the API")
+	require.Zero(t, otherAPIRequests.Load(), "only RED has a key")
+	require.Positive(t, genericSearches.Load(), "the OPS torrent must ask the other Torznab indexers")
+	require.Zero(t, redTorznabSearches.Load(), "RED has a key, so its Torznab indexer must not be asked")
 }

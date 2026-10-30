@@ -113,6 +113,11 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		InstanceID: instanceID,
 		Enabled:    true,
 		IndexerIDs: []int{indexerID},
+		// The completion source filters must reach the add request.
+		Categories:        []string{"tv"},
+		Tags:              []string{"keep"},
+		ExcludeCategories: []string{"cleanup"},
+		ExcludeTags:       []string{"temp"},
 	})
 
 	require.NoError(t, err)
@@ -121,7 +126,10 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceHash, captured.SearchDecision.SourceHash)
-	require.Equal(t, "codec mismatch", captured.SearchDecision.StrictMismatchReason)
-	require.Equal(t, []string{"codec"}, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
 	require.Equal(t, candidateName, captured.SearchDecision.SearchCandidateName)
+	require.Equal(t, []string{"tv"}, captured.SourceFilterCategories)
+	require.Equal(t, []string{"keep"}, captured.SourceFilterTags)
+	require.Equal(t, []string{"cleanup"}, captured.SourceFilterExcludeCategories)
+	require.Equal(t, []string{"temp"}, captured.SourceFilterExcludeTags)
 }

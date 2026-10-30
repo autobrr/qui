@@ -1,0 +1,71 @@
+name: PR title
+
+# goreleaser puts a commit under "Breaking Changes" only when its subject has
+# `!:`. PRs are squash-merged, so the PR title becomes that subject.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  breaking:
+    if: contains(github.event.pull_request.labels.*.name, 'BREAKING CHANGE')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require ! in the title of a breaking PR
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$TITLE"; then
+            echo "::error::PR has the BREAKING CHANGE label. Mark the title with !, for example feat(api)!: ..."
+            exit 1
+          fi
+
+  # The body must answer each required section of .github/pull_request_template.md.
+  # Members and bots may skip the template, but a filled Breaking change section
+  # still needs the label. Only "No breaking change." means that nothing breaks
+  # (any case, with or without the period or a plural), so the check never has
+  # to guess what the prose means.
+  body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the template sections in the PR body
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'BREAKING CHANGE') }}
+          REQUIRE_TEMPLATE: ${{ github.event.pull_request.user.type != 'Bot' && !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: |
+          body=$(perl -0777 -pe 's/\r//g; s/<!--.*?-->//gs' <<<"$BODY")
+          # Prints the trimmed text under "## <heading>". Fails when the heading is missing.
+          section() {
+            HEADING=$1 perl -0777 -ne '
+              exit 1 unless /^##[ \t]*(?:$ENV{HEADING})[ \t]*\n(.*?)(?=^##[ \t]|\z)/msi;
+              ($s = $1) =~ s/^\s+|\s+$//g; print $s' <<<"$body"
+          }
+
+          errors=()
+          breaking=$(section 'Breaking changes?') || breaking=
+          if [[ -n $breaking ]] && ! [[ ${breaking,,} =~ ^no\ breaking\ changes?\.?$ ]] && [[ $LABELED != true ]]; then
+            errors+=("The Breaking change section describes a breaking change. A maintainer must add the BREAKING CHANGE label. If nothing breaks, write only \"No breaking change.\" in the section.")
+          fi
+
+          if [[ $REQUIRE_TEMPLATE == true ]]; then
+            missing=()
+            description=$(section 'Description' | grep -vxF 'Fixes # (issue)' || true)
+            [[ -n $description ]] || missing+=("Description")
+            [[ -n $breaking ]] || missing+=("Breaking change (write \"No breaking change.\" if nothing breaks)")
+            behaviour=$(section 'Behaviou?r changes?') || behaviour=
+            [[ -n $behaviour ]] || missing+=("Behaviour change (write \"No behaviour change.\" if users notice nothing)")
+            performance=$(section 'Performance') || performance=
+            [[ -n $performance ]] && ! [[ ${performance,,} =~ ^(none|n/?a)\.?$ ]] || missing+=("Performance (if no performance risk applies, say why)")
+            # Remove only the template question, so an answer on the same line stays.
+            disclosure=$(section 'AI disclosure') || disclosure=
+            disclosure=${disclosure//"Was any AI used in this PR?"/}
+            disclosure=${disclosure//"Roughly how much of the code was AI-written, and what model/tool?"/}
+            [[ -n ${disclosure//[[:space:]]/} ]] || missing+=("AI disclosure")
+            for m in "${missing[@]}"; do errors+=("Fill in this section from .github/pull_request_template.md: $m"); done
+          fi
+
+          for e in "${errors[@]}"; do echo "::error::$e"; done
+          [[ ${#errors[@]} -eq 0 ]]

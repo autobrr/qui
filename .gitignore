@@ -22,7 +22,7 @@ Thumbs.db
 .vscode
 
 # Package manager
-node_modules/
+node_modules
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -62,12 +62,12 @@ web/src/themes/premium/
 !.gitkeep
 
 docs/*
-!docs/CROSS_SEEDING.md
 !docs/architecture.md
 !docs/linting.md
 !docs/remote-backend-design.md
 !docs/agents/
 !docs/adr/
+!docs/standards/
 .mcp_unused.json
 config.toml
 .env
@@ -87,10 +87,10 @@ analyses/*
 
 # Local reference dumps
 dodopayments.txt
-polar.txt
 
 # Customer exports (PII) - never commit
 polar-scripts/
 
 # Local-only planning notes
 plans/
+web/dist-demo/

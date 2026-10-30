@@ -104,6 +104,8 @@ export type ConditionField =
   | "EXISTS_ON_SAME_INSTANCE"
   | "CROSS_SEED_TAGS"
   | "SEEDING_ON_SAME_INSTANCE"
+  | "SEASON_PACK_STATUS"
+  | "SEASON_PACK_STATUS_ANY_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
   | "HARDLINK_SCOPE_CROSS"
@@ -209,6 +211,7 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  includeCrossSeeds?: boolean
   deleteFromClient?: boolean
   useTrackerAsTag?: boolean
   useDisplayName?: boolean
@@ -313,7 +316,6 @@ export interface Automation {
   instanceId: number
   name: string
   trackerPattern: string
-  trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig
@@ -329,7 +331,6 @@ export interface Automation {
 export interface AutomationInput {
   name: string
   trackerPattern?: string
-  trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig

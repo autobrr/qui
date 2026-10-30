@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -46,6 +47,13 @@ type AppConfig struct {
 	logManager *LogManager
 }
 
+// zerolog keeps its formatting settings in package globals. Set them once at
+// startup: writing them again on a config reload races with any goroutine that
+// logs at the same time.
+func init() {
+	zerolog.TimeFieldFormat = time.RFC3339
+}
+
 func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	version := "dev"
 	if len(versions) > 0 && strings.TrimSpace(versions[0]) != "" {
@@ -75,6 +83,9 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 	c.hydrateConfigFromViper()
+	if err := c.loadAllowedHosts(); err != nil {
+		return nil, err
+	}
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -110,6 +121,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
+	c.viper.SetDefault("allowedHosts", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
@@ -131,6 +143,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -141,6 +154,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+	c.viper.SetDefault("externalProgramMaxRunning", 8)
 
 	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
@@ -216,7 +230,9 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
+	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -237,6 +253,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("externalProgramMaxRunning", envPrefix+"EXTERNAL_PROGRAM_MAX_RUNNING")
+	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -261,7 +279,9 @@ func (c *AppConfig) loadFromEnv() {
 }
 
 func (c *AppConfig) watchConfig() {
-	c.viper.WatchConfig()
+	// Register the handler before the watcher starts: viper reads onConfigChange
+	// from the watcher goroutine without a lock, so setting it after WatchConfig
+	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
@@ -286,6 +306,7 @@ func (c *AppConfig) watchConfig() {
 		// Apply dynamic changes
 		c.applyDynamicChanges(previousAuthSettings)
 	})
+	c.viper.WatchConfig()
 }
 
 type authReloadSettings struct {
@@ -324,6 +345,9 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
+	if c.Config.IsAuthDisabled() && len(c.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
+	}
 
 	c.notifyListeners()
 }
@@ -335,6 +359,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+	c.Config.SessionCookieSecure = c.viper.GetBool("sessionCookieSecure")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
 	c.Config.LogPath = c.viper.GetString("logPath")
@@ -360,6 +385,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -372,6 +398,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
 	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramMaxRunning = c.viper.GetInt("externalProgramMaxRunning")
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
 	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
@@ -383,6 +410,61 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) loadAllowedHosts() error {
+	var entries []string
+	if value, present := os.LookupEnv(envPrefix + "ALLOWED_HOSTS"); present {
+		if value != "" {
+			entries = strings.Split(value, ",")
+		}
+	} else {
+		switch value := c.viper.Get("allowedHosts").(type) {
+		case []string:
+			entries = value
+		case []any:
+			for _, item := range value {
+				entry, ok := item.(string)
+				if !ok {
+					return errors.New("allowedHosts must be an array of strings")
+				}
+				entries = append(entries, entry)
+			}
+		default:
+			return errors.New("allowedHosts must be an array of strings")
+		}
+	}
+	entries = slices.Clone(entries)
+	for i, entry := range entries {
+		entries[i] = strings.TrimSpace(entry)
+	}
+	if _, err := httphelpers.NewHostAllowlist(entries); err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		log.Info().Msg("allowedHosts is not configured, accepting requests for any host")
+		return nil
+	}
+	c.Config.AllowedHosts = withLocalHosts(entries)
+	log.Info().Strs("allowedHosts", c.Config.AllowedHosts).Msg("Accepting requests only for the listed hosts")
+	return nil
+}
+
+// withLocalHosts admits loopback names and the machine hostname, as Sonarr and Radarr do,
+// so a list that names only the public hostname does not lock out local access.
+func withLocalHosts(entries []string) []string {
+	local := []string{"localhost", "127.0.0.1", "::1"}
+	if name, err := os.Hostname(); err == nil {
+		if _, err := httphelpers.NewHostAllowlist([]string{name}); err == nil {
+			local = append(local, name)
+		}
+	}
+	for _, host := range local {
+		if !slices.Contains(entries, host) {
+			entries = append(entries, host)
+		}
+	}
+	return entries
 }
 
 func (c *AppConfig) getNormalizedStringSlice(key string) []string {
@@ -495,11 +577,24 @@ port = {{ .port }}
 # Example:
 #corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
 
+# Allowed request hosts
+# Empty (default) permits all hosts. Restart after changes.
+# List the Host received by qui. X-Forwarded-Host is ignored.
+# Use hostnames, IP addresses, or leading *. subdomain wildcards, without ports.
+# Direct loopback GET and HEAD probes to the three built-in health endpoints bypass this list.
+#allowedHosts = ["qui.example.com", "localhost", "::1", "*.home.example.com"]
+
 # Session secret
 # Auto-generated if not provided
 # WARNING: Changing this value will break decryption of existing instance passwords!
 # If changed, you'll need to re-enter passwords for all existing qBittorrent instances in the UI.
 sessionSecret = "{{ .sessionSecret }}"
+
+# Send the browser session cookie only over HTTPS
+# Enable this when qui is served through an HTTPS reverse proxy.
+# With this enabled, login over plain HTTP does not work.
+# An HTTPS oidcRedirectUrl enables it automatically.
+#sessionCookieSecure = false
 
 # Log file path
 # If not defined, logs to stdout
@@ -561,6 +656,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: true
 #checkForUpdates = true
 
+# Hide Self-update in the web UI. "qui update" from the shell still works (requires restart)
+# Package maintainers who pin the qui version should set this to true.
+# Default: false
+#disableSelfUpdate = false
+
 # Tracker icon fetching
 # Disable to prevent qui from requesting tracker favicons from remote trackers.
 # Default: true
@@ -609,6 +709,11 @@ sessionSecret = "{{ .sessionSecret }}"
 #       "/usr/local/bin/my-script",
 #       "/home/user/bin",
 #]
+
+# Maximum number of external programs that run at the same time (requires restart)
+# Other programs wait for a free slot. A value of 0 or less uses the default.
+# Default: 8
+#externalProgramMaxRunning = 8
 
 # OpenID Connect (OIDC) Configuration
 # Enable OIDC authentication
@@ -726,8 +831,6 @@ func generateSecureToken(length int) (string, error) {
 }
 
 func (c *AppConfig) ApplyLogConfig() error {
-	zerolog.TimeFieldFormat = time.RFC3339
-
 	// Initialize the log manager on first call (sets up switchable writer)
 	c.logManager.Initialize()
 
@@ -779,7 +882,6 @@ func baseLogWriter(version string) io.Writer {
 // InitDefaultLogger configures zerolog with the default writer for this version.
 // This is used by CLI entry points before a configuration file is loaded.
 func InitDefaultLogger(version string) {
-	zerolog.TimeFieldFormat = time.RFC3339
 	log.Logger = log.Logger.Output(baseLogWriter(version))
 }
 
@@ -876,6 +978,15 @@ func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
 	}
 	return dir, nil
+}
+
+// SetDefaultLogPath sets the log path that applies when the config file, the
+// environment, and the flags set none. A config reload keeps it.
+func (c *AppConfig) SetDefaultLogPath(path string) {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	c.viper.SetDefault("logPath", path)
+	c.Config.LogPath = c.viper.GetString("logPath")
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.

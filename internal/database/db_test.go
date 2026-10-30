@@ -6,8 +6,10 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -227,6 +229,12 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "hardlink_dir_preset", Type: "TEXT"},
 		{Name: "use_reflinks", Type: "BOOLEAN"},
 		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
+		{Name: "ssh_host", Type: "TEXT"},
+		{Name: "ssh_port", Type: "INTEGER"},
+		{Name: "ssh_username", Type: "TEXT"},
+		{Name: "ssh_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_tier", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -238,9 +246,6 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "last_validated", Type: "DATETIME"},
 		{Name: "provider", Type: "TEXT"},
 		{Name: "dodo_instance_id", Type: "TEXT"},
-		{Name: "polar_customer_id", Type: "TEXT"},
-		{Name: "polar_product_id", Type: "TEXT"},
-		{Name: "polar_activation_id", Type: "TEXT"},
 		{Name: "username", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
@@ -368,15 +373,54 @@ func listPostgresMigrationFiles(t *testing.T) []string {
 	return files
 }
 
+var (
+	testTemplatePath      string
+	buildTestTemplateOnce = sync.OnceValue(func() error { return buildTestTemplate(testTemplatePath) })
+)
+
+// TestMain holds the migrated template that openTestDatabase copies. The
+// package cannot use testdb, which imports it.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "qui-database-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create test template dir:", err)
+		os.Exit(1)
+	}
+	testTemplatePath = filepath.Join(dir, "template.db")
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// openTestDatabase opens a copy of a migrated template, so only the first call
+// in the package runs every migration. A test of the migrations or of a fresh
+// open calls New itself.
 func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
+	require.NoError(t, buildTestTemplateOnce())
+
+	data, err := os.ReadFile(testTemplatePath)
+	require.NoError(t, err)
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, os.WriteFile(dbPath, data, 0o600))
+
 	db, err := New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
 	})
 	return db
+}
+
+func buildTestTemplate(path string) error {
+	db, err := New(path)
+	if err != nil {
+		return err
+	}
+	if _, err := db.Conn().ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return errors.Join(err, db.Close())
+	}
+	return db.Close()
 }
 
 type pragmaQuerier interface {
@@ -843,6 +887,7 @@ func TestTransactionSerialization(t *testing.T) {
 
 	// Channel to coordinate the test
 	started := make(chan bool, 1)
+	release := make(chan struct{})
 	committed := make(chan bool, 1)
 
 	// Start first transaction in a goroutine
@@ -854,11 +899,9 @@ func TestTransactionSerialization(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Signal that we started
+		// Signal that we started, then hold the transaction open
 		started <- true
-
-		// Hold the transaction for a bit
-		time.Sleep(200 * time.Millisecond)
+		<-release
 
 		// Insert something
 		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
@@ -885,16 +928,21 @@ func TestTransactionSerialization(t *testing.T) {
 		t.Fatal("First transaction didn't start")
 	}
 
-	// Now try to start a second transaction - it should block until the first commits
-	start := time.Now()
-	tx2, err := db.BeginTx(ctx, nil)
-	elapsed := time.Since(start)
+	// A second transaction cannot begin while the first is open
+	waitCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	_, err := db.BeginTx(waitCtx, nil)
+	cancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Second transaction should wait while the first is open")
+	close(release)
 
+	// It begins after the first commits
+	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
 
-	// Should have taken at least 100ms (the sleep time in the first transaction)
-	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+	var count int
+	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
+	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
 
 	// Clean up
 	require.NoError(t, tx2.Rollback())
@@ -967,4 +1015,71 @@ func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 		var n int
 		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
 	}
+}
+
+// A writer queued behind the write lock returns when its context ends instead of
+// waiting for the lock holder (#2817).
+func TestWriterLockWaitHonorsContext(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	_, err = holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
+	require.NoError(t, err)
+
+	// This writer takes the write lock and then waits in busy_timeout on the exclusive lock.
+	blockerDone := make(chan error, 1)
+	go func() {
+		_, err := db.ExecContext(t.Context(), "INSERT INTO string_pool (value) VALUES (?)", "blocker")
+		blockerDone <- err
+	}()
+	require.Eventually(t, func() bool { return len(db.writerSem) == 1 }, time.Second, 5*time.Millisecond)
+
+	const insert = "INSERT INTO string_pool (value) VALUES (?)"
+	for name, write := range map[string]func(context.Context) error{
+		"ExecContext": func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, insert, "exec")
+			return err
+		},
+		"QueryContext": func(ctx context.Context) error {
+			rows, err := db.QueryContext(ctx, insert+" RETURNING id", "query")
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return rows.Err()
+		},
+		"QueryRowContext": func(ctx context.Context) error {
+			var id int64
+			return db.QueryRowContext(ctx, insert+" RETURNING id", "row").Scan(&id)
+		},
+		"BeginTx": func(ctx context.Context) error {
+			tx, err := db.BeginTx(ctx, nil)
+			if err == nil {
+				_ = tx.Rollback()
+			}
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			err := write(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Less(t, time.Since(start), time.Second, "waited for the lock holder instead of the context")
+		})
+	}
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, <-blockerDone)
 }

@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} sélectionné(s) - Actions groupées disponibles",
+    "ariaLabel_one": "{{count}} torrent sélectionné - Actions groupées disponibles",
+    "ariaLabel_other": "{{count}} torrents sélectionnés - Actions groupées disponibles",
     "resume": "Reprendre",
     "pause": "Pause",
     "forceRecheck": "Forcer la revérification",
@@ -102,7 +103,15 @@
     "totalSize": "Taille totale : {{size}}",
     "blockCrossSeeds": "Bloquer les infohash de cross-seeds (empêcher la rajout)",
     "cancel": "Annuler",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "titleSelectAll_one": "Supprimer le {{count}} torrent qui correspond au filtre ?",
+    "titleSelectAll_other": "Supprimer les {{count}} torrents qui correspondent au filtre ?",
+    "selectAllNotice": "Tout sélectionner est activé. Cette action supprime les torrents sélectionnés qui correspondent au filtre actuel.",
+    "notLoaded_one": "{{count}} d'entre eux n'est pas chargé dans le tableau.",
+    "notLoaded_other": "{{count}} d'entre eux ne sont pas chargés dans le tableau.",
+    "andMore": "et {{more}} de plus",
+    "deleteCount_one": "Supprimer {{count}} torrent",
+    "deleteCount_other": "Supprimer {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Supprimer également les fichiers du disque",
@@ -122,10 +131,11 @@
       "check": "Vérifier"
     },
     "searching": "Vérification des cross-seeds",
-    "searchingProgress": "Vérification des cross-seeds ({{checked}}/{{total}})",
     "error": "Échec de la vérification des cross-seeds",
     "retry": "Réessayer",
     "noCrossSeeds": "Aucun cross-seed trouvé",
+    "uncheckedOffline": "Impossible de vérifier {{instance}} : qui ne peut pas la joindre.",
+    "uncheckedDisabled": "{{instance}} n'a pas été vérifiée : elle est désactivée dans qui.",
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
     "dataPreserved": "Cross-seeds détectés : les données seront préservées",
@@ -428,6 +438,9 @@
       "description": "Définir les limites de vitesse d'envoi et de réception en Ko/s. Désactiver pour utiliser les limites globales.",
       "uploadLimit": "Définir la limite d'envoi (Ko/s)",
       "downloadLimit": "Définir la limite de réception (Ko/s)",
+      "selectValue": "Sélectionner une valeur",
+      "wasMixed": "(était mixte)",
+      "unresolvedMixed": "Sélectionnez des valeurs pour tous les champs mixtes avant d'appliquer",
       "cancel": "Annuler",
       "setting": "Définition...",
       "confirm": "Appliquer les limites"
@@ -532,7 +545,6 @@
     "renameFolder": "Renommer le dossier",
     "download": "Télécharger",
     "mediaInfo": "MediaInfo",
-    "toggle": "Basculer",
     "selectFileForDownload": "Sélectionner un fichier à télécharger",
     "skipFileDownload": "Ignorer le téléchargement du fichier",
     "selectAllFilesIn": "Sélectionner tous les fichiers dans {{name}}",
@@ -680,22 +692,28 @@
     "deleteEmptyCategories": {
       "title": "Supprimer les catégories vides",
       "noEmpty": "Il n'y a pas de catégories vides à supprimer.",
-      "confirm": "Êtes-vous sûr de vouloir supprimer {{count}} catégorie(s) vide(s) ? Cette action ne peut pas être annulée.",
+      "confirm_one": "Êtes-vous sûr de vouloir supprimer {{count}} catégorie vide ? Cette action ne peut pas être annulée.",
+      "confirm_other": "Êtes-vous sûr de vouloir supprimer {{count}} catégories vides ? Cette action ne peut pas être annulée.",
       "cancel": "Annuler",
-      "remove": "Supprimer {{count}} catégorie(s)",
+      "remove_one": "Supprimer {{count}} catégorie",
+      "remove_other": "Supprimer {{count}} catégories",
       "toast": {
-        "success": "{{count}} catégorie(s) vide(s) supprimée(s)",
+        "success_one": "{{count}} catégorie vide supprimée",
+        "success_other": "{{count}} catégories vides supprimées",
         "error": "Échec de la suppression des catégories vides"
       }
     },
     "deleteUnusedTags": {
       "title": "Supprimer les tags inutilisés",
       "noUnused": "Il n'y a pas de tags inutilisés à supprimer.",
-      "confirm": "Êtes-vous sûr de vouloir supprimer {{count}} tag(s) inutilisé(s) ? Cette action ne peut pas être annulée.",
+      "confirm_one": "Êtes-vous sûr de vouloir supprimer {{count}} tag inutilisé ? Cette action ne peut pas être annulée.",
+      "confirm_other": "Êtes-vous sûr de vouloir supprimer {{count}} tags inutilisés ? Cette action ne peut pas être annulée.",
       "cancel": "Annuler",
-      "delete": "Supprimer {{count}} tag(s)",
+      "delete_one": "Supprimer {{count}} tag",
+      "delete_other": "Supprimer {{count}} tags",
       "toast": {
-        "success": "{{count}} tag(s) inutilisé(s) supprimé(s)",
+        "success_one": "{{count}} tag inutilisé supprimé",
+        "success_other": "{{count}} tags inutilisés supprimés",
         "error": "Échec de la suppression des tags inutilisés"
       }
     }
@@ -713,18 +731,18 @@
     "partialResults": "Résultats partiels - certains indexeurs n'ont pas répondu",
     "arrLookupFailed": "Échec de la recherche d'ID de métadonnées - recherche par titre uniquement, les résultats peuvent être incomplets",
     "arrNoIds": "Aucun ID de métadonnées trouvé pour cette release - recherche par titre uniquement",
+    "gazelleTimedOut": "RED/OPS n'a pas répondu à temps",
+    "torznabFailed": "La recherche Torznab a échoué - résultats RED/OPS uniquement",
     "searchScope": "Portée de la recherche",
     "noIndexers": "Aucun indexeur Torznab disponible",
     "noIndexersHelp": "Ajoutez ou activez des indexeurs Torznab dans les paramètres pour chercher des cross-seeds.",
+    "gazelleOnlySearch": "La recherche interroge uniquement les sites RED/OPS qui ont une clé API.",
     "capabilityNote": "Note sur les capacités",
     "capabilityDescription": "Ces indexeurs n'ont pas les capacités/catégories requises pour ce torrent et seront ignorés par le serveur :",
-    "contentFilteringInProgress": "Filtrage du contenu en cours",
-    "analyzingContent": "Analyse du contenu existant...",
     "smartFilteringActive": "Filtrage intelligent actif",
-    "indexersFiltered": "{{count}} indexeur(s) filtré(s)",
-    "contentFilteringDescription": "Vérification de vos torrents existants pour trouver des doublons et exclure les trackers redondants. Cela permet d'éviter de télécharger le même contenu plusieurs fois.",
+    "indexersFiltered_one": "{{count}} indexeur filtré",
+    "indexersFiltered_other": "{{count}} indexeurs filtrés",
     "excludedDescription": "Vous seedez déjà cette release depuis ces trackers, ils sont donc exclus de la recherche.",
-    "noContentDuplicates": "Le filtrage du contenu est terminé. Aucun contenu en double n'a été trouvé sur vos trackers activés.",
     "searchingIndexers": "Recherche sur les indexeurs...",
     "noMatchesFound": "Aucune correspondance trouvée.",
     "selectReleasesToAdd": "Sélectionnez les releases à ajouter",
@@ -773,7 +791,6 @@
       "selectAllIndexers": "Tout sélectionner",
       "clearSelection": "Effacer la sélection",
       "search": "Chercher",
-      "filtering": "Filtrage...",
       "searching": "Recherche en cours",
       "noneSelected": "Aucun sélectionné",
       "enabledIndexers": "{{count}} activé(s) {{suffix}}",
@@ -813,6 +830,26 @@
     "setConditions": "Définir les conditions pour cette colonne",
     "operation": "Opération",
     "selectOperation": "Sélectionner une opération",
+    "operations": {
+      "equalTo": "Égal à",
+      "notEqualTo": "Différent de",
+      "greaterThan": "Supérieur à",
+      "greaterThanOrEqual": "Supérieur ou égal à",
+      "lessThan": "Inférieur à",
+      "lessThanOrEqual": "Inférieur ou égal à",
+      "between": "Entre",
+      "equals": "Égal à",
+      "notEquals": "Différent de",
+      "contains": "Contient",
+      "doesNotContain": "Ne contient pas",
+      "startsWith": "Commence par",
+      "endsWith": "Se termine par",
+      "on": "Le",
+      "after": "Après",
+      "before": "Avant",
+      "is": "Est",
+      "isNot": "N'est pas"
+    },
     "value": "Valeur",
     "from": "De",
     "to": "À",
@@ -852,6 +889,11 @@
       "checking": "En vérification",
       "moving": "En déplacement"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Aucun torrent trouvé",
+    "noFilterMatches": "Aucun torrent ne correspond aux filtres actuels",
+    "noSearchMatches": "Aucun torrent ne correspond à la recherche actuelle"
   },
   "filterSidebar": {
     "views": {
@@ -904,18 +946,15 @@
     "uncategorized": "Non catégorisé",
     "tags": "Tags",
     "trackers": "Trackers",
-    "customExpression": "Expression personnalisée",
     "untagged": "Sans tag",
     "noTracker": "Aucun tracker",
     "hideEmpty": "Masquer les vides",
     "showEmpty": "Afficher les vides",
-    "showHidden": "Afficher {{count}} masqué(s)",
     "searchCategories": "Chercher des catégories",
     "searchTags": "Chercher des tags",
     "searchTrackers": "Chercher des trackers",
     "noCategoriesFound": "Aucune catégorie trouvée pour \"{{query}}\"",
     "noTagsFound": "Aucun tag trouvé pour \"{{query}}\"",
-    "hiddenMatchSearch": "{{count}} caché(s) correspondent",
     "createTag": "Créer un tag",
     "createCategory": "Créer une catégorie",
     "createSubcategory": "Créer une sous-catégorie",
@@ -977,7 +1016,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} sur {{total}} torrents chargés",
     "scrollForMore": "(défiler pour plus)",
-    "loading": "Chargement...",
     "freeSpace": "Espace libre",
     "switchToBits": "Basculer en bits par seconde (bps)",
     "switchToBytes": "Basculer en octets par seconde (o/s)",
@@ -1052,10 +1090,9 @@
       "trackerUpdated": "URL du tracker mise à jour avec succès",
       "trackerUpdateFailed": "Échec de la mise à jour du tracker",
       "fileRenamed": "Fichier renommé avec succès",
-      "fileRenameFailed": "Échec du renommage",
       "folderRenamed": "Dossier renommé avec succès",
-      "folderRenameFailed": "Échec du renommage",
-      "deletedTorrents": "{{count}} torrent(s) supprimé(s)",
+      "deletedTorrents_one": "{{count}} torrent supprimé",
+      "deletedTorrents_other": "{{count}} torrents supprimés",
       "deletedTorrent": "Torrent supprimé : {{name}}",
       "deleteFailed": "Échec de la suppression : {{error}}"
     },
@@ -1064,10 +1101,6 @@
       "description": "Entrez les adresses des pairs (IP:port), une par ligne ou séparées par des virgules",
       "label": "Pairs",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
-    },
-    "banPeer": {
-      "title": "Bannir le Pair",
-      "description": "Êtes-vous sûr de vouloir bannir {{address}} ?"
     },
     "banPeerPermanent": {
       "title": "Bannir le Pair de façon permanente",
@@ -1200,24 +1233,17 @@
     "network": "Réseau",
     "seeds": "Seeds",
     "peers": "Pairs",
-    "downSpeed": "Vit. Réception",
-    "upSpeed": "Vit. Émission",
     "downLimit": "Lim. Réception",
     "upLimit": "Lim. Émission",
-    "connections": "Connexions",
     "time": "Temps",
     "addedOn": "Ajouté le",
     "completedOn": "Terminé le",
-    "lastActivity": "Dernière activité",
-    "lastSeen": "Vu pour la dernière fois",
-    "eta": "ETA",
     "timeActive": "Temps actif",
     "seedingTime": "Temps de seed",
     "limits": "Limites",
     "ratioLimit": "Limite de ratio",
     "seedingTimeLimit": "Limite de temps de seed",
     "inactiveSeedingLimit": "Limite d'inactivité de seed",
-    "info": "Infos",
     "pieceSize": "Taille des pièces",
     "pieces": "Pièces",
     "createdOn": "Créé le",
@@ -1226,7 +1252,6 @@
   "trackersTable": {
     "status": "Statut",
     "tracker": "Tracker",
-    "tier": "Tier",
     "seeds": "Seeds",
     "leeches": "Leeches",
     "downloaded": "Téléchargés",
@@ -1245,7 +1270,6 @@
     "upSpeed": "Vit. Émis.",
     "downloaded": "Téléchargé",
     "uploaded": "Envoyé",
-    "relevance": "Pertinence",
     "copyIpAddress": "Copier l’adresse",
     "banPeer": "Bannir le pair",
     "noPeersConnected": "Aucun pair connecté",
@@ -1267,7 +1291,8 @@
     "url": "URL",
     "noHttpSources": "Aucune source HTTP",
     "searchUrls": "Chercher des URLs...",
-    "httpSources": "{{count}} source(s) HTTP",
+    "httpSources_one": "{{count}} source HTTP",
+    "httpSources_other": "{{count}} sources HTTP",
     "filteredCount": "{{filtered}} sur {{total}}",
     "copyUrl": "Copier l'URL",
     "toast": {
@@ -1286,7 +1311,8 @@
     "expandAll": "Tout développer",
     "collapseAll": "Tout réduire",
     "searchFiles": "Chercher des fichiers...",
-    "fileCount": "{{count}} fichier(s)",
+    "fileCount_one": "{{count}} fichier",
+    "fileCount_other": "{{count}} fichiers",
     "filteredCount": "{{filtered}} sur {{total}}",
     "noFiles": "Aucun fichier",
     "headers": {
@@ -1319,11 +1345,6 @@
     "matchCount_other": "{{count}} correspondances",
     "deleteSelected": "Supprimer ({{count}})",
     "deleteThis": "Supprimer Ceci",
-    "statusLabels": {
-      "trackerDown": "Tracker Injoignable",
-      "unregistered": "Non enregistré",
-      "trackerError": "Erreur Tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenu",
@@ -1347,6 +1368,7 @@
       }
     },
     "noMatches": "Aucun torrent correspondant trouvé sur d'autres instances",
+    "loadFailed": "Impossible de vérifier les correspondances cross-seed. Rechargez pour réessayer.",
     "toast": {
       "savePathCopied": "Chemin de sauvegarde copié",
       "copyFailed": "Échec de la copie"
@@ -1498,25 +1520,6 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Recherche automatique pendant la frappe"
     },
-    "shareLimit": {
-      "title": "Définir les limites de partage pour {{count}} torrent(s)",
-      "description": "Configurez les limites de seed. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setRatioLimit": "Définir la limite de ratio",
-      "setSeedingTimeLimit": "Définir la limite de temps de seed (minutes)",
-      "setInactiveSeedingLimit": "Définir la limite de seed inactif (minutes)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
-    },
-    "speedLimit": {
-      "title": "Définir les limites de vitesse pour {{count}} torrent(s)",
-      "description": "Définir les limites en Ko/s. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setUploadLimit": "Définir la limite d'envoi (Ko/s)",
-      "setDownloadLimit": "Définir la limite de réception (Ko/s)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
-    },
     "ratio": "Ratio :"
   },
   "tableView": {
@@ -1535,7 +1538,16 @@
   "sort": {
     "label": "Tri",
     "ascending": "croissant",
-    "descending": "décroissant"
+    "descending": "décroissant",
+    "options": {
+      "addedOn": "Ajoutés récemment",
+      "downloadLimit": "Limite de téléchargement",
+      "uploadLimit": "Limite d'envoi",
+      "sessionDownloaded": "Téléchargé (Session)",
+      "sessionUploaded": "Envoyé (Session)",
+      "lastSeenComplete": "Vu complet pour la dernière fois",
+      "reannounceIn": "Réannonce dans"
+    }
   },
   "tableColumns": {
     "selectAll": "Sélectionner le torrent",
@@ -1551,7 +1563,6 @@
     "size": "Taille",
     "totalSize": "Taille Totale",
     "progress": "Progression",
-    "state": "État",
     "seeds": "Seeds",
     "peers": "Pairs",
     "downSpeed": "Vit. Réc.",
@@ -1594,6 +1605,7 @@
   "stateLabels": {
     "downloading": "Téléchargement",
     "metaDL": "Récupération des métadonnées",
+    "forcedMetaDL": "(F) Récupération des métadonnées",
     "allocating": "Allocation",
     "stalledDL": "En attente",
     "queuedDL": "File d'attente",
@@ -1611,8 +1623,10 @@
     "error": "Erreur",
     "missingFiles": "Fichiers manquants",
     "checkingResumeData": "Vérification des données de reprise",
-    "moving": "Déplacement"
+    "moving": "Déplacement",
+    "unknown": "Inconnu"
   },
+  "stateLabelFallback": "Non reconnu",
   "details": {
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",

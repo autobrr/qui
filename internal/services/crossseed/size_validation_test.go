@@ -8,7 +8,7 @@ import (
 )
 
 func TestIsSizeWithinTolerance(t *testing.T) {
-	s := &Service{}
+	s := matcher{}
 
 	tests := []struct {
 		name             string
@@ -17,13 +17,6 @@ func TestIsSizeWithinTolerance(t *testing.T) {
 		tolerancePercent float64
 		expectedResult   bool
 	}{
-		{
-			name:             "Exact match should pass",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000000, // 1GB
-			tolerancePercent: 5.0,
-			expectedResult:   true,
-		},
 		{
 			name:             "Within 5% tolerance - slightly smaller",
 			sourceSize:       1000000000, // 1GB

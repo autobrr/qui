@@ -15,21 +15,18 @@ var (
 
 // ProductLicense represents a product license in the database
 type ProductLicense struct {
-	ID                int        `json:"id"`
-	LicenseKey        string     `json:"licenseKey"`
-	ProductName       string     `json:"productName"`
-	Status            string     `json:"status"`
-	ActivatedAt       time.Time  `json:"activatedAt"`
-	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
-	LastValidated     time.Time  `json:"lastValidated"`
-	Provider          string     `json:"provider,omitempty"`
-	DodoInstanceID    string     `json:"dodoInstanceId,omitempty"`
-	PolarCustomerID   *string    `json:"polarCustomerId,omitempty"`
-	PolarProductID    *string    `json:"polarProductId,omitempty"`
-	PolarActivationID string     `json:"polarActivationId,omitempty"`
-	Username          string     `json:"username"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	UpdatedAt         time.Time  `json:"updatedAt"`
+	ID             int        `json:"id"`
+	LicenseKey     string     `json:"licenseKey"`
+	ProductName    string     `json:"productName"`
+	Status         string     `json:"status"`
+	ActivatedAt    time.Time  `json:"activatedAt"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	LastValidated  time.Time  `json:"lastValidated"`
+	Provider       string     `json:"provider,omitempty"`
+	DodoInstanceID string     `json:"dodoInstanceId,omitempty"`
+	Username       string     `json:"username"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
 // LicenseInfo contains license validation information
@@ -47,10 +44,12 @@ type LicenseInfo struct {
 const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
+	// LicenseStatusOffline marks a license that the server has not confirmed within the offline grace period.
+	// It gives no premium access. The background check and the manual refresh make it active again when the server confirms it.
+	LicenseStatusOffline = "offline"
 )
 
 // LicenseProvider constants
 const (
-	LicenseProviderDodo  = "dodo"
-	LicenseProviderPolar = "polar"
+	LicenseProviderDodo = "dodo"
 )

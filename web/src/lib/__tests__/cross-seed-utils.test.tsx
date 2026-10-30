@@ -17,6 +17,7 @@ vi.mock("@/lib/api", () => ({
 
 import { api } from "@/lib/api"
 import {
+  changedSecret,
   getLocalMatchTypeInfo,
   hasBreakableLocalMatches,
   isHardlinkManaged,
@@ -125,16 +126,16 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
 
-  it("is false when hasLocalFilesystemAccess is false", () => {
+  it("is false when the instance lacks the write capability", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { useHardlinks: true, hasLocalFilesystemAccess: false, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: false }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
@@ -143,7 +144,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: "" }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: "" }
       )
     ).toBe(false)
   })
@@ -152,7 +153,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/show", content_path: "/elsewhere/show" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(true)
   })
@@ -161,7 +162,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/elsewhere/show", content_path: "/data/links/show/file.mkv" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(true)
   })
@@ -170,26 +171,24 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/elsewhere/a", content_path: "/elsewhere/b" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
 })
 
 describe("local match type classification", () => {
-  it("classifies content-path matches as delete-relevant and breakable", () => {
+  it("classifies content-path matches as breakable", () => {
     expect(getLocalMatchTypeInfo("content_path")).toEqual({
-      deleteRelevant: true,
       independentlyUsable: false,
       breaksWhenSourceDeleted: true,
     })
   })
 
   it.each(["hardlink", "reflink"] as const)(
-    "classifies %s matches as delete-relevant and independently usable",
+    "classifies %s matches as independently usable",
     (matchType) => {
       expect(getLocalMatchTypeInfo(matchType)).toEqual({
-        deleteRelevant: true,
         independentlyUsable: true,
         breaksWhenSourceDeleted: false,
       })
@@ -197,9 +196,12 @@ describe("local match type classification", () => {
   )
 
   it.each(["name", "release"] as const)(
-    "excludes %s matches from delete suggestions",
+    "classifies %s matches as neither usable nor breakable",
     (matchType) => {
-      expect(getLocalMatchTypeInfo(matchType).deleteRelevant).toBe(false)
+      expect(getLocalMatchTypeInfo(matchType)).toEqual({
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: false,
+      })
     }
   )
 
@@ -268,6 +270,20 @@ describe("useLocalCrossSeedMatches", () => {
     expect(result.current.matchingTorrents[0].total_size).toBe(12345)
     expect(result.current.allInstances).toEqual([{ id: 2, name: "seedbox" }])
     expect(result.current.pendingQueryCount).toBe(0)
+    expect(result.current.isLoadingMatches).toBe(false)
+  })
+
+  it("surfaces a rejected lookup instead of an empty match list", async () => {
+    mockedApi.getLocalCrossSeedMatches.mockRejectedValue(new Error("overlap check failed"))
+    const { result } = renderHook(
+      () => useLocalCrossSeedMatches(2, makeTorrent({ hash: "h" }), true),
+      { wrapper: makeWrapper() }
+    )
+
+    await waitFor(() => {
+      expect(result.current.matchesError).not.toBeNull()
+    })
+    expect(result.current.matchingTorrents).toEqual([])
     expect(result.current.isLoadingMatches).toBe(false)
   })
 
@@ -394,5 +410,16 @@ describe("useLocalCrossSeedMatches", () => {
     await waitFor(() => {
       expect(result.current.matchingTorrents).toHaveLength(1)
     })
+  })
+})
+
+describe("changedSecret", () => {
+  it.each([
+    { name: "untouched unset key", value: "", saved: undefined, want: undefined },
+    { name: "untouched set key", value: "<redacted>", saved: "<redacted>", want: undefined },
+    { name: "cleared key", value: "", saved: "<redacted>", want: "" },
+    { name: "new key", value: "new-key", saved: undefined, want: "new-key" },
+  ])("$name", ({ value, saved, want }) => {
+    expect(changedSecret(value, saved)).toBe(want)
   })
 })

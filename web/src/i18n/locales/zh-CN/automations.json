@@ -4,6 +4,11 @@
     "description": "由 qui 管理的实例级自动化服务。",
     "noInstances": "尚未配置任何实例。请在设置中添加一个实例以使用服务。"
   },
+  "tabs": {
+    "workflows": "工作流",
+    "reannounce": "重新汇报",
+    "orphanScan": "孤立项目扫描"
+  },
   "queryBuilder": {
     "noConditions": "无条件",
     "matchesAllTorrents": "匹配所有种子（受 Tracker 选择限制）。",
@@ -29,10 +34,12 @@
     "selectState": "选择状态",
     "selectScope": "选择范围",
     "selectTrackerStatus": "选择状态",
+    "selectContentType": "选择内容类型",
     "true": "是",
     "false": "否",
     "selectCategory": "选择分类",
     "uncategorized": "未分类",
+    "customContentType": "{{value}}（不支持）",
     "regexEnabled": "正则表达式已启用",
     "enableRegex": "启用正则表达式",
     "selectField": "选择字段",
@@ -109,6 +116,7 @@
       "RATIO": "分享率",
       "RATIO_LIMIT": "分享率限制",
       "MAX_RATIO": "最大分享率",
+      "UPLOADED_OVER_SIZE": "已上传 / 大小",
       "PROGRESS": "进度",
       "AVAILABILITY": "可用性",
       "POPULARITY": "热门度",
@@ -138,7 +146,10 @@
       "EXISTS_ON_SAME_INSTANCE": "辅种存在于同一实例",
       "SEEDING_ON_SAME_INSTANCE": "辅种在同一实例做种",
       "CROSS_SEED_TAGS": "交叉做种标签",
-      "HARDLINK_SCOPE": "硬链接范围"
+      "SEASON_PACK_STATUS": "季包状态",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "季包状态（任意实例）",
+      "HARDLINK_SCOPE": "硬链接范围",
+      "HARDLINK_SCOPE_CROSS": "硬链接范围（跨实例）"
     },
     "fieldGroups": {
       "Identity": "标识",
@@ -183,6 +194,7 @@
       "stalled_downloading": "停滞下载",
       "errored": "错误",
       "tracker_down": "Tracker 离线",
+      "tracker_error": "Tracker 错误",
       "checking": "校验中",
       "checkingResumeData": "校验恢复数据",
       "moving": "移动中",
@@ -195,6 +207,11 @@
       "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）",
       "both": "qBittorrent 内部 + 外部"
     },
+    "seasonPackStatuses": {
+      "pack": "季包",
+      "packed": "已被季包覆盖的剧集",
+      "unpacked": "没有季包的剧集"
+    },
     "trackerStatuses": {
       "not_contacted": "未联系",
       "working": "工作中",
@@ -206,12 +223,12 @@
     "durationUnits": {
       "minutes": "分钟",
       "hours": "小时",
-      "days": "天",
-      "seconds": "秒"
+      "days": "天"
     },
     "capabilityReasons": {
       "trackerHealth": "需要 qBittorrent 5.1+",
-      "localFilesystemAccess": "需要本地文件系统访问权限"
+      "localFilesystemAccess": "需要本地文件系统访问权限",
+      "remoteInstance": "远程实例不可用"
     }
   }
 }

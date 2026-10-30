@@ -69,7 +69,8 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		return nil
 	}
 
-	_, err := s.insert(ctx, activity)
+	id, err := s.insert(ctx, activity)
+	activity.ID = id
 	return err
 }
 
@@ -83,6 +84,7 @@ func (s *AutomationActivityStore) CreateWithID(ctx context.Context, activity *Au
 		return 0, err
 	}
 
+	activity.ID = id
 	return id, nil
 }
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/releases"
@@ -39,85 +39,85 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		sourceRelease    *rls.Release
-		candidateRelease *rls.Release
-		sourceFiles      qbt.TorrentFiles
-		candidateFiles   qbt.TorrentFiles
-		want             string
+		name         string
+		localRelease *rls.Release
+		newRelease   *rls.Release
+		localFiles   qbt.TorrentFiles
+		newFiles     qbt.TorrentFiles
+		want         string
 	}{
 		{
-			name:             "single file pairs by size into renamed pack",
-			sourceRelease:    &episodeRelease,
-			candidateRelease: &packRelease,
-			sourceFiles:      episodeFiles,
-			candidateFiles:   renamedPackFiles,
-			want:             "size-partial-in-pack",
+			name:         "new file pairs by size into the local renamed pack",
+			localRelease: &packRelease,
+			newRelease:   &episodeRelease,
+			localFiles:   renamedPackFiles,
+			newFiles:     episodeFiles,
+			want:         "size-partial-in-pack",
 		},
 		{
-			name:             "pack contains the candidate file by size",
-			sourceRelease:    &packRelease,
-			candidateRelease: &episodeRelease,
-			sourceFiles:      renamedPackFiles,
-			candidateFiles:   episodeFiles,
-			want:             "size-partial-contains",
+			name:         "new pack contains the local file by size",
+			localRelease: &episodeRelease,
+			newRelease:   &packRelease,
+			localFiles:   episodeFiles,
+			newFiles:     renamedPackFiles,
+			want:         "size-partial-contains",
 		},
 		{
-			name:             "no candidate file with a matching size",
-			sourceRelease:    &episodeRelease,
-			candidateRelease: &packRelease,
-			sourceFiles:      qbt.TorrentFiles{{Name: "Show.S01E01.1080p.mkv", Size: 4 << 30}},
-			candidateFiles:   renamedPackFiles,
-			want:             "",
+			name:         "no local file with a matching size",
+			localRelease: &packRelease,
+			newRelease:   &episodeRelease,
+			localFiles:   renamedPackFiles,
+			newFiles:     qbt.TorrentFiles{{Name: "Show.S01E01.1080p.mkv", Size: 4 << 30}},
+			want:         "",
 		},
 		{
-			name:             "ambiguous same-size candidates reject instead of guessing",
-			sourceRelease:    &episodeRelease,
-			candidateRelease: &packRelease,
-			sourceFiles:      episodeFiles,
-			candidateFiles: qbt.TorrentFiles{
+			name:         "ambiguous same-size local files reject instead of guessing",
+			localRelease: &packRelease,
+			newRelease:   &episodeRelease,
+			localFiles: qbt.TorrentFiles{
 				{Name: "pack/first_renamed.mkv", Size: 1 << 30},
 				{Name: "pack/second_renamed.mkv", Size: 1 << 30},
 			},
-			want: "",
+			newFiles: episodeFiles,
+			want:     "",
 		},
 		{
 			// Track names parse no release keys, so every name-aware tier fails,
-			// and the candidate's largest file differs so the largest-file fallback
+			// and the largest local file differs so the largest-file fallback
 			// stays out. The shared base name then breaks the same-size tie inside
 			// the size-only pairing.
-			name:             "same base name breaks the same-size tie",
-			sourceRelease:    &albumRelease,
-			candidateRelease: &albumPackRelease,
-			sourceFiles:      qbt.TorrentFiles{{Name: "intro_song.flac", Size: 1 << 30}},
-			candidateFiles: qbt.TorrentFiles{
+			name:         "same base name breaks the same-size tie",
+			localRelease: &albumPackRelease,
+			newRelease:   &albumRelease,
+			localFiles: qbt.TorrentFiles{
 				{Name: "album/intro_song.flac", Size: 1 << 30},
 				{Name: "album/other_track.flac", Size: 1 << 30},
 				{Name: "album/big_track.flac", Size: 2 << 30},
 			},
-			want: "size-partial-in-pack",
+			newFiles: qbt.TorrentFiles{{Name: "intro_song.flac", Size: 1 << 30}},
+			want:     "size-partial-in-pack",
 		},
 		{
 			// The extra file keeps the totals inside the 5% tolerance, so the
 			// total-size tier would claim this pair. Containment must win when the
 			// file counts differ, or apply misses the episode-in-pack layout.
-			name:             "containment beats tolerant total-size when counts differ",
-			sourceRelease:    &episodeRelease,
-			candidateRelease: &packRelease,
-			sourceFiles:      episodeFiles,
-			candidateFiles: qbt.TorrentFiles{
+			name:         "containment beats tolerant total-size when counts differ",
+			localRelease: &packRelease,
+			newRelease:   &episodeRelease,
+			localFiles: qbt.TorrentFiles{
 				{Name: "pack/ep1_renamed.mkv", Size: 1 << 30},
 				{Name: "pack/short_film.mkv", Size: 40 << 20},
 			},
-			want: "size-partial-in-pack",
+			newFiles: episodeFiles,
+			want:     "size-partial-in-pack",
 		},
 		{
-			name:             "full both-side pairing stays a size match",
-			sourceRelease:    &episodeRelease,
-			candidateRelease: &packRelease,
-			sourceFiles:      episodeFiles,
-			candidateFiles:   qbt.TorrentFiles{{Name: "pack/ep1_renamed.mkv", Size: 1 << 30}},
-			want:             "size",
+			name:         "full both-side pairing stays a size match",
+			localRelease: &packRelease,
+			newRelease:   &episodeRelease,
+			localFiles:   qbt.TorrentFiles{{Name: "pack/ep1_renamed.mkv", Size: 1 << 30}},
+			newFiles:     episodeFiles,
+			want:         "size",
 		},
 	}
 
@@ -125,8 +125,8 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			svc := newMatcherService()
-			result := svc.getMatchTypeWithReason(tt.sourceRelease, tt.candidateRelease, tt.sourceFiles, tt.candidateFiles, 5.0)
+			svc := newMatcherService().matcher()
+			result := svc.getMatchTypeWithReason(tt.localRelease, tt.newRelease, tt.localFiles, tt.newFiles, 5.0)
 			if tt.want == "" {
 				require.Empty(t, result.MatchType)
 				require.NotEmpty(t, result.Reason)
@@ -190,15 +190,15 @@ func TestGetMatchTypeFromTitle_RenamedPackFallback(t *testing.T) {
 		{Name: "pack/Show.S01E03.mkv", Size: 2 << 30},
 	}
 
-	svc := newMatcherService()
+	svc := newMatcherService().matcher()
 
-	got := svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S01.Pack", &episode, &pack, renamedFiles)
+	got := svc.getMatchTypeFromTitle(&episode, &pack, renamedFiles)
 	require.Equal(t, "release-match", got, "renamed same-season pack must pass discovery for the file-level matcher")
 
-	got = svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S01.Pack", &episode, &pack, wellNamedFiles)
+	got = svc.getMatchTypeFromTitle(&episode, &pack, wellNamedFiles)
 	require.Empty(t, got, "well-named pack without the target episode must still reject at discovery")
 
-	got = svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S03.Pack", &episode, &otherSeasonPack, renamedFiles)
+	got = svc.getMatchTypeFromTitle(&episode, &otherSeasonPack, renamedFiles)
 	require.Empty(t, got, "renamed pack from another season must not pass")
 }
 

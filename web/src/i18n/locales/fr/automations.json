@@ -4,6 +4,11 @@
     "description": "Services d'automatisation au niveau de l'instance gérés par qui.",
     "noInstances": "Aucune instance configurée. Ajoutez-en une dans les Paramètres pour utiliser les services."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Réannoncer",
+    "orphanScan": "Analyse d'orphelins"
+  },
   "queryBuilder": {
     "noConditions": "Aucune condition",
     "matchesAllTorrents": "Correspond à tous les torrents (soumis à la sélection du tracker).",
@@ -29,10 +34,12 @@
     "selectState": "Sélectionner un état",
     "selectScope": "Sélectionner une portée",
     "selectTrackerStatus": "Sélectionner un statut",
+    "selectContentType": "Sélectionner un type de contenu",
     "true": "Vrai",
     "false": "Faux",
     "selectCategory": "Sélectionner une catégorie",
     "uncategorized": "Non catégorisé",
+    "customContentType": "{{value}} (non supporté)",
     "regexEnabled": "Regex activée",
     "enableRegex": "Activer regex",
     "selectField": "Sélectionner un champ",
@@ -109,6 +116,7 @@
       "RATIO": "Ratio",
       "RATIO_LIMIT": "Limite de ratio",
       "MAX_RATIO": "Ratio Max",
+      "UPLOADED_OVER_SIZE": "Envoyé / Taille",
       "PROGRESS": "Progression",
       "AVAILABILITY": "Disponibilité",
       "POPULARITY": "Popularité",
@@ -138,7 +146,10 @@
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed existe sur la même instance",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed en partage sur la même instance",
       "CROSS_SEED_TAGS": "Tags des cross-seeds",
-      "HARDLINK_SCOPE": "Portée du lien physique"
+      "SEASON_PACK_STATUS": "Statut du pack de saison",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Statut du pack de saison (toute instance)",
+      "HARDLINK_SCOPE": "Portée du lien physique",
+      "HARDLINK_SCOPE_CROSS": "Portée du lien physique (multi-instances)"
     },
     "fieldGroups": {
       "Identity": "Identité",
@@ -183,6 +194,7 @@
       "stalled_downloading": "Bloqué (Réception)",
       "errored": "Erroné",
       "tracker_down": "Tracker hors ligne",
+      "tracker_error": "Erreur du tracker",
       "checking": "En vérification",
       "checkingResumeData": "Vérification (reprise)",
       "moving": "En déplacement",
@@ -195,6 +207,11 @@
       "outside_qbittorrent": "En dehors de qBittorrent (bibliothèque/import)",
       "both": "Dans qBittorrent + en dehors"
     },
+    "seasonPackStatuses": {
+      "pack": "Pack de saison",
+      "packed": "Épisode couvert par un pack de saison",
+      "unpacked": "Épisode sans pack de saison"
+    },
     "trackerStatuses": {
       "not_contacted": "Non contacté",
       "working": "Fonctionnel",
@@ -206,12 +223,12 @@
     "durationUnits": {
       "minutes": "minutes",
       "hours": "heures",
-      "days": "jours",
-      "seconds": "secondes"
+      "days": "jours"
     },
     "capabilityReasons": {
       "trackerHealth": "Nécessite qBittorrent 5.1+",
-      "localFilesystemAccess": "Nécessite l'accès au système de fichiers local"
+      "localFilesystemAccess": "Nécessite l'accès au système de fichiers local",
+      "remoteInstance": "Non disponible sur les instances distantes"
     }
   }
 }

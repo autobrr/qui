@@ -149,7 +149,6 @@ func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		Enabled:                      true,
 		RunIntervalMinutes:           60,
-		StartPaused:                  true,
 		SeasonPackSkipRepackCompare:  true,
 		SeasonPackSimplifyHDRCompare: true,
 		SeasonPackSimplifyWEBCompare: true,

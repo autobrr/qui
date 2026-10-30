@@ -4,6 +4,11 @@
     "description": "Служби автоматизації на рівні екземпляра, керовані qui.",
     "noInstances": "Екземпляри ще не налаштовано. Додайте один у Налаштуваннях для використання служб."
   },
+  "tabs": {
+    "workflows": "Робочі процеси",
+    "reannounce": "Повторно оголосити",
+    "orphanScan": "Орфанне сканування"
+  },
   "queryBuilder": {
     "noConditions": "Немає умов",
     "matchesAllTorrents": "Відповідає всім торентам (за умови вибору трекера).",
@@ -32,6 +37,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
+    "customContentType": "{{value}} (не підтримується)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -105,6 +111,7 @@
       "RATIO": "Співвідношення",
       "RATIO_LIMIT": "Ліміт співвідношення",
       "MAX_RATIO": "Макс. співвідношення",
+      "UPLOADED_OVER_SIZE": "Вивантажено / Розмір",
       "PROGRESS": "Прогрес",
       "AVAILABILITY": "Доступність",
       "POPULARITY": "Популярність",
@@ -134,7 +141,10 @@
       "EXISTS_ON_SAME_INSTANCE": "Крос-сід існує в тому ж екземплярі",
       "SEEDING_ON_SAME_INSTANCE": "Крос-сід роздається в тому ж екземплярі",
       "CROSS_SEED_TAGS": "Теги крос-сідів",
+      "SEASON_PACK_STATUS": "Статус сезонного паку",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Статус сезонного паку (будь-який інстанс)",
       "HARDLINK_SCOPE": "Область жорстких посилань",
+      "HARDLINK_SCOPE_CROSS": "Область жорстких посилань (між інстансами)",
       "TRACKER_STATUS": "Статус трекера",
       "TRACKER_MESSAGE": "Повідомлення трекера",
       "RLS_YEAR": "Рік (RLS)"
@@ -182,6 +192,7 @@
       "stalled_downloading": "Зависає (завантаження)",
       "errored": "Помилка",
       "tracker_down": "Трекер недоступний",
+      "tracker_error": "Помилка трекера",
       "checking": "Перевірка",
       "checkingResumeData": "Перевірка даних відновлення",
       "moving": "Переміщення",
@@ -194,17 +205,23 @@
       "outside_qbittorrent": "Поза qBittorrent (бібліотека/імпорт)",
       "both": "Всередині + поза qBittorrent"
     },
+    "seasonPackStatuses": {
+      "pack": "Сезонний пак",
+      "packed": "Епізод, покритий сезонним паком",
+      "unpacked": "Епізод без сезонного паку"
+    },
     "durationUnits": {
       "minutes": "хвилин",
       "hours": "годин",
-      "days": "днів",
-      "seconds": "секунд"
+      "days": "днів"
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",
-      "localFilesystemAccess": "Потребує локального доступу до файлової системи"
+      "localFilesystemAccess": "Потребує локального доступу до файлової системи",
+      "remoteInstance": "Недоступно на віддалених екземплярах"
     },
     "selectTrackerStatus": "Вибрати статус",
+    "selectContentType": "Вибрати тип вмісту",
     "trackerStatuses": {
       "not_contacted": "Не зв'язувалися",
       "working": "Працює",

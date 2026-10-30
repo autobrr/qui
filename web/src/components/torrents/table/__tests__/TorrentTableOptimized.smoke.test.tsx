@@ -23,17 +23,20 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { api } from "@/lib/api"
+import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, renderHook, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
 import type { ComponentProps, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
-const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false }))
+const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false, totalCount: 3 }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -45,7 +48,7 @@ const torrents = [
 // override useTranslation with a stable passthrough translator.
 vi.mock("react-i18next", async (importOriginal) => {
   const translation = {
-    t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
+    t: (key: string) => key,
     i18n: { resolvedLanguage: "en", language: "en" },
   }
   return {
@@ -111,9 +114,12 @@ vi.stubGlobal("ResizeObserver", class {
 })
 
 // Network boundary: any api.* call resolves to undefined (real hooks degrade
-// gracefully via their ?? fallbacks).
+// gracefully via their ?? fallbacks). One spy per method so a test can read
+// what the table sent.
 vi.mock("@/lib/api", () => ({
-  api: new Proxy({}, { get: () => vi.fn(() => Promise.resolve(undefined)) }),
+  api: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
+    get: (target, prop: string) => (target[prop] ??= vi.fn(() => Promise.resolve(undefined))),
+  }),
 }))
 
 // Tracker query hooks subscribe to the activity stream (needs a provider);
@@ -136,7 +142,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
     useTorrentsList: () => {
       result ??= {
         torrents,
-        totalCount: torrents.length,
+        get totalCount() { return scenario.totalCount },
         stats: {
           total: torrents.length,
           downloading: 1,
@@ -177,9 +183,11 @@ vi.mock("@/hooks/useTorrentsList", () => {
   }
 })
 
-// The action hook that drives dialog state (all dialogs closed).
+// The action hook that drives dialog state (all dialogs closed). Every handler
+// is the same spy, so a test can read the Action target that an action got.
+const actionHandler = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/useTorrentActions", () => {
-  const noop = vi.fn()
+  const noop = actionHandler
   const actions = new Proxy(
     {
       blockCrossSeeds: false,
@@ -188,8 +196,6 @@ vi.mock("@/hooks/useTorrentActions", () => {
       isDeleteFilesLocked: false,
       pendingTmmEnable: false,
       isPending: false,
-      contextHashes: [],
-      contextTorrents: [],
     } as Record<string, unknown>,
     {
       // Unknown dialog flags read as falsy; unknown handlers read as no-ops.
@@ -206,16 +212,40 @@ vi.mock("@/hooks/useTorrentActions", () => {
   }
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  // jsdom has no execCommand; the copy tests below stub one in.
+  delete (document as { execCommand?: unknown }).execCommand
+})
+
+function isRowChecked(container: HTMLElement, name: string) {
+  const row = within(container).getByText(name).closest(".cursor-pointer")
+  return row?.querySelector("[role=\"checkbox\"]")?.getAttribute("aria-checked") === "true"
+}
+
+function checkedRows(container: HTMLElement) {
+  return torrents.map(t => t.name).filter(name => isRowChecked(container, name))
+}
+
+// Opens the menu of the row and clicks Pause. Returns the ticked hashes of the Action target, undefined in Select all mode.
+async function pauseFromMenu(container: HTMLElement, name: string, findByRole: (role: string, options: { name: RegExp }) => Promise<HTMLElement>) {
+  fireEvent.contextMenu(within(container).getByText(name))
+  fireEvent.click(await findByRole("menuitem", { name: /^contextMenu\.pause/ }))
+  await waitFor(() => expect(actionHandler).toHaveBeenCalled())
+  return (actionHandler.mock.calls[0][1] as { hashes?: string[] }).hashes
+}
 
 function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>{children}</TooltipProvider>
+      <TorrentSelectionProvider>
+        <TooltipProvider>{children}</TooltipProvider>
+      </TorrentSelectionProvider>
     </QueryClientProvider>
   )
-  return render(<TorrentTableOptimized instanceId={1} {...props} />, { wrapper })
+  return render(<TorrentTableOptimized instanceId={1} filters={makeFilters()} {...props} />, { wrapper })
 }
 
 describe("TorrentTableOptimized smoke", () => {
@@ -223,6 +253,7 @@ describe("TorrentTableOptimized smoke", () => {
     localStorage.clear()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
+    scenario.totalCount = torrents.length
   })
 
   it("renders a row for each torrent", () => {
@@ -262,6 +293,81 @@ describe("TorrentTableOptimized smoke", () => {
     expect(onFilterChange).not.toHaveBeenCalled()
   })
 
+  // Issue #3364: in select all mode a plain click selects only the clicked row,
+  // so the next menu action reaches that row and not every matching torrent.
+  it("plain click in select all mode selects only the clicked row", async () => {
+    const { container, findByRole } = renderTable()
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    expect(checkedRows(container)).toEqual(["Alpha Release", "Bravo Release", "Charlie Release"])
+
+    fireEvent.click(within(container).getByText("Bravo Release"))
+
+    expect(checkedRows(container)).toEqual(["Bravo Release"])
+    expect(await pauseFromMenu(container, "Bravo Release", findByRole)).toEqual(["hash-bbb"])
+  })
+
+  it("plain click on a row in a multi-selection selects only that row", () => {
+    const { container } = renderTable()
+    fireEvent.click(within(container).getByText("Alpha Release"))
+    fireEvent.click(within(container).getByText("Bravo Release"), { ctrlKey: true })
+    expect(checkedRows(container)).toEqual(["Alpha Release", "Bravo Release"])
+
+    fireEvent.click(within(container).getByText("Alpha Release"))
+
+    expect(checkedRows(container)).toEqual(["Alpha Release"])
+  })
+
+  // Issue #3364: a right-click on a row excluded from select all must not act
+  // on the rest of the selection.
+  it("right-click on a row outside the selection selects only that row", async () => {
+    const { container, findByRole } = renderTable()
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.click(within(container).getByText("Alpha Release"), { ctrlKey: true })
+    expect(checkedRows(container)).toEqual(["Bravo Release", "Charlie Release"])
+
+    expect(await pauseFromMenu(container, "Alpha Release", findByRole)).toEqual(["hash-aaa"])
+    expect(checkedRows(container)).toEqual(["Alpha Release"])
+  })
+
+  it("shift-click after a right-click on a row outside the selection ranges from the right-clicked row", () => {
+    const { container } = renderTable()
+    fireEvent.click(within(container).getByText("Alpha Release"))
+    fireEvent.contextMenu(within(container).getByText("Charlie Release"))
+
+    fireEvent.click(within(container).getByText("Bravo Release"), { shiftKey: true })
+
+    expect(checkedRows(container)).toEqual(["Bravo Release", "Charlie Release"])
+  })
+
+  it("click on the open row closes it when select all reaches only that row", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderTable({ selectedTorrent: torrents[1], onTorrentSelect })
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.click(within(container).getByText("Alpha Release"), { ctrlKey: true })
+    fireEvent.click(within(container).getByText("Charlie Release"), { ctrlKey: true })
+    expect(checkedRows(container)).toEqual(["Bravo Release"])
+
+    fireEvent.click(within(container).getByText("Bravo Release"))
+
+    expect(onTorrentSelect).toHaveBeenLastCalledWith(null)
+    expect(checkedRows(container)).toEqual([])
+  })
+
+  it("click on the open row keeps the panel open until the row is the only selection", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderTable({ selectedTorrent: torrents[1], onTorrentSelect })
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+
+    fireEvent.click(within(container).getByText("Bravo Release"))
+    // The page closes the panel when it gets the open torrent again.
+    expect(onTorrentSelect).not.toHaveBeenCalled()
+    expect(checkedRows(container)).toEqual(["Bravo Release"])
+
+    fireEvent.click(within(container).getByText("Bravo Release"))
+    expect(onTorrentSelect).toHaveBeenLastCalledWith(null)
+    expect(checkedRows(container)).toEqual([])
+  })
+
   // Issue #2525: in cross-seed mode the table filters client-side. The search
   // already narrowed rows on the backend (every word must appear somewhere in
   // the name), so the table must not re-apply it as a literal substring.
@@ -271,5 +377,54 @@ describe("TorrentTableOptimized smoke", () => {
     const { container } = renderTable()
     expect(container.textContent).toContain("Alpha Release")
     expect(container.textContent).toContain("Bravo Release")
+  })
+
+  // Issue #1925 on the copy side: when select-all reaches past the loaded rows,
+  // the field request joins the column filter with the filter expression like a
+  // bulk action does, not the list expression.
+  it("copy-all names past the loaded rows sends the column filter AND the filter expression", async () => {
+    const expr = "Ratio > 1"
+    const columnFilter = { columnId: "name", operation: "contains", value: "Release" } as const
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([columnFilter]))
+    scenario.totalCount = 10
+    vi.mocked(api.getTorrentField).mockResolvedValue({ values: ["Alpha Release"], total: 1 })
+    // jsdom has no clipboard; the copy fallback calls execCommand.
+    document.execCommand = vi.fn(() => true)
+    const { container, findByRole } = renderTable({ filters: makeFilters({ expr }) })
+
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+    fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
+    fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
+
+    await waitFor(() => expect(api.getTorrentField).toHaveBeenCalled())
+    const [, field, request] = vi.mocked(api.getTorrentField).mock.calls[0]
+    expect(field).toBe("name")
+    expect(request.filters?.expr).toBe(`(${columnFiltersToExpr([columnFilter])}) && (${expr})`)
+  })
+
+  // Issue #1925 on the copy side: in cross-seed mode the column filter applies
+  // client-side, so select-all must mean the rows the user sees. Copy-all names
+  // then copies those rows only, and the selection count says so.
+  it("copy-all names in cross-seed mode copies the rows the column filter left visible", async () => {
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([{ columnId: "name", operation: "contains", value: "Alpha" }]))
+    scenario.isCrossSeedFiltering = true
+    let copied = ""
+    // jsdom has no clipboard; the copy fallback selects a textarea and calls execCommand.
+    document.execCommand = vi.fn(() => {
+      copied = (document.activeElement as HTMLTextAreaElement).value
+      return true
+    })
+    const { container, findByRole } = renderTable({ filters: makeFilters({ expr: "Hash == \"hash-aaa\" || Hash == \"hash-bbb\"" }) })
+    expect(container.textContent).not.toContain("Bravo Release")
+
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+    // The copy items sit in a submenu; ArrowRight opens it without pointer events.
+    fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
+    fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
+
+    await waitFor(() => expect(copied).toBe("Alpha Release"))
+    expect(api.getTorrentField).not.toHaveBeenCalled()
   })
 })

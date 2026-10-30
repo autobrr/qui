@@ -6,6 +6,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -49,7 +50,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
 	// Create handler with nil dependencies - we won't reach them due to early return
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	// Create multipart form with invalid indexer_id
 	body := &bytes.Buffer{}
@@ -79,7 +80,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -106,7 +107,7 @@ func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_ZeroIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -136,7 +137,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 	// Create handler with nil jackettService but valid syncManager
 	// We need a non-nil syncManager to get past the URL processing,
 	// but jackettService is nil to trigger the 503
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -163,7 +164,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -189,7 +190,7 @@ func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 func TestAddTorrentHandler_InvalidInstanceID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -221,6 +222,8 @@ type fullMockSyncManager struct {
 	addTorrentErr           error
 	addTorrentFromURLsErr   error
 	addTorrentFromURLsFunc  func(urls []string) (*qbt.TorrentAddResponse, error)
+	// preferencesJSON is the app/preferences response of the fake qBittorrent.
+	preferencesJSON string
 }
 
 func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -245,7 +248,12 @@ func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID i
 }
 
 func (m *fullMockSyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	return qbt.AppPreferences{}, nil
+	var prefs qbt.AppPreferences
+	if m.preferencesJSON == "" {
+		return prefs, nil
+	}
+	err := json.Unmarshal([]byte(m.preferencesJSON), &prefs)
+	return prefs, err
 }
 
 // fullMockJackettService implements torrentDownloader interface for full handler testing
@@ -273,7 +281,7 @@ func TestAddTorrentHandler_SuccessfulIndexerDownload_Returns201(t *testing.T) {
 		downloadTorrentData: []byte("fake torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -322,7 +330,7 @@ func TestAddTorrentHandler_SuccessfulMagnetWithIndexer_Returns201(t *testing.T) 
 		downloadTorrentData: []byte("should not be used"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
 	body := &bytes.Buffer{}
@@ -367,7 +375,7 @@ func TestAddTorrentHandler_MixedURLsAndMagnets_Returns201(t *testing.T) {
 		downloadTorrentData: []byte("downloaded torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
 	httpURL := "http://indexer.example.com/download/456"
@@ -423,7 +431,7 @@ func TestAddTorrentHandler_MagnetWithIndexerPartialFailure_Returns201WithFailedU
 		downloadTorrentData: []byte("downloaded torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -475,7 +483,7 @@ func TestAddTorrentHandler_MagnetRedirectPartialFailure_Returns201WithFailedURLs
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -520,7 +528,7 @@ func TestAddTorrentHandler_PartialFailure_Returns201WithFailedURLs(t *testing.T)
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -570,7 +578,7 @@ func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+	handler := &TorrentsHandler{torrentAdder: mockSync}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -626,7 +634,7 @@ func TestAddTorrentHandler_NoIndexerID_UsesDirectURL(t *testing.T) {
 		downloadTorrentData: []byte("should not be used"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -657,4 +665,80 @@ func TestAddTorrentHandler_NoIndexerID_UsesDirectURL(t *testing.T) {
 
 	// Verify AddTorrent (file method) was NOT called
 	assert.Empty(t, mockSync.addTorrentCalls)
+}
+
+// TestAddTorrentHandler_StartPausedChoiceApplies verifies that the "start paused"
+// choice of the add request applies on qBittorrent 4.x and 5.x, whatever the
+// "Do not start the download automatically" preference of qBittorrent is.
+func TestAddTorrentHandler_StartPausedChoiceApplies(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		preferences string
+		paused      string
+		wantPaused  string
+	}{
+		{
+			name:        "5.x adds stopped, request starts",
+			preferences: `{"add_stopped_enabled":true}`,
+			paused:      "false",
+			wantPaused:  "false",
+		},
+		{
+			name:        "4.x adds stopped, request starts",
+			preferences: `{"start_paused_enabled":true}`,
+			paused:      "false",
+			wantPaused:  "false",
+		},
+		{
+			name:        "5.x adds started, request pauses",
+			preferences: `{"add_stopped_enabled":false}`,
+			paused:      "true",
+			wantPaused:  "true",
+		},
+		{
+			name:        "5.3 session start_paused is not the add preference",
+			preferences: `{"add_stopped_enabled":false,"start_paused":true}`,
+			paused:      "true",
+			wantPaused:  "true",
+		},
+		{
+			// qui keeps the preferences for 30 s, so the kept value can be old.
+			name:        "request matches the kept preference, choice still sent",
+			preferences: `{"add_stopped_enabled":true}`,
+			paused:      "true",
+			wantPaused:  "true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSync := &fullMockSyncManager{preferencesJSON: tt.preferences}
+			handler := &TorrentsHandler{torrentAdder: mockSync}
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			_ = writer.WriteField("urls", "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678")
+			_ = writer.WriteField("paused", tt.paused)
+			_ = writer.Close()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/instances/1/torrents", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("instanceID", "1")
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+			w := httptest.NewRecorder()
+			handler.AddTorrent(w, req)
+
+			require.Equal(t, http.StatusCreated, w.Code)
+			require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+			options := mockSync.addTorrentFromURLsCalls[0].options
+			assert.Equal(t, tt.wantPaused, options["paused"])
+			assert.Equal(t, tt.wantPaused, options["stopped"])
+		})
+	}
 }

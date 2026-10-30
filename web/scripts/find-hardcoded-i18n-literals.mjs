@@ -11,6 +11,7 @@ const interestingAttributeNames = new Set([
   "label",
   "description",
   "alt",
+  "unit",
   "aria-label",
   "aria-description",
 ])
@@ -31,7 +32,12 @@ const interestingPropertyNames = new Set([
   "ctaLabel",
   "confirmText",
   "cancelText",
+  "reason",
 ])
+
+// Every table in this file renders only through a getTranslated* helper with its English
+// as defaultValue. constants.test.ts checks each helper's keys exist in en.
+const fallbackOnlyFile = "src/components/query-builder/constants.ts"
 
 const interestingVariableNames = new Set([
   "title",
@@ -91,8 +97,6 @@ function shouldTrackText(text, relaxed = false) {
   if (/^https?:\/\//.test(text)) return false
   // Duration abbreviation compounds: "<1s", "5m 30s", "2h 15m", "m s", "h m", "< 1m"
   if (/^[<>]?\s*\d*\s*[dhms](?:\s+\d*\s*[dhms])?$/.test(text)) return false
-  // Size format fallbacks: "0 B", "10 KB", etc.
-  if (/^\d+\s+[KMGT]?i?B$/.test(text)) return false
   // JSON / code example patterns in placeholders
   if (/^\{[\s\S]*:[\s\S]*\}$/.test(text)) return false
   if (!/[A-Za-z]/.test(text)) return false
@@ -101,11 +105,12 @@ function shouldTrackText(text, relaxed = false) {
   // CSS/UI variant names and common non-UI return values (before the relaxed
   // lowercase check so these are always filtered regardless of context)
   if (/^(?:default|secondary|destructive|outline|ghost|link|muted|accent|primary)$/.test(text)) return false
-  // Units, product names, technical terms, and other non-translatable tokens.
+  // Product names and technical terms. Byte and speed units are deliberately absent: they are
+  // localized, so a hardcoded "KiB" is a defect to report.
   // Must be checked before the ALL_CAPS / lowercase-word gates below, because
   // those gates return true in relaxed mode for short caps or longer lowercase
   // words, which would incorrectly flag entries like "RSS" or "autobrr".
-  if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|Mbps|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
+  if (/^(?:[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
   // ALL_CAPS constants -- but in relaxed mode, flag short UI words like "ALL"
   if (/^[A-Z0-9_]+$/.test(text)) {
     return relaxed && text.length >= 3
@@ -204,8 +209,14 @@ function isInterestingJsxAttributeString(node) {
   return false
 }
 
+function isFallbackOnlyFile(sourceFile) {
+  return sourceFile.fileName.replaceAll("\\", "/").endsWith(fallbackOnlyFile)
+}
+
+// Unlike the variable and format-return checks, this one also covers .ts files:
+// exported option tables in .ts modules are rendered as-is by the components that map them.
 function isInterestingPropertyString(node, sourceFile) {
-  if (!/\.[jt]sx$/i.test(sourceFile.fileName)) return false
+  if (!/\.[jt]sx?$/i.test(sourceFile.fileName)) return false
   if (!ts.isPropertyAssignment(node.parent)) return false
   if (!ts.isIdentifier(node.parent.name) && !ts.isStringLiteral(node.parent.name)) return false
 
@@ -213,7 +224,7 @@ function isInterestingPropertyString(node, sourceFile) {
     ? node.parent.name.text
     : node.parent.name.text
 
-  return interestingPropertyNames.has(propertyName)
+  return interestingPropertyNames.has(propertyName) && !isFallbackOnlyFile(sourceFile)
 }
 
 // Walk up through transparent expressions to find a variable declaration,
@@ -389,7 +400,7 @@ function shouldScanFile(relativePath) {
   return true
 }
 
-function walkFiles(rootDir) {
+export function walkFiles(rootDir) {
   const files = []
 
   function visit(dirPath) {
@@ -400,7 +411,8 @@ function walkFiles(rootDir) {
         continue
       }
 
-      const relativePath = path.relative(webRoot, fullPath)
+      // shouldScanFile matches on "src/", but path.relative yields "src\" on Windows.
+      const relativePath = path.relative(webRoot, fullPath).replaceAll(path.sep, "/")
       if (shouldScanFile(relativePath)) {
         files.push(fullPath)
       }

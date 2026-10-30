@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -39,11 +40,12 @@ type themesDirProvider interface {
 	EnsureCustomThemesDir() (string, error)
 }
 
-// themeSettingsStore persists the selected theme.
+// themeSettingsStore persists the theme slots.
 // Satisfied by *models.ThemeSettingsStore.
 type themeSettingsStore interface {
-	Get(ctx context.Context) (*models.ThemeSettings, error)
-	Set(ctx context.Context, ts *models.ThemeSettings) error
+	GetAll(ctx context.Context) (models.ThemeSlots, error)
+	Set(ctx context.Context, slot string, ts *models.ThemeSettings) error
+	Delete(ctx context.Context, slot string) error
 }
 
 type ThemesHandler struct {
@@ -162,20 +164,39 @@ func readCustomThemeCSS(path string) ([]byte, bool) {
 	return css, true
 }
 
-// GetThemeSettings returns the stored theme selection, or null when none is saved.
+// GetThemeSettings returns every stored theme slot. The client picks the slot
+// for its layout, so a resize needs no new request.
 func (h *ThemesHandler) GetThemeSettings(w http.ResponseWriter, r *http.Request) {
-	settings, err := h.settings.Get(r.Context())
+	slots, err := h.settings.GetAll(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load theme settings")
 		RespondError(w, http.StatusInternalServerError, "Failed to load theme settings")
 		return
 	}
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, http.StatusOK, slots)
 }
 
-// UpdateThemeSettings stores the theme selection. Not premium-gated: a stored
-// premium id serves locked, so clients fall back to the default.
+// themeSlotParam reads the slot query parameter; a missing one is the default slot.
+func themeSlotParam(r *http.Request) (string, bool) {
+	switch slot := r.URL.Query().Get("slot"); slot {
+	case "", models.ThemeSlotDefault:
+		return models.ThemeSlotDefault, true
+	case models.ThemeSlotMobile:
+		return slot, true
+	default:
+		return "", false
+	}
+}
+
+// UpdateThemeSettings stores the theme selection of one slot. Not
+// premium-gated: a stored premium id serves locked, so clients fall back to
+// the default.
 func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Request) {
+	slot, ok := themeSlotParam(r)
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "slot must be default or mobile")
+		return
+	}
 	var settings models.ThemeSettings
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
@@ -200,13 +221,29 @@ func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.settings.Set(r.Context(), &settings); err != nil {
+	if err := h.settings.Set(r.Context(), slot, &settings); err != nil {
 		log.Error().Err(err).Msg("Failed to save theme settings")
 		RespondError(w, http.StatusInternalServerError, "Failed to save theme settings")
 		return
 	}
 	h.activity.Publish(activity.Event{Kind: activity.KindThemeSettings})
 	RespondJSON(w, http.StatusOK, settings)
+}
+
+// DeleteThemeSettings deletes the mobile slot, which turns the layout split
+// off. The default slot cannot be deleted.
+func (h *ThemesHandler) DeleteThemeSettings(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("slot") != models.ThemeSlotMobile {
+		RespondError(w, http.StatusBadRequest, "only the mobile slot can be deleted")
+		return
+	}
+	if err := h.settings.Delete(r.Context(), models.ThemeSlotMobile); err != nil {
+		log.Error().Err(err).Msg("Failed to delete theme settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete theme settings")
+		return
+	}
+	h.activity.Publish(activity.Event{Kind: activity.KindThemeSettings})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // BuiltinTheme is one embedded theme as served to the frontend. Locked
@@ -223,7 +260,7 @@ type BuiltinTheme struct {
 // buildBuiltinThemeList applies the premium gate: free themes always include
 // their CSS, premium themes only with a license, locked entries get preview
 // colors instead.
-func buildBuiltinThemeList(list []themes.Theme, hasPremium, authed bool, selectedID string) []BuiltinTheme {
+func buildBuiltinThemeList(list []themes.Theme, hasPremium, authed bool, selectedIDs ...string) []BuiltinTheme {
 	out := make([]BuiltinTheme, 0, len(list))
 	for _, t := range list {
 		bt := BuiltinTheme{
@@ -233,14 +270,14 @@ func buildBuiltinThemeList(list []themes.Theme, hasPremium, authed bool, selecte
 			Premium:     t.Premium,
 		}
 		// Free themes always carry CSS. A premium theme needs a license, and
-		// for a public (unauthenticated) caller it carries CSS only when it is
-		// the selected theme the login page must paint; every other premium
+		// for a public (unauthenticated) caller it carries CSS only when a slot
+		// selects it, because the login page must paint it; every other premium
 		// theme is a preview stub so a licensed instance does not hand its
 		// whole premium set to anonymous callers.
 		switch {
 		case t.Premium && !hasPremium:
 			bt.Preview = &t.Preview
-		case t.Premium && !authed && t.ID != selectedID:
+		case t.Premium && !authed && !slices.Contains(selectedIDs, t.ID):
 			bt.Preview = &t.Preview
 		default:
 			bt.CSS = t.CSS
@@ -263,15 +300,20 @@ func (h *ThemesHandler) ListThemes(w http.ResponseWriter, r *http.Request) {
 
 	authed := h.authed != nil && h.authed(r.Context())
 
-	// The selected theme is the one the public login page paints, so it is the
-	// only premium theme an unauthenticated caller receives with CSS. A failed
-	// read just means no premium CSS goes out anonymously.
-	var selectedID string
+	// The public login page paints the theme of the slot for its layout, so
+	// the slot themes are the only premium themes an unauthenticated caller
+	// receives with CSS. A failed read just means no premium CSS goes out
+	// anonymously.
+	var selectedIDs []string
 	if !authed {
-		if settings, err := h.settings.Get(r.Context()); err == nil && settings != nil {
-			selectedID = settings.ThemeID
+		if slots, err := h.settings.GetAll(r.Context()); err == nil {
+			for _, ts := range []*models.ThemeSettings{slots.Default, slots.Mobile} {
+				if ts != nil {
+					selectedIDs = append(selectedIDs, ts.ThemeID)
+				}
+			}
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium, authed, selectedID)})
+	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium, authed, selectedIDs...)})
 }

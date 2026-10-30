@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -15,8 +17,10 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
@@ -64,9 +68,11 @@ type torrentDesiredState struct {
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags  map[string]struct{}
-	tagActions   map[string]string // tag -> "add" | "remove"
-	tagRuleByTag map[string]ruleRef
+	currentTags    map[string]struct{}
+	tagActions     map[string]string // tag -> "add" | "remove"
+	tagRuleByTag   map[string]ruleRef
+	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
+	tagResetTags   map[string]struct{}        // tags re-added after a managed reset: a real change even when already present
 
 	// Category (last rule wins)
 	category                  *string
@@ -74,16 +80,6 @@ type torrentDesiredState struct {
 	categoryRuleID            int
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 	categoryRule              ruleRef
-
-	// Delete (first rule to trigger wins)
-	shouldDelete           bool
-	deleteMode             string
-	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
-	deleteGroupID          string
-	deleteAtomic           string
-	deleteRuleID           int
-	deleteRuleName         string
-	deleteReason           string
 
 	// Move (first rule to trigger wins)
 	shouldMove           bool
@@ -112,6 +108,16 @@ type ruleRef struct {
 	name string
 }
 
+// tagExpandIntent is a pending cross-seed expansion of a tag decision: the rule
+// that requested it, the decision to propagate ("add" or "remove"), and whether
+// the action runs in managed-reset mode (the tag is wholesale-deleted in the
+// client before matches are re-added).
+type tagExpandIntent struct {
+	rule            ruleRef
+	action          string
+	resetFromClient bool
+}
+
 type ruleRunStats struct {
 	MatchedTrackers                  int
 	SpeedApplied                     int
@@ -130,7 +136,7 @@ type ruleRunStats struct {
 	AutoManageConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
-	TagSkippedMissingUnregisteredSet int
+	TagSkippedMissingTrackerHealth   int
 	CategoryApplied                  int
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
@@ -139,6 +145,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	movePathWarned                   bool // one relative-path warning per rule per run
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -188,6 +195,7 @@ func processTorrents(
 	torrents []qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	stats map[int]*ruleRunStats,
@@ -199,9 +207,6 @@ func processTorrents(
 	} else {
 		states = make(map[string]*torrentDesiredState)
 	}
-
-	crossSeedIndex := buildCrossSeedIndex(torrents)
-	cpIndex := buildContentPathIndex(torrents)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -233,15 +238,11 @@ func processTorrents(
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
-			if state.shouldDelete {
-				// Once delete is triggered, stop processing further rules
-				break
-			}
 			ruleStats := getOrCreateRuleStats(stats, rule)
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents, cpIndex)
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
@@ -259,7 +260,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent, cpIndex contentPathIndex) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -267,7 +268,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Load the rule's free space source state before evaluating any conditions.
 	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
-	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+	if evalCtx != nil && ruleUsesCondition(rule, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 
@@ -437,14 +438,14 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 		// Skip if condition uses IS_UNREGISTERED but health data isn't available
 		if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) &&
-			(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
+			(evalCtx == nil || evalCtx.TrackerHealth == nil) {
 			// Skip tag processing for this rule
 			if stats != nil {
-				stats.TagSkippedMissingUnregisteredSet++
+				stats.TagSkippedMissingTrackerHealth++
 			}
 			continue
 		}
-		matches := processTagAction(rule, tagAction, torrent, state, evalCtx)
+		matches := processTagAction(rule, tagAction, torrent, state, evalCtx, crossSeeds)
 		if stats != nil {
 			if matches {
 				stats.TagConditionMet++
@@ -456,11 +457,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Category (last rule wins - just set desired, service will filter no-ops)
 	if conditions.Category != nil && conditions.Category.Enabled {
-		shouldApply := conditions.Category.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
-
-		// Apply category change only if condition matches AND not blocked by cross-seed protection
-		if shouldApply && !shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
+		if shouldApplyCategoryAction(&torrent, getCategoryAction(rule), evalCtx, crossSeeds) {
 			if stats != nil {
 				stats.CategoryApplied++
 			}
@@ -468,11 +465,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryRuleID = rule.ID
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 			state.categoryRule = ruleRef{id: rule.ID, name: rule.Name}
-			groupID := strings.TrimSpace(conditions.Category.GroupID)
-			if groupID == "" && conditions.Category.IncludeCrossSeeds {
-				groupID = GroupCrossSeedContentSavePath
-			}
-			state.categoryGroupID = groupID
+			state.categoryGroupID = strings.TrimSpace(conditions.Category.GroupID)
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
 		}
@@ -512,52 +505,15 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
-	// Delete
-	if conditions.Delete != nil && conditions.Delete.Enabled {
-		// Safety: delete must always have an explicit condition.
-		if conditions.Delete.Condition == nil {
-			if stats != nil {
-				stats.DeleteConditionNotMet++
-			}
-		} else {
-			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
-			if shouldApply {
-				if stats != nil {
-					stats.DeleteApplied++
-				}
-				state.shouldDelete = true
-				state.deleteMode = conditions.Delete.Mode
-				if state.deleteMode == "" {
-					state.deleteMode = DeleteModeKeepFiles
-				}
-				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
-				state.deleteGroupID = strings.TrimSpace(conditions.Delete.GroupID)
-				state.deleteAtomic = strings.TrimSpace(conditions.Delete.Atomic)
-				state.deleteRuleID = rule.ID
-				state.deleteRuleName = rule.Name
-				state.deleteReason = "condition matched"
-
-				// Update the cumulative free space cleared for the "free space" condition.
-				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
-				// accidentally mutate a previously-loaded rule's projection state.
-				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
-				}
-			} else if stats != nil {
-				stats.DeleteConditionNotMet++
-			}
-		}
-	}
-
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
-		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
+		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeeds, stats, state)
 	}
 }
 
-func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
-	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
-	if !pathValid {
+func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
+	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
+	if !ok {
 		if stats != nil {
 			stats.MoveConditionNotMet++
 		}
@@ -566,14 +522,27 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+	// qBittorrent never reports a relative path back as the save path, so the move would repeat every run.
+	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
+		// One warning per rule per run; stats is per rule per run.
+		if stats == nil || !stats.movePathWarned {
+			ruleName := ""
+			if rule != nil {
+				ruleName = rule.Name
+			}
+			log.Warn().Str("rule", ruleName).Str("path", resolvedPath).
+				Msg("automations: skipping move, path is not absolute")
+		}
+		if stats != nil {
+			stats.movePathWarned = true
+			stats.MoveConditionNotMet++
+		}
+		return
+	}
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
-	blocked := false
-	// If groupId is set, move expansion/atomicity is handled via grouping; skip legacy cross-seed blocking.
-	if strings.TrimSpace(action.GroupID) == "" {
-		blocked = shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
-	}
+	blocked := conditionMet && !alreadyAtDest && shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx)
 	if conditionMet && !alreadyAtDest && !blocked {
 		if stats != nil {
 			stats.MoveApplied++
@@ -605,18 +574,11 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	}
 }
 
-func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
-	if len(protectedCategories) == 0 || crossSeedIndex == nil {
+func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeeds crossSeedGroups) bool {
+	if len(protectedCategories) == 0 {
 		return false
 	}
-	key, ok := makeCrossSeedKey(torrent)
-	if !ok {
-		return false
-	}
-	group, ok := crossSeedIndex[key]
-	if !ok || len(group) == 0 {
-		return false
-	}
+	group := crossSeeds[torrent.Hash]
 	for _, other := range group {
 		if other.Hash == torrent.Hash {
 			continue
@@ -628,16 +590,35 @@ func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCatego
 	return false
 }
 
-func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
-	if moveAction == nil || !moveAction.BlockIfCrossSeed {
+func crossSeedGroupKnown(torrent qbt.Torrent, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
+	if evalCtx == nil {
+		return true
+	}
+	if !sameInstanceCrossSeedKnown(evalCtx, torrent.Hash) {
 		return false
 	}
-	key, ok := makeCrossSeedKey(torrent)
-	if !ok {
+	for _, member := range crossSeeds[torrent.Hash] {
+		if !sameInstanceCrossSeedKnown(evalCtx, member.Hash) {
+			return false
+		}
+	}
+	return true
+}
+
+func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
+	if moveAction == nil {
 		return false
 	}
-	group, ok := crossSeedIndex[key]
-	if !ok || len(group) == 0 {
+	if !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		return true
+	}
+	group := crossSeeds[torrent.Hash]
+	for _, other := range group {
+		if normalizePath(other.SavePath) != normalizePath(torrent.SavePath) {
+			return true
+		}
+	}
+	if !moveAction.BlockIfCrossSeed || strings.TrimSpace(moveAction.GroupID) != "" || len(group) == 0 {
 		return false
 	}
 
@@ -665,23 +646,44 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// resolveMovePath returns the path to use for a move. The path is executed as a
+// renderPathTemplate returns the rendered Move or Export path. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
-func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	data := map[string]any{
+	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker))
+	if err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		return "", false
+	}
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
+}
+
+// renderMovePathSample renders a move path for a placeholder torrent, to check it on save.
+func renderMovePathSample(path string) (string, error) {
+	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
+	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
+}
+
+func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
+	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+}
 
+func executePathTemplate(path string, data map[string]any) (string, error) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
@@ -689,24 +691,13 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		}).
 		Parse(path)
 	if err != nil {
-		// Log template parse error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
-		return "", false
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Log template execution error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
-		return "", false
+		return "", err
 	}
-
-	resolvedPath := strings.TrimSpace(buf.String())
-
-	if resolvedPath == "" {
-		return "", false
-	}
-
-	return resolvedPath, true
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func containsStringFold(list []string, candidate string) bool {
@@ -721,23 +712,8 @@ func containsStringFold(list []string, candidate string) bool {
 	return false
 }
 
-func buildCrossSeedIndex(torrents []qbt.Torrent) map[crossSeedKey][]qbt.Torrent {
-	if len(torrents) == 0 {
-		return nil
-	}
-	index := make(map[crossSeedKey][]qbt.Torrent)
-	for _, t := range torrents {
-		key, ok := makeCrossSeedKey(t)
-		if !ok {
-			continue
-		}
-		index[key] = append(index[key], t)
-	}
-	return index
-}
-
 // processTagAction handles tag add/remove logic for a single tag action.
-func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
+func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
 	tagMode := tagAction.Mode
 	if tagMode == "" {
 		tagMode = models.TagModeFull
@@ -761,6 +737,24 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		}
 	}
 	resetFromClient := shouldResetTagActionInClient(tagAction)
+	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
+	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
+	// As category: a group whose file check did not complete gets no decision,
+	// so the copies never diverge. A managed reset deletes the tag from every
+	// torrent first, so such a torrent keeps the tags it has.
+	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		if resetFromClient && rule != nil {
+			for _, managedTag := range tagsToManage {
+				_, hasTag := state.currentTags[managedTag]
+				if _, pending := state.tagActions[managedTag]; hasTag && !pending {
+					state.tagActions[managedTag] = "add"
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+					markTagReset(state, managedTag, true)
+				}
+			}
+		}
+		return false
+	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
@@ -778,37 +772,85 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
+		// action is the local change; assert is the steady-state decision a
+		// matching copy that already looks right still pushes across its
+		// cross-seed siblings (any-match-wins, and siblings added after the
+		// first run). Full-mode removals happen on non-matches and stay local.
+		action, assert := "", ""
 		switch tagMode {
 		case models.TagModeAdd:
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
 		case models.TagModeRemove:
-			if hasTag && matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case hasTag && matchesCondition:
+				action = "remove"
+			case !hasTag && matchesCondition:
+				assert = "remove"
 			}
 		default: // full (incl. unknown/empty)
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
-			} else if hasTag && !matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && !matchesCondition:
+				action = "remove"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
+		}
+		if action != "" {
+			state.tagActions[managedTag] = action
+			if rule != nil {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			markTagReset(state, managedTag, resetFromClient && action == "add")
+			if matchesCondition {
+				assert = action
+			}
+		} else if rule != nil && len(crossSeeds[torrent.Hash]) > 1 &&
+			(assert != "" || (tagMode != models.TagModeAdd && tagMode != models.TagModeRemove)) {
+			// A no-op decision (full mode always decides) still owns the tag:
+			// another rule's expansion must not override it, or the copy
+			// flips on every other run.
+			if _, decided := state.tagRuleByTag[managedTag]; !decided {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+		}
+		// A later rule's decision without expansion clears earlier intent (last rule wins).
+		if assert == "" || !expandCrossSeeds || rule == nil {
+			if action != "" {
+				delete(state.tagExpandByTag, managedTag)
+			}
+			continue
+		}
+		if state.tagExpandByTag == nil {
+			state.tagExpandByTag = make(map[string]tagExpandIntent)
+		}
+		state.tagExpandByTag[managedTag] = tagExpandIntent{
+			rule:            ruleRef{id: rule.ID, name: rule.Name},
+			action:          assert,
+			resetFromClient: resetFromClient,
 		}
 	}
 
 	return matchesCondition
+}
+
+// markTagReset records or clears a managed-reset re-add for tag, so the preview
+// counts it as the live path does (the tag is wholesale-deleted first).
+func markTagReset(state *torrentDesiredState, tag string, reset bool) {
+	if !reset {
+		delete(state.tagResetTags, tag)
+		return
+	}
+	if state.tagResetTags == nil {
+		state.tagResetTags = make(map[string]struct{})
+	}
+	state.tagResetTags[tag] = struct{}{}
 }
 
 // hasActions returns true if the state has any actions to execute.
@@ -823,8 +865,9 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldReannounce ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
+		len(state.tagExpandByTag) > 0 ||
+		len(state.tagRuleByTag) > 0 ||
 		state.category != nil ||
-		state.shouldDelete ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||
 		state.exportToInstance != nil
@@ -878,130 +921,167 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
 // Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
-// When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
-// double-counting torrents that share the same physical files via hardlinks.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, cpIndex contentPathIndex) {
+// A file shared inside a group, through a path or a hardlink, counts once.
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds crossSeedGroups, includeHardlinks bool) bool {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
-		return
+		return true
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
-		return
+	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
+		return true
+	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		if _, keep := otherInstanceKeepsFiles(evalCtx, torrent.Hash); keep {
+			return true
+		}
 	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
-		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, cpIndex)
-		return
+		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
 	}
-	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
-		// File verification above established that this torrent has no shared files.
-		// Do not deduplicate unrelated torrents that merely use the same directory.
-		evalCtx.SpaceToClear += torrent.Size
-		return
-	}
-
-	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
-	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
-	// whole hardlink group via expansion; this avoids affecting other delete modes.
-	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
-		evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if sig, ok := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
-			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
-				// Already counted this hardlink group
-				return
-			}
-			// Mark signature as counted and add size
-			evalCtx.HardlinkSignaturesToClear[sig] = struct{}{}
-			evalCtx.SpaceToClear += torrent.Size
-			return
+	if deleteMode == DeleteModeWithFiles && len(crossSeeds[torrent.Hash]) > 0 {
+		files := evalCtx.CrossSeedFilesByHash[torrent.Hash]
+		if len(files) == 0 {
+			return false
 		}
+		if evalCtx.FileBytesToClear == nil {
+			evalCtx.FileBytesToClear = make(map[string]int64)
+		}
+		for _, file := range files {
+			path := resolvedTorrentFilePath(torrent, file.Name)
+			if counted := evalCtx.FileBytesToClear[path]; file.Size > counted {
+				evalCtx.SpaceToClear += file.Size - counted
+				evalCtx.FileBytesToClear[path] = file.Size
+			}
+		}
+		return true
 	}
 
-	// Fall back to cross-seed key dedupe
-	crossSeedKey, ok := makeCrossSeedKey(torrent)
-	if !ok {
-		// If the torrent cannot be a cross-seed, we add the file size to the cumulative space to clear
-		evalCtx.SpaceToClear += torrent.Size
-		return
-	}
-
-	// If the torrent is a cross-seed of a torrent that has already been counted, we don't count it again
-	if _, ok := evalCtx.FilesToClear[crossSeedKey]; ok {
-		return
-	}
-
-	// This is a new torrent, so we add the file size to the cumulative space to clear
+	// The torrent shares no file: preserve mode verified that above, and a
+	// file delete outside a group has nothing to share.
 	evalCtx.SpaceToClear += torrent.Size
-	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
+	return true
 }
 
-func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, cpIndex contentPathIndex) {
+func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, includeHardlinks bool) bool {
 	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
-		return
+		return true
 	}
 
-	group := findCrossSeedGroup(torrent, cpIndex)
-	verifiedHashes, ok := crossSeedGroupMembers(
-		torrent,
-		group,
-		evalCtx.CrossSeedHashesToClear,
-		func(_ []string) (map[string]qbt.TorrentFiles, error) {
-			return evalCtx.CrossSeedFilesByHash, nil
-		},
-	)
-	if !ok {
-		return
-	}
-	for _, hash := range verifiedHashes {
-		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
-	}
-
-	if evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if signature := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; signature != "" {
-			if _, counted := evalCtx.HardlinkSignaturesToClear[signature]; counted {
-				return
-			}
-			evalCtx.HardlinkSignaturesToClear[signature] = struct{}{}
+	torrents := evalCtx.torrentsByHash
+	if torrents == nil {
+		torrents = make(map[string]qbt.Torrent, len(crossSeeds[torrent.Hash])+1)
+		torrents[torrent.Hash] = torrent
+		for _, member := range crossSeeds[torrent.Hash] {
+			torrents[member.Hash] = member
 		}
 	}
+	var hardlinks *HardlinkIndex
+	if includeHardlinks {
+		hardlinks = evalCtx.hardlinkIndex
+	}
+	expanded, ok := deleteCrossSeedGroup(torrent, torrents, crossSeeds, hardlinks,
+		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
+	if !ok {
+		return false
+	}
+	// The selection keeps the files of the whole group, so the group frees nothing.
+	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
+		maps.Copy(evalCtx.CrossSeedHashesToClear, expanded.expandedSet)
+		return true
+	}
+	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
+}
 
-	evalCtx.SpaceToClear += verifiedCrossSeedFileBytes(torrent, group, verifiedHashes, evalCtx.CrossSeedFilesByHash)
+func projectCrossSeedDeletionGroup(torrents map[string]qbt.Torrent, hashes map[string]struct{}, evalCtx *EvalContext, hardlinks *HardlinkIndex) bool {
+	bytes, ok := verifiedCrossSeedFileBytes(torrents, hashes, evalCtx.CrossSeedFilesByHash, hardlinks)
+	if !ok {
+		return false
+	}
+	for hash := range hashes {
+		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
+	}
+	evalCtx.SpaceToClear += bytes
+	return true
 }
 
 func verifiedCrossSeedFileBytes(
-	trigger qbt.Torrent,
-	group []qbt.Torrent,
-	verifiedHashes []string,
+	torrents map[string]qbt.Torrent,
+	hashes map[string]struct{},
 	filesByHash map[string]qbt.TorrentFiles,
-) int64 {
-	if len(filesByHash[trigger.Hash]) == 0 {
-		return trigger.Size
-	}
-
-	verified := make(map[string]struct{}, len(verifiedHashes))
-	for _, hash := range verifiedHashes {
-		verified[hash] = struct{}{}
-	}
-
-	maxSizeByPath := make(map[string]int64, len(filesByHash[trigger.Hash]))
-	var totalBytes int64
-	for _, torrent := range group {
-		if _, ok := verified[torrent.Hash]; !ok {
-			continue
+	hardlinks *HardlinkIndex,
+) (int64, bool) {
+	// A singleton without a hardlink expansion needs no file list.
+	if len(hashes) == 1 {
+		for hash := range hashes {
+			if len(filesByHash[hash]) == 0 {
+				return torrents[hash].Size, true
+			}
 		}
-		for _, file := range filesByHash[torrent.Hash] {
-			resolvedPath := resolvedTorrentFilePath(torrent, file.Name)
+	}
+
+	idsByPath := make(map[string]fsops.FileKey)
+	if hardlinks != nil {
+		hardlinks.crossScopeMu.Lock()
+		defer hardlinks.crossScopeMu.Unlock()
+		if hardlinks.buildState == nil {
+			return 0, false
+		}
+		for hash := range hashes {
+			if info := hardlinks.buildState.torrentInfoByHash[hash]; info != nil {
+				for _, file := range info.linkedFiles {
+					if key, ok := hardlinks.buildState.key(file.fileID); ok {
+						idsByPath[normalizePath(file.path)] = key
+					}
+				}
+			}
+		}
+	}
+
+	maxSizeByPath := make(map[string]int64)
+	maxSizeByID := make(map[fsops.FileKey]int64)
+	var totalBytes int64
+	for hash := range hashes {
+		if len(filesByHash[hash]) == 0 {
+			return 0, false
+		}
+		for _, file := range filesByHash[hash] {
+			resolvedPath := resolvedTorrentFilePath(torrents[hash], file.Name)
 			previousSize := maxSizeByPath[resolvedPath]
+			key, linked := idsByPath[resolvedPath]
+			if linked {
+				previousSize = maxSizeByID[key]
+			}
 			if file.Size <= previousSize {
 				continue
 			}
-			maxSizeByPath[resolvedPath] = file.Size
+			if linked {
+				maxSizeByID[key] = file.Size
+			} else {
+				maxSizeByPath[resolvedPath] = file.Size
+			}
 			totalBytes += file.Size - previousSize
 		}
 	}
+	return totalBytes, true
+}
 
-	return totalBytes
+// sortFieldsError reports the first field of config that cannot sort or score.
+// unknown starts the error text for a simple sort field; rule validation and the sort word it differently.
+func sortFieldsError(config *models.SortingConfig, unknown string) error {
+	if config.Type == models.SortingTypeSimple && !ConditionFields[config.Field].Sortable() {
+		return fmt.Errorf("%s: %s", unknown, config.Field)
+	}
+	if config.Type != models.SortingTypeScore {
+		return nil
+	}
+	for _, r := range config.ScoreRules {
+		if r.Type == models.ScoreRuleTypeFieldMultiplier && r.FieldMultiplier != nil && !ConditionFields[r.FieldMultiplier.Field].Scorable() {
+			return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
+		}
+	}
+	return nil
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.
@@ -1016,9 +1096,9 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 		switch rule.Type {
 		case models.ScoreRuleTypeFieldMultiplier:
 			if rule.FieldMultiplier != nil && rule.FieldMultiplier.Field != "" {
-				val := getNumericFieldValue(torrent, rule.FieldMultiplier.Field, evalCtx)
-				points := val * rule.FieldMultiplier.Multiplier
-				totalScore += points
+				if read := ConditionFields[rule.FieldMultiplier.Field].Sort.Number; read != nil {
+					totalScore += read(torrent, evalCtx) * rule.FieldMultiplier.Multiplier
+				}
 			}
 
 		case models.ScoreRuleTypeConditional:
@@ -1047,11 +1127,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if !config.Field.IsNumeric() {
-				if !config.Field.IsString() {
-					return fmt.Errorf("unsupported sort field: %s", config.Field)
-				}
-			}
 		case models.SortingTypeScore:
 			if len(config.ScoreRules) == 0 {
 				return errors.New("score sort requires at least one rule")
@@ -1061,9 +1136,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 				case models.ScoreRuleTypeFieldMultiplier:
 					if r.FieldMultiplier == nil {
 						return fmt.Errorf("score rule %d: content missing for field multiplier", i)
-					}
-					if !r.FieldMultiplier.Field.IsNumeric() {
-						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 					}
 				case models.ScoreRuleTypeConditional:
 					if r.Conditional == nil {
@@ -1079,6 +1151,9 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		default:
 			return fmt.Errorf("unsupported sorting type: %s", config.Type)
 		}
+		if err := sortFieldsError(config, "unsupported sort field"); err != nil {
+			return err
+		}
 	}
 
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
@@ -1090,31 +1165,36 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		}
 	}
 
+	var sortValue SortValue
+	if config != nil && config.Type == models.SortingTypeSimple {
+		sortValue = ConditionFields[config.Field].Sort
+	}
+
 	sort.Slice(torrents, func(i, j int) bool {
-		return compareTorrents(torrents[i], torrents[j], config, scores, evalCtx)
+		return compareTorrents(torrents[i], torrents[j], config, sortValue, scores, evalCtx)
 	})
 
 	return nil
 }
 
 // compareTorrents is a helper function that returns true if t1 should sort before t2.
-func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores map[string]float64, evalCtx *EvalContext) bool {
+func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, sortValue SortValue, scores map[string]float64, evalCtx *EvalContext) bool {
 	// 1. Primary Sort
 	if config != nil {
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if config.Field.IsNumeric() {
-				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
-				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
+			if sortValue.Number != nil {
+				v1 := sortValue.Number(t1, evalCtx)
+				v2 := sortValue.Number(t2, evalCtx)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
 					}
 					return v1 > v2
 				}
-			} else {
-				v1, _ := extractStringValue(t1, config.Field)
-				v2, _ := extractStringValue(t2, config.Field)
+			} else if sortValue.Text != nil {
+				v1 := sortValue.Text(t1)
+				v2 := sortValue.Text(t2)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
@@ -1154,88 +1234,6 @@ func getNowUnix(evalCtx *EvalContext) int64 {
 	return time.Now().Unix()
 }
 
-// getNumericFieldValue returns the float64 representation of a field for scoring.
-// Returns 0 if field is not numeric or not found.
-//
-//nolint:exhaustive // Only numeric sort fields are supported.
-func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
-	switch field {
-	case models.FieldSize:
-		return float64(t.Size)
-	case models.FieldTotalSize:
-		return float64(t.TotalSize)
-	case models.FieldDownloaded:
-		return float64(t.Downloaded)
-	case models.FieldUploaded:
-		return float64(t.Uploaded)
-	case models.FieldAmountLeft:
-		return float64(t.AmountLeft)
-	case models.FieldFreeSpace:
-		if evalCtx != nil && evalCtx.FreeSpace > 0 {
-			return float64(evalCtx.FreeSpace)
-		}
-		return 0
-	case models.FieldAddedOn:
-		if t.AddedOn <= 0 {
-			return 0
-		}
-		return float64(t.AddedOn)
-	case models.FieldCompletionOn:
-		return float64(qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn))
-	case models.FieldLastActivity:
-		if t.LastActivity <= 0 {
-			return 0
-		}
-		return float64(t.LastActivity)
-	case models.FieldSeedingTime:
-		if t.SeedingTime <= 0 {
-			return 0
-		}
-		return float64(t.SeedingTime)
-	case models.FieldTimeActive:
-		if t.TimeActive <= 0 {
-			return 0
-		}
-		return float64(t.TimeActive)
-	case models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge:
-		return getAgeFieldValue(evalCtx, field, t)
-	case models.FieldRatio:
-		return t.Ratio
-	case models.FieldProgress:
-		return t.Progress * 100
-	case models.FieldAvailability:
-		return t.Availability
-	case models.FieldDlSpeed:
-		return float64(t.DlSpeed)
-	case models.FieldUpSpeed:
-		return float64(t.UpSpeed)
-	case models.FieldNumSeeds:
-		return float64(t.NumSeeds)
-	case models.FieldNumLeechs:
-		return float64(t.NumLeechs)
-	case models.FieldNumComplete:
-		return float64(t.NumComplete)
-	case models.FieldNumIncomplete:
-		return float64(t.NumIncomplete)
-	case models.FieldTrackersCount:
-		return float64(t.TrackersCount)
-	case models.FieldSystemHour:
-		return float64(evaluateTime(evalCtx).Hour())
-	case models.FieldSystemMinute:
-		return float64(evaluateTime(evalCtx).Minute())
-	case models.FieldSystemDayOfWeek:
-		return float64(evaluateTime(evalCtx).Weekday())
-	case models.FieldSystemDay:
-		return float64(evaluateTime(evalCtx).Day())
-	case models.FieldSystemMonth:
-		return float64(evaluateTime(evalCtx).Month())
-	case models.FieldSystemYear:
-		return float64(evaluateTime(evalCtx).Year())
-	default:
-		return 0
-	}
-}
-
 //nolint:exhaustive // Only age-backed fields are supported.
 func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
 	var ts int64
@@ -1253,28 +1251,4 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 		return 0
 	}
 	return float64(getNowUnix(evalCtx) - ts)
-}
-
-//nolint:exhaustive // Only string sort fields are supported.
-func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
-	switch field {
-	case models.FieldName:
-		return strings.ToLower(t.Name), true
-	case models.FieldCategory:
-		return strings.ToLower(t.Category), true
-	case models.FieldTags:
-		return strings.ToLower(t.Tags), true
-	case models.FieldTracker:
-		return strings.ToLower(t.Tracker), true
-	case models.FieldState:
-		return strings.ToLower(string(t.State)), true
-	case models.FieldSavePath:
-		return strings.ToLower(t.SavePath), true
-	case models.FieldContentPath:
-		return strings.ToLower(t.ContentPath), true
-	case models.FieldComment:
-		return strings.ToLower(t.Comment), true
-	default:
-		return "", false
-	}
 }

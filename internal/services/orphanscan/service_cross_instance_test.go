@@ -6,13 +6,16 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -24,25 +27,144 @@ type stubHealthChecker struct {
 func (s stubHealthChecker) IsHealthy() bool              { return s.healthy }
 func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
 
-func TestGetOtherLocalInstances(t *testing.T) {
+func remoteInstance(id int, host string, port int) *models.Instance {
+	return &models.Instance{
+		ID: id, Name: fmt.Sprintf("remote-%d", id), IsActive: true,
+		SSHHost: host, SSHPort: port, SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-pin",
+	}
+}
+
+func localInstance(id int) *models.Instance {
+	return &models.Instance{ID: id, Name: fmt.Sprintf("local-%d", id), IsActive: true, HasLocalFilesystemAccess: true}
+}
+
+func TestGetOverlapCandidateInstances(t *testing.T) {
+	t.Parallel()
+
+	clearedKey := remoteInstance(3, "box.example", 22)
+	clearedKey.SSHKeyEncrypted = ""
+	noPin := remoteInstance(4, "box.example", 22)
+	noPin.SSHHostKeyEncrypted = ""
+	mounted := remoteInstance(5, "box.example", 22)
+	mounted.HasLocalFilesystemAccess = true
+	inactive := remoteInstance(10, "box.example", 22)
+	inactive.IsActive = false
+
+	listed := []*models.Instance{
+		remoteInstance(1, "box.example", 22),
+		remoteInstance(2, "box.example", 22),
+		clearedKey,
+		noPin,
+		mounted,
+		remoteInstance(6, "other.example", 22),
+		remoteInstance(7, "box.example", 2222),
+		{ID: 8, Name: "local", IsActive: true, HasLocalFilesystemAccess: true},
+		{ID: 9, Name: "none", IsActive: true},
+		inactive,
+		{ID: 11, Name: "local-inactive", IsActive: false, HasLocalFilesystemAccess: true},
+	}
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
+		return listed, nil
+	}
+
+	for _, tc := range []struct {
+		name    string
+		scanned *models.Instance
+		want    []int
+	}{
+		// Same host and port protects whatever the instance's key, pin or local flag.
+		{"remote scan pairs by stored endpoint", listed[0], []int{2, 3, 4, 5}},
+		{"local scan ignores remote instances", listed[7], []int{5}},
+		// A local scan through a mount of the seedbox pairs with the instances reaching it over SSH.
+		{"local scan with an SSH host pairs by stored endpoint", mounted, []int{1, 2, 3, 4, 8}},
+		// The endpoint is the scanned row's, not the one the list holds for it now.
+		{"remote scan pairs by the scanned row, not the list", remoteInstance(1, "other.example", 22), []int{6}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := svc.getOverlapCandidateInstances(context.Background(), tc.scanned, nil)
+			if err != nil {
+				t.Fatalf("getOverlapCandidateInstances: %v", err)
+			}
+			ids := make([]int, 0, len(got))
+			for _, inst := range got {
+				ids = append(ids, inst.ID)
+			}
+			if !slices.Equal(ids, tc.want) {
+				t.Fatalf("candidates = %v, want %v", ids, tc.want)
+			}
+		})
+	}
+}
+
+// An instance with credentials but no SSH host never pairs with a remote scan.
+func TestGetOverlapCandidateInstances_EmptyHostIsIgnored(t *testing.T) {
 	t.Parallel()
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
-			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
-			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
-			{ID: 3, Name: "inactive", IsActive: false, HasLocalFilesystemAccess: true},
-			{ID: 4, Name: "no-local", IsActive: true, HasLocalFilesystemAccess: false},
+			remoteInstance(1, "box.example", 22),
+			{ID: 2, Name: "no-host", IsActive: true, SSHPort: 22, SSHKeyEncrypted: "enc-key"},
 		}, nil
 	}
 
-	got, err := svc.getOtherLocalInstances(context.Background(), 1)
+	got, err := svc.getOverlapCandidateInstances(context.Background(), remoteInstance(1, "box.example", 22), nil)
 	if err != nil {
-		t.Fatalf("getOtherLocalInstances: %v", err)
+		t.Fatalf("getOverlapCandidateInstances: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != 2 {
-		t.Fatalf("expected only instance 2, got %+v", got)
+	if len(got) != 0 {
+		t.Fatalf("expected no candidates, got %+v", got)
+	}
+}
+
+// The error names the reason the unavailable peer was a candidate, not the scanned instance's mode.
+func TestBuildFileMap_FailsWhenOverlapPeerUnavailable(t *testing.T) {
+	t.Parallel()
+
+	mounted := remoteInstance(1, "box.example", 22)
+	mounted.HasLocalFilesystemAccess = true
+
+	for _, tc := range []struct {
+		name    string
+		scanned *models.Instance
+		peer    *models.Instance
+		want    string
+	}{
+		{"remote scan, remote peer", remoteInstance(1, "box.example", 22), remoteInstance(2, "box.example", 22), "other remote instance on the same host"},
+		{"local scan, SSH-only peer", mounted, remoteInstance(2, "box.example", 22), "other remote instance on the same host"},
+		{"local scan, local peer", localInstance(1), localInstance(2), "other local-access instance"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
+				return []*models.Instance{tc.scanned, tc.peer}, nil
+			}
+			stubSync(svc).getClient = func(_ context.Context, instanceID int) (healthChecker, error) {
+				if instanceID == 2 {
+					return nil, errors.New("qBittorrent unreachable")
+				}
+				return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
+			}
+			stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+				return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			}
+			stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+				return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
+			}
+			stubSync(svc).getLastCompletedRun = func(_ context.Context, _ int) (*models.OrphanScanRun, error) { return nil, nil }
+
+			_, err := svc.buildFileMap(context.Background(), tc.scanned, newTestBackend(), scanScope{})
+			if err == nil {
+				t.Fatal("expected the scan to fail closed")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error does not name the %q: %v", tc.want, err)
+			}
+		})
 	}
 }
 
@@ -58,21 +180,21 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
@@ -86,7 +208,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
@@ -101,15 +223,15 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "two.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "two.mkv")) {
 		t.Fatalf("expected instance 2 file to be protected")
 	}
 
@@ -119,7 +241,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	if !slices.Equal(gotRoots, wantRoots) {
 		t.Fatalf("scanRoots mismatch: got=%v want=%v", gotRoots, wantRoots)
 	}
-	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend()); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
+	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend(), nil); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
 		t.Fatalf("metadataIgnoreRoots mismatch: got=%v want=%v", got, []string{filepath.Clean(metadataRoot)})
 	}
 }
@@ -137,21 +259,21 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{
@@ -172,7 +294,7 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
@@ -187,15 +309,15 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv")) {
 		t.Fatalf("expected instance 1 actual content path to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv")) {
 		t.Fatalf("expected instance 2 actual content path to be merged when content paths overlap")
 	}
 }
@@ -212,7 +334,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 
 	offlineErr := errors.New("offline")
 
-	svc.getClientProvider = func(_ context.Context, instanceID int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, instanceID int) (healthChecker, error) {
 		if instanceID == 2 {
 			return nil, offlineErr
 		}
@@ -222,24 +344,24 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
 			"a": {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	_, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -260,21 +382,21 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 
 	offlineErr := errors.New("offline")
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
@@ -285,7 +407,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		if instanceID == 2 {
 			return nil, offlineErr
 		}
@@ -294,7 +416,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	_, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -314,21 +436,21 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
@@ -339,7 +461,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
@@ -354,15 +476,15 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(rootA, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootA, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if result.fileMap.Has(normalizePath(filepath.Join(rootB, "two.mkv"))) {
+	if newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootB, "two.mkv")) {
 		t.Fatalf("did not expect instance 2 file to be merged without overlap")
 	}
 }
@@ -375,22 +497,22 @@ func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{}, nil
 	}
 
-	svc.getLastCompletedRunProvider = func(_ context.Context, _ int) (*models.OrphanScanRun, error) {
+	stubSync(svc).getLastCompletedRun = func(_ context.Context, _ int) (*models.OrphanScanRun, error) {
 		return &models.OrphanScanRun{ScanPaths: []string{"/stale/root"}}, nil
 	}
 
-	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), 2)
+	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), fsops.HostPaths, 2)
 	if err != nil {
 		t.Fatalf("instanceScanRootsForOverlap: %v", err)
 	}
@@ -414,21 +536,21 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
@@ -439,7 +561,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
@@ -452,12 +574,12 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
@@ -480,21 +602,21 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
 			healthy:  true,
 			lastSync: lastSync,
 		}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
@@ -505,7 +627,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		}
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
@@ -518,12 +640,12 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if len(result.scanRoots) != 0 {
@@ -547,7 +669,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 
 	offlineErr := errors.New("offline")
 
-	svc.getClientProvider = func(_ context.Context, instanceID int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, instanceID int) (healthChecker, error) {
 		if instanceID == 2 {
 			return nil, offlineErr
 		}
@@ -557,38 +679,94 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 		}, nil
 	}
 
-	svc.getLastCompletedRunProvider = func(_ context.Context, instanceID int) (*models.OrphanScanRun, error) {
+	stubSync(svc).getLastCompletedRun = func(_ context.Context, instanceID int) (*models.OrphanScanRun, error) {
 		if instanceID != 2 {
 			return nil, nil
 		}
 		return &models.OrphanScanRun{InstanceID: 2, ScanPaths: []string{rootB}}, nil
 	}
 
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
 
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		if instanceID == 1 {
 			return []qbt.Torrent{{Hash: "A", SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
 		}
 		return nil, nil
 	}
 
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
 			"a": {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	_, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
 	if !errors.Is(err, offlineErr) {
 		t.Fatalf("expected offline error, got %v", err)
+	}
+}
+
+// Two instances on one seedbox under different names (#3236): a scan on one
+// must keep the files the other seeds. The pinned host key names the server,
+// and it only ever adds a peer, so host and port still pair without one.
+func TestBuildFileMap_SameHostKeyUnderAnotherNameProtects(t *testing.T) {
+	t.Parallel()
+
+	pin, otherPin := []byte("host-key-a"), []byte("host-key-b")
+	for _, tc := range []struct {
+		name       string
+		peer       *models.Instance
+		pins       map[int][]byte
+		wantMerged bool
+	}{
+		{"same pin under an IP and a hostname", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin, 2: pin}, true},
+		{"same pin on another port", remoteInstance(2, "10.0.0.5", 2222), map[int][]byte{1: pin, 2: pin}, true},
+		{"same host and port with different pins", remoteInstance(2, "10.0.0.5", 22), map[int][]byte{1: pin, 2: otherPin}, true},
+		{"same host and port without pins", remoteInstance(2, "10.0.0.5", 22), nil, true},
+		{"different pins under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin, 2: otherPin}, false},
+		{"peer without a pin under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin}, false},
+		{"scanned without a pin under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{2: pin}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			scanned := remoteInstance(1, "10.0.0.5", 22)
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			stubSync(svc).hostKeyPins = tc.pins
+			stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
+				return []*models.Instance{scanned, tc.peer}, nil
+			}
+			stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
+				return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
+			}
+			stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+				return []qbt.Torrent{{Hash: fmt.Sprintf("h%d", instanceID), SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			}
+			stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+				return map[string]qbt.TorrentFiles{fmt.Sprintf("h%d", instanceID): {{Name: fmt.Sprintf("seeded-by-%d.mkv", instanceID), Size: 1}}}, nil
+			}
+
+			result, err := svc.buildFileMap(context.Background(), scanned, newTestBackend(), scanScope{})
+			if err != nil {
+				t.Fatalf("buildFileMap: %v", err)
+			}
+			protected := newTestProtected(t, fsops.HostPaths, nil, result.fileMap)
+			if !protected.torrentFile(filepath.Join(root, "seeded-by-1.mkv")) {
+				t.Fatal("the scanned instance's own file must be protected")
+			}
+			if got := protected.torrentFile(filepath.Join(root, "seeded-by-2.mkv")); got != tc.wantMerged {
+				t.Fatalf("peer's file protected = %v, want %v", got, tc.wantMerged)
+			}
+		})
 	}
 }

@@ -13,18 +13,18 @@ import type { CrossSeedSearchState } from "@/hooks/useCrossSeedWarning"
 import { getLocalMatchTypeInfo, hasBreakableLocalMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { cn } from "@/lib/utils"
+import type { UncheckedInstance } from "@/types"
 import { useTranslation } from "react-i18next"
 
 interface CrossSeedWarningProps {
   affectedTorrents: CrossSeedTorrent[]
+  uncheckedInstances: UncheckedInstance[]
   searchState: CrossSeedSearchState
   hasWarning: boolean
   deleteFiles: boolean
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
   onSearch: () => void
-  totalToCheck: number
-  checkedCount: number
   className?: string
 }
 
@@ -43,14 +43,13 @@ function getTrackerDomain(trackerUrl: string | undefined): string | null {
 
 export function CrossSeedWarning({
   affectedTorrents,
+  uncheckedInstances,
   searchState,
   hasWarning,
   deleteFiles,
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
   onSearch,
-  totalToCheck,
-  checkedCount,
   className,
 }: CrossSeedWarningProps) {
   const { t } = useTranslation("torrents")
@@ -103,14 +102,12 @@ export function CrossSeedWarning({
     )
   }
 
-  // Searching state - show progress
+  // Searching state
   if (searchState === "searching") {
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>
-          {totalToCheck > 1? t("crossSeedWarning.searchingProgress", { checked: checkedCount, total: totalToCheck }): t("crossSeedWarning.searching")}
-        </span>
+        <span>{t("crossSeedWarning.searching")}</span>
       </div>
     )
   }
@@ -134,12 +131,25 @@ export function CrossSeedWarning({
     )
   }
 
+  // The list can miss torrents on an instance that the check did not read.
+  const uncheckedNotes = uncheckedInstances.map(instance => (
+    <p key={instance.instanceId} className="mt-1 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span>
+        {instance.reason === "offline"? t("crossSeedWarning.uncheckedOffline", { instance: instance.instanceName }): t("crossSeedWarning.uncheckedDisabled", { instance: instance.instanceName })}
+      </span>
+    </p>
+  ))
+
   // Complete state - no cross-seeds found
   if (searchState === "complete" && !hasWarning) {
     return (
-      <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
-        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-        <span>{t("crossSeedWarning.noCrossSeeds")}</span>
+      <div className={cn("py-2", className)}>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          <span>{t("crossSeedWarning.noCrossSeeds")}</span>
+        </div>
+        {uncheckedNotes}
       </div>
     )
   }
@@ -217,6 +227,7 @@ export function CrossSeedWarning({
               {t(hasReflinkCopies ? "crossSeedWarning.mixedLinkedNote" : "crossSeedWarning.mixedHardlinkNote")}
             </p>
           )}
+          {uncheckedNotes}
         </div>
       </div>
 
@@ -255,11 +266,9 @@ export function CrossSeedWarning({
           <div className="mt-2 space-y-2 overflow-hidden">
             {Object.entries(byInstance).map(([instanceName, torrents]) => (
               <div key={instanceName} className="min-w-0">
-                {instanceCount > 1 && (
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                    {instanceName}
-                  </p>
-                )}
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  {instanceName}
+                </p>
                 <div className="space-y-1 min-w-0">
                   {torrents.slice(0, 8).map((torrent) => {
                     const trackerDomain = getTrackerDomain(torrent.tracker)

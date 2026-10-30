@@ -85,3 +85,49 @@ test("flags UI copy assigned through interesting variable names", () => {
     ],
   )
 })
+
+test("flags UI string properties in .ts option tables, including reason", () => {
+  const source = `
+    export const SORT_OPTIONS = [{ value: "added_on", label: "Recently Added" }]
+    export const DISABLED = [{ field: "NAME", reason: "Not supported here" }]
+    const title = "Not a property"
+  `
+
+  const matches = detectorModule.findHardcodedStringsInSource(source, "src/lib/options.ts")
+
+  assert.deepEqual(
+    matches.map((match) => [match.kind, match.text]),
+    [
+      ["object-property", "Recently Added"],
+      ["object-property", "Not supported here"],
+    ],
+  )
+})
+
+test("skips object properties in the query-builder constants file only", () => {
+  const source = `
+    export const TORRENT_STATES = [{ value: "downloading", label: "Downloading" }]
+    export const NEW_TABLE = [{ value: "x", label: "Fallback text" }]
+  `
+
+  for (const filePath of ["src/components/query-builder/constants.ts", "C:\\qui\\web\\src\\components\\query-builder\\constants.ts"]) {
+    assert.deepEqual(detectorModule.findHardcodedStringsInSource(source, filePath), [])
+  }
+
+  const elsewhere = detectorModule.findHardcodedStringsInSource(source, "src/lib/constants.ts")
+  assert.deepEqual(elsewhere.map((match) => match.text), ["Downloading", "Fallback text"])
+})
+
+test("leaves arrays of template snippets alone in .ts and .tsx files", () => {
+  const source = `
+    const PATH_TEMPLATE_SNIPPETS = [
+      "{{ .Name }}",
+      "{{ .CategorySavePath }}",
+      "{{ sanitize .Name }}",
+    ]
+  `
+
+  for (const filePath of ["src/components/example.tsx", "src/lib/example.ts"]) {
+    assert.deepEqual(detectorModule.findHardcodedStringsInSource(source, filePath), [])
+  }
+})

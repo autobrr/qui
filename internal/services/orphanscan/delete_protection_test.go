@@ -6,7 +6,6 @@ package orphanscan
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -88,9 +88,7 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-race")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"leftover": {Name: "leftover", SavePath: f.abandoned}}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: f.defaultSavePath, CategorySaveFolders: []string{f.abandoned}})
 
 	f.svc.executeDeletion(context.Background(), 1, f.runID)
 
@@ -104,9 +102,7 @@ func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing
 func TestExecuteDeletion_ProtectsCategoriesEvenWhenTheOptionWasTurnedOff(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-toggle-off")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"leftover": {Name: "leftover", SavePath: f.abandoned}}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: f.defaultSavePath, CategorySaveFolders: []string{f.abandoned}})
 	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		GracePeriodMinutes:  0,
@@ -184,6 +180,35 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	require.FileExists(t, f.strayFile, "nothing may be deleted when the scope cannot be determined")
 }
 
+// TestExecuteDeletion_FailsOnAnInvalidIgnorePath covers an ignore path that is
+// not absolute when the user confirms. The scan refuses such a path, so the
+// delete must refuse it too and not run under a rule the scan never accepted.
+func TestExecuteDeletion_FailsOnAnInvalidIgnorePath(t *testing.T) {
+	f := newDeletionFixture(t, "orphanscan-delete-invalid-ignore")
+
+	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID:          1,
+		IgnorePaths:         []string{"relative/keep"},
+		ScanIntervalHours:   24,
+		PreviewSort:         "size_desc",
+		MaxFilesPerRun:      1000,
+		AutoCleanupMaxFiles: 100,
+		ScanDefaultSavePath: true,
+		DeleteAbandonedDirs: true,
+	})
+	require.NoError(t, err)
+
+	f.svc.executeDeletion(context.Background(), 1, f.runID)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", run.Status)
+	require.Contains(t, run.ErrorMessage, "invalid ignore paths")
+	require.FileExists(t, f.strayFile, "nothing may be deleted under an invalid ignore path")
+	require.FileExists(t, f.orphanInCategory, "nothing may be deleted under an invalid ignore path")
+	require.DirExists(t, f.abandoned, "nothing may be deleted under an invalid ignore path")
+}
+
 // TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun covers a category
 // folder the run empties by deleting the orphan inside it. It was previewed
 // while no category pointed at it, so the re-check at deletion time is what
@@ -191,9 +216,7 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-second-pass")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: f.categoryFolder}}, nil
-	}
+	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: f.defaultSavePath, CategorySaveFolders: []string{f.categoryFolder}})
 
 	f.svc.executeDeletion(context.Background(), 1, f.runID)
 
@@ -243,25 +266,19 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath})
 
 	// Only instance A exists while the preview is built.
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 
@@ -292,19 +309,19 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 
 	// Instance B now seeds that file, and default-save-path scanning is turned
 	// off, leaving A's live roots disjoint from B's.
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "b", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		if instanceID == 2 {
 			return []qbt.Torrent{{Hash: "b", SavePath: defaultSavePath, State: qbt.TorrentStatePausedUp}}, nil
 		}
 		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		if instanceID == 2 {
 			return map[string]qbt.TorrentFiles{"b": {{Name: "stray.txt", Size: 4}}}, nil
 		}
@@ -352,25 +369,19 @@ func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: categoryFolder}}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath, CategorySaveFolders: []string{categoryFolder}})
 
 	// Abandoned-directory cleanup is off, so the run previews the orphan only.
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -403,27 +414,4 @@ func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing
 	run, err := store.GetRun(t.Context(), runID)
 	require.NoError(t, err)
 	require.Zero(t, run.FoldersDeleted, "a run that previewed no directories must remove none")
-}
-
-// TestResolveCategoryPath_DeepInheritanceIsNotDropped guards the parent walk
-// against a depth cap: a deeply nested category that resolves to "" would lose
-// both its scan root and its protection.
-func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	root := filepath.Join(base, "archive")
-
-	categories := map[string]qbt.Category{"top": {Name: "top", SavePath: root}}
-	name := "top"
-	want := root
-	for i := range 40 {
-		segment := fmt.Sprintf("s%d", i)
-		name += "/" + segment
-		want = filepath.Join(want, segment)
-		categories[name] = qbt.Category{Name: name}
-	}
-
-	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true)
-	require.Equal(t, want, got, "a deeply nested category must still resolve to its parent chain")
 }

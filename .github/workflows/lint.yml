@@ -7,6 +7,78 @@ env:
   NODE_VERSION: "24.15.0"
 
 jobs:
+  windows-changes:
+    name: Detect Windows changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      required: ${{ steps.paths.outputs.required }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check Windows-sensitive paths
+        id: paths
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Disable rename detection so moves out of these paths still trigger tests.
+          # Include shared dependencies and non-Go fixtures without a second package list.
+          changed=$(git diff --name-only --no-renames "origin/$BASE_REF"...HEAD -- \
+            '.github/workflows/lint.yml' '.gitattributes' 'go.mod' 'go.sum' \
+            'cmd' 'internal' 'pkg')
+          if [ -n "$changed" ]; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+            printf 'Windows-sensitive changes:\n%s\n' "$changed"
+          else
+            echo 'required=false' >> "$GITHUB_OUTPUT"
+            echo 'No Windows-sensitive changes.'
+          fi
+
+  windows:
+    name: Windows compile gate
+    needs: windows-changes
+    # Compile and vet every PR, even when native tests are not selected.
+    if: ${{ !cancelled() }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-windows-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Create placeholder web dist for embed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force web/dist | Out-Null
+          New-Item -ItemType File -Force web/dist/.gitkeep | Out-Null
+
+      - name: Compile and vet Windows packages and tests
+        run: go vet ./...
+
+      # Run every package after earlier failures to keep Windows coverage complete.
+      - name: Test all packages natively on Windows
+        if: ${{ !cancelled() && needs.windows-changes.outputs.required != 'false' }}
+        run: go test -count=1 -v -timeout=2m ./...
+
   web:
     runs-on: ubuntu-latest
 
@@ -17,7 +89,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -33,12 +105,15 @@ jobs:
       - name: Lint frontend
         working-directory: web
         run: |
-          webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
+          webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- .; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx|mjs)$' || true)
           if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
 
       - name: Check i18n coverage
         working-directory: web
         run: pnpm check:i18n
+
+      - name: Check for mojibake
+        run: make check-mojibake
 
   backend:
     runs-on: ubuntu-latest
@@ -48,6 +123,38 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+
+      # Migrations are tracked by file name, so installs that already ran one
+      # never see a later edit. Comment-only edits pass, and so does a rename
+      # with a from/to entry in the *MigrationFilenameRenames tables in db.go.
+      - name: Check that existing migrations stay unchanged
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          sql() { sed -e 's/--.*//' -e '/^[[:space:]]*$/d'; }
+          status=0
+          while IFS=$'\t' read -r change old new; do
+            new=${new:-$old}
+            if [ "$change" = D ]; then
+              echo "::error file=$old::$old was deleted. Installs that ran it keep its schema."
+              status=1
+              continue
+            fi
+            if [ "$old" != "$new" ]; then
+              # Each backend applies only the shared table and its own table.
+              backend=postgres
+              [ "${old%/*}" = internal/database/migrations ] && backend=sqlite
+              if ! sed -En "/^var (shared|$backend)MigrationFilenameRenames /,/^}/p" internal/database/db.go | grep -A1 "from: *\"$(basename "$old")\"" | grep -q "to: *\"$(basename "$new")\""; then
+                echo "::error file=$new::$old was renamed to $new without a from/to entry in sharedMigrationFilenameRenames or ${backend}MigrationFilenameRenames in internal/database/db.go."
+                status=1
+              fi
+            fi
+            if ! diff -q <(git show "$BASE:$old" | sql) <(sql < "$new") > /dev/null; then
+              echo "::error file=$new::the SQL of existing migration $old changed. Put the change in a new migration."
+              status=1
+            fi
+          done < <(git diff --name-status -M --diff-filter=MRD "$BASE"...HEAD -- internal/database/migrations internal/database/postgres_migrations)
+          exit $status
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -103,11 +210,17 @@ jobs:
       - name: Lint backend
         uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: v2.13.0
+          version: v2.14.0
           # The backlog is zero as of this change, so the gate covers the whole
           # repo rather than only changed lines. That is what stops drift
           # accumulating unnoticed again — see #2380.
           only-new-issues: false
+
+      # The lint action put golangci-lint on PATH. The ratchet holds the
+      # linters that existing code does not pass yet to a shrink-only
+      # allowlist. See scripts/ratchet/main.go.
+      - name: Check the lint ratchet
+        run: go run ./scripts/ratchet -base "origin/${{ github.base_ref }}"
 
       - name: Fail if gofix drift was found
         if: steps.gofix.outcome == 'failure'

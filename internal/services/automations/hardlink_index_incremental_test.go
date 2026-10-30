@@ -12,9 +12,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // scanOne reads one torrent's files the way the index does, from real files on disk.
@@ -43,7 +43,7 @@ func linkPair(t *testing.T, dir string) (string, string) {
 // as a full build or an incremental update does.
 func indexFrom(scans map[string]*torrentFileInfo) *HardlinkIndex {
 	index := &HardlinkIndex{}
-	index.applyLinkState(deriveLinkCounts(scans))
+	index.applyLinkState(deriveLinkCounts(nil, scans))
 	return index
 }
 
@@ -164,7 +164,7 @@ func TestPlanTorrentRescan(t *testing.T) {
 		"arrived": {Hash: "arrived", SavePath: filepath.Join(dir, "c")},
 	}
 
-	rescan, staleFileIDs := planTorrentRescan(previous, current)
+	rescan, staleFileIDs := planTorrentRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current)
 
 	require.Contains(t, rescan, "moved", "a save path change points the torrent at different files")
 	require.Contains(t, rescan, "arrived", "a torrent with no previous scan has to be read")
@@ -190,12 +190,12 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 		"sharer":  {Hash: "sharer", SavePath: filepath.Join(dir, "b")},
 	}
 
-	staleFileIDs := map[hardlink.FileID]struct{}{}
+	staleFileIDs := map[fsops.FileKey]struct{}{}
 	for _, fileID := range infoA.fileIDs {
-		staleFileIDs[fileID] = struct{}{}
+		staleFileIDs[testFileKey(fileID, nil)] = struct{}{}
 	}
 
-	sharing := planSharingRescan(previous, current, map[string]struct{}{"planned": {}}, staleFileIDs)
+	sharing := planSharingRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current, map[string]struct{}{"planned": {}}, staleFileIDs)
 
 	require.Equal(t, map[string]struct{}{"sharer": {}}, sharing)
 }
@@ -218,38 +218,8 @@ func TestScopeAfterRescanSeesLinksAddedSinceTheIndexWasBuilt(t *testing.T) {
 	require.NoError(t, os.Link(pathA, filepath.Join(dir, "library", "movie.mkv")))
 
 	fresh := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.scopeAfterRescan(fresh),
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, scopeAfterRescan(fresh, index.buildState.instance, index.buildState.globalFileIDMap),
 		"the fresh read must report the link the index never saw")
-}
-
-// Cross-instance augmentation raises uniquePathCount in place under crossScopeMu. A
-// preview request can run it while a scheduled apply verifies its delete candidates, so
-// the read side has to take the same lock. Run with -race.
-func TestScopeAfterRescanIsSafeAgainstConcurrentAugmentation(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	linkPair(t, dir)
-
-	info := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	index := indexFrom(map[string]*torrentFileInfo{"hashA": info})
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for range 200 {
-			index.crossScopeMu.Lock()
-			for _, tracker := range index.buildState.globalFileIDMap {
-				tracker.uniquePathCount++
-			}
-			index.crossScopeMu.Unlock()
-		}
-	}()
-
-	for range 200 {
-		index.scopeAfterRescan(info)
-	}
-	<-done
 }
 
 func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
@@ -265,12 +235,12 @@ func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 	require.NoError(t, os.Remove(pathA))
 
 	fresh := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	require.Empty(t, index.scopeAfterRescan(fresh),
+	require.Empty(t, scopeAfterRescan(fresh, index.buildState.instance, index.buildState.globalFileIDMap),
 		"a torrent whose files vanished has no scope, and must not read as unlinked")
 }
 
 // A delete is only re-verified when the rule consulted the index to choose its
-// candidates. Every route into setupDeleteHardlinkContext has to count, or a rule that
+// candidates. Every route into the hardlink index has to count, or a rule that
 // sorts or groups by hardlink data deletes on an index nobody re-read.
 func TestDeleteUsesHardlinkData(t *testing.T) {
 	t.Parallel()
@@ -285,7 +255,7 @@ func TestDeleteUsesHardlinkData(t *testing.T) {
 	tests := []struct {
 		name string
 		rule *models.Automation
-		want bool
+		want hardlinkUse
 	}{
 		{
 			name: "unregistered rule owes the index nothing",
@@ -304,23 +274,23 @@ func TestDeleteUsesHardlinkData(t *testing.T) {
 				Enabled:   true,
 				Condition: &models.RuleCondition{Field: FieldHardlinkScope},
 			}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 		{
 			name: "expands to the hardlink copies",
 			rule: deleteRule(&models.DeleteAction{Enabled: true, IncludeHardlinks: true}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 		{
 			name: "sorted by the scope, which decides who wins a limited batch",
 			rule: deleteRule(&models.DeleteAction{Enabled: true},
 				&models.SortingConfig{Type: models.SortingTypeSimple, Field: FieldHardlinkScopeCross}),
-			want: true,
+			want: hardlinkUse{cross: true},
 		},
 		{
 			name: "grouped by the hardlink signature",
 			rule: deleteRule(&models.DeleteAction{Enabled: true, GroupID: GroupHardlinkSignature}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 	}
 
@@ -345,9 +315,9 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	stale.linkedFiles[0].nlink = 2
 	fresh.linkedFiles[0].nlink = 9
 
-	state := deriveLinkCounts(map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
+	state := deriveLinkCounts(nil, map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
 
-	tracker := state.globalFileIDMap[fresh.fileIDs[0]]
+	tracker := state.globalFileIDMap[testFileKey(fresh.fileIDs[0], state.instance)]
 	require.NotNil(t, tracker)
 	require.Equal(t, uint64(9), tracker.nlink)
 	require.Equal(t, 2, tracker.uniquePathCount, "two distinct paths point at the file")
@@ -390,6 +360,6 @@ func TestScopeAfterRescanReportsBoth(t *testing.T) {
 	index := indexFrom(scans)
 	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash["hashA"])
 
-	require.Equal(t, HardlinkScopeBoth, index.scopeAfterRescan(scans["hashA"]),
+	require.Equal(t, HardlinkScopeBoth, scopeAfterRescan(scans["hashA"], index.buildState.instance, index.buildState.globalFileIDMap),
 		"rescan must agree with the indexed scope for an unchanged torrent")
 }

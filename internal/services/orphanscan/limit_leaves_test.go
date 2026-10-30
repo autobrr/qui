@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -42,28 +43,22 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+	stubSync(svc).getClient = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "o", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"o": {
 			{Name: "seeded/owned.mkv", Size: 1},
 			{Name: "claimed/unwritten.mkv", Size: 1},
 		}}, nil
 	}
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	// MaxFilesPerRun = 1 is the reported trigger.
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -125,32 +120,26 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+	stubSync(svc).getClient = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	// Two torrents: one in the parent, one on the volume that is not mounted.
-	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
 			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
 			{Hash: "gone", SavePath: nested, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
 			"here": {{Name: "owned.mkv", Size: 1}},
 			"gone": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: parent}, nil
-	}
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: parent})
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},
@@ -190,7 +179,7 @@ func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
 
 	entries := []OrphanFile{parent, child, file}
 	for _, previewSort := range []string{"size_desc", "directory_size_desc"} {
-		less := truncationLess(previewSort)
+		less := truncationLess(fsops.HostPaths, previewSort)
 		for _, perm := range [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}} {
 			in := []OrphanFile{entries[perm[0]], entries[perm[1]], entries[perm[2]]}
 			sort.Slice(in, func(i, j int) bool { return less(in[i], in[j]) })

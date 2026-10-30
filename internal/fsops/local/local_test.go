@@ -5,11 +5,13 @@ package local
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -143,7 +145,11 @@ func TestLstat_Symlink(t *testing.T) {
 	target := filepath.Join(dir, "target.txt")
 	writeFile(t, target, "data")
 	link := filepath.Join(dir, "link.txt")
-	require.NoError(t, os.Symlink(target, link))
+	err := os.Symlink(target, link)
+	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+		t.Skipf("symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+	}
+	require.NoError(t, err)
 
 	info, err := b.Lstat(context.Background(), link)
 	require.NoError(t, err)
@@ -184,6 +190,9 @@ func TestReadDir(t *testing.T) {
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		names[i] = e.Name
+		info, err := os.Lstat(filepath.Join(dir, e.Name))
+		require.NoError(t, err)
+		assert.Equal(t, info.Mode().Type(), e.Mode)
 	}
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")
@@ -206,7 +215,7 @@ func TestLstatConversion_FileIDFailureDegrades(t *testing.T) {
 	// metadata intact — not fail the conversion (one identity-opaque
 	// file must not abort callers that only need size/mtime).
 	path := filepath.Join(t.TempDir(), "missing", "x.mkv")
-	info := osFileInfoToLstat(syslessFileInfo{}, path)
+	info := osFileInfoToLstat(syslessFileInfo{}, path, false)
 
 	require.Error(t, info.FileIDErr)
 	assert.True(t, info.FileID.IsZero())
@@ -281,6 +290,79 @@ func TestWalkDir_IgnoreDirNamesAndPrefixes(t *testing.T) {
 	// Matching is case-insensitive: metadata dir case varies on disk.
 	assert.NotContains(t, relPaths, filepath.Join("$recycle.bin", "old.mkv"))
 	assert.NotContains(t, relPaths, filepath.Join(".trash-1000", "deleted.mkv"))
+}
+
+// The walk root is exempt from the name filters, and IgnoreDirNames applies
+// to directories only, so a hidden or ignored-name root is walked and a file
+// named like an ignored directory is kept.
+func TestWalkDir_RootAndFileAreNotNameFiltered(t *testing.T) {
+	b := newBackend()
+	parent := t.TempDir()
+	opts := fsops.WalkOptions{SkipHidden: true, IgnoreDirNames: []string{"@eaDir", "node_modules"}}
+
+	for _, name := range []string{".hidden-root", "@eaDir"} {
+		root := filepath.Join(parent, name)
+		writeFile(t, filepath.Join(root, "node_modules"), "a file, not a directory")
+
+		ch, err := b.WalkDir(context.Background(), root, opts)
+		require.NoError(t, err)
+
+		var relPaths []string
+		for e := range ch {
+			relPaths = append(relPaths, e.RelPath)
+		}
+		assert.Contains(t, relPaths, "node_modules", name)
+	}
+}
+
+// A root that is itself an IgnorePaths entry walks nothing, as it does over sftp.
+func TestWalkDir_IgnoredRootWalksNothing(t *testing.T) {
+	b := newBackend()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "keep.txt"), "k")
+
+	ch, err := b.WalkDir(context.Background(), root, fsops.WalkOptions{IgnorePaths: []string{root}})
+	require.NoError(t, err)
+
+	var relPaths []string
+	for e := range ch {
+		relPaths = append(relPaths, e.RelPath)
+	}
+	assert.Empty(t, relPaths)
+}
+
+// A followed root is reported under its own path, and the filters match that path.
+func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "target", "sub", "inside.txt"), "i")
+	writeFile(t, filepath.Join(dir, "target", "skip", "ignored.txt"), "s")
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "target"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	for _, follow := range []bool{false, true} {
+		ch, err := b.WalkDir(context.Background(), link, fsops.WalkOptions{FollowRoot: follow, IgnorePaths: []string{filepath.Join(link, "skip")}})
+		require.NoError(t, err)
+
+		var paths, relPaths []string
+		for e := range ch {
+			require.NoError(t, e.Err)
+			if e.Path == link {
+				assert.Equal(t, follow, e.IsDir, "FollowRoot %v", follow)
+				assert.Equal(t, !follow, e.IsSymlink, "FollowRoot %v", follow)
+			}
+			paths = append(paths, e.Path)
+			relPaths = append(relPaths, e.RelPath)
+		}
+		if !follow {
+			assert.Equal(t, []string{link}, paths)
+			continue
+		}
+		assert.Equal(t, []string{link, filepath.Join(link, "sub"), filepath.Join(link, "sub", "inside.txt")}, paths)
+		assert.Equal(t, []string{".", "sub", filepath.Join("sub", "inside.txt")}, relPaths)
+	}
 }
 
 func TestWalkDir_ContextCancellation(t *testing.T) {
@@ -558,4 +640,8 @@ func TestWalkDir_IgnorePaths(t *testing.T) {
 	}
 	assert.Contains(t, relPaths, "keep.txt")
 	assert.NotContains(t, relPaths, "ignored.txt")
+}
+
+func TestPathsIsHostDialect(t *testing.T) {
+	require.Equal(t, fsops.HostPaths, NewBackend().Paths())
 }

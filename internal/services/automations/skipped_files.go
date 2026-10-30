@@ -19,7 +19,7 @@ func (s *Service) detectSkippedFiles(ctx context.Context, instanceID int, torren
 	for _, t := range torrents {
 		hashes = append(hashes, t.Hash)
 	}
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
