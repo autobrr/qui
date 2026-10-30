@@ -27,14 +27,11 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
-import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
-import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
-import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTorrentListController, useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
@@ -44,7 +41,7 @@ import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { actionTargetRequest, buildActionTarget, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -903,8 +900,6 @@ export function TorrentCardsMobile({
     previousSortRef.current = sortState
   }, [filters, instanceId, effectiveSearch, sortState])
 
-  const { isVisible: isTabVisible } = useDelayedVisibility(3000)
-
   // Fetch data
   const {
     torrents,
@@ -921,8 +916,8 @@ export function TorrentCardsMobile({
     hasLoadedAll,
     loadMore: backendLoadMore,
     isCrossInstanceEndpoint,
-  } = useTorrentsList(instanceId, {
-    enabled: isTabVisible,
+  } = useTorrentListController({
+    instanceId,
     instanceIds,
     search: effectiveSearch,
     filters,
@@ -995,19 +990,11 @@ export function TorrentCardsMobile({
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  // Cross-seed warning for delete dialog
-  const crossSeedWarning = useCrossSeedWarning({
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useTorrentListCrossSeed({
     instanceId,
-    torrents: selectedTorrents,
-    selectAll: actionTarget.kind === "selectAll" ? actionTarget.selectAll : undefined,
+    actionTarget,
+    blockCrossSeeds,
   })
-
-  const hasCrossSeedTag = useMemo(
-    () => anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
-    [selectedTorrents, crossSeedWarning.affectedTorrents]
-  )
-  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {

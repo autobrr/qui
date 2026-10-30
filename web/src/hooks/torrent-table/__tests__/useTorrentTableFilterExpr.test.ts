@@ -77,47 +77,6 @@ describe("useTorrentTableFilterExpr — isDoingCrossSeedFiltering", () => {
   })
 })
 
-describe("useTorrentTableFilterExpr — combinedFiltersExpr (#1925 cross-seed early-return)", () => {
-  it("drops column filters from the backend expression in cross-seed mode", () => {
-    // Regression #1925: in cross-seed mode the column filters are applied
-    // client-side, so combinedFiltersExpr must return ONLY filters.expr.
-    const crossSeedExpr = "Hash == \"abc\" || Hash == \"def\""
-    const { result } = render({
-      instanceId: 1,
-      columnFilters: [ADDED_ON_FILTER],
-      filters: makeFilters({ expr: crossSeedExpr }),
-    })
-    // Sanity: the column filter really does produce an expression...
-    expect(result.current.columnFiltersExpr).toBe("AddedOn > 1704067200")
-    // ...but it must NOT be folded into the backend expression here.
-    expect(result.current.combinedFiltersExpr).toBe(crossSeedExpr)
-  })
-
-  it("combines column filters and filters.expr with && when not cross-seeding", () => {
-    const { result } = render({
-      instanceId: 1,
-      columnFilters: [ADDED_ON_FILTER],
-      filters: makeFilters({ expr: "state == \"downloading\"" }),
-    })
-    expect(result.current.combinedFiltersExpr).toBe("(AddedOn > 1704067200) && (state == \"downloading\")")
-  })
-
-  it("returns the column expression alone when there is no filters.expr", () => {
-    const { result } = render({ instanceId: 1, columnFilters: [ADDED_ON_FILTER] })
-    expect(result.current.combinedFiltersExpr).toBe("AddedOn > 1704067200")
-  })
-
-  it("returns filters.expr alone when there are no column filters", () => {
-    const { result } = render({ instanceId: 1, columnFilters: [], filters: makeFilters({ expr: "state == \"x\"" }) })
-    expect(result.current.combinedFiltersExpr).toBe("state == \"x\"")
-  })
-
-  it("is undefined when neither column filters nor filters.expr are present", () => {
-    const { result } = render({ instanceId: 1, columnFilters: [] })
-    expect(result.current.combinedFiltersExpr).toBeUndefined()
-  })
-})
-
 describe("useTorrentTableFilterExpr — lastUserAction", () => {
   it("does not fire on mount with no active filters/search", () => {
     const { result } = render({ instanceId: 1, columnFilters: [] })

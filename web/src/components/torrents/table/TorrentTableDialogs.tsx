@@ -13,7 +13,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import type { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
-import type { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
+import type { useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
 import type { useTorrentsList } from "@/hooks/useTorrentsList"
 import { api } from "@/lib/api"
 import { actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
@@ -110,7 +110,7 @@ export interface TorrentTableDialogsProps {
   deleteDialogFormattedSize: string
 
   // Cross-seed
-  crossSeedWarning: ReturnType<typeof useCrossSeedOrchestration>["crossSeedWarning"]
+  crossSeedWarning: ReturnType<typeof useTorrentListCrossSeed>["crossSeedWarning"]
   hasCrossSeedTag: boolean
 
   // Metadata / capabilities
