@@ -4,7 +4,6 @@
  */
 
 import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
-import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
@@ -28,7 +27,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
-import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListController, useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
@@ -724,11 +723,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const effectiveSelectionCount = actionTarget.count
   const selectAllTarget = actionTarget.kind === "selectAll" ? actionTarget.selectAll : undefined
 
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useTorrentListCrossSeed({
-    instanceId,
-    actionTarget,
-    blockCrossSeeds,
-  })
   const queryClient = useQueryClient()
 
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
@@ -909,6 +903,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Dialog wiring: each wrapper passes its value with the Action target to the handler.
   const {
+    crossSeedWarning,
+    hasCrossSeedTag,
     renameHash,
     runAction,
     handleExportWrapper,
@@ -927,22 +923,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleTmmConfirmWrapper,
     handleSetShareLimitWrapper,
     handleSetSpeedLimitsWrapper,
-    handleDropPayload,
-    handleDropPayloadConsumed,
-  } = useBulkActionWrappers({
-    actions: torrentActions,
-    actionTarget,
-    exportTorrents,
-    activeSortField,
-    activeSortOrder,
-    crossSeedWarning,
-    shouldBlockCrossSeeds,
-    blockCrossSeedHashes,
+  } = useTorrentListActions({
     instanceId,
-    setDropPayload,
-    onAddTorrentModalChange,
+    actionTarget,
+    actions: torrentActions,
+    exportTorrents,
+    sort: activeSortField,
+    order: activeSortOrder,
   })
 
+  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
+    setDropPayload(payload)
+    onAddTorrentModalChange?.(true)
+  }, [onAddTorrentModalChange])
+
+  const handleDropPayloadConsumed = useCallback(() => {
+    setDropPayload(null)
+  }, [])
 
   // Latest-ref for the row interaction handlers: rows are memoized, so these
   // handlers must keep one identity for the lifetime of the table while still

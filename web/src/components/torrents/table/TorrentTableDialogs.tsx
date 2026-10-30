@@ -12,8 +12,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import type { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
-import type { useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
+import type { useTorrentListActions } from "@/hooks/useTorrentListController"
 import type { useTorrentsList } from "@/hooks/useTorrentsList"
 import { api } from "@/lib/api"
 import { actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
@@ -38,7 +37,7 @@ import {
   TmmConfirmDialog
 } from "../TorrentDialogs"
 
-type Wrappers = ReturnType<typeof useBulkActionWrappers>
+type Wrappers = ReturnType<typeof useTorrentListActions>
 
 export interface TorrentTableDialogsProps {
   instanceId: number
@@ -110,7 +109,7 @@ export interface TorrentTableDialogsProps {
   deleteDialogFormattedSize: string
 
   // Cross-seed
-  crossSeedWarning: ReturnType<typeof useTorrentListCrossSeed>["crossSeedWarning"]
+  crossSeedWarning: Wrappers["crossSeedWarning"]
   hasCrossSeedTag: boolean
 
   // Metadata / capabilities

@@ -31,7 +31,7 @@ import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentListController, useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
+import { useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
@@ -39,9 +39,8 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { actionTargetRequest, buildActionTarget, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
-import { getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getToggleSelectionState, getTotalSize } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -711,8 +710,6 @@ export function TorrentCardsMobile({
   useRegisterMobileScrollContainer(parentRef)
 
   const [showActionsSheet, setShowActionsSheet] = useState(false)
-  const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
-  const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const sortField = sortState.field
   const sortOrder = sortState.order
@@ -788,6 +785,15 @@ export function TorrentCardsMobile({
   }, [trackerCustomizationsQuery.data])
 
   // Use the shared torrent actions hook
+  const torrentActions = useTorrentActions({
+    instanceId,
+    instanceIds,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        dispatchSelection({ type: "clear" })
+      }
+    },
+  })
   const {
     showDeleteDialog,
     closeDeleteDialog,
@@ -805,33 +811,21 @@ export function TorrentCardsMobile({
     setShowCategoryDialog,
     showLocationDialog,
     setShowLocationDialog,
+    showShareLimitDialog,
+    setShowShareLimitDialog,
+    showSpeedLimitDialog,
+    setShowSpeedLimitDialog,
     showTmmDialog,
     setShowTmmDialog,
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
     isPending,
-    handleAction,
-    handleDelete,
-    handleUpdateTags,
-    handleSetCategory,
-    handleSetLocation,
-    handleSetShareLimit,
-    handleSetSpeedLimits,
     prepareDeleteAction,
     prepareLocationAction,
     prepareTmmAction,
-    handleTmmConfirm,
     proceedToLocationDialog,
-  } = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        dispatchSelection({ type: "clear" })
-      }
-    },
-  })
+  } = torrentActions
 
   const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
@@ -957,10 +951,25 @@ export function TorrentCardsMobile({
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useTorrentListCrossSeed({
+  const {
+    crossSeedWarning,
+    hasCrossSeedTag,
+    runAction,
+    handleExportWrapper,
+    handleDeleteWrapper,
+    handleTagsWrapper,
+    handleSetCategoryWrapper,
+    handleSetLocationWrapper,
+    handleTmmConfirmWrapper,
+    handleSetShareLimitWrapper,
+    handleSetSpeedLimitsWrapper,
+  } = useTorrentListActions({
     instanceId,
     actionTarget,
-    blockCrossSeeds,
+    actions: torrentActions,
+    exportTorrents,
+    sort: backendSortField,
+    order: sortOrder,
   })
 
   // Virtual scrolling with consistent spacing
@@ -1046,36 +1055,12 @@ export function TorrentCardsMobile({
   }, [dispatchSelection, selection, totalCount])
 
   const handleBulkAction = useCallback((action: TorrentAction, options?: { enable?: boolean }) => {
-    handleAction(action, actionTarget, options)
+    runAction(action, options)
     setShowActionsSheet(false)
-  }, [handleAction, actionTarget])
-
-  const handleDeleteWrapper = useCallback(async () => {
-    const crossSeedTargets = deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : []
-
-    if (shouldBlockCrossSeeds) {
-      const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
-      const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedTagHashesToBlock], [...buildTorrentActionTargets(selectedTorrents, instanceId), ...crossSeedTargets])
-    }
-
-    await handleDelete(actionTarget, crossSeedTargets)
-  }, [actionTarget, blockCrossSeedHashes, crossSeedWarning.affectedTorrents, deleteCrossSeeds, handleDelete, instanceId, selectedTorrents, shouldBlockCrossSeeds])
-
-  const handleTagsWrapper = useCallback(async (plan: Parameters<typeof handleUpdateTags>[0]) => {
-    await handleUpdateTags(plan, actionTarget)
-  }, [handleUpdateTags, actionTarget])
-
-  const handleSetCategoryWrapper = useCallback(async (category: string) => {
-    await handleSetCategory(category, actionTarget)
-  }, [handleSetCategory, actionTarget])
-
-  const handleSetLocationWrapper = useCallback(async (location: string) => {
-    await handleSetLocation(location, actionTarget)
-  }, [handleSetLocation, actionTarget])
+  }, [runAction])
 
   const handleExport = () => {
-    void exportTorrents(actionTarget, backendSortField, sortOrder)
+    handleExportWrapper()
     setShowActionsSheet(false)
   }
 
@@ -1715,10 +1700,7 @@ export function TorrentCardsMobile({
         torrents={selectedTorrents}
         supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
         supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
-        onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode) => {
-          await handleSetShareLimit({ ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode }, actionTarget)
-          setShowShareLimitDialog(false)
-        }}
+        onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
       />
 
@@ -1728,10 +1710,7 @@ export function TorrentCardsMobile({
         onOpenChange={setShowSpeedLimitDialog}
         hashCount={effectiveSelectionCount}
         torrents={selectedTorrents}
-        onConfirm={async (uploadLimit, downloadLimit) => {
-          await handleSetSpeedLimits({ uploadLimit, downloadLimit }, actionTarget)
-          setShowSpeedLimitDialog(false)
-        }}
+        onConfirm={handleSetSpeedLimitsWrapper}
         isPending={isPending}
       />
 
@@ -1753,7 +1732,7 @@ export function TorrentCardsMobile({
         onOpenChange={setShowTmmDialog}
         count={effectiveSelectionCount}
         enable={pendingTmmEnable}
-        onConfirm={() => handleTmmConfirm(actionTarget)}
+        onConfirm={handleTmmConfirmWrapper}
         isPending={isPending}
       />
 
