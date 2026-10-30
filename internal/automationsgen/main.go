@@ -59,8 +59,8 @@ var keyValues = map[string][]string{
 	"ShareLimitsAction.shareLimitAction":   automations.ShareLimitActions,
 	"ShareLimitsAction.shareLimitsMode":    automations.ShareLimitsModes,
 	"ExportToInstanceAction.contentLayout": automations.ContentLayouts,
-	"SortingConfig.field":                  conditionFieldNames(func(f models.ConditionField) bool { return f.IsNumeric() || f.IsString() }),
-	"FieldMultiplierScoreRule.field":       conditionFieldNames(models.ConditionField.IsNumeric),
+	"SortingConfig.field":                  conditionFieldNames(automations.FieldSpec.Sortable),
+	"FieldMultiplierScoreRule.field":       conditionFieldNames(automations.FieldSpec.Scorable),
 	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath)},
 	"SortingConfig.type":                   {string(models.SortingTypeSimple), string(models.SortingTypeScore)},
 	"SortingConfig.direction":              {string(models.SortDirectionASC), string(models.SortDirectionDESC)},
@@ -117,10 +117,10 @@ var (
 )
 
 // conditionFieldNames returns the sorted names of the current condition fields for which keep returns true.
-func conditionFieldNames(keep func(models.ConditionField) bool) []string {
+func conditionFieldNames(keep func(automations.FieldSpec) bool) []string {
 	var names []string
 	for field, spec := range automations.ConditionFields {
-		if !spec.Legacy && keep(field) {
+		if !spec.Legacy && keep(spec) {
 			names = append(names, string(field))
 		}
 	}
@@ -300,7 +300,7 @@ func (g *generator) conditionSections(labels map[string]string) error {
 		return err
 	}
 
-	fields := conditionFieldNames(func(models.ConditionField) bool { return true })
+	fields := conditionFieldNames(func(automations.FieldSpec) bool { return true })
 	usedOperators := map[models.ConditionOperator]bool{models.OperatorAnd: true, models.OperatorOr: true}
 	for _, field := range fields {
 		for _, op := range automations.ConditionFields[automations.ConditionField(field)].Operators {
@@ -383,6 +383,12 @@ export const CONDITION_FIELDS = {
 		if spec.Legacy {
 			props = append(props, "legacy: true")
 		}
+		switch {
+		case spec.Sort.Number != nil:
+			props = append(props, `sort: "number"`)
+		case spec.Sort.Text != nil:
+			props = append(props, `sort: "text"`)
+		}
 		fmt.Fprintf(&b, "  %s: { %s },\n", field, strings.Join(props, ", "))
 	}
 	b.WriteString(`} as const satisfies Record<ConditionField, {
@@ -392,6 +398,7 @@ export const CONDITION_FIELDS = {
   values?: readonly string[]
   requires?: string
   legacy?: boolean
+  sort?: "number" | "text"
 }>
 `)
 	return b.Bytes()

@@ -1067,6 +1067,23 @@ func verifiedCrossSeedFileBytes(
 	return totalBytes, true
 }
 
+// sortFieldsError reports the first field of config that cannot sort or score.
+// unknown starts the error text for a simple sort field; rule validation and the sort word it differently.
+func sortFieldsError(config *models.SortingConfig, unknown string) error {
+	if config.Type == models.SortingTypeSimple && !ConditionFields[config.Field].Sortable() {
+		return fmt.Errorf("%s: %s", unknown, config.Field)
+	}
+	if config.Type != models.SortingTypeScore {
+		return nil
+	}
+	for _, r := range config.ScoreRules {
+		if r.Type == models.ScoreRuleTypeFieldMultiplier && r.FieldMultiplier != nil && !ConditionFields[r.FieldMultiplier.Field].Scorable() {
+			return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
+		}
+	}
+	return nil
+}
+
 // CalculateScore computes the weighted score for a torrent based on configuration.
 func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) float64 {
 	var totalScore float64
@@ -1079,9 +1096,9 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 		switch rule.Type {
 		case models.ScoreRuleTypeFieldMultiplier:
 			if rule.FieldMultiplier != nil && rule.FieldMultiplier.Field != "" {
-				val := getNumericFieldValue(torrent, rule.FieldMultiplier.Field, evalCtx)
-				points := val * rule.FieldMultiplier.Multiplier
-				totalScore += points
+				if read := ConditionFields[rule.FieldMultiplier.Field].Sort.Number; read != nil {
+					totalScore += read(torrent, evalCtx) * rule.FieldMultiplier.Multiplier
+				}
 			}
 
 		case models.ScoreRuleTypeConditional:
@@ -1110,11 +1127,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if !config.Field.IsNumeric() {
-				if !config.Field.IsString() {
-					return fmt.Errorf("unsupported sort field: %s", config.Field)
-				}
-			}
 		case models.SortingTypeScore:
 			if len(config.ScoreRules) == 0 {
 				return errors.New("score sort requires at least one rule")
@@ -1124,9 +1136,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 				case models.ScoreRuleTypeFieldMultiplier:
 					if r.FieldMultiplier == nil {
 						return fmt.Errorf("score rule %d: content missing for field multiplier", i)
-					}
-					if !r.FieldMultiplier.Field.IsNumeric() {
-						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 					}
 				case models.ScoreRuleTypeConditional:
 					if r.Conditional == nil {
@@ -1142,6 +1151,9 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		default:
 			return fmt.Errorf("unsupported sorting type: %s", config.Type)
 		}
+		if err := sortFieldsError(config, "unsupported sort field"); err != nil {
+			return err
+		}
 	}
 
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
@@ -1153,31 +1165,36 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		}
 	}
 
+	var sortValue SortValue
+	if config != nil && config.Type == models.SortingTypeSimple {
+		sortValue = ConditionFields[config.Field].Sort
+	}
+
 	sort.Slice(torrents, func(i, j int) bool {
-		return compareTorrents(torrents[i], torrents[j], config, scores, evalCtx)
+		return compareTorrents(torrents[i], torrents[j], config, sortValue, scores, evalCtx)
 	})
 
 	return nil
 }
 
 // compareTorrents is a helper function that returns true if t1 should sort before t2.
-func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores map[string]float64, evalCtx *EvalContext) bool {
+func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, sortValue SortValue, scores map[string]float64, evalCtx *EvalContext) bool {
 	// 1. Primary Sort
 	if config != nil {
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if config.Field.IsNumeric() {
-				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
-				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
+			if sortValue.Number != nil {
+				v1 := sortValue.Number(t1, evalCtx)
+				v2 := sortValue.Number(t2, evalCtx)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
 					}
 					return v1 > v2
 				}
-			} else {
-				v1, _ := extractStringValue(t1, config.Field)
-				v2, _ := extractStringValue(t2, config.Field)
+			} else if sortValue.Text != nil {
+				v1 := sortValue.Text(t1)
+				v2 := sortValue.Text(t2)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
@@ -1217,88 +1234,6 @@ func getNowUnix(evalCtx *EvalContext) int64 {
 	return time.Now().Unix()
 }
 
-// getNumericFieldValue returns the float64 representation of a field for scoring.
-// Returns 0 if field is not numeric or not found.
-//
-//nolint:exhaustive // Only numeric sort fields are supported.
-func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
-	switch field {
-	case models.FieldSize:
-		return float64(t.Size)
-	case models.FieldTotalSize:
-		return float64(t.TotalSize)
-	case models.FieldDownloaded:
-		return float64(t.Downloaded)
-	case models.FieldUploaded:
-		return float64(t.Uploaded)
-	case models.FieldAmountLeft:
-		return float64(t.AmountLeft)
-	case models.FieldFreeSpace:
-		if evalCtx != nil && evalCtx.FreeSpace > 0 {
-			return float64(evalCtx.FreeSpace)
-		}
-		return 0
-	case models.FieldAddedOn:
-		if t.AddedOn <= 0 {
-			return 0
-		}
-		return float64(t.AddedOn)
-	case models.FieldCompletionOn:
-		return float64(qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn))
-	case models.FieldLastActivity:
-		if t.LastActivity <= 0 {
-			return 0
-		}
-		return float64(t.LastActivity)
-	case models.FieldSeedingTime:
-		if t.SeedingTime <= 0 {
-			return 0
-		}
-		return float64(t.SeedingTime)
-	case models.FieldTimeActive:
-		if t.TimeActive <= 0 {
-			return 0
-		}
-		return float64(t.TimeActive)
-	case models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge:
-		return getAgeFieldValue(evalCtx, field, t)
-	case models.FieldRatio:
-		return t.Ratio
-	case models.FieldProgress:
-		return t.Progress * 100
-	case models.FieldAvailability:
-		return t.Availability
-	case models.FieldDlSpeed:
-		return float64(t.DlSpeed)
-	case models.FieldUpSpeed:
-		return float64(t.UpSpeed)
-	case models.FieldNumSeeds:
-		return float64(t.NumSeeds)
-	case models.FieldNumLeechs:
-		return float64(t.NumLeechs)
-	case models.FieldNumComplete:
-		return float64(t.NumComplete)
-	case models.FieldNumIncomplete:
-		return float64(t.NumIncomplete)
-	case models.FieldTrackersCount:
-		return float64(t.TrackersCount)
-	case models.FieldSystemHour:
-		return float64(evaluateTime(evalCtx).Hour())
-	case models.FieldSystemMinute:
-		return float64(evaluateTime(evalCtx).Minute())
-	case models.FieldSystemDayOfWeek:
-		return float64(evaluateTime(evalCtx).Weekday())
-	case models.FieldSystemDay:
-		return float64(evaluateTime(evalCtx).Day())
-	case models.FieldSystemMonth:
-		return float64(evaluateTime(evalCtx).Month())
-	case models.FieldSystemYear:
-		return float64(evaluateTime(evalCtx).Year())
-	default:
-		return 0
-	}
-}
-
 //nolint:exhaustive // Only age-backed fields are supported.
 func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
 	var ts int64
@@ -1316,28 +1251,4 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 		return 0
 	}
 	return float64(getNowUnix(evalCtx) - ts)
-}
-
-//nolint:exhaustive // Only string sort fields are supported.
-func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
-	switch field {
-	case models.FieldName:
-		return strings.ToLower(t.Name), true
-	case models.FieldCategory:
-		return strings.ToLower(t.Category), true
-	case models.FieldTags:
-		return strings.ToLower(t.Tags), true
-	case models.FieldTracker:
-		return strings.ToLower(t.Tracker), true
-	case models.FieldState:
-		return strings.ToLower(string(t.State)), true
-	case models.FieldSavePath:
-		return strings.ToLower(t.SavePath), true
-	case models.FieldContentPath:
-		return strings.ToLower(t.ContentPath), true
-	case models.FieldComment:
-		return strings.ToLower(t.Comment), true
-	default:
-		return "", false
-	}
 }

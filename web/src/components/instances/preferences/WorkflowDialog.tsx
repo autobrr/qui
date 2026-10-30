@@ -10,6 +10,8 @@ import {
   CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
+  SCORE_FIELDS,
+  SORT_FIELDS,
   STATE_VALUE_REQUIREMENTS,
   getCapabilityReason,
   type Capabilities,
@@ -239,80 +241,18 @@ function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof
     .map(([value, capability]) => ({ value, reason: getCapabilityReason(capability, t) }))
 }
 
-const SIMPLE_SORT_FIELD_SET = new Set<ConditionField>([
-  "SIZE",
-  "TOTAL_SIZE",
-  "DOWNLOADED",
-  "UPLOADED",
-  "AMOUNT_LEFT",
-  "FREE_SPACE",
-  "ADDED_ON",
-  "COMPLETION_ON",
-  "LAST_ACTIVITY",
-  "SEEDING_TIME",
-  "TIME_ACTIVE",
-  "ADDED_ON_AGE",
-  "COMPLETION_ON_AGE",
-  "LAST_ACTIVITY_AGE",
-  "RATIO",
-  "PROGRESS",
-  "AVAILABILITY",
-  "DL_SPEED",
-  "UP_SPEED",
-  "NUM_SEEDS",
-  "NUM_LEECHS",
-  "NUM_COMPLETE",
-  "NUM_INCOMPLETE",
-  "TRACKERS_COUNT",
-  "NAME",
-  "CATEGORY",
-  "TAGS",
-  "TRACKER",
-  "STATE",
-  "SAVE_PATH",
-  "CONTENT_PATH",
-  "COMMENT",
-])
-
-const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
-  "SIZE",
-  "TOTAL_SIZE",
-  "DOWNLOADED",
-  "UPLOADED",
-  "AMOUNT_LEFT",
-  "FREE_SPACE",
-  "ADDED_ON",
-  "COMPLETION_ON",
-  "LAST_ACTIVITY",
-  "SEEDING_TIME",
-  "TIME_ACTIVE",
-  "ADDED_ON_AGE",
-  "COMPLETION_ON_AGE",
-  "LAST_ACTIVITY_AGE",
-  "RATIO",
-  "PROGRESS",
-  "AVAILABILITY",
-  "DL_SPEED",
-  "UP_SPEED",
-  "NUM_SEEDS",
-  "NUM_LEECHS",
-  "NUM_COMPLETE",
-  "NUM_INCOMPLETE",
-  "TRACKERS_COUNT",
-])
-
 const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
-  .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
+  .filter(field => !SORT_FIELDS.has(field as ConditionField))
 
 const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
-  .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
+  .filter(field => !SCORE_FIELDS.has(field as ConditionField))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
-  return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
+  return SORT_FIELDS.has(field as ConditionField)
 }
 
 function isSupportedScoreMultiplierField(field: string): field is ConditionField {
-  return SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField)
+  return SCORE_FIELDS.has(field as ConditionField)
 }
 
 
