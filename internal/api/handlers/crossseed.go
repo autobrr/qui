@@ -853,6 +853,7 @@ func mapCrossSeedErrorStatus(err error) int {
 	case errors.Is(err, crossseed.ErrInvalidRequest),
 		errors.Is(err, crossseed.ErrTorrentNotFound),
 		errors.Is(err, crossseed.ErrTorrentNotComplete),
+		errors.Is(err, crossseed.ErrSourceNotSettled),
 		errors.Is(err, crossseed.ErrNoIndexersConfigured):
 		return http.StatusBadRequest
 	default:

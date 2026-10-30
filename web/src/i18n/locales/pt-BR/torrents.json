@@ -1680,6 +1680,7 @@
         "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
         "target_not_found": "Destino não encontrado nesta instância.",
         "incomplete": "O download do destino está incompleto.",
+        "not_settled": "Este torrent ainda está sendo movido ou verificado. Tente novamente quando terminar.",
         "no_episode_identity": "Não foi possível reconhecer o número do episódio.",
         "file_list_unavailable": "A lista de arquivos do destino não está disponível.",
         "episode_file_invalid": "O destino deve conter um arquivo reproduzível com a identidade do episódio selecionado.",

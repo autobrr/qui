@@ -1333,14 +1333,15 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
-		// the pack (announce raced the episode's download).
-		if torrent.Progress < 1.0 {
+		// the pack (announce raced the episode's download or its move).
+		if !s.canGiveFiles(torrent) {
 			log.Debug().
 				Str("pack", packRelease.Title).
 				Int("season", packRelease.Series).
 				Str("candidate", torrent.Name).
-				Str("reason", "incomplete download").
+				Str("reason", "source not settled").
 				Float64("progress", torrent.Progress).
+				Str("state", string(torrent.State)).
 				Msg("[CROSSSEED-MATCH] Release filtered")
 			continue
 		}
