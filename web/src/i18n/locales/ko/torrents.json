@@ -954,7 +954,6 @@
     "torrentCount_other": "토렌트 {{count}}개",
     "torrentsLoaded": "토렌트 {{total}}개 중 {{loaded}}개 로드됨",
     "scrollForMore": "(더 보려면 스크롤)",
-    "loading": "불러오는 중...",
     "freeSpace": "여유 공간",
     "switchToBits": "초당 비트(bps)로 전환",
     "switchToBytes": "초당 바이트(B/s)로 전환",

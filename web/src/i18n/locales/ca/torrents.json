@@ -558,7 +558,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregats",
     "scrollForMore": "(desplaça't per veure'n més)",
-    "loading": "S'està carregant...",
     "freeSpace": "Espai lliure",
     "switchToBits": "Canvia a bits per segon (bps)",
     "switchToBytes": "Canvia a bytes per segon (B/s)",

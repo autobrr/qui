@@ -1078,7 +1078,6 @@
     "torrentCount_other": "{{count}} torrenty",
     "torrentsLoaded": "{{loaded}} z {{total}} torrentů načteno",
     "scrollForMore": "(skrolovat pro více)",
-    "loading": "Načítání...",
     "freeSpace": "Volné místo",
     "switchToBits": "Přepnout na bitů za sekundu (bps)",
     "switchToBytes": "Přepnout na bajtů za sekundu (B/s)",

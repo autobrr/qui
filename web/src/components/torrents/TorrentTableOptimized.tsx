@@ -8,7 +8,6 @@ import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappe
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
-import { useFilterLifecycle } from "@/hooks/torrent-table/useFilterLifecycle"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
@@ -30,7 +29,7 @@ import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListController, useTorrentListCrossSeed } from "@/hooks/useTorrentListController"
-import { hasSidebarFilters } from "@/lib/filter-views"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
@@ -343,12 +342,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const navigate = useNavigate()
 
-  const {
-    effectiveSearch,
-    columnFiltersExpr,
-    lastUserAction,
-    setLastUserAction,
-  } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
+  const { effectiveSearch, columnFiltersExpr } = useTorrentTableFilterExpr({ filters, columnFilters })
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
@@ -371,7 +365,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isStaleData,
     isLoadingMore,
     hasLoadedAll,
-    loadMore: backendLoadMore,
+    loadedRows,
+    hasMoreRows,
+    reportNearEnd,
+    listKey,
     streamConnected,
     streamMeta,
     isStreaming,
@@ -701,7 +698,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     activeSortField,
     activeSortOrder,
     setSorting,
-    setLastUserAction,
   })
 
   const {
@@ -843,17 +839,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     virtualizer,
     virtualRows,
     safeLoadedRows,
-    loadMore,
-    loadedRows,
-    setLoadedRows,
-    setIsLoadingMoreRows,
   } = useTorrentTableVirtualization({
     rows,
     desktopViewMode,
     sortedTorrentsLength: sortedTorrents.length,
+    loadedRows,
+    hasMoreRows,
+    reportNearEnd,
     hasLoadedAll,
     isLoadingMore,
-    backendLoadMore,
   })
 
   // Layout effect so the first paint already has the stretched Name width.
@@ -881,52 +875,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnVisibility, effectiveColumnSizing])
 
-  const { clearFiltersAtomically } = useFilterLifecycle({
-    virtualizer,
-    sortedTorrentsLength: sortedTorrents.length,
-    onFilterChange,
-    setColumnFilters,
-    setLoadedRows,
-    isCrossSeedFiltering,
-    columnFiltersLength: columnFilters.length,
-    visibleRowCount: rows.length,
-    loadedRows,
-  })
+  const clearAllFilters = useCallback(() => {
+    setColumnFilters([])
+    onFilterChange?.(EMPTY_SIDEBAR_FILTERS)
+  }, [setColumnFilters, onFilterChange])
 
-  // Reset when filters or search changes
+  // The controller starts the list again at the first rows; scroll to them.
   useEffect(() => {
-    // Only reset loadedRows for user-initiated changes, not data updates
-    const isRecentUserAction = lastUserAction && (Date.now() - lastUserAction.timestamp < 1000)
-
-    if (isRecentUserAction) {
-      const targetRows = Math.min(100, sortedTorrents.length || 0)
-      setLoadedRows(targetRows)
-      setIsLoadingMoreRows(false)
-
-      // User-initiated change: scroll to top
-      if (parentRef.current) {
-        parentRef.current.scrollTop = 0
-        setTimeout(() => {
-          virtualizer.scrollToOffset(0)
-          virtualizer.measure()
-        }, 0)
-      }
-    } else {
-      // Data update only: just remeasure without resetting loadedRows
-      setTimeout(() => {
-        virtualizer.measure()
-      }, 0)
+    if (parentRef.current) {
+      parentRef.current.scrollTop = 0
     }
-    // setLoadedRows / setIsLoadingMoreRows are stable setters from the virtualization
-    // hook; intentionally omitted to preserve the original effect's re-run timing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction])
+    virtualizer.scrollToOffset(0)
+  }, [listKey, parentRef, virtualizer])
 
   useTorrentTableArrowNavigation({
     rows,
     virtualizer,
     safeLoadedRows,
-    loadMore,
+    loadMore: reportNearEnd,
     isReadOnly,
     selectedTorrent,
     selectedKeys,
@@ -1207,7 +1173,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             variant="outline"
                             size="icon"
                             className="relative mr-1"
-                            onClick={() => clearFiltersAtomically("columns-only")}
+                            onClick={() => setColumnFilters([])}
                           >
                             <X className="h-4 w-4" />
                             <span className="sr-only">{t("tableView.clearAllColumnFilters", { count: columnFilters.length })}</span>
@@ -1327,7 +1293,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 <TorrentListEmptyState
                   hasFilters={hasFilterControls}
                   hasSearch={hasSearchQuery}
-                  onClearFilters={() => clearFiltersAtomically("all")}
+                  onClearFilters={clearAllFilters}
                 />
               </div>
             )}

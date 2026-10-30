@@ -1138,7 +1138,6 @@
     "torrentCount_other": "{{count}} торенти",
     "torrentsLoaded": "Завантажено торенти {{loaded}} з {{total}}",
     "scrollForMore": "(прокрутіть, щоб дізнатися більше)",
-    "loading": "Завантаження...",
     "freeSpace": "Вільний простір",
     "switchToBits": "Перейти на біт в секунду (біт/с)",
     "switchToBytes": "Перейти до байтів за секунду (B/s)",

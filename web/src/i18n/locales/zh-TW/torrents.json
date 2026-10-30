@@ -954,7 +954,6 @@
     "torrentCount_other": "{{count}} 個種子",
     "torrentsLoaded": "已載入 {{loaded}}/{{total}} 個種子",
     "scrollForMore": "（捲動載入更多）",
-    "loading": "載入中...",
     "freeSpace": "可用空間",
     "switchToBits": "切換到每秒位元（bps）",
     "switchToBytes": "切換到每秒位元組（B/s）",
