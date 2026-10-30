@@ -280,7 +280,7 @@ export function WorkflowPreviewDialog({
     () => createDynamicColumns(
       t,
       (value: string) => getStateLabel(value, tTorrents),
-      (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, { ns: "automations" })
+      (value: string) => i18n.t([`queryBuilder.hardlinkScopes.${value}`, "common:status.unknown"], { ns: "automations" })
     ),
     [i18n, t, tTorrents]
   )
