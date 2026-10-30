@@ -5,7 +5,6 @@
 - Review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
   - When a published spec or format defines the logic, keep the well-proven library. It outranks the no-new-dependency rule of ponytail. See `docs/standards/simplicity.md`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- Never add AI advertising/attribution/co-author lines.
 
 ## Review feedback
 
