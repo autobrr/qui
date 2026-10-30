@@ -6,6 +6,16 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const torrentListImportPatterns = [{
+  regex: '(^|/)useTorrentsList$',
+  allowTypeImports: true,
+  message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+}, {
+  // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
+  regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
+  message: 'The list controller owns this. Use useTorrentListController or useTorrentListActions from "@/hooks/useTorrentListController" instead.',
+}]
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -55,15 +65,7 @@ export default tseslint.config([
     ],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [{
-          regex: '(^|/)useTorrentsList$',
-          allowTypeImports: true,
-          message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
-        }, {
-          // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
-          regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
-          message: 'The list controller owns this. Use useTorrentListController or useTorrentListActions from "@/hooks/useTorrentListController" instead.',
-        }, {
+        patterns: [...torrentListImportPatterns, {
           regex: '^@radix-ui/react-(alert-)?dialog$',
           allowTypeImports: true,
           message: 'Use @/components/ui/dialog or @/components/ui/alert-dialog.',
@@ -72,9 +74,10 @@ export default tseslint.config([
     },
   },
   {
+    // The shared dialog components wrap Radix, so only the Radix pattern is lifted here.
     files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
     rules: {
-      'no-restricted-imports': 'off',
+      'no-restricted-imports': ['error', { patterns: torrentListImportPatterns }],
     },
   },
   {
