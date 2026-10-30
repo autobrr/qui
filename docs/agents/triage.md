@@ -46,7 +46,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 
 ## Steps
 
-1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `pending-close`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. The exception is a local session on a `ready-for-human` discussion whose last triage comment is a log hand-off: continue, and fetch the logs. If it carries `pending-close` and a human commented after the last triage comment, follow "Reply to a likely duplicate". If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If the missing information is in logs behind a log link, use the log hand-off in `ready-for-human` instead. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
+1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `pending-close`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. The exception is a local session on a `ready-for-human` discussion whose last triage comment is a log hand-off: continue, and fetch the logs. If it carries `pending-close` and the reporter commented after the last triage comment, follow "Reply to a likely duplicate". If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If the missing information is in logs behind a log link, use the log hand-off in `ready-for-human` instead. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
 2. Read `GLOSSARY.md`, `docs/architecture.md`, and the ADRs in `docs/adr/` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
@@ -94,9 +94,9 @@ List one to four candidates. Leave out a candidate that you would not link to th
 
 #### Reply to a likely duplicate
 
-A human commented on a `pending-close` discussion. Read the comment and do one of these:
+The reporter commented on a `pending-close` discussion. Read the comment and do one of these:
 
-- If the comment says how the report differs, remove `pending-close` and add `needs-triage`. Then continue with step 2, and use the difference that the comment gave.
+- If the reporter says how the report differs, remove `pending-close` and add `needs-triage`. Then continue with step 2, and use the difference that the reporter gave.
 - If the reporter agrees that it is a duplicate, add `wontfix` and remove `pending-close`. Post a comment that links the original and ends with `<!-- qui-triage:duplicate -->`. Then `close DUPLICATE`.
 - In all other cases, write nothing. The daily sweep closes the discussion 1 day after the comment.
 
