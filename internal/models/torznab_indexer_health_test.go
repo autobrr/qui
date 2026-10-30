@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
+// regression: #2714
 func TestTorznabIndexerHealthParsesSQLiteAggregateTimestamps(t *testing.T) {
 	t.Parallel()
 
