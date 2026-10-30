@@ -123,7 +123,7 @@ test-frontend:
 # Validate OpenAPI specification
 test-openapi:
 	@echo "Validating OpenAPI specification..."
-	go test -v ./internal/web/swagger
+	go test -count=1 -v ./internal/web/swagger
 
 # Format changed code only (fast, for iteration)
 fmt:
@@ -242,7 +242,7 @@ lint-ratchet:
 # Lint with JSON output (for AI agent consumption)
 lint-json:
 	@echo "Generating lint report..."
-	golangci-lint run --new-from-merge-base=main --output.json.path=./lint-report.json --timeout=5m || true
+	golangci-lint run --new-from-merge-base=develop --output.json.path=./lint-report.json --timeout=5m || true
 	@echo "Lint report saved to lint-report.json"
 
 # Lint with auto-fix where possible
