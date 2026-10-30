@@ -643,7 +643,11 @@ func TestParsePathReplace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, PathReplace{From: `D:\Downloads`, To: to}, r)
 
-	for _, rule := range []string{`D:\Downloads`, `D:\Downloads=`, "=" + to, `D:\Downloads=data`} {
+	r, err = ParsePathReplace("/=" + to)
+	require.NoError(t, err)
+	assert.Equal(t, PathReplace{From: "/", To: to}, r)
+
+	for _, rule := range []string{`D:\Downloads`, `D:\Downloads=`, "=" + to, `D:\Downloads=data`, `\\=` + to, `\=` + to, "//=" + to} {
 		_, err := ParsePathReplace(rule)
 		assert.Error(t, err, rule)
 	}

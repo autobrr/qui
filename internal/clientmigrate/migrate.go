@@ -51,6 +51,11 @@ func ParsePathReplace(rule string) (PathReplace, error) {
 		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not an absolute path on this OS", rule, to)
 	}
 
+	// only / may match every path, \\ or // would rewrite them all
+	if from != "/" && strings.Trim(from, `/\`) == "" {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not a usable source path", rule, from)
+	}
+
 	return PathReplace{From: from, To: to}, nil
 }
 
