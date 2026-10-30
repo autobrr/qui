@@ -1365,6 +1365,10 @@ var ErrTorrentNotFound = errors.New("cross-seed torrent not found")
 // ErrTorrentNotComplete indicates the torrent is not 100% complete and cannot be used for cross-seeding yet.
 var ErrTorrentNotComplete = errors.New("cross-seed torrent not fully downloaded")
 
+// ErrSourceNotSettled indicates qBittorrent is moving or checking the source
+// torrent. The Manual match dialog shows the text as is.
+var ErrSourceNotSettled = errors.New("This torrent is still moving or being checked. Try again when it is done.") //nolint:revive,staticcheck // the user reads this text
+
 // ErrBlocklistEntryNotFound indicates a requested blocklist entry does not exist.
 var ErrBlocklistEntryNotFound = errors.New("cross-seed blocklist entry not found")
 
@@ -1493,6 +1497,19 @@ func (s *Service) shouldSkipErroredTorrent(state qbt.TorrentState) bool {
 		return false
 	}
 	return state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles
+}
+
+// isSettledSource reports whether a source torrent is complete and qBittorrent
+// is not moving or checking it. A moving torrent still reports the content path
+// of its download path, so a cross-seed added from it misses its files.
+func isSettledSource(torrent *qbt.Torrent) bool {
+	return torrent.Progress >= 1 && !isCompletionCheckingState(torrent.State)
+}
+
+// canGiveFiles reports whether a source torrent can give files to a cross-seed
+// now: it is settled and not skipped for an error.
+func (s *Service) canGiveFiles(torrent *qbt.Torrent) bool {
+	return isSettledSource(torrent) && !s.shouldSkipErroredTorrent(torrent.State)
 }
 
 func (s *Service) ensureIndexersConfigured(ctx context.Context) error {
@@ -3967,7 +3984,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 		}
 		for i := range snapshot.torrents {
 			torrent := &snapshot.torrents[i]
-			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) || !matchesRSSSourceFilters(torrent, settings) {
+			if !s.canGiveFiles(torrent) || !matchesRSSSourceFilters(torrent, settings) {
 				continue
 			}
 			if sourceSize := searchSourceSize(torrent); sourceSize <= 0 || sourceSize != result.Size {
@@ -4316,13 +4333,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		// Pre-filter torrents before loading files to reduce downstream work
 		for _, torrent := range torrents {
-			// Only complete torrents can provide data
-			if torrent.Progress < 1.0 {
-				continue
-			}
-
-			// Skip errored torrents when recovery is disabled
-			if s.shouldSkipErroredTorrent(torrent.State) {
+			if !s.canGiveFiles(&torrent) {
 				continue
 			}
 
@@ -4560,6 +4571,9 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	candidatesResp, err := s.FindCandidates(ctx, findReq)
+	if errors.Is(err, ErrSourceNotSettled) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to find candidates: %w", err)
 	}
@@ -4877,11 +4891,11 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 }
 
 // autobrrApplySources yields the local torrents that autobrr apply can use as
-// its source: complete, with no error, and inside the webhook source filters.
+// its source: settled, with no error, and inside the webhook source filters.
 func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
 	return func(yield func(*qbt.Torrent) bool) {
 		for torrent := range viewTorrents(torrents) {
-			if torrent.Progress >= 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+			if s.canGiveFiles(torrent) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
 				return
 			}
 		}
@@ -11607,6 +11621,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					continue
 				}
 			}
+			// An errored source with recovery off cannot finish without the user, so
+			// it is no match at any progress.
+			if s.shouldSkipErroredTorrent(torrent.State) {
+				continue
+			}
 			match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, req.Size, announcementMatchPolicy{
 				findIndividualEpisodes: findIndividualEpisodes,
 				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
@@ -11638,10 +11657,18 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			}
 			matches = append(matches, match)
 
-			if torrent.Progress >= 1.0 {
+			if isSettledSource(torrent) {
 				hasCompleteMatch = true
-			} else {
-				hasPendingMatch = true
+				continue
+			}
+			hasPendingMatch = true
+			if torrent.Progress >= 1 {
+				log.Debug().
+					Str("source", "cross-seed.webhook").
+					Int("instanceId", instance.ID).
+					Str("existingName", torrent.Name).
+					Str("state", string(torrent.State)).
+					Msg("Webhook check: source is not settled, answering pending")
 			}
 		}
 

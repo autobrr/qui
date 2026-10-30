@@ -1576,6 +1576,7 @@
         "no_episode_files": "No s'ha trobat cap fitxer d'episodi reproduïble en aquest pack.",
         "target_not_found": "No s'ha trobat la destinació en aquesta instància.",
         "incomplete": "La baixada de la destinació és incompleta.",
+        "not_settled": "Aquest torrent encara s'està movent o comprovant. Torneu-ho a provar quan acabi.",
         "no_episode_identity": "No s'ha pogut interpretar el número d'episodi.",
         "file_list_unavailable": "La llista de fitxers de la destinació no està disponible.",
         "episode_file_invalid": "La destinació ha de contenir un fitxer reproduïble amb la identitat d'episodi seleccionada.",

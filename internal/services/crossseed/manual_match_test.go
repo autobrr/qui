@@ -316,6 +316,7 @@ func TestManualMatchProposals(t *testing.T) {
 	partialOverlap := qbt.Torrent{Hash: "2222222222222222222222222222222222222222", Name: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI", SavePath: "/downloads", Progress: 1, Size: fileSizes[0]}
 	noOverlap := qbt.Torrent{Hash: "3333333333333333333333333333333333333333", Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 999_999}
 	incomplete := qbt.Torrent{Hash: "4444444444444444444444444444444444444444", Name: "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-AAA", SavePath: "/downloads", Progress: 0.4, Size: meta.Info.TotalLength()}
+	moving := qbt.Torrent{Hash: "5555555555555555555555555555555555555555", Name: "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-BBB", SavePath: "/downloads", Progress: 1, State: qbt.TorrentStateMoving, Size: meta.Info.TotalLength()}
 
 	files := map[string]qbt.TorrentFiles{
 		fullOverlap.Hash: {
@@ -324,9 +325,13 @@ func TestManualMatchProposals(t *testing.T) {
 		},
 		partialOverlap.Hash: {{Name: "E01.mkv", Size: fileSizes[0]}},
 		noOverlap.Hash:      {{Name: "other.mkv", Size: 999_999}},
+		moving.Hash: {
+			{Name: "pack/E01.mkv", Size: fileSizes[0]},
+			{Name: "pack/E02.mkv", Size: fileSizes[1]},
+		},
 	}
 
-	svc := manualMatchTestService(instance, []qbt.Torrent{fullOverlap, partialOverlap, noOverlap, incomplete}, files)
+	svc := manualMatchTestService(instance, []qbt.Torrent{fullOverlap, partialOverlap, noOverlap, incomplete, moving}, files)
 
 	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, "")
 	require.NoError(t, err)
@@ -338,6 +343,7 @@ func TestManualMatchProposals(t *testing.T) {
 	require.InDelta(t, 1.0, resp.Proposals[0].OverlapFraction, 0.001)
 	for _, p := range resp.Proposals {
 		require.NotEqual(t, incomplete.Hash, p.Hash, "incomplete torrents are not proposable")
+		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable") // regression: #3626
 		require.NotEqual(t, noOverlap.Hash, p.Hash, "zero-overlap torrents are not proposed")
 	}
 	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
@@ -518,4 +524,33 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 			require.Equal(t, tt.want, resp.PinnedCategory)
 		})
 	}
+}
+
+// regression: #3626
+func TestCrossSeedManualTargetRefusesSourceThatIsNotSettled(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		targetHash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		name       = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
+		size       = int64(4 << 20)
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	target := qbt.Torrent{
+		Hash: targetHash, Name: name, Size: size, Progress: 1, State: qbt.TorrentStateMoving,
+		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
+	}
+	svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{targetHash: {{Name: name + ".mkv", Size: size}}})
+	sync := &recordingApplySyncManager{applyFakeSyncManager: svc.syncManager.(*applyFakeSyncManager)}
+	svc.syncManager = sync
+	withAdder(svc)
+
+	_, err := svc.CrossSeed(t.Context(), &CrossSeedRequest{
+		TorrentData:       base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, name, name+".mkv", size)),
+		TargetInstanceIDs: []int{instanceID},
+		ManualTargetHash:  targetHash,
+	})
+	require.EqualError(t, err, "This torrent is still moving or being checked. Try again when it is done.")
+	require.Empty(t, sync.addOptions)
 }
