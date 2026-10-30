@@ -689,10 +689,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSet), cond)
 	case FieldSeasonPackStatusAnyInstance:
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSetAnyInstance), cond)
-
-	default:
-		return false
 	}
+	return false
 }
 
 func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {

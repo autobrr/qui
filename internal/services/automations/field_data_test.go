@@ -149,6 +149,16 @@ func TestNeedsFor(t *testing.T) {
 	}
 }
 
+// Without an eval context, no field that needs extra data has it. A field that
+// the shortcut in conditionDataKnown leaves out reports known here.
+func TestConditionDataKnown_NoContextIsUnknown(t *testing.T) {
+	for field, data := range conditionFieldData {
+		if data.known != nil {
+			require.False(t, conditionDataKnown(field, "hash", nil), field)
+		}
+	}
+}
+
 func TestCrossSeedFields_ConfirmedPositiveSurvivesUnreadCandidate(t *testing.T) {
 	t.Parallel()
 	torrent := qbt.Torrent{Hash: "source"}

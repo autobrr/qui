@@ -31,6 +31,17 @@ function getFieldSpec(field: string): FieldSpec {
   return Object.hasOwn(CONDITION_FIELDS, field) ? CONDITION_FIELDS[field as ConditionField] : UNKNOWN_FIELD;
 }
 
+function sortKind(field: ConditionField): "number" | "text" | undefined {
+  return (CONDITION_FIELDS[field] as { sort?: "number" | "text" }).sort;
+}
+
+// The fields that the sort dropdown and the score dropdown of a workflow offer. A clock field gives every
+// torrent the same value, so the dropdowns leave it out. The backend still accepts it.
+export const SORT_FIELDS: ReadonlySet<ConditionField> = new Set((Object.keys(CONDITION_FIELDS) as ConditionField[])
+  .filter((field) => sortKind(field) !== undefined && !field.startsWith("SYSTEM_")));
+
+export const SCORE_FIELDS: ReadonlySet<ConditionField> = new Set([...SORT_FIELDS].filter((field) => sortKind(field) === "number"));
+
 // The field type picks the value input of a condition.
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
 
