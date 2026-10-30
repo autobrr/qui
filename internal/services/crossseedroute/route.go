@@ -1,0 +1,244 @@
+// Copyright (c) 2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+// Package crossseedroute holds the cross-seed routes from a Source instance to
+// its Cross-seed instance (ADR 0035), the availability check, and the route
+// rules. Orphan scan, automations, Dir Scan, and cross-seed all read it.
+package crossseedroute
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathcmp"
+)
+
+// ErrUnavailable marks an instance that is offline, turned off in qui, or,
+// for an add or a listing, older than qBittorrent 5.0.
+var ErrUnavailable = errors.New("instance unavailable")
+
+// RuleError is a route that breaks a route rule. Err is the cause, if any.
+type RuleError struct {
+	Message string
+	Err     error
+}
+
+func (e *RuleError) Error() string { return e.Message }
+func (e *RuleError) Unwrap() error { return e.Err }
+
+func broken(format string, args ...any) error {
+	return &RuleError{Message: fmt.Sprintf(format, args...)}
+}
+
+type instanceGetter interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
+// Service reads and saves routes. The embedded store gives the plain reads.
+type Service struct {
+	*models.CrossSeedRouteStore
+	instances instanceGetter
+	clients   *qbittorrent.ClientPool
+	backends  *fsops.Pool
+}
+
+func NewService(store *models.CrossSeedRouteStore, instances instanceGetter, clients *qbittorrent.ClientPool, backends *fsops.Pool) *Service {
+	return &Service{CrossSeedRouteStore: store, instances: instances, clients: clients, backends: backends}
+}
+
+// CheckAvailable returns an ErrUnavailable error when qui cannot use the
+// instance. An instance turned off in qui also matches
+// qbittorrent.ErrInstanceDisabled. forListing adds the qBittorrent 5.0
+// (WebAPI 2.11.2) need of a directory listing, for an add or a listing.
+func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing bool) error {
+	instance, err := s.instances.Get(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+	if !instance.IsActive {
+		return fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, qbittorrent.ErrInstanceDisabled)
+	}
+	client, err := s.clients.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, err)
+	}
+	if !forListing {
+		return nil
+	}
+	if client.GetWebAPIVersion() == "" {
+		if err := client.RefreshCapabilities(ctx); err != nil {
+			return fmt.Errorf("%w: %s: read the qBittorrent version: %w", ErrUnavailable, instance.Name, err)
+		}
+	}
+	if !client.SupportsPathAutocomplete() {
+		return fmt.Errorf("%w: %s runs a qBittorrent version older than 5.0", ErrUnavailable, instance.Name)
+	}
+	return nil
+}
+
+// Check returns a *RuleError when route breaks a route rule. Any other error
+// is a failed read, such as models.ErrInstanceNotFound.
+func (s *Service) Check(ctx context.Context, route *models.CrossSeedRoute) error {
+	_, err := s.check(ctx, route)
+	return err
+}
+
+// Save stores route after the route rules pass, with each base folder key
+// cleaned.
+func (s *Service) Save(ctx context.Context, route *models.CrossSeedRoute) (*models.CrossSeedRoute, error) {
+	rows, err := s.check(ctx, route)
+	if err != nil {
+		return nil, err
+	}
+	saved := &models.CrossSeedRoute{SourceInstanceID: route.SourceInstanceID, CrossSeedInstanceID: route.CrossSeedInstanceID, Rows: rows}
+	if err := s.Upsert(ctx, saved); err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
+// check runs the route rules in order and returns the rows with clean keys.
+func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]models.CrossSeedRouteRow, error) {
+	source, err := s.instances.Get(ctx, route.SourceInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	crossSeed, err := s.instances.Get(ctx, route.CrossSeedInstanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !source.UseHardlinks && !source.UseReflinks || len(splitBaseDirs(source.HardlinkBaseDir)) == 0 {
+		return nil, broken("%s must use hardlink or reflink mode with at least one base folder", source.Name)
+	}
+	switch {
+	case models.FilesystemAccessMode(source) == models.FilesystemModeRemote:
+		return nil, broken("%s is a remote instance and cannot route its cross-seeds", source.Name)
+	case !models.FilesystemCapabilitiesOf(source).Write || models.FilesystemAccessMode(source) != models.FilesystemModeLocal:
+		return nil, broken("%s needs Local Filesystem Access to route its cross-seeds", source.Name)
+	}
+	if crossSeed.ID == source.ID {
+		return nil, broken("%s cannot be its own Cross-seed instance", source.Name)
+	}
+	if own, err := s.Get(ctx, crossSeed.ID); err != nil {
+		return nil, err
+	} else if own != nil {
+		return nil, broken("%s routes its own cross-seeds, so it cannot be a Cross-seed instance", crossSeed.Name)
+	}
+	sources, err := s.ListSources(ctx, source.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(sources) > 0 {
+		return nil, broken("%s is the Cross-seed instance of another instance, so it cannot route its cross-seeds", source.Name)
+	}
+	if models.FilesystemAccessMode(crossSeed) == models.FilesystemModeRemote {
+		return nil, broken("%s is a remote instance and cannot be a Cross-seed instance", crossSeed.Name)
+	}
+	if err := s.CheckAvailable(ctx, crossSeed.ID, true); err != nil {
+		if !errors.Is(err, ErrUnavailable) {
+			return nil, err
+		}
+		return nil, &RuleError{Message: "Cross-seed instance unavailable: " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": "), Err: err}
+	}
+
+	backend, _, err := s.backends.Resolve(ctx, source.ID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := cleanRows(backend.Paths(), source, route.Rows)
+	if err != nil {
+		return nil, err
+	}
+	return rows, checkMappedPaths(rows, models.FilesystemAccessMode(crossSeed) == models.FilesystemModeLocal)
+}
+
+// cleanRows returns one row for each base folder of source, keyed with
+// fsops.CleanPath, with the mapped path of the matching input row or empty.
+func cleanRows(d fsops.PathDialect, source *models.Instance, in []models.CrossSeedRouteRow) ([]models.CrossSeedRouteRow, error) {
+	keys := BaseDirKeys(d, source.HardlinkBaseDir)
+	mapped := make(map[string]string, len(in))
+	for _, row := range in {
+		key := fsops.CleanPath(d, strings.TrimSpace(row.BaseDir))
+		if !slices.Contains(keys, key) {
+			return nil, broken("%s is not a base folder of %s", key, source.Name)
+		}
+		mapped[key] = strings.TrimSpace(row.MappedPath)
+	}
+	rows := make([]models.CrossSeedRouteRow, len(keys))
+	for i, key := range keys {
+		rows[i] = models.CrossSeedRouteRow{BaseDir: key, MappedPath: mapped[key]}
+	}
+	return rows, nil
+}
+
+func checkMappedPaths(rows []models.CrossSeedRouteRow, crossSeedLocal bool) error {
+	targets := make([]string, len(rows))
+	for i, row := range rows {
+		target := row.BaseDir
+		if row.MappedPath != "" {
+			if !pathcmp.IsAbsolute(row.MappedPath) {
+				return broken("mapped path %s for %s is not an absolute path", row.MappedPath, row.BaseDir)
+			}
+			target = row.MappedPath
+		}
+		targets[i] = crossSeedKey(target)
+	}
+	for i := range targets {
+		for j := i + 1; j < len(targets); j++ {
+			if nested(targets[i], targets[j]) || nested(targets[j], targets[i]) {
+				return broken("%s and %s map to the same or nested folders on the Cross-seed instance", rows[i].BaseDir, rows[j].BaseDir)
+			}
+		}
+	}
+	if crossSeedLocal {
+		for i, row := range rows {
+			if targets[i] != crossSeedKey(row.BaseDir) {
+				return broken("the Cross-seed instance has Local Filesystem Access, so %s must keep the same path", row.BaseDir)
+			}
+		}
+	}
+	return nil
+}
+
+// BaseDirKeys splits the comma-separated base folders of an instance into
+// route keys, without duplicates.
+func BaseDirKeys(d fsops.PathDialect, configured string) []string {
+	var keys []string
+	for _, dir := range splitBaseDirs(configured) {
+		if key := fsops.CleanPath(d, dir); !slices.Contains(keys, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+func splitBaseDirs(configured string) []string {
+	var dirs []string
+	for dir := range strings.SplitSeq(configured, ",") {
+		if dir = strings.TrimSpace(dir); dir != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+// crossSeedKey compares paths in the Cross-seed instance's form, which has no
+// dialect: either separator, case kept except on a drive-letter path.
+func crossSeedKey(p string) string {
+	p = pathcmp.NormalizePath(p)
+	if pathcmp.IsWindowsDriveAbs(p) {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
+func nested(parent, child string) bool {
+	return parent == child || strings.HasPrefix(child, strings.TrimSuffix(parent, "/")+"/")
+}

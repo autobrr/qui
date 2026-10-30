@@ -110,6 +110,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Pool member**: One torrent in a partial pool.
 - **Pool admission**: The step that makes a new partial add a pool member, and the window after it during which more members can join. _Avoid_: Admission alone (see Admitted Execution and Pre-add check).
 
+## Cross-seed instance
+
+- **Cross-seed instance**: The instance that receives the cross-seeds found on another instance. Set on the Source instance. _Avoid_: target instance, destination instance.
+- **Source instance**: An instance that names a Cross-seed instance and holds the matched torrents. _Avoid_: source (that is the source torrent), library instance.
+
 ## Automations
 
 - **Automation rule**: One saved set of conditions and actions that qui runs against the torrents of one instance on an interval. The UI calls it a workflow. _Avoid_: Workflow (outside UI copy), automation (for one rule).

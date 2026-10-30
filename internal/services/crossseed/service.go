@@ -54,6 +54,7 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -344,6 +345,7 @@ type Service struct {
 	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
 	// real MediaInfo analyzer.
 	mediaIDCacheStore         mediaIDCache
+	crossSeedRoutes           *crossseedroute.Service
 	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
@@ -599,6 +601,11 @@ func (s *Service) SetMediaIDCacheStore(store *models.MediaIDCacheStore) {
 		return
 	}
 	s.mediaIDCacheStore = store
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // SetActivityPublisher wires the qui server-event hub so cross-seed automation and

@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -82,6 +83,7 @@ type Service struct {
 	backendPool *fsops.Pool
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
 
 	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
@@ -147,6 +149,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // emitRun signals connected clients that an orphan scan run changed status.

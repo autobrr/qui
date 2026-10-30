@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -32,6 +33,7 @@ type CrossSeedHandler struct {
 	completionStore    *models.InstanceCrossSeedCompletionStore
 	instanceStore      *models.InstanceStore
 	seasonPackRunStore *models.SeasonPackRunStore
+	routes             *crossseedroute.Service
 	gazelleBaseURL     string // tests point the Gazelle key check at a stub tracker
 }
 
@@ -507,12 +509,14 @@ func NewCrossSeedHandler(
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	instanceStore *models.InstanceStore,
 	seasonPackRunStore *models.SeasonPackRunStore,
+	routes *crossseedroute.Service,
 ) *CrossSeedHandler {
 	return &CrossSeedHandler{
 		service:            service,
 		completionStore:    completionStore,
 		instanceStore:      instanceStore,
 		seasonPackRunStore: seasonPackRunStore,
+		routes:             routes,
 	}
 }
 
@@ -562,6 +566,12 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
+		})
+		r.With(authMiddleware).Route("/routes", func(r chi.Router) {
+			r.Get("/", h.ListCrossSeedRoutes)
+			r.Get("/{instanceID}", h.GetCrossSeedRoute)
+			r.Put("/{instanceID}", h.SaveCrossSeedRoute)
+			r.Delete("/{instanceID}", h.ClearCrossSeedRoute)
 		})
 		r.Route("/season-pack", func(r chi.Router) {
 			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.SeasonPackCheck)

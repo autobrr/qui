@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -564,6 +565,7 @@ type Service struct {
 	mu                    sync.RWMutex
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -615,6 +617,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
