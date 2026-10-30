@@ -250,10 +250,15 @@ func archiveDir(dir, archiveName string) error {
 // rules (drive letters and UNC shares) match case-insensitively with either
 // slash, which lets a library move between Windows and Unix hosts
 func replacePath(p string, rules []PathReplace) string {
-	src := sourceSlash(p)
 	for _, r := range rules {
+		// convert slashes by the rule's style, so a POSIX rule keeps
+		// literal backslashes and does not match a \\nas\share path
 		posix := strings.HasPrefix(r.From, "/") && !strings.HasPrefix(r.From, "//")
-		from := strings.TrimRight(sourceSlash(r.From), "/")
+		src, from := p, r.From
+		if !posix {
+			src, from = strings.ReplaceAll(p, `\`, "/"), strings.ReplaceAll(r.From, `\`, "/")
+		}
+		from = strings.TrimRight(from, "/")
 		if len(src) < len(from) {
 			continue
 		}
