@@ -462,7 +462,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
           </div>
 
           {hasChanges ? (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground wrap-anywhere">
               {updatePlan.add.length > 0 && (
                 <div>{t("dialogs.tagEditor.addEverywhere", { tags: updatePlan.add.join(", ") })}</div>
               )}
