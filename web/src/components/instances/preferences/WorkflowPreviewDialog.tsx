@@ -19,6 +19,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
@@ -28,11 +29,6 @@ import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
 // Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
-// Labels a value with no translation key, such as a raw qBittorrent state.
-function humanizeValue(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
-}
 
 interface WorkflowPreviewDialogProps {
   open: boolean
@@ -275,6 +271,7 @@ export function WorkflowPreviewDialog({
   previewError = null,
 }: WorkflowPreviewDialogProps) {
   const { t, i18n } = useTranslation(["instances", "automations"])
+  const { t: tTorrents } = useTranslation("torrents")
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
@@ -282,16 +279,10 @@ export function WorkflowPreviewDialog({
   const dynamicColumns = useMemo(
     () => createDynamicColumns(
       t,
-      (value: string) => i18n.t(`queryBuilder.torrentStates.${value}`, {
-        ns: "automations",
-        defaultValue: humanizeValue(value),
-      }),
-      (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, {
-        ns: "automations",
-        defaultValue: humanizeValue(value),
-      })
+      (value: string) => getStateLabel(value, tTorrents),
+      (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, { ns: "automations" })
     ),
-    [i18n, t]
+    [i18n, t, tTorrents]
   )
 
   // Determine which dynamic columns to show based on condition fields
