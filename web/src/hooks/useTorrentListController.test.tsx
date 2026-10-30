@@ -104,6 +104,8 @@ async function advance(ms: number) {
 interface LayoutProps {
   filters?: TorrentFilters
   columnFiltersExpr?: string | null
+  search?: string
+  sort?: string
   /** Builds the Action target from the loaded rows, as a Layout does. */
   target?: (rows: Torrent[]) => ActionTarget
   blockCrossSeeds?: boolean
@@ -117,13 +119,13 @@ const tickAll = (rows: Torrent[]): ActionTarget => ({
 })
 
 // Acts like a Layout: load the list, build the Action target from its rows, and read the cross-seed state.
-function useLayout({ filters = FILTERS, columnFiltersExpr, target = tickAll, blockCrossSeeds = false }: LayoutProps) {
+function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", target = tickAll, blockCrossSeeds = false }: LayoutProps) {
   const list = useTorrentListController({
     instanceId: 1,
     filters,
     columnFiltersExpr,
-    search: "",
-    sort: "added_on",
+    search,
+    sort,
     order: "desc",
   })
   const actionTarget = useMemo(() => target(list.torrents), [target, list.torrents])
@@ -224,6 +226,120 @@ describe("useTorrentListController — list", () => {
     renderLayout({ filters: { ...FILTERS, expr: crossSeedExpr }, columnFiltersExpr: "AddedOn > 1704067200" })
     await flush()
     expect(mockedApi.getCrossInstanceTorrents.mock.lastCall?.[0].filters?.expr).toBe(crossSeedExpr)
+  })
+})
+
+describe("useTorrentListController — load more", () => {
+  const rows = (count: number, from = 0) => Array.from({ length: count }, (_, i) => makeTorrent({ hash: `h${from + i}` }))
+
+  // The server holds 350 rows: a first page of 300 and a second page of 50.
+  beforeEach(() => {
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
+      ? makeResponse({ torrents: rows(300), total: 350, hasMore: true })
+      : makeResponse({ torrents: rows(50, 300), total: 350, hasMore: false }))
+  })
+
+  const pagesRequested = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)
+
+  async function scrollToEnd(result: { current: ReturnType<typeof useLayout> }) {
+    while (result.current.list.loadedRows < result.current.list.torrents.length) {
+      act(() => result.current.list.reportNearEnd())
+    }
+    await flush()
+  }
+
+  it("shows the next rows from memory, then loads the next server page, near the end", async () => {
+    const { result } = renderLayout()
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+    expect(result.current.list.hasMoreRows).toBe(true)
+
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(200)
+    expect(pagesRequested()).not.toContain(1)
+
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(300)
+
+    act(() => result.current.list.reportNearEnd())
+    await flush()
+    expect(pagesRequested()).toContain(1)
+    expect(result.current.list.torrents).toHaveLength(350)
+    expect(result.current.list.loadedRows).toBe(350)
+    expect(result.current.list.hasMoreRows).toBe(false)
+  })
+
+  it("starts again at the first rows when the user changes a filter, the search or the sort", async () => {
+    const { result, rerender } = renderLayout()
+    await flush()
+
+    await scrollToEnd(result)
+    expect(result.current.list.loadedRows).toBe(300)
+    rerender({ filters: { ...FILTERS, status: ["downloading"] } })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+
+    await scrollToEnd(result)
+    rerender({ filters: { ...FILTERS, status: ["downloading"] }, search: "linux" })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+
+    await scrollToEnd(result)
+    rerender({ filters: { ...FILTERS, status: ["downloading"] }, search: "linux", sort: "name" })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+  })
+
+  // React Query answers from its cache, so the list never goes empty between the two filters.
+  it("starts again at the first rows when the user goes back to a filter with a cached response", async () => {
+    const downloading = { ...FILTERS, status: ["downloading"] }
+    const { result, rerender } = renderLayout()
+    await flush()
+    rerender({ filters: downloading })
+    await flush()
+    await scrollToEnd(result)
+    expect(result.current.list.loadedRows).toBe(300)
+
+    rerender({ filters: FILTERS })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+  })
+
+  it("never reports more loaded rows than the list holds while a filter change empties the list", async () => {
+    const seen: Array<{ loaded: number; rows: number }> = []
+    const { result, rerender } = renderHook((props: LayoutProps) => {
+      const layout = useLayout(props)
+      seen.push({ loaded: layout.list.loadedRows, rows: layout.list.torrents.length })
+      return layout
+    }, { initialProps: {} as LayoutProps, wrapper: makeWrapper() })
+    await flush()
+    await scrollToEnd(result)
+
+    rerender({ filters: { ...FILTERS, status: ["downloading"] } })
+    await flush()
+    expect(seen.filter(render => render.loaded > render.rows)).toEqual([])
+  })
+
+  it("keeps the loaded rows when a new filters object has the same contents", async () => {
+    const { result, rerender } = renderLayout()
+    await flush()
+    await scrollToEnd(result)
+
+    rerender({ filters: { ...FILTERS } })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(300)
+  })
+
+  it("keeps the loaded rows when a data update changes the length", async () => {
+    const { result } = renderLayout()
+    await flush()
+    await scrollToEnd(result)
+
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: rows(301), total: 351, hasMore: true }))
+    await advance(TORRENT_STREAM_POLL_INTERVAL_MS + 50)
+    await flush()
+    expect(result.current.list.torrents).toHaveLength(301)
+    expect(result.current.list.loadedRows).toBe(300)
   })
 })
 

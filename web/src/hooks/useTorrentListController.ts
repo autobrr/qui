@@ -7,11 +7,12 @@ import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActio
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { EMPTY_LOAD_MORE_WINDOW, loadMoreWindowReducer } from "@/lib/load-more-window"
 import { combineFilterExpr, isCrossSeedExpr } from "@/lib/torrent-filters"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import { anyTorrentHasTag } from "@/lib/torrent-utils"
 import type { TorrentFilters } from "@/types"
-import { useMemo } from "react"
+import { useMemo, useReducer, useState } from "react"
 
 export { TORRENT_STREAM_POLL_INTERVAL_SECONDS } from "@/hooks/useTorrentsList"
 
@@ -27,7 +28,11 @@ export interface UseTorrentListControllerParams {
 }
 
 /**
- * Loads the torrent list for the desktop table and the mobile cards.
+ * Loads the torrent list for the desktop table and the mobile cards, and holds
+ * the load-more window. A Layout shows `loadedRows` rows and calls
+ * `reportNearEnd` when the user scrolls near the end of them. A change of the
+ * instance, the filters, the search or the sort starts the window again at the
+ * first rows and changes `listKey`; a data update keeps the window.
  *
  * Polling stops while the tab is hidden, the list refetches when the window
  * gets focus again, and the list hook closes the live stream after the tab is
@@ -53,7 +58,7 @@ export function useTorrentListController({
     return { ...filters, expr: expr || undefined }
   }, [filters, columnFiltersExpr])
 
-  return useTorrentsList(instanceId, {
+  const { loadMore: loadNextPage, ...list } = useTorrentsList(instanceId, {
     pollingEnabled: isHiddenDelayed || isVisible,
     instanceIds,
     search,
@@ -61,6 +66,48 @@ export function useTorrentListController({
     sort,
     order,
   })
+  const { torrents, hasLoadedAll, isLoadingMore } = list
+
+  const [loadMoreWindow, dispatch] = useReducer(loadMoreWindowReducer, EMPTY_LOAD_MORE_WINDOW)
+
+  // The inputs only change on a user action, so a new key is a user change.
+  const listKey = useMemo(
+    () => JSON.stringify([instanceId, instanceIds, filters, columnFiltersExpr, search, sort, order]),
+    [instanceId, instanceIds, filters, columnFiltersExpr, search, sort, order]
+  )
+  const [windowListKey, setWindowListKey] = useState(listKey)
+
+  // Render-time adjustments: React renders again before it commits, so no
+  // committed render shows a window from the previous list.
+  if (windowListKey !== listKey) {
+    setWindowListKey(listKey)
+    dispatch({ type: "queryChanged" })
+  }
+  if (loadMoreWindow.listLength !== torrents.length) {
+    dispatch({ type: "dataArrived", length: torrents.length })
+  }
+  // The list hook appends the rows of a page one render after isLoadingMore
+  // clears, so wait until the rows are in memory.
+  if (!isLoadingMore && loadMoreWindow.pageRequested && loadMoreWindow.listLength > loadMoreWindow.loadedRows) {
+    dispatch({ type: "pageLoaded" })
+  }
+
+  const canLoadPage = !hasLoadedAll && !isLoadingMore
+  const reportNearEnd = () => {
+    if (loadMoreWindow.loadedRows >= loadMoreWindow.listLength && canLoadPage) {
+      loadNextPage()
+    }
+    dispatch({ type: "nearEnd", canLoadPage })
+  }
+
+  return {
+    ...list,
+    // The rest of this render pass still runs with the old window, so clamp it.
+    loadedRows: Math.min(loadMoreWindow.loadedRows, torrents.length),
+    hasMoreRows: loadMoreWindow.loadedRows < loadMoreWindow.listLength || !hasLoadedAll,
+    reportNearEnd,
+    listKey,
+  }
 }
 
 /**

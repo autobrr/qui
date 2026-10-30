@@ -787,17 +787,6 @@ export function TorrentCardsMobile({
     return newLookup
   }, [trackerCustomizationsQuery.data])
 
-  // Track user-initiated actions to differentiate from automatic data updates
-  const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
-  const previousFiltersRef = useRef(filters)
-  const previousInstanceIdRef = useRef(instanceId)
-  const previousSearchRef = useRef("")
-  const previousSortRef = useRef(sortState)
-
-  // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
-  const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
-
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
@@ -875,31 +864,6 @@ export function TorrentCardsMobile({
     }
   }, [effectiveSearch, dispatchSelection])
 
-  // Detect user-initiated changes
-  useEffect(() => {
-    const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
-    const instanceChanged = previousInstanceIdRef.current !== instanceId
-    const searchChanged = previousSearchRef.current !== effectiveSearch
-    const sortChanged =
-      previousSortRef.current.field !== sortState.field ||
-      previousSortRef.current.order !== sortState.order
-
-    if (filtersChanged || instanceChanged || searchChanged || sortChanged) {
-      const actionType = instanceChanged ? "instance" : sortChanged ? "sort" : filtersChanged ? "filter" : "search"
-
-      setLastUserAction({
-        type: actionType,
-        timestamp: Date.now(),
-      })
-    }
-
-    // Update refs
-    previousFiltersRef.current = filters
-    previousInstanceIdRef.current = instanceId
-    previousSearchRef.current = effectiveSearch
-    previousSortRef.current = sortState
-  }, [filters, instanceId, effectiveSearch, sortState])
-
   // Fetch data
   const {
     torrents,
@@ -914,7 +878,10 @@ export function TorrentCardsMobile({
     isLoading,
     isLoadingMore,
     hasLoadedAll,
-    loadMore: backendLoadMore,
+    loadedRows,
+    hasMoreRows,
+    reportNearEnd,
+    listKey,
     isCrossInstanceEndpoint,
   } = useTorrentListController({
     instanceId,
@@ -996,43 +963,9 @@ export function TorrentCardsMobile({
     blockCrossSeeds,
   })
 
-  // Load more rows as user scrolls (progressive loading + backend pagination)
-  const loadMore = useCallback((): void => {
-    // First, try to load more from virtual scrolling if we have more local data
-    if (loadedRows < torrents.length) {
-      // Prevent concurrent loads
-      if (isLoadingMoreRows) {
-        return
-      }
-
-      setIsLoadingMoreRows(true)
-
-      setLoadedRows(prev => {
-        const newLoadedRows = Math.min(prev + 100, torrents.length)
-        return newLoadedRows
-      })
-
-      // Reset loading flag after a short delay
-      setTimeout(() => setIsLoadingMoreRows(false), 100)
-    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
-      // If we've displayed all local data but there's more on backend, load next page
-      backendLoadMore()
-    }
-  }, [torrents.length, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
-
-  // Ensure loadedRows never exceeds actual data length
-  const safeLoadedRows = Math.min(loadedRows, torrents.length)
-
-  // Also keep loadedRows in sync with actual data to prevent status display issues
-  useEffect(() => {
-    if (loadedRows > torrents.length && torrents.length > 0) {
-      setLoadedRows(torrents.length)
-    }
-  }, [loadedRows, torrents.length])
-
   // Virtual scrolling with consistent spacing
   const virtualizer = useVirtualizer({
-    count: safeLoadedRows,
+    count: loadedRows,
     getScrollElement: () => parentRef.current,
     estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
     overscan: 5,
@@ -1046,15 +979,15 @@ export function TorrentCardsMobile({
       const vRows = instance.getVirtualItems();
       const lastItem = vRows.at(-1);
 
-      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive loadMore calls during rapid scrolling
+      // Only report the end when scrolling has paused (sync === false) or we're not actively scrolling
+      // This prevents excessive reports during rapid scrolling
       const shouldCheckLoadMore = !sync || !instance.isScrolling
+      // A scroll position past the last row belongs to the previous list: the
+      // window shrank before the Layout scrolled back to the top.
+      const scrolledPastRows = (instance.scrollOffset ?? 0) > instance.getTotalSize()
 
-      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 20) {
-        // Load more if we're near the end of virtual rows OR if we might need more data from backend
-        if (safeLoadedRows < torrents.length || (!hasLoadedAll && !isLoadingMore)) {
-          loadMore();
-        }
+      if (shouldCheckLoadMore && !scrolledPastRows && lastItem && lastItem.index >= loadedRows - 20 && hasMoreRows) {
+        reportNearEnd();
       }
     },
   })
@@ -1062,64 +995,17 @@ export function TorrentCardsMobile({
   // Force virtualizer to recalculate when count changes
   useEffect(() => {
     virtualizer.measure()
-  }, [safeLoadedRows, virtualizer])
+  }, [loadedRows, virtualizer])
 
   const virtualItems = virtualizer.getVirtualItems()
 
-  // Reset loaded rows when data changes significantly
+  // The controller starts the list again at the first rows; scroll to them.
   useEffect(() => {
-    // Always ensure loadedRows is at least 100 (or total length if less)
-    const targetRows = Math.min(100, torrents.length)
-
-    setLoadedRows(prev => {
-      if (torrents.length === 0) {
-        // No data, reset to 0
-        return 0
-      } else if (prev === 0) {
-        // Initial load
-        return targetRows
-      } else if (prev < targetRows) {
-        // Not enough rows loaded, load at least 100
-        return targetRows
-      }
-      // Don't reset loadedRows backward due to temporary server data fluctuations
-      // Progressive loading should be independent of server data variations
-      return prev
-    })
-
-    // Force virtualizer to recalculate
-    virtualizer.measure()
-  }, [torrents.length, virtualizer])
-
-  // Reset when filters or search changes
-  useEffect(() => {
-    // Only reset loadedRows for user-initiated changes, not data updates
-    const isRecentUserAction = lastUserAction && (Date.now() - lastUserAction.timestamp < 1000)
-
-    if (isRecentUserAction) {
-      const targetRows = Math.min(100, torrents.length || 0)
-      setLoadedRows(targetRows)
-      setIsLoadingMoreRows(false)
-
-      // User-initiated change: scroll to top
-      if (parentRef.current) {
-        parentRef.current.scrollTop = 0
-        setTimeout(() => {
-          virtualizer.scrollToOffset(0)
-          virtualizer.measure()
-          // Additional force after a short delay to ensure all items are remeasured
-          setTimeout(() => virtualizer.measure(), 100)
-        }, 0)
-      }
-    } else {
-      // Data update: aggressive remeasurement for dynamic content
-      setTimeout(() => {
-        virtualizer.measure()
-        // Second pass to catch any missed items
-        setTimeout(() => virtualizer.measure(), 50)
-      }, 0)
+    if (parentRef.current) {
+      parentRef.current.scrollTop = 0
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, torrents.length, lastUserAction])
+    virtualizer.scrollToOffset(0)
+  }, [listKey, virtualizer])
 
   // Recalculate virtualizer when view mode changes
   useEffect(() => {
@@ -1262,7 +1148,7 @@ export function TorrentCardsMobile({
                   ) : isLoadingMore ? (
                     t("statusBar.loadingMore")
                   ) : (
-                    t("statusBar.torrentsLoaded", { loaded: safeLoadedRows, total: totalCount })
+                    t("statusBar.torrentsLoaded", { loaded: loadedRows, total: totalCount })
                   )}
                 </>
               )}
@@ -1403,16 +1289,14 @@ export function TorrentCardsMobile({
           })}
         </div>
 
-        {/* Progressive loading implemented - shows loading indicator when needed */}
-        {safeLoadedRows < torrents.length && !isLoadingMore && (
+        {hasMoreRows && !isLoadingMore && (
           <div className="p-4 text-center">
             <Button
               variant="ghost"
-              onClick={loadMore}
-              disabled={isLoadingMoreRows}
+              onClick={reportNearEnd}
               className="text-muted-foreground"
             >
-              {isLoadingMoreRows ? t("statusBar.loading") : t("mobileCards.loadMore")}
+              {t("mobileCards.loadMore")}
             </Button>
           </div>
         )}

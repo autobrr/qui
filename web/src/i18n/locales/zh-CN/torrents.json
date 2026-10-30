@@ -954,7 +954,6 @@
     "torrentCount_other": "{{count}} 个种子",
     "torrentsLoaded": "已加载 {{loaded}}/{{total}} 个种子",
     "scrollForMore": "（滚动加载更多）",
-    "loading": "加载中...",
     "freeSpace": "可用空间",
     "switchToBits": "切换到每秒比特（bps）",
     "switchToBytes": "切换到每秒字节（B/s）",

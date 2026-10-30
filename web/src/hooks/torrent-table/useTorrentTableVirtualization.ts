@@ -8,17 +8,20 @@ import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { viewModeRowHeight } from "@/lib/torrent-table/row-height"
 import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual"
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react"
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react"
 
 export interface UseTorrentTableVirtualizationParams {
   /** The table's current row model rows (by value — this hook runs after the table). */
   rows: TorrentRow[]
   desktopViewMode: ViewMode
-  /** Full filtered dataset length (drives overscan + the progressive target), NOT rows.length. */
+  /** Full filtered dataset length (drives overscan and remeasure), NOT rows.length. */
   sortedTorrentsLength: number
+  /** The load-more window of useTorrentListController. */
+  loadedRows: number
+  hasMoreRows: boolean
+  reportNearEnd: () => void
   hasLoadedAll: boolean
   isLoadingMore: boolean
-  backendLoadMore?: () => void
 }
 
 export interface TorrentTableVirtualization {
@@ -26,20 +29,14 @@ export interface TorrentTableVirtualization {
   virtualizer: Virtualizer<HTMLDivElement, Element>
   virtualRows: VirtualItem[]
   safeLoadedRows: number
-  loadMore: () => void
-  loadedRows: number
-  setLoadedRows: Dispatch<SetStateAction<number>>
-  /** Exposed for the parent's filter-change reset effect, which clears the in-flight flag. */
-  setIsLoadingMoreRows: Dispatch<SetStateAction<boolean>>
   estimatedRowHeight: number
 }
 
 /**
- * Owns the table's row virtualization and progressive loading: the virtualizer
- * instance, the scroll container ref, the local `loadedRows` window (+ backend
- * pagination handoff), row-height estimation, and the measure/keyboard-nav
- * wiring. `loadedRows`/`setLoadedRows` are returned so the filter-lifecycle hook
- * can share the same window.
+ * Owns the table's row virtualization: the virtualizer instance, the scroll
+ * container ref, row-height estimation, and the measure/keyboard-nav wiring.
+ * useTorrentListController owns the loaded-rows window; this hook reports when
+ * the user scrolls near its end.
  *
  * The `virtualizer` is returned by reference (the literal useVirtualizer result):
  * it is a dependency of several effects and of keyboard navigation, so a fresh
@@ -49,39 +46,16 @@ export function useTorrentTableVirtualization({
   rows,
   desktopViewMode,
   sortedTorrentsLength,
+  loadedRows,
+  hasMoreRows,
+  reportNearEnd,
   hasLoadedAll,
   isLoadingMore,
-  backendLoadMore,
 }: UseTorrentTableVirtualizationParams): TorrentTableVirtualization {
-  const [loadedRows, setLoadedRows] = useState(100)
-  const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load more rows as user scrolls (progressive loading + backend pagination)
-  const loadMore = useCallback((): void => {
-    // First, try to load more from virtual scrolling if we have more local data
-    if (loadedRows < sortedTorrentsLength) {
-      // Prevent concurrent loads
-      if (isLoadingMoreRows) {
-        return
-      }
-
-      setIsLoadingMoreRows(true)
-
-      setLoadedRows(prev => {
-        const newLoadedRows = Math.min(prev + 100, sortedTorrentsLength)
-        return newLoadedRows
-      })
-
-      // Reset loading flag after a short delay
-      setTimeout(() => setIsLoadingMoreRows(false), 100)
-    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
-      // If we've displayed all local data but there's more on backend, load next page
-      backendLoadMore()
-    }
-  }, [sortedTorrentsLength, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
-
-  // Ensure loadedRows never exceeds actual data length
+  // In cross-seed mode the column filters run client-side, so the table can
+  // show fewer rows than the list holds.
   const safeLoadedRows = Math.min(loadedRows, rows.length)
 
   // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
@@ -106,23 +80,23 @@ export function useTorrentTableVirtualization({
       const vRows = instance.getVirtualItems();
       const lastItem = vRows.at(-1);
 
-      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive loadMore calls during rapid scrolling
+      // Only report the end when scrolling has paused (sync === false) or we're not actively scrolling
+      // This prevents excessive reports during rapid scrolling
       const shouldCheckLoadMore = !sync || !instance.isScrolling
+      // A scroll position past the last row belongs to the previous list: the
+      // window shrank before the Layout scrolled back to the top.
+      const scrolledPastRows = (instance.scrollOffset ?? 0) > instance.getTotalSize()
 
-      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 50) {
-        // Load more if we're near the end of virtual rows OR if we might need more data from backend
-        if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
-          loadMore();
-        }
+      if (shouldCheckLoadMore && !scrolledPastRows && lastItem && lastItem.index >= safeLoadedRows - 50 && hasMoreRows) {
+        reportNearEnd();
       }
     },
   })
 
-  // Force virtualizer to recalculate when count changes
+  // Force virtualizer to recalculate when the count or the data length changes
   useEffect(() => {
     virtualizer.measure()
-  }, [safeLoadedRows, virtualizer])
+  }, [safeLoadedRows, sortedTorrentsLength, virtualizer])
 
   // Recalculate virtualized row sizes when view mode changes
   useEffect(() => {
@@ -131,31 +105,6 @@ export function useTorrentTableVirtualization({
 
   const virtualRows = virtualizer.getVirtualItems()
 
-  // Reset loaded rows when data changes significantly
-  useEffect(() => {
-    // Always ensure loadedRows is at least 100 (or total length if less)
-    const targetRows = Math.min(100, sortedTorrentsLength)
-
-    setLoadedRows(prev => {
-      if (sortedTorrentsLength === 0) {
-        // No data, reset to 0
-        return 0
-      } else if (prev === 0) {
-        // Initial load
-        return targetRows
-      } else if (prev < targetRows) {
-        // Not enough rows loaded, load at least 100
-        return targetRows
-      }
-      // Don't reset loadedRows backward due to temporary server data fluctuations
-      // Progressive loading should be independent of server data variations
-      return prev
-    })
-
-    // Force virtualizer to recalculate
-    virtualizer.measure()
-  }, [sortedTorrentsLength, virtualizer])
-
   // Set up keyboard navigation (PageUp/Down, Home/End)
   useKeyboardNavigation({
     parentRef,
@@ -163,7 +112,7 @@ export function useTorrentTableVirtualization({
     safeLoadedRows,
     hasLoadedAll,
     isLoadingMore,
-    loadMore,
+    loadMore: reportNearEnd,
     estimatedRowHeight,
   })
 
@@ -172,10 +121,6 @@ export function useTorrentTableVirtualization({
     virtualizer,
     virtualRows,
     safeLoadedRows,
-    loadMore,
-    loadedRows,
-    setLoadedRows,
-    setIsLoadingMoreRows,
     estimatedRowHeight,
   }
 }

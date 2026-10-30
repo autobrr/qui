@@ -1016,7 +1016,6 @@
     "torrentCount_other": "{{count}} torrent",
     "torrentsLoaded": "{{loaded}} di {{total}} torrent caricati",
     "scrollForMore": "(scorri per altri)",
-    "loading": "Caricamento...",
     "freeSpace": "Spazio libero",
     "switchToBits": "Passa a bit al secondo (bps)",
     "switchToBytes": "Passa a byte al secondo (B/s)",

@@ -1023,7 +1023,7 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(1)
 
     // Advance past the initial throttle window, then page in page 1. This call
-    // records lastRequestTime via setState, which the next render observes.
+    // records the request time that the next call checks.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -1066,6 +1066,35 @@ describe("useTorrentsList", () => {
       expect.objectContaining({ page: 2 }),
       expect.any(AbortSignal)
     )
+  })
+
+  it("loads one page when two scroll callbacks of one render call loadMore", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => Promise.resolve(makeResponse({
+      torrents: [makeTorrent({ hash: `page-${params.page}` })],
+      total: 3,
+      hasMore: true,
+    })))
+
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper() }
+    )
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+
+    // The mobile virtualizer can report the end twice before React renders
+    // again, so both calls see the same render.
+    const { loadMore } = result.current
+    act(() => {
+      loadMore()
+      loadMore()
+    })
+    await flush()
+
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["page-0", "page-1"])
+    expect(mockedApi.getTorrents).not.toHaveBeenCalledWith(1, expect.objectContaining({ page: 2 }), expect.anything())
   })
 
   // regression: #2507
