@@ -221,7 +221,7 @@ func (top *rootEntry) add(entry *fsops.WalkEntry, rest string, d fsops.PathDiale
 }
 
 // checkScanRoot fails the scan when the walk could not read the root or the
-// root is not a directory, as listing the root did before the single walk.
+// root is not a directory.
 func checkScanRoot(entry *fsops.WalkEntry, rootPath string) error {
 	if entry.Err != nil {
 		return fmt.Errorf("read directory %s: %w", rootPath, entry.Err)

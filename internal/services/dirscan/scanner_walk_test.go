@@ -77,9 +77,8 @@ func describeScan(root string, result *ScanResult) []string {
 	return append(lines, fmt.Sprintf("total files=%d size=%d skipped=%d", result.TotalFiles, result.TotalSize, result.SkippedFiles))
 }
 
-// The single walk finds the same searchees and files as one walk per
-// searchee did on develop. This test passes on develop too: it pins the
-// result, which the change must not move.
+// A scan makes one searchee per top-level folder or media file, and pins
+// which files, disc layouts and links each searchee holds.
 func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -190,7 +189,7 @@ func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.
 }
 
 // A denied subfolder inside a searchee is skipped, and any other read error
-// drops the searchee, as one walk per searchee did.
+// drops the searchee.
 func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -252,8 +251,8 @@ func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 	require.Nil(t, result)
 }
 
-// A Full scan of N searchees walks the backend once, where it walked each
-// searchee and listed each folder for the disc check.
+// A Full scan of N searchees walks the backend once and lists no folder for
+// the disc check.
 func TestScanDirectory_WalksTheRootOnce(t *testing.T) {
 	t.Parallel()
 
