@@ -61,8 +61,9 @@ type HardlinkIndex struct {
 	GroupBySignature map[string][]string
 
 	// DeleteSafeSignatureByHash maps torrent hash to its hardlink signature for torrents whose
-	// hardlinks stay fully inside qBittorrent. Used by delete/include-hardlinks expansion and
-	// FREE_SPACE dedupe so destructive paths never follow outside links.
+	// hardlinks stay fully inside this instance's torrents, with no routed link. Used by
+	// delete/include-hardlinks expansion and FREE_SPACE dedupe so destructive paths never
+	// follow outside links.
 	DeleteSafeSignatureByHash map[string]string
 
 	// DeleteSafeGroupBySignature maps signature to list of delete-safe torrent hashes sharing it.
@@ -122,7 +123,8 @@ type hardlinkBuildState struct {
 	torrentInfoByHash map[string]*torrentFileInfo
 	// routedFiles are the hardlinked files of the routed torrents on the
 	// Cross-seed instance, at Source instance paths (ADR 0035). They count as
-	// links to other torrents, and have no scope or delete group of their own.
+	// links to other torrents, have no scope of their own, and keep each Source
+	// torrent that shares a file with them out of the delete-safe groups.
 	routedFiles []linkedFile
 }
 
@@ -130,6 +132,15 @@ type hardlinkBuildState struct {
 // ok is false for an ID that names no file; see fsops.FileKeyOf.
 func (state *hardlinkBuildState) key(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, state.instance)
+}
+
+// hasRoutedLink reports whether a routed torrent links one of info's files.
+func (state *hardlinkBuildState) hasRoutedLink(info *torrentFileInfo) bool {
+	return slices.ContainsFunc(info.linkedFiles, func(lf linkedFile) bool {
+		key, ok := state.key(lf.fileID)
+		tracker := state.globalFileIDMap[key]
+		return ok && tracker != nil && tracker.routed
+	})
 }
 
 // linkedFile records one hardlinked file exactly as the disk reported it. Keeping
@@ -277,6 +288,8 @@ func computeTorrentSetDigest(torrents []qbt.Torrent) string {
 type fileIDTracker struct {
 	nlink           uint64
 	uniquePathCount int
+	// routed is true when a routed torrent on the Cross-seed instance links the file.
+	routed bool
 }
 
 // scanTorrentFiles reads one torrent's files off disk and records what it found.
@@ -386,6 +399,7 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 			continue
 		}
 		tracker.nlink = max(tracker.nlink, lf.nlink)
+		tracker.routed = true
 		if _, seen := seenPaths[lf.path]; !seen {
 			seenPaths[lf.path] = struct{}{}
 			tracker.uniquePathCount++
@@ -930,7 +944,8 @@ func (idx *HardlinkIndex) applyLinkState(state *hardlinkBuildState) indexStats {
 		sig := computeFileIDSignature(info.fileIDs)
 		idx.SignatureByHash[hash] = sig
 		idx.GroupBySignature[sig] = append(idx.GroupBySignature[sig], hash)
-		if !hasOutsideLinks {
+		// Deleting the group frees nothing while a routed torrent holds a file.
+		if !hasOutsideLinks && !state.hasRoutedLink(info) {
 			idx.DeleteSafeSignatureByHash[hash] = sig
 			idx.DeleteSafeGroupBySignature[sig] = append(idx.DeleteSafeGroupBySignature[sig], hash)
 		}

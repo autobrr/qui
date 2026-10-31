@@ -176,7 +176,8 @@ func (r *routedFilesReader) GetCachedInstanceTorrents(_ context.Context, instanc
 
 func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {
 	rig := newRoutedRig(t, false)
-	// A second Source instance torrent holds the same file, so the two form a delete group.
+	// A second Source instance torrent holds the same file. Without the routed
+	// link, the two would form a delete group.
 	copyDir := filepath.Join(rig.dir, "copy")
 	require.NoError(t, os.MkdirAll(copyDir, 0o700))
 	require.NoError(t, os.Link(filepath.Join(rig.dir, "data", "movie.mkv"), filepath.Join(copyDir, "movie.mkv")))
@@ -186,7 +187,10 @@ func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {
 
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.CrossScopeByHash[routedSourceHash])
-	require.Equal(t, []string{sourceCopy.Hash}, index.GetHardlinkCopies(routedSourceHash), "a routed torrent never joins a delete group")
+	// Deleting both Source torrents frees nothing while the routed torrent
+	// holds the file, so neither takes the other along.
+	require.Nil(t, index.GetHardlinkCopies(routedSourceHash))
+	require.Nil(t, index.GetHardlinkCopies(sourceCopy.Hash))
 	require.NotContains(t, index.SignatureByHash, routedHash)
 	require.NotContains(t, index.ScopeByHash, routedHash)
 }
