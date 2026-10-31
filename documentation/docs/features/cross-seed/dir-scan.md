@@ -168,7 +168,7 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files presen
 
 This prevents redundant searches and duplicate additions.
 
-If you remove a torrent from qBittorrent, its files leave the index. For example, an automation rule can remove torrents with missing files. The next scan of the directory treats those files as new searchees and searches indexers for them again. If qui cannot read the torrents of the instance, the file list of one of them, or one of their files during a scan, for example because qBittorrent does not answer, qui has not synced with the instance since it started, or qui has no permission on a save path, the files that an earlier scan marked as already seeding keep that status. A missing file counts as unreadable too, unless qBittorrent skips that file and never writes it, so if a save path is not mounted, the files keep that status.
+If you remove a torrent from qBittorrent, its files leave the index. For example, an automation rule can remove torrents with missing files. The next scan of the directory treats those files as new searchees and searches indexers for them again. Sometimes qui cannot read the torrents of the instance, the file list of a torrent, or a file of a torrent during a scan. Then the files that an earlier scan marked as already seeding keep that status. This happens when qBittorrent does not answer, when qui has not synced with the instance since it started, or when qui has no permission on a save path. It also happens when a torrent file is missing, for example because a save path is not mounted. A missing file that qBittorrent skips does not count, because qBittorrent never writes it.
 
 ### Recheck Behavior
 
