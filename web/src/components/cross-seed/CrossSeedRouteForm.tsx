@@ -162,11 +162,10 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const handleSave = () => {
     if (!saved) return saveRoute.mutate()
     if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
-    // A base folder added after the save has a row in the read but no saved mapping to protect.
-    const savedDirs = new Set(saved.rows.map(row => row.baseDir))
+    // The read also gives a base folder added after the save an empty row, and the orphan scan protects the torrents under it.
     const changed = savedRoute.rows
       // rows is built from savedRoute.rows, in the same order.
-      .filter((row, i) => savedDirs.has(row.baseDir) && rows[i].mappedPath !== row.mappedPath)
+      .filter((row, i) => rows[i].mappedPath !== row.mappedPath)
       .map(row => row.baseDir)
     if (changed.length === 0) return saveRoute.mutate()
     setConfirm({ clear: false, baseDirs: changed })

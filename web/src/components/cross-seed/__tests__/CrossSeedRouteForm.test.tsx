@@ -471,7 +471,8 @@ describe("CrossSeedRouteForm confirm", () => {
     expect(screen.queryByText("routeConfirm.title")).toBeNull()
   })
 
-  it("saves with no confirm when the user maps a base folder added after the save", async () => {
+  it("asks first when the user maps a base folder added after the save", async () => {
+    // The route read gives the new base folder an empty row, and the orphan scan protects the torrents under it.
     const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/new" })
     mocks.instances.instances = [instance, crossSeed]
     const writes: string[] = []
@@ -480,7 +481,7 @@ describe("CrossSeedRouteForm confirm", () => {
       read: {
         sourceInstanceId: 1,
         crossSeedInstanceId: 2,
-        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }, { baseDir: "/data/new", mappedPath: "", routedTorrents: 0 }],
+        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }, { baseDir: "/data/new", mappedPath: "", routedTorrents: 2 }],
       },
     })
     server.use(http.put("*/api/cross-seed/routes/1", () => {
@@ -493,8 +494,10 @@ describe("CrossSeedRouteForm confirm", () => {
     fireEvent.change(screen.getByLabelText("/data/new"), { target: { value: "/mnt/new" } })
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
 
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|2")).toBeTruthy()
+    expect(writes).toEqual([])
+    fireEvent.click(await confirmButton())
     await waitFor(() => expect(writes).toEqual(["save"]))
-    expect(screen.queryByText("routeConfirm.title")).toBeNull()
   })
 
   it("lets a route clear go on with an unknown count when the route read fails", async () => {

@@ -37,8 +37,9 @@ function DeleteHarness({ instanceId }: { instanceId: number }) {
   )
 }
 
-function renderNotice(instanceId: number) {
+function renderNotice(instanceId: number, seed?: (queryClient: QueryClient) => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  seed?.(queryClient)
   const view = render(
     <QueryClientProvider client={queryClient}>
       <DeleteHarness instanceId={instanceId} />
@@ -153,6 +154,36 @@ describe("CrossSeedDeleteNotice", () => {
     const { deleteButton } = renderNotice(3)
 
     await screen.findByText("qui could not read the cross-seed routes, so it cannot name the Source instances that lose protection after this delete.")
+    expect(deleteButton().disabled).toBe(false)
+  })
+
+  it("says so when a refetch of an old cached route list fails", async () => {
+    server.use(http.get("*/api/cross-seed/routes", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    const { deleteButton } = renderNotice(3, queryClient => {
+      queryClient.setQueryData(crossSeedRoutesKey, [{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }], { updatedAt: 0 })
+    })
+
+    await screen.findByText("qui could not read the cross-seed routes, so it cannot name the Source instances that lose protection after this delete.")
+    expect(deleteButton().disabled).toBe(false)
+  })
+
+  it("keeps Delete off and shows no old count while a cached route read refetches", async () => {
+    let answerRead: (() => void) | undefined
+    server.use(
+      http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
+      http.get("*/api/cross-seed/routes/1", () => new Promise<Response>(resolve => {
+        answerRead = () => resolve(HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 4 }] }))
+      }))
+    )
+    const { deleteButton } = renderNotice(3, queryClient => {
+      queryClient.setQueryData([...crossSeedRoutesKey, 1, "/data/a"], { sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 9 }] })
+    })
+
+    await waitFor(() => expect(answerRead).toBeDefined())
+    expect(document.body.textContent).not.toContain("9 routed torrents")
+    expect(deleteButton().disabled).toBe(true)
+    answerRead?.()
+    await screen.findByText("4 routed torrents on seedbox use files in the affected base folders of library-a.")
     expect(deleteButton().disabled).toBe(false)
   })
 })

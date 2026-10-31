@@ -101,8 +101,9 @@ export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
       enabled,
     })),
   })
-  const routesUnknown = list.data === undefined && list.isError
-  const pending = enabled && !routesUnknown && (list.data === undefined || reads.some(read => read.isPending))
+  // A refetch keeps the old cached data, so a failed one also leaves the routes unknown.
+  const routesUnknown = list.isError
+  const pending = enabled && !routesUnknown && (list.data === undefined || list.isFetching || reads.some(read => read.isPending || read.isFetching))
   return { crossSeedName, sources, reads, routesUnknown, pending }
 }
 
@@ -117,7 +118,7 @@ export function CrossSeedDeleteNotice({ check }: { check: ReturnType<typeof useC
     <div className="max-h-[40vh] space-y-3 overflow-y-auto">
       {sources.map((source, i) => {
         const read = reads[i]
-        const routedTorrents = read?.isError? null: read?.data === undefined? undefined: read.data === null ? 0 : countRoutedTorrents(read.data.rows)
+        const routedTorrents = read?.isError? null: read?.data === undefined || read.isFetching? undefined: read.data === null ? 0 : countRoutedTorrents(read.data.rows)
         return (
           <div key={source.id} className="space-y-2 rounded-md border border-border/70 p-3">
             <p className="text-sm font-medium">{t("routeConfirm.deleteSource", { source: source.name })}</p>
