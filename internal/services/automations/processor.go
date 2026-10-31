@@ -655,9 +655,14 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker))
+	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker, evalCtx))
 	if err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		// A missing key, such as a deleted category's .CategorySavePath, repeats for every torrent on every run.
+		if errors.As(err, new(template.ExecError)) {
+			log.Debug().Err(err).Str("path", path).Str("hash", torrent.Hash).Msg("failed to render path template")
+		} else {
+			log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		}
 		return "", false
 	}
 	if resolvedPath == "" {
@@ -670,17 +675,29 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 // renderMovePathSample renders a move path for a placeholder torrent, to check it on save.
 func renderMovePathSample(path string) (string, error) {
 	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
-	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
+	sampleCtx := &EvalContext{CategorySavePaths: map[string]string{"sample": "/data/sample", "": "/data"}}
+	return executePathTemplate(path, pathTemplateData(sample, "tracker", sampleCtx))
 }
 
-func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
-	return map[string]any{
+func pathTemplateData(torrent qbt.Torrent, tracker string, evalCtx *EvalContext) map[string]any {
+	data := map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
 		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+	// An unknown category, or a map that failed to load, leaves the key unset,
+	// so missingkey=error skips the move.
+	if evalCtx != nil {
+		if categorySavePath, found := evalCtx.CategorySavePaths[torrent.Category]; found {
+			data[categorySavePathVariable] = categorySavePath
+		}
+		if defaultSavePath, found := evalCtx.CategorySavePaths[""]; found {
+			data[defaultSavePathVariable] = defaultSavePath
+		}
+	}
+	return data
 }
 
 func executePathTemplate(path string, data map[string]any) (string, error) {

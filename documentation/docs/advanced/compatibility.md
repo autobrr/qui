@@ -45,7 +45,7 @@ A category with no save path saves its torrents to a folder with the name of the
 
 For example, the category `tv:uhd` uses the folder `tv uhd` on qBittorrent 5.2, `tv:uhd` on qBittorrent 5.3 on Linux, and `tv_uhd` on qBittorrent 5.3 on macOS and Windows.
 
-qui uses the rule of the qBittorrent version and the build platform of each instance. Thus the cleanup of empty folders and the orphan scan keep the correct category folder.
+qui uses the rule of the qBittorrent version and the build platform of each instance. Thus the cleanup of empty folders and the orphan scan keep the correct category folder, and the `.CategorySavePath` variable of automation path templates names it.
 
 ## Tracker health refresh
 
