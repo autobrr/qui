@@ -3171,6 +3171,25 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 		return fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, opts.InstanceID)
 	}
 
+	// Each match of a run on a Source instance goes to its Cross-seed instance,
+	// and a failed add keeps the match out of the search until its cooldown ends.
+	if s.crossSeedRoutes != nil {
+		// The stored route is enough: the start needs only its Cross-seed instance.
+		route, err := s.crossSeedRoutes.CrossSeedRouteStore.Get(ctx, instance.ID)
+		if err != nil {
+			return fmt.Errorf("read cross-seed route: %w", err)
+		}
+		if route != nil {
+			err := s.crossSeedRoutes.CheckAvailable(ctx, route.CrossSeedInstanceID, true)
+			if errors.Is(err, crossseedroute.ErrUnavailable) {
+				return fmt.Errorf("%w: %w", ErrInvalidRequest, crossseedroute.CrossSeedUnavailable(err))
+			}
+			if err != nil {
+				return fmt.Errorf("check Cross-seed instance: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -4619,6 +4638,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	// instances that an add gave the torrent in this call, so that a routed add
 	// does not add it to its Cross-seed instance a second time.
 	addedTo := map[int]struct{}{}
+	s.sortSourceInstancesFirst(ctx, candidatesResp.Candidates)
 	for _, candidate := range candidatesResp.Candidates {
 		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, meta.HashV2, meta.Name, req, sourceRelease, meta.Files, meta.Info, addedTo)
 		response.Results = append(response.Results, result)

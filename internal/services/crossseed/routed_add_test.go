@@ -662,24 +662,63 @@ func TestRoutedAddStaysOutOfThePartialPool(t *testing.T) {
 	assert.Equal(t, r.crossSeed.ID, queued.instanceID, "Settle, not the pool, resumes the routed add")
 }
 
-// The Cross-seed instance has no route, so a match on it stays on it.
+// The Cross-seed instance has no route, so a match on it stays on it. Its add
+// still checks the hashes on its Source instance.
 func TestRoutedAddMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
-	r := newRoutedRig(t, false)
-	_, err := r.instances.Update(t.Context(), r.crossSeed.ID, r.crossSeed.Name, r.crossSeed.Host, r.crossSeed.Username, "", nil, nil,
-		&models.InstanceUpdateParams{HasLocalFilesystemAccess: new(true), UseHardlinks: new(true), HardlinkBaseDir: new(r.links)})
-	require.NoError(t, err)
-	candidate := r.candidate()
-	candidate.InstanceID, candidate.InstanceName = r.crossSeed.ID, r.crossSeed.Name
+	tests := []struct {
+		name    string
+		hasHash bool
+		// source is "disabled", "offline", or empty for an online Source instance.
+		source      string
+		wantStatus  string
+		wantMessage []string
+	}{
+		{name: "Source instance without the hash", wantStatus: "added_hardlink"},
+		{name: "hash on the Source instance", hasHash: true, wantStatus: "exists", wantMessage: []string{"Torrent already exists in Source instance lib"}},
+		{name: "turned-off Source instance is skipped", hasHash: true, source: "disabled", wantStatus: "added_hardlink"},
+		{name: "offline Source instance fails the add", hasHash: true, source: "offline", wantStatus: "error",
+			wantMessage: []string{"instance unavailable: lib: ", "Enable lib or clear its cross-seed route"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRoutedRig(t, false)
+			_, err := r.instances.Update(t.Context(), r.crossSeed.ID, r.crossSeed.Name, r.crossSeed.Host, r.crossSeed.Username, "", nil, nil,
+				&models.InstanceUpdateParams{HasLocalFilesystemAccess: new(true), UseHardlinks: new(true), HardlinkBaseDir: new(r.links)})
+			require.NoError(t, err)
+			r.sync.existing[r.source.ID] = tt.hasHash
+			switch tt.source {
+			case "disabled":
+				_, err = r.instances.SetActiveState(t.Context(), r.source.ID, false)
+				require.NoError(t, err)
+			case "offline":
+				down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+				}))
+				t.Cleanup(down.Close)
+				_, err = r.instances.Update(t.Context(), r.source.ID, r.source.Name, down.URL, r.source.Username, "", nil, nil, &models.InstanceUpdateParams{})
+				require.NoError(t, err)
+			}
+			candidate := r.candidate()
+			candidate.InstanceID, candidate.InstanceName = r.crossSeed.ID, r.crossSeed.Name
 
-	result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), adderV1, "", routedName,
-		&CrossSeedRequest{}, r.svc.releaseCache.Parse(routedName), r.files, nil, nil)
+			result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), adderV1, "", routedName,
+				&CrossSeedRequest{}, r.svc.releaseCache.Parse(routedName), r.files, nil, nil)
 
-	require.True(t, result.Success, result.Message)
-	assert.Equal(t, r.crossSeed.ID, result.InstanceID)
-	assert.Zero(t, result.CrossSeedInstanceID)
-	require.Len(t, r.sync.adds[r.crossSeed.ID], 1)
-	assert.Equal(t, r.links, r.sync.adds[r.crossSeed.ID][0]["savepath"])
-	assert.Empty(t, r.sync.adds[r.source.ID])
+			assert.Equal(t, tt.wantStatus, result.Status, result.Message)
+			assert.Equal(t, r.crossSeed.ID, result.InstanceID)
+			assert.Zero(t, result.CrossSeedInstanceID)
+			assert.Empty(t, r.sync.adds[r.source.ID])
+			if tt.wantStatus != "added_hardlink" {
+				for _, want := range tt.wantMessage {
+					assert.Contains(t, result.Message, want)
+				}
+				assert.Empty(t, r.sync.adds[r.crossSeed.ID])
+				return
+			}
+			require.Len(t, r.sync.adds[r.crossSeed.ID], 1)
+			assert.Equal(t, r.links, r.sync.adds[r.crossSeed.ID][0]["savepath"])
+		})
+	}
 }
 
 // The route maps the preset folder before the category save path changes to
@@ -836,4 +875,85 @@ func TestRoutedAddRetriesAFailedFolderOncePerRun(t *testing.T) {
 	r.ctx = withRouteRun(t.Context())
 	assert.Equal(t, crossSeedCannotSeeStatus, r.add(nil, nil, nil).Status)
 	assert.Len(t, r.sync.listed, 1+visibleRetries, "a new run retries")
+}
+
+// A Source instance's candidate runs first, so the routed add builds its own
+// link tree on the Cross-seed instance before a match on that instance can add
+// the torrent there. The sort keeps the order of the other candidates, and
+// without a route it changes nothing.
+func TestRoutedCandidatesPutSourceInstancesFirst(t *testing.T) {
+	tests := []struct {
+		name    string
+		noRoute bool
+		want    []string
+	}{
+		{name: "with a route", want: []string{"lib", "seeds", "other"}},
+		{name: "without a route", noRoute: true, want: []string{"seeds", "other", "lib"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRoutedRig(t, false)
+			if tt.noRoute {
+				require.NoError(t, r.routes.Delete(t.Context(), r.source.ID))
+			}
+			candidates := []CrossSeedCandidate{
+				{InstanceID: r.crossSeed.ID, InstanceName: "seeds"},
+				{InstanceID: r.crossSeed.ID + 100, InstanceName: "other"},
+				{InstanceID: r.source.ID, InstanceName: "lib"},
+			}
+
+			r.svc.sortSourceInstancesFirst(t.Context(), candidates)
+
+			names := make([]string, len(candidates))
+			for i, c := range candidates {
+				names[i] = c.InstanceName
+			}
+			assert.Equal(t, tt.want, names)
+		})
+	}
+}
+
+// A Library Scan on a Source instance does not start while its Cross-seed
+// instance is unavailable. With the Cross-seed instance up, or with no route,
+// the start goes on to the next check, which fails here because no Torznab
+// search is set up.
+func TestLibraryScanNeedsTheCrossSeedInstance(t *testing.T) {
+	tests := []struct {
+		name        string
+		noRoute     bool
+		down        bool
+		off         bool
+		wantErr     string
+		wantInvalid bool
+	}{
+		{name: "available", wantErr: "torznab search is not configured"},
+		{name: "no route", noRoute: true, off: true, wantErr: "torznab search is not configured"},
+		{name: "offline", down: true, wantErr: "Cross-seed instance unavailable: seeds: ", wantInvalid: true},
+		{name: "disabled in qui", off: true, wantErr: "Cross-seed instance unavailable: seeds: qBittorrent instance is disabled", wantInvalid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRoutedRig(t, tt.down)
+			if tt.noRoute {
+				require.NoError(t, r.routes.Delete(t.Context(), r.source.ID))
+			}
+			if tt.off {
+				_, err := r.instances.SetActiveState(t.Context(), r.crossSeed.ID, false)
+				require.NoError(t, err)
+			}
+			store, err := models.NewCrossSeedStore(r.db, []byte("01234567890123456789012345678901"))
+			require.NoError(t, err)
+			r.svc.automationStore = store
+
+			_, err = r.svc.StartSearchRun(t.Context(), SearchRunOptions{InstanceID: r.source.ID})
+
+			require.ErrorContains(t, err, tt.wantErr)
+			if tt.wantInvalid {
+				require.ErrorIs(t, err, ErrInvalidRequest)
+			}
+			runs, err := store.ListSearchRuns(t.Context(), r.source.ID, 10, 0)
+			require.NoError(t, err)
+			assert.Empty(t, runs, "no run starts")
+		})
+	}
 }
