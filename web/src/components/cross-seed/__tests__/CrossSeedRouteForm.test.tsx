@@ -610,7 +610,7 @@ describe("CrossSeedRouteForm confirm", () => {
     expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("counts no routed torrents when the route read finds the route gone", async () => {
+  it("opens no clear dialog and reloads the form when the route read finds the route gone", async () => {
     mocks.instances.instances = [source, crossSeed]
     serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
     server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
@@ -618,8 +618,8 @@ describe("CrossSeedRouteForm confirm", () => {
     await screen.findByLabelText("/data/a")
     fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
 
-    expect(await screen.findByText("routeConfirm.count|library|seedbox|0")).toBeTruthy()
-    expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
   })
 
   it("keeps Save off and says the count is unknown when a later route read fails", async () => {
@@ -635,6 +635,17 @@ describe("CrossSeedRouteForm confirm", () => {
     fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
 
     expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
+  })
+
+  it("opens no clear dialog and reloads the form when another tab moved the route to another Cross-seed instance", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 1 }] })))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
   })
 
   it("asks before a route clear and says the Cross-seed instance keeps the routed torrents", async () => {

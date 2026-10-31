@@ -885,6 +885,8 @@ describe("InstancePreferencesDialog network binding", () => {
   it("names the Source instances that route to the instance in the delete dialog", async () => {
     serveView()
     server.use(
+      // The delete check reads the instance list from the server, so it gets the one set below.
+      http.get("*/api/instances", () => HttpResponse.json(instances.instances)),
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
         sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: 6 }],

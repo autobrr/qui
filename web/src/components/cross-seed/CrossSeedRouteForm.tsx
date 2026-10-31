@@ -100,7 +100,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
   // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
   const [checking, setChecking] = useState(false)
-  const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never } | { clear: false; baseDirs?: string[] } | null>(null)
+  const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never; countUnknown?: boolean } | { clear: false; baseDirs?: string[]; countUnknown?: never } | null>(null)
 
   const sourceNames = routes
     .filter(route => route.crossSeedInstanceId === instance.id)
@@ -170,23 +170,28 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
-  // The route is read again first: another tab can have saved or changed it,
-  // and a save overwrites it. A changed route reloads the form and saves nothing.
-  const handleSave = () => {
+  // Save and Clear read the route again first: another tab can have saved, changed,
+  // or cleared it. A changed route reloads the form and writes nothing.
+  const readRouteFirst = (unchanged: (current: CrossSeedRouteStatus | null) => boolean, next: () => void, readFailed: (error: Error) => void) => {
     setChecking(true)
     void api.getCrossSeedRoute(instance.id)
       .then(current => {
-        if (sameRoute(current, savedRoute ?? null)) {
+        if (unchanged(current)) {
           // The dialog counts the routed torrents of this read, not of the older form read.
           queryClient.setQueryData(crossSeedRouteKey(instance), current)
-          return decideSave()
+          return next()
         }
         toast.error(t("routeConfirm.routeChanged", { source: instance.name }))
         return onRouteChanged()
       })
-      .catch((error: Error) => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message }))
+      .catch(readFailed)
       .finally(() => setChecking(false))
   }
+  const handleSave = () => readRouteFirst(
+    current => sameRoute(current, savedRoute ?? null),
+    decideSave,
+    error => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message })
+  )
   const decideSave = () => {
     if (!saved) return saveRoute.mutate()
     if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
@@ -198,7 +203,13 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     if (changed.length === 0) return saveRoute.mutate()
     setConfirm({ clear: false, baseDirs: changed })
   }
-  const handleClear = () => setConfirm({ clear: true })
+  // A clear deletes the whole route, so only the Cross-seed instance that the dialog names must match.
+  // A failed read makes the count unknown, and the clear can go on.
+  const handleClear = () => readRouteFirst(
+    current => current !== null && current.crossSeedInstanceId === saved?.crossSeedInstanceId,
+    () => setConfirm({ clear: true }),
+    () => setConfirm({ clear: true, countUnknown: true })
+  )
   // A null read means another tab cleared the route, so no routed torrent loses protection.
   const confirmRows = savedRoute === null ? [] : savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
 
@@ -331,7 +342,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
         sourceName={instance.name}
         crossSeedName={savedCrossSeed?.name ?? ""}
         // A failed read makes the count unknown, also over an older cached read.
-        routedTorrents={routeReadFailed ? null : confirmRows && countRoutedTorrents(confirmRows)}
+        routedTorrents={routeReadFailed || confirm?.countUnknown ? null : confirmRows && countRoutedTorrents(confirmRows)}
         clear={confirm?.clear}
       />
     </div>

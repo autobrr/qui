@@ -35,6 +35,7 @@ afterEach(cleanup)
 describe("InstanceCard", () => {
   it("names the Source instances that route to the instance in the delete dialog", async () => {
     server.use(
+      http.get("*/api/instances", () => HttpResponse.json(instances.instances)),
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
         sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: null }],

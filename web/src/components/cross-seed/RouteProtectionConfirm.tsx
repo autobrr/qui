@@ -14,10 +14,9 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { crossSeedRouteKey, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
-import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { CrossSeedRouteStatus } from "@/types"
-import { useQueries } from "@tanstack/react-query"
+import { useQueries, useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
 /** The routed torrents under the rows, or null when one count is unknown (the Cross-seed instance is unavailable). */
@@ -87,8 +86,10 @@ export function RouteProtectionConfirmDialog({
  * pending holds until every read ends, so Delete waits for the notice.
  */
 export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
-  const { instances } = useInstances()
-  // Each dialog reads the list again: another tab can have saved a route to the instance.
+  // Each dialog reads both lists again: another tab can have saved a route to the
+  // instance, also from a Source instance that this tab does not know yet.
+  const instanceList = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), enabled })
+  const instances = instanceList.data
   const list = useCrossSeedRoutes(enabled, 0)
   const crossSeedName = instances?.find(instance => instance.id === instanceId)?.name ?? ""
   const sources = (list.data ?? [])
@@ -103,8 +104,8 @@ export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
     })),
   })
   // A refetch keeps the old cached data, so a failed one also leaves the routes unknown.
-  const routesUnknown = list.isError
-  const pending = enabled && !routesUnknown && (list.data === undefined || list.isFetching || reads.some(read => read.isPending || read.isFetching))
+  const routesUnknown = list.isError || instanceList.isError
+  const pending = enabled && !routesUnknown && (list.data === undefined || list.isFetching || instanceList.isFetching || reads.some(read => read.isPending || read.isFetching))
   return { crossSeedName, sources, reads, routesUnknown, pending }
 }
 

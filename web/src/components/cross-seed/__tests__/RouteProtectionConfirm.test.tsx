@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 
 import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import "@/i18n"
@@ -14,21 +14,20 @@ import { server } from "@/test/msw/server"
 
 import { CrossSeedDeleteNotice, RouteProtectionConfirmDialog, useCrossSeedDeleteCheck } from "../RouteProtectionConfirm"
 
-const instances = vi.hoisted(() => ({
+const instances = {
   instances: [
     { id: 1, name: "library-a", hardlinkBaseDir: "/data/a" },
     { id: 2, name: "library-b", hardlinkBaseDir: "/data/b" },
     { id: 3, name: "seedbox", hardlinkBaseDir: "" },
     { id: 4, name: "other", hardlinkBaseDir: "" },
   ],
-}))
-vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
+}
 
 afterEach(cleanup)
 
 // A delete dialog in small: the notice, and a Delete button that waits for it.
-function DeleteHarness({ instanceId }: { instanceId: number }) {
-  const check = useCrossSeedDeleteCheck(instanceId, true)
+function DeleteHarness({ instanceId, enabled = true }: { instanceId: number; enabled?: boolean }) {
+  const check = useCrossSeedDeleteCheck(instanceId, enabled)
   return (
     <>
       <CrossSeedDeleteNotice check={check} />
@@ -39,6 +38,7 @@ function DeleteHarness({ instanceId }: { instanceId: number }) {
 
 function renderNotice(instanceId: number, seed?: (queryClient: QueryClient) => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  server.use(http.get("*/api/instances", () => HttpResponse.json(instances.instances)))
   seed?.(queryClient)
   const view = render(
     <QueryClientProvider client={queryClient}>
@@ -178,6 +178,24 @@ describe("CrossSeedDeleteNotice", () => {
 
     await screen.findByText("2 routed torrents on seedbox use files in the affected base folders of library-a.")
     expect(deleteButton().disabled).toBe(false)
+  })
+
+  it("reads the instance list again for each dialog, so it names a Source instance that another tab created", async () => {
+    let known = instances.instances.filter(instance => instance.id !== 1)
+    server.use(
+      http.get("*/api/instances", () => HttpResponse.json(known)),
+      http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
+      http.get("*/api/cross-seed/routes/1", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 2 }] }))
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The instance card read the instance list before another tab created library-a.
+    queryClient.setQueryData(["instances"], known)
+    const view = render(<QueryClientProvider client={queryClient}><DeleteHarness instanceId={3} enabled={false} /></QueryClientProvider>)
+    await waitFor(() => expect(queryClient.getQueryState(["instances"])?.fetchStatus).toBe("idle"))
+
+    known = instances.instances
+    view.rerender(<QueryClientProvider client={queryClient}><DeleteHarness instanceId={3} /></QueryClientProvider>)
+    await screen.findByText("2 routed torrents on seedbox use files in the affected base folders of library-a.")
   })
 
   it("keeps Delete off and shows no old count while a cached route read refetches", async () => {
