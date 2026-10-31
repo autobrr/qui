@@ -72,7 +72,7 @@ type Service struct {
 	store          *models.DirScanStore
 	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
-	syncManager    *qbittorrent.SyncManager
+	torrentFiles   torrentFilesReader
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
@@ -133,6 +133,24 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 	return torrent, exists, nil
 }
 
+// syncManagerTorrentFiles adds the first-sync check of the seeding index to
+// SyncManager.
+type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
+
+// SeedingReady asks for a sync when the instance has none yet, because a
+// failed first sync is not retried until something else asks for one.
+func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID int) error {
+	client, err := f.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("get client: %w", err)
+	}
+	if client.GetLastSyncUpdate().IsZero() {
+		f.HintMainDataRefresh(instanceID, "dir scan seeding index") //nolint:contextcheck // the first sync must outlive this scan
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	return nil
+}
+
 // NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
@@ -168,7 +186,7 @@ func NewService(
 		store:                     store,
 		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
-		syncManager:               syncManager,
+		torrentFiles:              syncManagerTorrentFiles{syncManager},
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
@@ -921,15 +939,14 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
-	// This is best-effort; if it fails, scanning continues without seeding skips.
+	// This is best-effort; if it fails, scanning continues without seeding skips,
+	// and files marked already seeding by an earlier run keep that status.
 	fileIDIndex := &seedingIndex{}
-	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
-			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else if index.len() > 0 {
-			fileIDIndex = index
-			scanner.SetFileIDIndex(index)
-		}
+	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+	} else {
+		fileIDIndex = index
+		scanner.SetFileIDIndex(index)
 	}
 
 	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)

@@ -94,8 +94,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 				continue
 			}
 
-			alreadySeeding := isFileAlreadySeedingByFileID(scanned, fileIDIndex)
-			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, alreadySeeding, l)
+			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, fileIDIndex, l)
 			if err != nil {
 				return nil, err
 			}
@@ -129,12 +128,13 @@ func buildTrackedFileUpsert(
 	directoryID int,
 	scanned *ScannedFile,
 	idx *trackedFilesIndex,
-	alreadySeeding bool,
+	seeding *seedingIndex,
 	l *zerolog.Logger,
 ) (*models.DirScanFile, error) {
 	if directoryID <= 0 || scanned == nil {
 		return nil, nil
 	}
+	alreadySeeding := isFileAlreadySeedingByFileID(scanned, seeding)
 
 	var fileID []byte
 	if !scanned.FileID.IsZero() {
@@ -168,12 +168,17 @@ func buildTrackedFileUpsert(
 		searchedIndexerIDs = nil
 	}
 
-	// If the torrent disappeared since the last scan, clear already_seeding so the file becomes eligible again.
-	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding && !alreadySeeding {
-		status = models.DirScanFileStatusPending
-		matchedTorrentHash = ""
-		matchedIndexerID = nil
-		searchedIndexerIDs = nil
+	// A file already seeding stays so, even when it changed on disk, until the
+	// index shows the torrent is gone. Only an index that built in full,
+	// checked against the file's identity, shows that. Then the file becomes
+	// eligible again. The match fields are empty here: a changed file never
+	// copied them, and every already_seeding row is stored without them.
+	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding {
+		if alreadySeeding || !seeding.knowsNotSeeding(scanned.FileID) {
+			status = models.DirScanFileStatusAlreadySeeding
+		} else {
+			status = models.DirScanFileStatusPending
+		}
 	}
 
 	// If the file changed on disk, clear any prior match and reprocess.
