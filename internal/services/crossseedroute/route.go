@@ -137,7 +137,7 @@ func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID 
 	if route != nil {
 		torrent, name, err := s.findOn(ctx, finder, route.CrossSeedInstanceID, hashes)
 		if errors.Is(err, ErrUnavailable) {
-			return nil, "", crossSeedUnavailable(err)
+			return nil, "", CrossSeedUnavailable(err)
 		}
 		if torrent != nil || err != nil {
 			return torrent, "Cross-seed instance " + name, err
@@ -242,7 +242,7 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 		if !errors.Is(err, ErrUnavailable) {
 			return nil, err
 		}
-		return nil, crossSeedUnavailable(err)
+		return nil, CrossSeedUnavailable(err)
 	}
 
 	backend, _, err := s.backends.Resolve(ctx, source.ID)
@@ -256,9 +256,9 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 	return rows, checkMappedPaths(rows, models.FilesystemAccessMode(crossSeed) == models.FilesystemModeLocal)
 }
 
-// crossSeedUnavailable rewords an ErrUnavailable error of a Cross-seed
+// CrossSeedUnavailable rewords an ErrUnavailable error of a Cross-seed
 // instance as "Cross-seed instance unavailable: <name>: <cause>".
-func crossSeedUnavailable(err error) error {
+func CrossSeedUnavailable(err error) error {
 	return &RuleError{Message: "Cross-seed instance unavailable: " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": "), Err: err}
 }
 
