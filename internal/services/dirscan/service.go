@@ -143,7 +143,7 @@ func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID in
 		return fmt.Errorf("get client: %w", err)
 	}
 	if client.GetLastSyncUpdate().IsZero() {
-		f.HintMainDataRefresh(instanceID, "dir scan seeding index")
+		f.HintMainDataRefresh(instanceID, "dir scan seeding index") //nolint:contextcheck // the first sync must outlive this scan
 		return errors.New("instance not ready: waiting for first sync")
 	}
 	return nil
