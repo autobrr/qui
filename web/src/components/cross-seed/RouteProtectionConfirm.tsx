@@ -88,7 +88,7 @@ export function RouteProtectionConfirmDialog({
 export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
   // Each dialog reads both lists again: another tab can have saved a route to the
   // instance, also from a Source instance that this tab does not know yet.
-  const instanceList = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), enabled })
+  const instanceList = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), enabled, staleTime: 0 })
   const instances = instanceList.data
   const list = useCrossSeedRoutes(enabled, 0)
   const crossSeedName = instances?.find(instance => instance.id === instanceId)?.name ?? ""

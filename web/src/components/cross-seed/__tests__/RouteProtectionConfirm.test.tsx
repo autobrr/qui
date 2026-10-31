@@ -187,7 +187,8 @@ describe("CrossSeedDeleteNotice", () => {
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
       http.get("*/api/cross-seed/routes/1", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 2 }] }))
     )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The app keeps a read fresh for 5 seconds, so the dialog must read the list again anyway.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
     // The instance card read the instance list before another tab created library-a.
     queryClient.setQueryData(["instances"], known)
     const view = render(<QueryClientProvider client={queryClient}><DeleteHarness instanceId={3} enabled={false} /></QueryClientProvider>)
