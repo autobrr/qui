@@ -515,6 +515,7 @@
     "orphanScan": "L'analyse des orphelins de {{source}} ne protège plus les fichiers de ces torrents.",
     "clear": "{{crossSeed}} garde les torrents routés, et leurs fichiers restent dans les dossiers de base de {{source}}. Déplacez ou supprimez ces torrents avant de supprimer la route.",
     "deleteSource": "Après cette suppression, {{source}} ajoute de nouveau les cross-seeds à lui-même.",
+    "routesUnknown": "qui n'a pas pu lire les routes de cross-seed et ne peut donc pas indiquer les instances source qui perdent leur protection après cette suppression.",
     "confirm": "Continuer",
     "cancel": "Annuler"
   },

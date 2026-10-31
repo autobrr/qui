@@ -82,16 +82,15 @@ export function RouteProtectionConfirmDialog({
 }
 
 /**
- * For an instance delete dialog: names each Source instance that routes to the
- * instance and will add cross-seeds to itself again, with its routed torrents.
- * Renders nothing when the instance is not a Cross-seed instance.
+ * For an instance delete dialog: each Source instance that routes to the
+ * instance and will add cross-seeds to itself again, with its route read.
+ * pending holds until every read ends, so Delete waits for the notice.
  */
-export function CrossSeedDeleteNotice({ instanceId }: { instanceId: number }) {
-  const { t } = useTranslation("crossseed")
+export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
   const { instances } = useInstances()
-  const { data: routes } = useCrossSeedRoutes()
+  const list = useCrossSeedRoutes(enabled)
   const crossSeedName = instances?.find(instance => instance.id === instanceId)?.name ?? ""
-  const sources = (routes ?? [])
+  const sources = (list.data ?? [])
     .filter(route => route.crossSeedInstanceId === instanceId)
     .map(route => instances?.find(instance => instance.id === route.sourceInstanceId))
     .filter(instance => instance !== undefined)
@@ -99,9 +98,19 @@ export function CrossSeedDeleteNotice({ instanceId }: { instanceId: number }) {
     queries: sources.map(source => ({
       queryKey: [...crossSeedRoutesKey, source.id, source.hardlinkBaseDir],
       queryFn: () => api.getCrossSeedRoute(source.id),
+      enabled,
     })),
   })
+  const routesUnknown = list.data === undefined && list.isError
+  const pending = enabled && !routesUnknown && (list.data === undefined || reads.some(read => read.isPending))
+  return { crossSeedName, sources, reads, routesUnknown, pending }
+}
 
+/** The notice of a delete dialog. Renders nothing when the instance is not a Cross-seed instance. */
+export function CrossSeedDeleteNotice({ check }: { check: ReturnType<typeof useCrossSeedDeleteCheck> }) {
+  const { t } = useTranslation("crossseed")
+  const { crossSeedName, sources, reads, routesUnknown } = check
+  if (routesUnknown) return <p className="text-sm text-muted-foreground">{t("routeConfirm.routesUnknown")}</p>
   if (!sources.length) return null
   return (
     // Many Source instances scroll here, so the Delete button stays on screen.

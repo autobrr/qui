@@ -515,6 +515,7 @@
     "orphanScan": "Der Orphan-Scan von {{source}} schützt die Dateien dieser Torrents nicht mehr.",
     "clear": "{{crossSeed}} behält die gerouteten Torrents, und ihre Dateien bleiben in den Basisordnern von {{source}}. Verschiebe oder lösche diese Torrents, bevor du die Route entfernst.",
     "deleteSource": "{{source}} fügt Cross-Seeds nach dem Löschen wieder sich selbst hinzu.",
+    "routesUnknown": "qui konnte die Cross-Seed-Routen nicht lesen und kann daher nicht angeben, welche Quellinstanzen nach dem Löschen ihren Schutz verlieren.",
     "confirm": "Fortfahren",
     "cancel": "Abbrechen"
   },

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { CrossSeedDeleteNotice } from "@/components/cross-seed/RouteProtectionConfirm"
+import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import {
   AlertDialog,
@@ -83,6 +83,7 @@ export function InstanceCard({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const deleteCheck = useCrossSeedDeleteCheck(instance.id, showDeleteDialog)
   const displayUrl = instance.host
 
   const statusBadge = !instance.isActive? { label: t("card.status.disabled"), variant: "secondary" as const }: instance.connected? { label: t("card.status.connected"), variant: "default" as const }: { label: t("card.status.disconnected"), variant: "destructive" as const }
@@ -355,12 +356,13 @@ export function InstanceCard({
               {t("card.deleteDialog.description", { name: instance.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <CrossSeedDeleteNotice instanceId={instance.id} />
+          <CrossSeedDeleteNotice check={deleteCheck} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("card.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteCheck.pending}
             >
               {t("card.deleteDialog.confirm")}
             </AlertDialogAction>

@@ -515,6 +515,7 @@
     "orphanScan": "La scansione degli orfani di {{source}} smette di proteggere i file di questi torrent.",
     "clear": "{{crossSeed}} mantiene i torrent instradati, e i loro file restano nelle cartelle base di {{source}}. Sposta o elimina questi torrent prima di cancellare il percorso.",
     "deleteSource": "Dopo questa eliminazione, {{source}} aggiunge di nuovo i cross-seed a se stessa.",
+    "routesUnknown": "qui non è riuscito a leggere le route di cross-seed, quindi non può indicare le istanze di origine che perdono la protezione dopo questa eliminazione.",
     "confirm": "Continua",
     "cancel": "Annulla"
   },

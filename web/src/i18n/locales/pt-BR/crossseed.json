@@ -515,6 +515,7 @@
     "orphanScan": "A verificação de órfãos de {{source}} deixa de proteger os arquivos desses torrents.",
     "clear": "{{crossSeed}} mantém os torrents roteados, e os arquivos deles ficam nas pastas base de {{source}}. Mova ou exclua esses torrents antes de limpar a rota.",
     "deleteSource": "Após esta exclusão, {{source}} volta a adicionar cross-seeds a si mesma.",
+    "routesUnknown": "O qui não conseguiu ler as rotas de cross-seed, então não pode indicar as instâncias de origem que perdem a proteção após esta exclusão.",
     "confirm": "Continuar",
     "cancel": "Cancelar"
   },

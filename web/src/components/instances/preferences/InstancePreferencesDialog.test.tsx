@@ -888,7 +888,7 @@ describe("InstancePreferencesDialog network binding", () => {
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
         sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: 6 }],
-      })),
+      }))
     )
     const savedInstances = instances.instances
     const savedT = i18n.t
@@ -898,9 +898,12 @@ describe("InstancePreferencesDialog network binding", () => {
       renderDialog()
       fireEvent.pointerDown(screen.getByRole("button", { name: "preferences.dialog.actions.instanceActions" }), { button: 0, ctrlKey: false })
       fireEvent.click(await screen.findByRole("menuitem", { name: "preferences.dialog.actions.deleteInstance" }))
+      const deleteButton = await screen.findByRole<HTMLButtonElement>("button", { name: "preferences.dialog.deleteDialog.confirm" })
+      expect(deleteButton.disabled).toBe(true)
 
       expect(await screen.findByText("routeConfirm.deleteSource:library")).toBeTruthy()
       expect(await screen.findByText("routeConfirm.count:library:6")).toBeTruthy()
+      expect(deleteButton.disabled).toBe(false)
     } finally {
       instances.instances = savedInstances
       i18n.t = savedT

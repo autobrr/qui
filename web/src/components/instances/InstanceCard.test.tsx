@@ -53,8 +53,11 @@ describe("InstanceCard", () => {
     if (!menu) throw new Error("no instance menu")
     fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }))
+    const deleteButton = await screen.findByRole<HTMLButtonElement>("button", { name: "Delete" })
+    expect(deleteButton.disabled).toBe(true)
 
     expect(await screen.findByText("library adds cross-seeds to itself again after this delete.")).toBeTruthy()
     expect(await screen.findByText("seedbox is unavailable, so the number of routed torrents in the affected base folders of library is unknown.")).toBeTruthy()
+    expect(deleteButton.disabled).toBe(false)
   })
 })

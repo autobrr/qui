@@ -515,6 +515,7 @@
     "orphanScan": "The orphan scan of {{source}} stops protecting the files of these torrents.",
     "clear": "{{crossSeed}} keeps the routed torrents, and their files stay in the base folders of {{source}}. Move or delete those torrents before you clear the route.",
     "deleteSource": "{{source}} adds cross-seeds to itself again after this delete.",
+    "routesUnknown": "qui could not read the cross-seed routes, so it cannot name the Source instances that lose protection after this delete.",
     "confirm": "Continue",
     "cancel": "Cancel"
   },
