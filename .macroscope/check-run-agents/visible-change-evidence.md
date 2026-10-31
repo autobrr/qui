@@ -34,7 +34,7 @@ These changes are not visible on their own: tests, types, build configuration, r
 Look in the `## Screenshots (for UI changes)` section of the PR body, and in the `## How has this been tested?` section. For a visible change, the evidence passes when it has one of these:
 
 - An image or a recording in the body, as Markdown, an `<img>` tag, a `<video>` tag, or a `github.com/user-attachments/` link.
-- A link to `https://bin.getqui.com/p/` or `https://bin.getqui.com/e/`. These pages are private and you cannot open them. Count the link as evidence, and list what the page must show so that the reviewer can check it.
+- A link to a Paste (`/p/`) or an Evidence (`/e/`) on `https://bin.getqui.com` or `https://bin.autobrr.com`. These pages are private and you cannot open them. Count the link as evidence, and list what the page must show so that the reviewer can check it.
 
 Also report these gaps:
 
@@ -52,4 +52,4 @@ You cannot open images. Judge them from their place in the body, alt text, capti
 
 Always write the check run summary. Start with one line: `visible` or `not visible`, then `evidence complete`, `evidence incomplete`, `evidence missing`, or `evidence explained as unavailable`. Then list each effect that a user sees, with the file that causes it, and what the evidence shows or lacks.
 
-Do not ask for screenshots that show private data. The PR template asks authors to turn on incognito mode or to use a `bin.getqui.com` Paste for that.
+Do not ask for screenshots that show private data. The PR template asks authors to turn on incognito mode or to use a brrbin Paste for that.
