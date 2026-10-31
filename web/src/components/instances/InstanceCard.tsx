@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CrossSeedDeleteNotice } from "@/components/cross-seed/RouteProtectionConfirm"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import {
   AlertDialog,
@@ -354,6 +355,7 @@ export function InstanceCard({
               {t("card.deleteDialog.description", { name: instance.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <CrossSeedDeleteNotice instanceId={instance.id} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("card.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction

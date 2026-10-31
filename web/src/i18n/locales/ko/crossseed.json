@@ -497,6 +497,17 @@
       "invalidInfohash": "Infohash는 16진수 40자 또는 64자여야 합니다"
     }
   },
+  "routeConfirm": {
+    "title": "라우팅된 파일 보호를 중단할까요?",
+    "counting": "라우팅된 토렌트를 세는 중…",
+    "count_other": "{{crossSeed}}의 라우팅된 토렌트 {{count}}개가 {{source}}의 해당 기본 폴더에 있는 파일을 사용합니다.",
+    "countUnknown": "{{crossSeed}}을(를) 사용할 수 없으므로 {{source}}의 해당 기본 폴더에 있는 라우팅된 토렌트 수를 알 수 없습니다.",
+    "orphanScan": "{{source}}의 고아 파일 검사가 이 토렌트들의 파일을 더 이상 보호하지 않습니다.",
+    "clear": "{{crossSeed}}은(는) 라우팅된 토렌트를 유지하며, 해당 파일은 {{source}}의 기본 폴더에 남습니다. 경로를 지우기 전에 해당 토렌트를 이동하거나 삭제하세요.",
+    "deleteSource": "이 삭제 후 {{source}}은(는) 크로스 시드를 다시 자기 자신에게 추가합니다.",
+    "confirm": "계속",
+    "cancel": "취소"
+  },
   "dirScan": {
     "title": "디렉터리 스캐너",
     "description": "로컬 디렉터리에서 완료된 다운로드를 스캔하여 자동으로 cross-seed합니다.",

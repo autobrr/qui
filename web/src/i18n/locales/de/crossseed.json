@@ -506,6 +506,18 @@
       "invalidInfohash": "Infohash muss 40 oder 64 Hex-Zeichen lang sein"
     }
   },
+  "routeConfirm": {
+    "title": "Geroutete Dateien nicht mehr schützen?",
+    "counting": "Geroutete Torrents werden gezählt…",
+    "count_one": "{{count}} gerouteter Torrent auf {{crossSeed}} nutzt Dateien in den betroffenen Basisordnern von {{source}}.",
+    "count_other": "{{count}} geroutete Torrents auf {{crossSeed}} nutzen Dateien in den betroffenen Basisordnern von {{source}}.",
+    "countUnknown": "{{crossSeed}} ist nicht verfügbar, daher ist die Zahl der gerouteten Torrents in den betroffenen Basisordnern von {{source}} unbekannt.",
+    "orphanScan": "Der Orphan-Scan von {{source}} schützt die Dateien dieser Torrents nicht mehr.",
+    "clear": "{{crossSeed}} behält die gerouteten Torrents, und ihre Dateien bleiben in den Basisordnern von {{source}}. Verschiebe oder lösche diese Torrents, bevor du die Route entfernst.",
+    "deleteSource": "{{source}} fügt Cross-Seeds nach dem Löschen wieder sich selbst hinzu.",
+    "confirm": "Fortfahren",
+    "cancel": "Abbrechen"
+  },
   "dirScan": {
     "title": "Verzeichnis-Scanner",
     "description": "Durchsuche lokale Verzeichnisse nach abgeschlossenen Downloads und führe automatisch Cross-Seed für sie durch.",

@@ -506,6 +506,18 @@
       "invalidInfohash": "L'infohash doit faire 40 ou 64 caractères hexadécimaux"
     }
   },
+  "routeConfirm": {
+    "title": "Ne plus protéger les fichiers routés ?",
+    "counting": "Comptage des torrents routés…",
+    "count_one": "{{count}} torrent routé sur {{crossSeed}} utilise des fichiers dans les dossiers de base concernés de {{source}}.",
+    "count_other": "{{count}} torrents routés sur {{crossSeed}} utilisent des fichiers dans les dossiers de base concernés de {{source}}.",
+    "countUnknown": "{{crossSeed}} est indisponible, le nombre de torrents routés dans les dossiers de base concernés de {{source}} est donc inconnu.",
+    "orphanScan": "L'analyse des orphelins de {{source}} ne protège plus les fichiers de ces torrents.",
+    "clear": "{{crossSeed}} garde les torrents routés, et leurs fichiers restent dans les dossiers de base de {{source}}. Déplacez ou supprimez ces torrents avant de supprimer la route.",
+    "deleteSource": "Après cette suppression, {{source}} ajoute de nouveau les cross-seeds à lui-même.",
+    "confirm": "Continuer",
+    "cancel": "Annuler"
+  },
   "dirScan": {
     "title": "Analyse de répertoires",
     "description": "Analysez les répertoires locaux pour trouver des téléchargements terminés et les cross-seeder automatiquement.",

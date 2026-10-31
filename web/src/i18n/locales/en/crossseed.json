@@ -506,6 +506,18 @@
       "invalidInfohash": "Infohash must be 40 or 64 hex characters"
     }
   },
+  "routeConfirm": {
+    "title": "Stop protecting routed files?",
+    "counting": "Counting routed torrents…",
+    "count_one": "{{count}} routed torrent on {{crossSeed}} uses files in the affected base folders of {{source}}.",
+    "count_other": "{{count}} routed torrents on {{crossSeed}} use files in the affected base folders of {{source}}.",
+    "countUnknown": "{{crossSeed}} is unavailable, so the number of routed torrents in the affected base folders of {{source}} is unknown.",
+    "orphanScan": "The orphan scan of {{source}} stops protecting the files of these torrents.",
+    "clear": "{{crossSeed}} keeps the routed torrents, and their files stay in the base folders of {{source}}. Move or delete those torrents before you clear the route.",
+    "deleteSource": "{{source}} adds cross-seeds to itself again after this delete.",
+    "confirm": "Continue",
+    "cancel": "Cancel"
+  },
   "dirScan": {
     "title": "Directory Scanner",
     "description": "Scan local directories for completed downloads and automatically cross-seed them.",

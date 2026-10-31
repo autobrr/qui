@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import { api } from "@/lib/api"
 import type { InstanceFormData, InstanceResponse } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -116,6 +117,8 @@ export function useInstances() {
     mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
+      // The delete removes each route to or from the instance.
+      queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
     },
   })
 

@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   routeFormProps: [] as { localWrite: boolean }[],
   translation: { t: (key: string) => key },
+  routes: { data: [] as unknown[] },
+  getCrossSeedRoute: vi.fn(),
 }))
 
 vi.mock("react-i18next", async (importOriginal) => ({
@@ -31,12 +33,15 @@ vi.mock("@/components/cross-seed/CrossSeedRouteForm", () => ({
     return null
   },
 }))
+vi.mock("@/hooks/useCrossSeedRoutes", () => ({ useCrossSeedRoutes: () => mocks.routes }))
+vi.mock("@/lib/api", () => ({ api: { getCrossSeedRoute: mocks.getCrossSeedRoute } }))
 
 import { HardlinkModeSettings } from "../HardlinkModeSettings"
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.routes.data = []
 })
 
 const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
@@ -92,5 +97,64 @@ describe("HardlinkModeSettings", () => {
     if (!canWrite) {
       expect(mocks.toastError).toHaveBeenCalledWith("toast.cannotEnableMode", expect.anything())
     }
+  })
+
+  describe("on a Source instance", () => {
+    const source = { ...cases[0].instance, hardlinkBaseDir: "/data/links, /data/more/" }
+    const seedbox = { ...cases[0].instance, id: 2, name: "seedbox" }
+
+    function saveBaseDirs(value: string) {
+      mocks.instances.instances = [source, seedbox]
+      mocks.routes.data = [{
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/links", mappedPath: "/mnt/links" }, { baseDir: "/data/more", mappedPath: "" }],
+      }]
+      render(<HardlinkModeSettings pooledPartialCompletionEnabled={false} onPooledPartialCompletionEnabledChange={() => {}} />)
+      fireEvent.click(screen.getByText("qbit"))
+      fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value } })
+      fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+    }
+
+    it("asks before a save that removes a mapped base folder, with the routed torrents under it", async () => {
+      mocks.translation.t = ((key: string, options?: { count?: number }) => options?.count === undefined ? key : `${key}:${options.count}`) as typeof mocks.translation.t
+      mocks.getCrossSeedRoute.mockResolvedValue({
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/links", mappedPath: "/mnt/links", routedTorrents: 4 }, { baseDir: "/data/more", mappedPath: "", routedTorrents: 7 }],
+      })
+      try {
+        saveBaseDirs("/data/more")
+
+        await screen.findByText("routeConfirm.count:4")
+        expect(screen.getByText("routeConfirm.orphanScan")).toBeTruthy()
+        expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
+
+        fireEvent.click(screen.getByRole("button", { name: "routeConfirm.confirm" }))
+        expect(mocks.instances.updateInstance).toHaveBeenCalledTimes(1)
+        expect(mocks.instances.updateInstance.mock.calls[0][0].data.hardlinkBaseDir).toBe("/data/more")
+      } finally {
+        mocks.translation.t = (key: string) => key
+      }
+    })
+
+    it("says the count is unknown when the route read gives no count", async () => {
+      mocks.getCrossSeedRoute.mockResolvedValue({
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/links", mappedPath: "/mnt/links", routedTorrents: null }, { baseDir: "/data/more", mappedPath: "", routedTorrents: null }],
+      })
+      saveBaseDirs("/data/more")
+
+      await screen.findByText("routeConfirm.countUnknown")
+      expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
+    })
+
+    it("saves without a confirm when every mapped base folder stays", () => {
+      saveBaseDirs("/data/links/, /data/more, /data/new")
+
+      expect(mocks.getCrossSeedRoute).not.toHaveBeenCalled()
+      expect(mocks.instances.updateInstance).toHaveBeenCalledTimes(1)
+    })
   })
 })

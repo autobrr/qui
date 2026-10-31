@@ -5,6 +5,7 @@
 
 import { CrossSeedRouteForm } from "@/components/cross-seed/CrossSeedRouteForm"
 import { PooledCompletionSetting } from "@/components/cross-seed/PooledCompletionSetting"
+import { countRoutedTorrents, RouteProtectionConfirmDialog } from "@/components/cross-seed/RouteProtectionConfirm"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,9 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstances } from "@/hooks/useInstances"
+import { api } from "@/lib/api"
 import type { Instance } from "@/types"
 import { ChevronDown, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -27,6 +30,12 @@ import { toast } from "sonner"
 // a remote instance has Write (#2942).
 function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
+}
+
+// ponytail: trims and drops a trailing separator only, so an unclean path such
+// as "/data//links" reads as removed and opens one confirm too many.
+function baseDirKey(dir: string): string {
+  return dir.trim().replace(/(?<=.)[\\/]+$/, "")
 }
 
 /** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
@@ -50,6 +59,8 @@ export function HardlinkModeSettings({
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
+  const { data: routes } = useCrossSeedRoutes()
+  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null } | null>(null)
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -106,7 +117,7 @@ export function HardlinkModeSettings({
     setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
   }
 
-  const handleSave = (instance: Instance) => {
+  const handleSave = async (instance: Instance) => {
     const form = getForm(instance)
 
     // Validate before saving
@@ -126,6 +137,30 @@ export function HardlinkModeSettings({
       return
     }
 
+    // A switch to Regular or an empty list on a Source instance gets the
+    // server's refusal (#3259). Removing a mapped base folder asks first.
+    const route = routes?.find(r => r.sourceInstanceId === instance.id)
+    if (route && (form.useHardlinks || form.useReflinks)) {
+      const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
+      const removed = route.rows.filter(row => !kept.includes(baseDirKey(row.baseDir)))
+      if (removed.length) {
+        let routedTorrents: number | null = null
+        try {
+          const read = await api.getCrossSeedRoute(instance.id)
+          routedTorrents = countRoutedTorrents(read?.rows.filter(row => removed.some(r => r.baseDir === row.baseDir)) ?? [])
+        } catch {
+          // The count stays unknown.
+        }
+        const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
+        setPendingSave({ instance, crossSeedName, routedTorrents })
+        return
+      }
+    }
+    saveInstance(instance)
+  }
+
+  const saveInstance = (instance: Instance) => {
+    const form = getForm(instance)
     updateInstance({
       id: instance.id,
       data: {
@@ -339,7 +374,7 @@ export function HardlinkModeSettings({
                       {isDirty && (
                         <Button
                           size="sm"
-                          onClick={() => handleSave(instance)}
+                          onClick={() => void handleSave(instance)}
                           disabled={isUpdating}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -358,6 +393,17 @@ export function HardlinkModeSettings({
           {pooledCompletionSetting}
         </div>
       </CollapsibleContent>
+      <RouteProtectionConfirmDialog
+        open={pendingSave !== null}
+        onOpenChange={(open) => !open && setPendingSave(null)}
+        sourceName={pendingSave?.instance.name ?? ""}
+        crossSeedName={pendingSave?.crossSeedName ?? ""}
+        routedTorrents={pendingSave?.routedTorrents ?? null}
+        onConfirm={() => {
+          if (pendingSave) saveInstance(pendingSave.instance)
+          setPendingSave(null)
+        }}
+      />
     </Collapsible>
   )
 }

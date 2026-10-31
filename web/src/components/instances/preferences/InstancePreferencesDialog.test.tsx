@@ -881,4 +881,29 @@ describe("InstancePreferencesDialog network binding", () => {
     await waitFor(async () => expect((await fieldFor(interfaceLabel)).disabled).toBe(true))
     expect((await fieldFor(interfaceLabel)).value).toBe("Ethernet")
   })
+
+  it("names the Source instances that route to the instance in the delete dialog", async () => {
+    serveView()
+    server.use(
+      http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
+      http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
+        sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: 6 }],
+      })),
+    )
+    const savedInstances = instances.instances
+    const savedT = i18n.t
+    instances.instances = [...savedInstances, { id: 2, name: "library", isActive: true }]
+    i18n.t = ((key: string, options?: { source?: string; count?: number }) => [key, options?.source, options?.count].filter(v => v !== undefined).join(":")) as typeof i18n.t
+    try {
+      renderDialog()
+      fireEvent.pointerDown(screen.getByRole("button", { name: "preferences.dialog.actions.instanceActions" }), { button: 0, ctrlKey: false })
+      fireEvent.click(await screen.findByRole("menuitem", { name: "preferences.dialog.actions.deleteInstance" }))
+
+      expect(await screen.findByText("routeConfirm.deleteSource:library")).toBeTruthy()
+      expect(await screen.findByText("routeConfirm.count:library:6")).toBeTruthy()
+    } finally {
+      instances.instances = savedInstances
+      i18n.t = savedT
+    }
+  })
 })

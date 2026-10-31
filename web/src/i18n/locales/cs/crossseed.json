@@ -517,6 +517,20 @@
       "invalidInfohash": "Infohash musí být 40 nebo 64 hex znaků"
     }
   },
+  "routeConfirm": {
+    "title": "Přestat chránit směrované soubory?",
+    "counting": "Počítání směrovaných torrentů…",
+    "count_one": "{{count}} směrovaný torrent na {{crossSeed}} používá soubory v dotčených základních složkách {{source}}.",
+    "count_few": "{{count}} směrované torrenty na {{crossSeed}} používají soubory v dotčených základních složkách {{source}}.",
+    "count_many": "{{count}} směrovaného torrentu na {{crossSeed}} používá soubory v dotčených základních složkách {{source}}.",
+    "count_other": "{{count}} směrovaných torrentů na {{crossSeed}} používá soubory v dotčených základních složkách {{source}}.",
+    "countUnknown": "{{crossSeed}} není dostupná, proto je počet směrovaných torrentů v dotčených základních složkách {{source}} neznámý.",
+    "orphanScan": "Kontrola osiřelých souborů na {{source}} přestane chránit soubory těchto torrentů.",
+    "clear": "{{crossSeed}} si směrované torrenty ponechá a jejich soubory zůstanou v základních složkách {{source}}. Před zrušením trasy tyto torrenty přesuňte nebo smažte.",
+    "deleteSource": "Po tomto smazání bude {{source}} opět přidávat cross-seedy sama sobě.",
+    "confirm": "Pokračovat",
+    "cancel": "Zrušit"
+  },
   "dirScan": {
     "title": "Skenovač adresářů",
     "description": "Skenujte lokální adresáře pro dokončené stažení a automaticky je křížově sdílí.",

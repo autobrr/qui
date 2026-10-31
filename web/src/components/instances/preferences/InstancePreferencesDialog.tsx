@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CrossSeedDeleteNotice } from "@/components/cross-seed/RouteProtectionConfirm"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -247,6 +248,7 @@ export function InstancePreferencesDialog({
               {t("preferences.dialog.deleteDialog.description", { name: displayInstanceName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {currentInstance && <CrossSeedDeleteNotice instanceId={currentInstance.id} />}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.dialog.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
