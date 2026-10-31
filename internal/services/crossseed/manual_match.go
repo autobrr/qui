@@ -60,6 +60,9 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 		if torrent.Progress < 1 {
 			return nil, fmt.Errorf("%w: manual match target %q is not complete", ErrTorrentNotComplete, torrent.Name)
 		}
+		if !isSettledSource(&torrent) {
+			return nil, ErrSourceNotSettled
+		}
 		return &FindCandidatesResponse{
 			SourceTorrent: &TorrentInfo{Name: req.TorrentName},
 			Candidates: []CrossSeedCandidate{{
@@ -189,7 +192,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 			requestedTorrent = &torrent
 			continue
 		}
-		if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
+		if !s.canGiveFiles(&torrent) {
 			continue
 		}
 		entry := coarseEntry{torrent: torrent}

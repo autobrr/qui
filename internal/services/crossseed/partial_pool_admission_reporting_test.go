@@ -589,7 +589,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
-		t.Context(), &searchRunState{opts: SearchRunOptions{InstanceID: 1}},
+		t.Context(), 1, triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/synthetic.torrent"},
 		time.Now(),

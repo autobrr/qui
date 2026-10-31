@@ -689,6 +689,24 @@
       },
       "exported": "Exportováno"
     },
+    "runWorkflowNow": {
+      "action": "Spustit nyní",
+      "title": "Spustit \"{{name}}\" nyní?",
+      "description": "qui nyní jednou spustí uložený postup automatizace a použije jeho akce na odpovídající torrenty. Spustí se i tehdy, když je postup vypnutý.",
+      "dryRunDescription": "Tento postup automatizace je nastaven jako zkušební běh, takže qui jen zaznamená, co by udělal. Žádný torrent se nezmění.",
+      "actions": "Akce",
+      "cancel": "Zrušit",
+      "confirm": "Spustit nyní",
+      "toast": {
+        "running": "Spouští se \"{{name}}\"…",
+        "completed": "Běh dokončen pro \"{{name}}\"",
+        "noChanges": "Běh dokončen pro \"{{name}}\". Žádný torrent nepotřeboval změnu.",
+        "completedWithErrors": "Běh pro \"{{name}}\" skončil s chybami. Podívejte se do protokolu aktivity.",
+        "dryRunCompleted": "Zkušební běh dokončen pro \"{{name}}\"",
+        "inProgress": "Probíhá jiný běh. Zkuste to za chvíli znovu.",
+        "failed": "Postup automatizace se nepodařilo spustit"
+      }
+    },
     "workflowPreview": {
       "loadingPreview": "Načítá se náhled. To může trvat nějakou dobu...",
       "cancel": "Zrušit",

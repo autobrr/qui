@@ -15,9 +15,10 @@ Orphan scan finds and removes files in your download directories that no torrent
 ## How it works
 
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
-2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too.
+2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too. If you delete a hardlink of a torrent's file, you free no space, because the torrent's file holds the same data.
 3. Before you confirm deletion, you preview the list.
-4. qui deletes the files, then removes the directories the preview listed.
+4. qui re-checks each listed file against the files your torrents use now, by path and by file identity. A file that a torrent started to use through another path since the preview, such as a hardlink, a bind mount or a symlinked folder, stays. A file your torrents use that is missing protects nothing, because qBittorrent cannot read it either. On Linux, macOS and remote instances, the same goes for a path that runs into a symbolic link loop. qui skips a file your torrents use when it is not allowed to look that file up, so another path to that file is not protected. If qui cannot read one of those files for any other reason, the deletion stops before qui deletes anything. This includes a file that qui can look up but whose file identity it is not allowed to read, for example because of a Windows ACL.
+5. qui deletes the files, then removes the directories the preview listed.
 
 :::note
 When matching paths, qui normalizes Unicode paths to canonical NFC form. If the filesystem and qBittorrent report composed and decomposed forms of the same name, this normalization prevents false orphans. On normalization-sensitive filesystems, qui treats two byte-distinct canonical-equivalent names as one logical path.
@@ -87,6 +88,8 @@ On every platform, orphan file scans skip symbolic links and other non-regular e
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
+qui lists a Blu-ray or DVD folder (`BDMV` or `VIDEO_TS`) as one item. If that folder holds a symbolic link to a file that a torrent uses, deletion keeps the whole folder, even when the torrent uses its own path to the file and not the link. The run reports "a torrent now uses a file in this folder through another path", and each new scan lists the folder again. Remove the link to let qui delete the folder.
+
 Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
 
 ## Partial scans
@@ -103,7 +106,7 @@ Paths skipped before scanning appear in the warning.
 
 Partial scans skip automatic cleanup.
 You can review the warning and delete the listed orphan files manually.
-Before deletion, qui refreshes torrent ownership data and applies its normal deletion checks.
+Before deletion, qui refreshes torrent ownership data, re-checks the listed files as [How it works](#how-it-works) describes, and applies its normal deletion checks.
 After successful manual deletion, the run keeps its **Partial scan** label.
 If all deletion attempts fail, the run shows **Failed** and keeps both the scan warning and the deletion error.
 

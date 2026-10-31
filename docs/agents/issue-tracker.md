@@ -18,7 +18,7 @@ Use the `gh` CLI for all operations. GitHub shares one number space across discu
   ```
 
   Reasons: `RESOLVED`, `OUTDATED`, `DUPLICATE`.
-- **Promote to issue** (`bug` only, see `docs/agents/triage.md`): `gh issue create --title "..." --label <ready-for-agent|ready-for-human> --body "..."` with `From discussion #<number>` as the last line of the body. Then comment the issue URL on the discussion and close the discussion with reason `RESOLVED`.
+- **Promote to issue** (`bug` only): do the four steps in "Issue for a confirmed bug" in `docs/agents/triage.md`. Outside the workflow, step 1 is `gh issue create --title "..." --label <ready-for-agent|ready-for-human> --body "..."` with `From discussion #<number>` as the last line of the body.
 
 In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writes and binds them to the discussion under triage. The playbook in `docs/agents/triage.md` is the process.
 
@@ -61,7 +61,7 @@ Never quote log lines in an issue, a discussion, or a pull request. They are pub
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues are not enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
+- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues are not enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:grilling` or `wayfinder:task`. Once claimed, the ticket is assigned to the driving dev.
 - **Blocking**: GitHub native issue dependencies. Add an edge with `gh api --method POST repos/autobrr/qui/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the numeric database id of the blocker (`gh api repos/autobrr/qui/issues/<n> --jq .id`, not the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only). Where dependencies are not available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
 - **Frontier query**: list the open children of the map, drop any with an open blocker or an assignee, first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the first write of the session.

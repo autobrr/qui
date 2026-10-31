@@ -76,6 +76,6 @@ GPL-2.0-or-later
 
 ## Supported torrent clients
 
-qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, or Transmission, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
+qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, Transmission, or uTorrent, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
 
 For compatible qBittorrent versions, see the [qBittorrent Version Compatibility](./advanced/compatibility.md) page.

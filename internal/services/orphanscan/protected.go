@@ -25,6 +25,8 @@ type protectedPaths struct {
 	// scanRoots are the run's roots, folded like the delete's scan root
 	// boundary compares them.
 	scanRoots []string
+	// inUse holds torrent file identities read at delete time. nil at scan.
+	inUse *inUseIDs
 }
 
 // newProtectedPaths validates and normalizes ignorePaths once. files can be nil.

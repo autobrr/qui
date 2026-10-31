@@ -86,7 +86,11 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	if rule.SortingConfig != nil {
-		if err := rule.SortingConfig.Validate(); err != nil {
+		err := rule.SortingConfig.Validate()
+		if err == nil {
+			err = sortFieldsError(rule.SortingConfig, "unknown sort field")
+		}
+		if err != nil {
 			return ruleError(fmt.Sprintf("Invalid sorting config: %v", err))
 		}
 	}

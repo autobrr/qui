@@ -102,6 +102,11 @@ type InstanceCrossSeedResult struct {
 	// MatchedTorrent is the existing torrent that matched (if any).
 	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add (ADR 0035). InstanceID stays the instance that
+	// holds the match. Both are empty for an add that is not routed.
+	CrossSeedInstanceID   int    `json:"cross_seed_instance_id,omitzero"`
+	CrossSeedInstanceName string `json:"cross_seed_instance_name,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool
 }
@@ -230,6 +235,9 @@ type CrossSeedCandidate struct {
 	MatchType string `json:"match_type"`
 	// titleRescue binds the title bypass to the exact local source torrent.
 	titleRescue bool
+	// route is set when InstanceID routes its cross-seeds. InstanceID stays the
+	// instance that holds the match, so that the Match verdict keeps comparing it.
+	route *candidateRoute
 }
 
 // TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.

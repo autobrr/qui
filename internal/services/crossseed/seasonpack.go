@@ -392,11 +392,12 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		case refusal.Status == "blocked":
 			blockedID = cmp.Or(blockedID, inst.ID)
 		case refusal.Status == "exists":
+			message := fmt.Sprintf("torrent already exists on instance %d", inst.ID)
+			if refusal.Message != existsInThisInstance {
+				message = refusal.Message
+			}
 			s.recordApplyRun(ctx, req.TorrentName, "already_exists", "", inst.ID, 0, prep.totalEpisodes, 0, "")
-			return &SeasonPackApplyResponse{
-				Reason:  "already_exists",
-				Message: fmt.Sprintf("torrent already exists on instance %d", inst.ID),
-			}, nil
+			return &SeasonPackApplyResponse{Reason: "already_exists", Message: message}, nil
 		default:
 			reason, message := "existing_check_failed", fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, refusal.Err)
 			if strings.HasPrefix(refusal.Message, blocklistCheckFailed) {
@@ -1333,14 +1334,15 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
-		// the pack (announce raced the episode's download).
-		if torrent.Progress < 1.0 {
+		// the pack (announce raced the episode's download or its move).
+		if !s.canGiveFiles(torrent) {
 			log.Debug().
 				Str("pack", packRelease.Title).
 				Int("season", packRelease.Series).
 				Str("candidate", torrent.Name).
-				Str("reason", "incomplete download").
+				Str("reason", "source not settled").
 				Float64("progress", torrent.Progress).
+				Str("state", string(torrent.State)).
 				Msg("[CROSSSEED-MATCH] Release filtered")
 			continue
 		}

@@ -91,7 +91,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
 		Torrents:     []qbt.Torrent{matchedTorrent},
-	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info)
+	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 	require.False(t, result.Success)
 	require.Equal(t, "skipped_unsafe_pieces", result.Status)
@@ -149,7 +149,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 			InstanceID:   instanceID,
 			InstanceName: "test-instance",
 			Torrents:     []qbt.Torrent{matchedTorrent},
-		}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info)
+		}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 		require.True(t, result.Success, result.Message)
 		require.Equal(t, "added", result.Status)

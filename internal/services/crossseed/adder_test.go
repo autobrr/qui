@@ -6,13 +6,19 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -464,10 +470,17 @@ func TestAdderCheck(t *testing.T) {
 		blocked      string
 		blocklistErr bool
 		existing     *qbt.Torrent
+		existingOn   int
 		findErr      error
-		wantStatus   string
-		wantMessage  string
-		wantExisting *qbt.Torrent
+		// link stores a route between instance 1 and instance 2.
+		link *adderLink
+		// noRoutes leaves the Adder without the route service.
+		noRoutes    bool
+		wantStatus  string
+		wantMessage string
+		// wantMessageRe matches a message that holds a transport error.
+		wantMessageRe string
+		wantExisting  *qbt.Torrent
 	}{
 		{name: "clear torrent may be added"},
 		{name: "blocked v1 hash", blocked: adderV1, wantStatus: "blocked", wantMessage: "Blocked by cross-seed blocklist"},
@@ -478,17 +491,49 @@ func TestAdderCheck(t *testing.T) {
 		{name: "manual assembly refuses an existing torrent", facts: AddFacts{ManualAssembly: true}, existing: existing, wantStatus: "exists", wantMessage: "Torrent already exists in this instance", wantExisting: existing},
 		{name: "blocklist read fails", blocklistErr: true, wantStatus: "error", wantMessage: "Failed to check cross-seed blocklist: sql: database is closed"},
 		{name: "existing torrent read fails", findErr: errors.New("boom"), wantStatus: "error", wantMessage: "Failed to check existing torrents: boom"},
+		{name: "torrent on no linked instance may be added", link: &adderLink{}},
+		{
+			name: "hash on the Cross-seed instance", link: &adderLink{}, existing: existing, existingOn: 2,
+			wantStatus: "exists", wantMessage: "Torrent already exists in Cross-seed instance seeds", wantExisting: existing,
+		},
+		{
+			name: "hash on a Source instance", link: &adderLink{fromSource: true}, existing: existing, existingOn: 2,
+			wantStatus: "exists", wantMessage: "Torrent already exists in Source instance lib", wantExisting: existing,
+		},
+		{name: "disabled Source instance is skipped", link: &adderLink{fromSource: true, state: "disabled"}, existing: existing, existingOn: 2},
+		{
+			name: "offline Source instance refuses and names it", link: &adderLink{fromSource: true, state: "offline"},
+			wantStatus: "error", wantMessageRe: `^instance unavailable: lib: .+\. Enable lib or clear its cross-seed route$`,
+		},
+		{
+			name: "offline Cross-seed instance refuses", link: &adderLink{state: "offline"},
+			wantStatus: "error", wantMessageRe: `^Cross-seed instance unavailable: seeds: .+`,
+		},
+		{
+			name: "disabled Cross-seed instance refuses", link: &adderLink{state: "disabled"},
+			wantStatus: "error", wantMessage: "Cross-seed instance unavailable: seeds: qBittorrent instance is disabled",
+		},
+		{name: "blocklist of a Source instance does not apply", link: &adderLink{fromSource: true, blocked: true}},
+		// A user with no saved route sees no change.
+		{name: "no saved route checks no other instance", link: &adderLink{unsaved: true}, existing: existing, existingOn: 2},
+		{name: "without the route service no linked instance is checked", link: &adderLink{}, noRoutes: true, existing: existing, existingOn: 2},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			blocklist := adderBlocklist(t, tt.blocked)
+			blocklist, db := adderBlocklist(t, tt.blocked)
 			if tt.blocklistErr {
 				blocklist = models.NewCrossSeedBlocklistStore(closedDB(t))
 			}
-			rig := newAdderRig(t, &adderFake{existing: tt.existing, findErr: tt.findErr}, blocklist)
+			rig := newAdderRig(t, &adderFake{existing: tt.existing, existingOn: tt.existingOn, findErr: tt.findErr}, blocklist)
+			if tt.link != nil {
+				routes := adderRoutes(t, db, *tt.link)
+				if !tt.noRoutes {
+					rig.adder.SetCrossSeedRoutes(routes)
+				}
+			}
 			check, refusal := rig.adder.Check(t.Context(), 1, tt.facts, adderV1, adderV2)
 
 			if tt.wantStatus == "" {
@@ -499,7 +544,11 @@ func TestAdderCheck(t *testing.T) {
 			require.NotNil(t, refusal)
 			require.Equal(t, AddRefused, refusal.Outcome)
 			require.Equal(t, tt.wantStatus, refusal.Status)
-			require.Equal(t, tt.wantMessage, refusal.Message)
+			if tt.wantMessageRe != "" {
+				require.Regexp(t, tt.wantMessageRe, refusal.Message)
+			} else {
+				require.Equal(t, tt.wantMessage, refusal.Message)
+			}
 			require.Equal(t, tt.wantExisting, refusal.Existing)
 			require.Equal(t, tt.wantStatus == "error", refusal.Err != nil)
 		})
@@ -507,8 +556,8 @@ func TestAdderCheck(t *testing.T) {
 }
 
 // adderBlocklist returns a blocklist store on the test database that blocks
-// hash on instance 1, or no entry when hash is empty.
-func adderBlocklist(t *testing.T, hash string) *models.CrossSeedBlocklistStore {
+// hash on instance 1, or no entry when hash is empty, and the database.
+func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore, *database.DB) {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, "adder-blocklist")
@@ -522,7 +571,65 @@ func adderBlocklist(t *testing.T, hash string) *models.CrossSeedBlocklistStore {
 		_, err = store.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: hash})
 		require.NoError(t, err)
 	}
-	return store
+	return store, db
+}
+
+// adderLink is a route between instance 1 and instance 2.
+type adderLink struct {
+	// fromSource makes instance 2 a Source instance that routes to instance 1.
+	// Otherwise instance 1 routes to instance 2.
+	fromSource bool
+	// state of instance 2: online when empty, "disabled", or "offline".
+	state string
+	// blocked puts adderV1 on the blocklist of instance 2.
+	blocked bool
+	// unsaved leaves the route table empty.
+	unsaved bool
+}
+
+// adderRoutes adds instance 2 to db, "lib" as a Source instance or "seeds" as
+// a Cross-seed instance, on a local fake qBittorrent. It stores the route of
+// link, unless link.unsaved, and returns the route service.
+func adderRoutes(t *testing.T, db *database.DB, link adderLink) *crossseedroute.Service {
+	t.Helper()
+	ctx := t.Context()
+
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	host := qbtstub.New(t, t.TempDir()).URL
+	if link.state == "offline" {
+		down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(down.Close)
+		host = down.URL
+	}
+	route := &models.CrossSeedRoute{SourceInstanceID: 1, CrossSeedInstanceID: 2}
+	name := "seeds"
+	if link.fromSource {
+		route.SourceInstanceID, route.CrossSeedInstanceID = 2, 1
+		name = "lib"
+	}
+	linked, err := instances.Create(ctx, name, host, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, linked.ID)
+	if link.state == "disabled" {
+		_, err = instances.SetActiveState(ctx, linked.ID, false)
+		require.NoError(t, err)
+	}
+	if link.blocked {
+		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: linked.ID, InfoHash: adderV1})
+		require.NoError(t, err)
+	}
+	store := models.NewCrossSeedRouteStore(db)
+	if !link.unsaved {
+		require.NoError(t, store.Upsert(ctx, route))
+	}
+
+	clients, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clients.Close() })
+	return crossseedroute.NewService(store, instances, clients, nil)
 }
 
 func closedDB(t *testing.T) *database.DB {

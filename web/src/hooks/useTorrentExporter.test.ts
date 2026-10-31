@@ -5,6 +5,9 @@
 
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { api } from "@/lib/api"
+import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 import { act, renderHook } from "@testing-library/react"
@@ -43,13 +46,14 @@ function makeCrossTorrent(overrides: Partial<CrossInstanceTorrent>): CrossInstan
   }
 }
 
-function exportSelection(torrents: Torrent[], overrides: Record<string, unknown> = {}) {
-  return {
-    hashes: torrents.map(t => t.hash),
-    torrents,
-    isAllSelected: false,
-    ...overrides,
-  }
+function exportSelection(torrents: Torrent[], { isAllSelected = false, hashes = torrents.map(t => t.hash), ...exclusions }: {
+  isAllSelected?: boolean
+  hashes?: string[]
+  instanceIds?: number[]
+  excludeHashes?: string[]
+  excludeTargets?: TorrentActionTarget[]
+} = {}): ActionTarget {
+  return isAllSelected? { kind: "selectAll", selectAll: { filters: makeFilters(), search: "", ...exclusions }, count: 0, previewTorrents: torrents }: { kind: "ticks", hashes, count: hashes.length, previewTorrents: torrents }
 }
 
 let anchorClick: ReturnType<typeof vi.spyOn>

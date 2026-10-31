@@ -1143,6 +1143,23 @@ paths:
       responses:
         '200':
           description: Instance updated
+        '400':
+          description: |
+            Invalid instance ID or request body, link settings that the instance
+            cannot use, or a change that breaks a cross-seed route. A route
+            breaks when its Source instance turns off hardlink and reflink mode,
+            removes all base folders, leaves local mode, or adds a base folder
+            that nests with a mapped one, or when its Cross-seed instance becomes
+            a remote instance or turns on Local Filesystem Access while a row
+            changes the path. The message names the other instance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to update the instance or to check its cross-seed routes
     delete:
       tags:
         - Instances
@@ -1242,13 +1259,13 @@ paths:
         '204':
           description: Credentials stored
         '400':
-          description: Invalid instance ID, request body, endpoint or key
+          description: Invalid instance ID, request body, endpoint or key, or a change that makes the Cross-seed instance of a cross-seed route a remote instance. qui refuses the change before it checks for a running orphan scan deletion.
         '404':
           description: Instance not found
         '409':
           description: An orphan scan deletion is running on the instance
         '500':
-          description: Failed to store SSH credentials, or to check for a running orphan scan deletion
+          description: Failed to store SSH credentials, to check the cross-seed routes, or to check for a running orphan scan deletion
     delete:
       tags:
         - Instances
@@ -1320,7 +1337,7 @@ paths:
         '204':
           description: Host key pinned
         '400':
-          description: Invalid instance ID, request body or host key, or no SSH credentials configured
+          description: Invalid instance ID, request body or host key, no SSH credentials configured, or a pin that makes the Cross-seed instance of a cross-seed route a remote instance. qui refuses the pin before it dials the host.
         '404':
           description: Instance not found
         '409':
@@ -1328,7 +1345,7 @@ paths:
         '502':
           description: The host could not be reached or the SSH handshake failed
         '500':
-          description: Failed to load the instance, read the stored credentials, or store the pin
+          description: Failed to load the instance, check the cross-seed routes, read the stored credentials, or store the pin
 
   /api/instances/{instanceID}/ssh-host-key/replace:
     post:
@@ -3416,6 +3433,80 @@ paths:
         '500':
           description: Failed to get active trackers
 
+  /api/instances/{instanceID}/automations/{ruleID}/apply:
+    post:
+      tags:
+        - Instances
+      summary: Run one automation now
+      description: |
+        Run one saved automation on the instance now and apply its actions. The run ignores the interval of the automation, and it also runs a disabled automation.
+        An automation with dryRun set stays a simulation and writes dry-run activity rows.
+        Only one run applies actions on an instance at a time. If a run is in progress, the request returns 409 and applies nothing.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: integer
+          description: Automation ID
+      responses:
+        '202':
+          description: The run is complete
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - applied
+                      - dry-run-completed
+                  activityIds:
+                    type: array
+                    description: The IDs of the activity rows that the run wrote.
+                    items:
+                      type: integer
+                  activities:
+                    type: array
+                    description: The activity rows that the run wrote.
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: Invalid instance ID or automation ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Automation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Another run applies actions on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The run failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The automations service is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/preferences:
     get:
       tags:
@@ -5093,6 +5184,156 @@ paths:
           description: Failed to save completion settings
         '503':
           description: Completion settings store not configured
+
+  /api/cross-seed/routes:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed routes
+      description: Returns every saved route from a Source instance to its Cross-seed instance, so a client can see which instances route to which.
+      responses:
+        '200':
+          description: Saved routes, ordered by Source instance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedRoute'
+        '500':
+          description: Failed to list cross-seed routes
+
+  /api/cross-seed/routes/{instanceId}:
+    parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Source instance ID
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get the cross-seed route of a Source instance
+      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes. A base folder that the Source instance gained after the save shows as a row with an empty mappedPath. Each row gives routedTorrents, the number of the Cross-seed instance's torrents under it, or null when the Cross-seed instance is unavailable.
+      responses:
+        '200':
+          description: The saved route with its rule status, or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CrossSeedRouteStatus'
+                  - type: 'null'
+        '400':
+          description: Invalid instance ID
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to read or check the cross-seed route
+    put:
+      tags:
+        - Cross-Seed
+      summary: Save the cross-seed route of a Source instance
+      description: |
+        Saves the Cross-seed instance of a Source instance and the mapped path of each base folder. A base folder without a row, or with an empty mapped path, keeps the same path on both instances. The API refuses a route that breaks a route rule:
+        the Source instance must use hardlink or reflink mode with at least one base folder, have Local Filesystem Access, and not be a Cross-seed instance itself;
+        the Cross-seed instance must be another instance, have no route of its own, not be a remote instance, be online, and run qBittorrent 5.0 or later;
+        each mapped path must be absolute, no two rows may map to the same or nested paths, and every row keeps the same path when the Cross-seed instance has Local Filesystem Access.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - crossSeedInstanceId
+              properties:
+                crossSeedInstanceId:
+                  type: integer
+                rows:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CrossSeedRouteRow'
+      responses:
+        '200':
+          description: The saved route, with one row for each base folder of the Source instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedRoute'
+        '400':
+          description: Invalid request, or the route breaks a route rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or Cross-seed instance not found
+        '500':
+          description: Failed to save the cross-seed route
+    delete:
+      tags:
+        - Cross-Seed
+      summary: Clear the cross-seed route of a Source instance
+      responses:
+        '204':
+          description: Route cleared, or there was none
+        '400':
+          description: Invalid instance ID
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to clear the cross-seed route
+
+  /api/cross-seed/routes/{instanceId}/test:
+    parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Source instance ID
+    post:
+      tags:
+        - Cross-Seed
+      summary: Test cross-seed route rows before a save
+      description: |
+        Tests the rows of a route that is not saved yet. For each base folder of the Source instance, qui creates the base folder if it is missing, as cross-seed link mode does, and keeps it, writes a marker folder with a qui-prefixed name in it, and asks the Cross-seed instance's qBittorrent to list the mapped folder. qui always removes the marker.
+        Each row reports one result: sees (the listing holds the marker), seesFolderNotMarker, cannotSeeFolder (qBittorrent refuses to list the folder), or cannotWrite (qui cannot write to the folder on the Source instance).
+        When the Cross-seed instance is unavailable (offline, turned off in qui, or older than qBittorrent 5.0), crossSeedUnavailable holds the reason and rows is empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - crossSeedInstanceId
+              properties:
+                crossSeedInstanceId:
+                  type: integer
+                rows:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CrossSeedRouteRow'
+      responses:
+        '200':
+          description: The result for each base folder, or the reason that the Cross-seed instance is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedRouteTestResult'
+        '400':
+          description: Invalid request, the Source instance has no Local Filesystem Access or is a remote instance, a row is not a base folder, or a mapped path is not absolute
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or Cross-seed instance not found
+        '500':
+          description: Failed to test the cross-seed route
 
   /api/cross-seed/season-pack/check:
     post:
@@ -8215,15 +8456,23 @@ components:
       properties:
         instance_id:
           type: integer
+          description: The instance that holds the matched torrent.
         instance_name:
           type: string
         success:
           type: boolean
         status:
           type: string
+          description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
         message:
           type: string
           nullable: true
+        cross_seed_instance_id:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. Not set when the add is not routed.
+        cross_seed_instance_name:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedRunResult:
       type: object
@@ -8248,6 +8497,12 @@ components:
         matchedTorrentName:
           type: string
           nullable: true
+        crossSeedInstanceId:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. Not set when the add is not routed.
+        crossSeedInstanceName:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedRun:
       type: object
@@ -8318,6 +8573,93 @@ components:
           type: string
         note:
           type: string
+
+    CrossSeedRouteRow:
+      type: object
+      required:
+        - baseDir
+        - mappedPath
+      properties:
+        baseDir:
+          type: string
+          description: A base folder of the Source instance, cleaned with its path rules
+        mappedPath:
+          type: string
+          description: Where the Cross-seed instance sees the base folder. Empty means the same path on both instances.
+
+    CrossSeedRoute:
+      type: object
+      required:
+        - sourceInstanceId
+        - crossSeedInstanceId
+        - rows
+      properties:
+        sourceInstanceId:
+          type: integer
+        crossSeedInstanceId:
+          type: integer
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedRouteRow'
+
+    CrossSeedRouteStatus:
+      allOf:
+        - $ref: '#/components/schemas/CrossSeedRoute'
+        - type: object
+          required:
+            - rows
+          properties:
+            rows:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedRouteRow'
+                  - type: object
+                    required:
+                      - routedTorrents
+                    properties:
+                      routedTorrents:
+                        type: integer
+                        nullable: true
+                        description: The number of the Cross-seed instance's torrents under the row. Null when the Cross-seed instance is unavailable.
+            brokenRule:
+              type: string
+              description: The route rule that the saved route breaks. Absent when the route passes every rule.
+
+    CrossSeedRouteTestResult:
+      type: object
+      required:
+        - rows
+      properties:
+        crossSeedUnavailable:
+          type: string
+          description: Why the Cross-seed instance is unavailable. Absent when qui could test the rows.
+        rows:
+          type: array
+          items:
+            type: object
+            required:
+              - baseDir
+              - listedPath
+              - result
+            properties:
+              baseDir:
+                type: string
+                description: A base folder of the Source instance
+              listedPath:
+                type: string
+                description: The folder that qui listed on the Cross-seed instance
+              result:
+                type: string
+                enum:
+                  - sees
+                  - seesFolderNotMarker
+                  - cannotSeeFolder
+                  - cannotWrite
+              error:
+                type: string
+                description: Why qui cannot write to the folder. Set only with cannotWrite.
 
     InstanceCrossSeedCompletionSettings:
       type: object
@@ -9069,6 +9411,12 @@ components:
         processedAt:
           type: string
           format: date-time
+        crossSeedInstanceId:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. Not set when the add is not routed.
+        crossSeedInstanceName:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedSearchRun:
       type: object

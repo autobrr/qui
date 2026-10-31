@@ -13,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
@@ -182,21 +183,16 @@ func (s *Service) processLinkMode(
 
 	// failure is a Used=true result that stops the dispatcher from trying regular mode.
 	failure := func(status, message string) linkModeResult {
-		return linkModeResult{
-			Used: true,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Status:       status,
-				Message:      message,
-			},
-		}
+		return linkModeResult{Used: true, Result: candidate.newResult(status, message)}
 	}
 	linkError := func(message string) linkModeResult { return failure(mode.name+"_error", message) }
 
-	// Get instance to check link settings (per-instance)
-	instance, err := s.instanceStore.Get(ctx, candidate.InstanceID)
-	if err != nil || instance == nil {
+	var instance *models.Instance
+	var err error
+	if candidate.route != nil {
+		// A routed add uses the Source instance's row from its one capability read.
+		instance = candidate.route.source
+	} else if instance, err = s.instanceStore.Get(ctx, candidate.InstanceID); err != nil || instance == nil {
 		// If we can't get the instance, we can't check if the mode is enabled.
 		// This is not a link error, just return linkModeResult{}
 		return linkModeResult{}
@@ -215,8 +211,9 @@ func (s *Service) processLinkMode(
 	}
 
 	// From here on, link mode is ENABLED
-	// Check if fallback is enabled - if so, errors return linkModeResult{} instead of <mode>_error
-	fallbackEnabled := instance.FallbackToRegularMode
+	// Check if fallback is enabled - if so, errors return linkModeResult{} instead of <mode>_error.
+	// A routed add ignores the setting and never falls back (ADR 0035).
+	fallbackEnabled := instance.FallbackToRegularMode && candidate.route == nil
 
 	// Helper to handle errors based on fallback setting
 	handleError := func(message string) linkModeResult {
@@ -319,8 +316,10 @@ func (s *Service) processLinkMode(
 		return failure("below_threshold", message)
 	}
 
-	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID, models.CapabilityWrite)
-	if err != nil {
+	var backend fsops.Backend
+	if candidate.route != nil {
+		backend = candidate.route.backend
+	} else if backend, err = s.getBackendForInstance(ctx, candidate.InstanceID, models.CapabilityWrite); err != nil {
 		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
 	d := backend.Paths()
@@ -365,7 +364,8 @@ func (s *Service) processLinkMode(
 		})
 	}
 
-	pooledCompletion := s.partialPool.joinEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
+	// The partial pool registers its members on the Source instance, so a routed add stays out.
+	pooledCompletion := candidate.route == nil && s.partialPool.joinEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	var poolReplaceablePaths map[string]struct{}
@@ -377,9 +377,11 @@ func (s *Service) processLinkMode(
 	// from the base dir whose tree was created.
 	var (
 		selectedBaseDir, destDir string
-		plan                     *hardlinktree.TreePlan
-		planErr                  error
-		created                  *fsops.TreeCreateResult
+		// savePath is plan.RootDir, mapped to the Cross-seed instance for a routed add.
+		savePath string
+		plan     *hardlinktree.TreePlan
+		planErr  error
+		created  *fsops.TreeCreateResult
 	)
 	err = LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend, func(baseDir string) error {
 		selectedBaseDir = baseDir
@@ -391,6 +393,14 @@ func (s *Service) processLinkMode(
 			plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
 			if planErr != nil {
 				return nil, planErr
+			}
+			savePath = plan.RootDir
+			if candidate.route != nil {
+				var mapped bool
+				if savePath, mapped = crossseedroute.ToCrossSeed(d, candidate.route.rows, baseDir, plan.RootDir); !mapped {
+					planErr = fmt.Errorf("the cross-seed route has no row for base folder %s", baseDir)
+					return nil, planErr
+				}
 			}
 			// Materialize only after the coverage and plan gates so clearly invalid
 			// partial matches are skipped before probing filesystem capabilities.
@@ -444,12 +454,39 @@ func (s *Service) processLinkMode(
 		return handle(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
 	}
 
+	// Rollback only what this attempt created: the destination can be shared
+	// with an earlier successful add for the same release (discussion #2282).
+	// WithoutCancel: a cancelled run must still roll back its partial tree.
+	rollback := func() {
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
+			log.Warn().
+				Err(rollbackErr).
+				Str("destDir", destDir).
+				Msg(logPrefix + "failed to rollback link tree")
+		}
+	}
+
+	// The plan, not created, names a linked file: the build skips a target
+	// that already is the same file, so created can be empty.
+	if candidate.route != nil {
+		if failed := s.checkVisible(ctx, candidate, d, selectedBaseDir, plan.Files[0].TargetPath); failed != nil {
+			rollback()
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentName", torrentName).
+				Str("reason", failed.Message).
+				Msg(logPrefix + "routed add stopped by the visibility check")
+			return linkModeResult{Used: true, Result: *failed}
+		}
+	}
+
 	// Ensure cross-seed category exists with the correct save path derived from
 	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
 		categorySavePath := s.buildCategorySavePath(ctx, d, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
+		receiverID, _ := candidate.receiver()
+		if _, err := s.ensureCrossCategory(ctx, receiverID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).
@@ -475,7 +512,7 @@ func (s *Service) processLinkMode(
 	// Force contentLayout=Original to match the link tree layout exactly
 	// and avoid double-folder nesting when instance default is Subfolder.
 	placement := AddPlacement{
-		SavePath:      plan.RootDir,
+		SavePath:      savePath,
 		Category:      crossCategory,
 		Tags:          buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags),
 		ContentLayout: "Original",
@@ -493,7 +530,7 @@ func (s *Service) processLinkMode(
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("torrentName", torrentName).
-		Str("savepath", plan.RootDir).
+		Str("savepath", savePath).
 		Str("category", crossCategory).
 		Bool("hasExtras", hasExtras).
 		Bool("discLayout", addPolicy.DiscLayout).
@@ -546,15 +583,7 @@ func (s *Service) processLinkMode(
 		},
 	})
 	if added.Outcome == AddRefused {
-		// Rollback only what this attempt created: the destination can be shared
-		// with an earlier successful add for the same release (discussion #2282).
-		// WithoutCancel: a cancelled run must still roll back its partial tree.
-		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
-			log.Warn().
-				Err(rollbackErr).
-				Str("destDir", destDir).
-				Msg(logPrefix + "failed to rollback link tree")
-		}
+		rollback()
 		log.Error().
 			Str("reason", added.Message).
 			Int("instanceID", candidate.InstanceID).
@@ -593,22 +622,14 @@ func (s *Service) processLinkMode(
 		status = partialPoolRegistrationErrorStatus
 	}
 
-	return linkModeResult{
-		Used:    true,
-		Success: success,
-		Result: InstanceCrossSeedResult{
-			InstanceID:         candidate.InstanceID,
-			InstanceName:       candidate.InstanceName,
-			Success:            success,
-			Status:             status,
-			Message:            statusMsg,
-			partialPoolPending: pooledMember != nil,
-			MatchedTorrent: &MatchedTorrent{
-				Hash:     matchedTorrent.Hash,
-				Name:     matchedTorrent.Name,
-				Progress: matchedTorrent.Progress,
-				Size:     matchedTorrent.Size,
-			},
-		},
+	result := candidate.newResult(status, statusMsg)
+	result.Success = success
+	result.partialPoolPending = pooledMember != nil
+	result.MatchedTorrent = &MatchedTorrent{
+		Hash:     matchedTorrent.Hash,
+		Name:     matchedTorrent.Name,
+		Progress: matchedTorrent.Progress,
+		Size:     matchedTorrent.Size,
 	}
+	return linkModeResult{Used: true, Success: success, Result: result}
 }

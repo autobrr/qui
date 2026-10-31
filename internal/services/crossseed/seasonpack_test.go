@@ -1187,6 +1187,57 @@ func TestCheckSeasonPackWebhook_IgnoresIncompleteEpisodeTorrents(t *testing.T) {
 	require.InDelta(t, 0.75, resp.Matches[0].Coverage, 0.001)
 }
 
+// regression: #3626
+func TestCheckSeasonPackWebhook_CountsUnsettledEpisodeAsMissing(t *testing.T) {
+	tests := []struct {
+		name           string
+		state          qbt.TorrentState
+		recoverErrored bool
+	}{
+		{name: "moving", state: qbt.TorrentStateMoving},
+		{name: "checking with recovery on", state: qbt.TorrentStateCheckingUp, recoverErrored: true},
+		{name: "errored with recovery off", state: qbt.TorrentStateError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fix := newSeasonPackFixture(t)
+			inst := &models.Instance{
+				ID: 1, Name: "Test", IsActive: true,
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          t.TempDir(),
+			}
+			episodeTorrents := []qbt.Torrent{
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", Progress: 1.0, State: tt.state},
+			}
+			svc := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager: newMultiFakeSyncManager(
+					map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+					map[int]*models.Instance{inst.ID: inst},
+				),
+				releaseCache:                  NewReleaseCache(),
+				automationSettingsLoader:      defaultSettings(true, 1.0),
+				recoverErroredTorrentsEnabled: tt.recoverErrored,
+			}
+
+			resp, err := svc.CheckSeasonPackWebhook(t.Context(), &SeasonPackCheckRequest{
+				TorrentName: fix.packName,
+				TorrentData: fix.torrentData,
+				InstanceIDs: []int{inst.ID},
+			})
+
+			require.NoError(t, err)
+			require.False(t, resp.Ready)
+			require.Len(t, resp.Matches, 1)
+			require.Equal(t, 3, resp.Matches[0].MatchedEpisodes)
+		})
+	}
+}
+
 func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 	packName := "Cool.Show.S01.1080p.BluRay.x264-GRP"
 	baseDir := t.TempDir()
@@ -1239,6 +1290,23 @@ func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 }
 
 func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testing.T) {
+	tests := []struct {
+		name        string
+		linked      bool
+		wantMessage string
+	}{
+		{name: "torrent on the instance", wantMessage: "torrent already exists on instance 1"},
+		{name: "torrent on the Cross-seed instance", linked: true, wantMessage: "Torrent already exists in Cross-seed instance seeds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testApplySeasonPackAlreadyExists(t, tt.linked, tt.wantMessage)
+		})
+	}
+}
+
+func testApplySeasonPackAlreadyExists(t *testing.T, linked bool, wantMessage string) {
+	t.Helper()
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	baseDir := t.TempDir()
@@ -1271,7 +1339,14 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	// The existing torrent on the instance has the same hash.
-	withLinkAdder(svc).existing = &qbt.Torrent{Hash: meta.HashV1, Name: fix.packName, Progress: 1.0}
+	sync := withLinkAdder(svc)
+	sync.existing = &qbt.Torrent{Hash: meta.HashV1, Name: fix.packName, Progress: 1.0}
+	if linked {
+		// Only the Cross-seed instance of the instance has the torrent.
+		sync.existingOn = 2
+		_, db := adderBlocklist(t, "")
+		svc.adder.SetCrossSeedRoutes(adderRoutes(t, db, adderLink{}))
+	}
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1281,6 +1356,7 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "already_exists", resp.Reason)
+	require.Equal(t, wantMessage, resp.Message)
 
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "apply", store.runs[0].Phase)

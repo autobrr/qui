@@ -925,3 +925,7 @@ func TestHandleTorrentCompletion_BurstReadsSettingsOncePerInstance(t *testing.T)
 
 	assert.Equal(t, int64(2), q.settingsReads.Load())
 }
+
+func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

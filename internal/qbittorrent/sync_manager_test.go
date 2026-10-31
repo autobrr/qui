@@ -277,21 +277,23 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 	require.Equal(t, "current-hash", currentFiltered[0].Hash)
 }
 
+// trackerHealthSnapshotOf builds a snapshot that holds the given number of
+// torrents with each verdict.
+func trackerHealthSnapshotOf(unregistered, down, errored int) *TrackerHealthSnapshot {
+	byHash := make(map[string]TrackerHealth)
+	for health, n := range map[TrackerHealth]int{TrackerHealthUnregistered: unregistered, TrackerHealthDown: down, TrackerHealthError: errored} {
+		for i := range n {
+			byHash[fmt.Sprintf("%s-%d", health, i)] = health
+		}
+	}
+	return NewTrackerHealthSnapshot(byHash)
+}
+
 func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupported(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{
-		trackerHealthCache: map[int]*TrackerHealthCounts{
-			7: {
-				Unregistered:    1,
-				TrackerDown:     2,
-				TrackerError:    3,
-				UnregisteredSet: map[string]struct{}{"hash-a": {}},
-				TrackerDownSet:  map[string]struct{}{"hash-b": {}},
-				TrackerErrorSet: map[string]struct{}{"hash-c": {}},
-				UpdatedAt:       time.Now(),
-			},
-		},
+		trackerHealthCache: map[int]*TrackerHealthSnapshot{7: trackerHealthSnapshotOf(1, 2, 3)},
 	}
 	client := &Client{instanceID: 7, trackerIncludeSupported: false}
 	torrents := []qbt.Torrent{
@@ -1942,10 +1944,9 @@ func TestSortCrossInstanceTorrentsStateUsesTrackerHealthPriority(t *testing.T) {
 		{
 			TorrentView: &TorrentView{
 				Torrent: &qbt.Torrent{
-					Hash:     "hash-error",
-					Name:     "Tracker Error",
-					State:    qbt.TorrentStatePausedUp,
-					Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example.invalid/announce", Status: qbt.TrackerStatusTrackerError, Message: "ratio too low"}},
+					Hash:  "hash-error",
+					Name:  "Tracker Error",
+					State: qbt.TorrentStatePausedUp,
 				},
 			},
 			InstanceID:   2,
@@ -1954,16 +1955,17 @@ func TestSortCrossInstanceTorrentsStateUsesTrackerHealthPriority(t *testing.T) {
 		{
 			TorrentView: &TorrentView{
 				Torrent: &qbt.Torrent{
-					Hash:     "hash-unregistered",
-					Name:     "Unregistered",
-					State:    qbt.TorrentStatePausedUp,
-					Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"}},
+					Hash:  "hash-unregistered",
+					Name:  "Unregistered",
+					State: qbt.TorrentStatePausedUp,
 				},
 			},
 			InstanceID:   3,
 			InstanceName: "Three",
 		},
 	}
+	sm.trackerHealthCache[2] = NewTrackerHealthSnapshot(map[string]TrackerHealth{"hash-error": TrackerHealthError})
+	sm.trackerHealthCache[3] = NewTrackerHealthSnapshot(map[string]TrackerHealth{"hash-unregistered": TrackerHealthUnregistered})
 
 	sm.sortCrossInstanceTorrents(torrents, "state", false)
 
@@ -2977,7 +2979,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	mapping := newValidatedTrackerMapping()
 	sm := &SyncManager{
 		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
-		trackerHealthCache:      map[int]*TrackerHealthCounts{},
+		trackerHealthCache:      map[int]*TrackerHealthSnapshot{},
 	}
 	client := &Client{instanceID: 1, trackerIncludeSupported: true}
 
@@ -2988,7 +2990,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	// The health cache refreshed between requests. The hit must show the new
 	// values on a COPIED status map, leaving the stored entry untouched.
 	sm.trackerHealthMu.Lock()
-	sm.trackerHealthCache[1] = &TrackerHealthCounts{Unregistered: 4, TrackerDown: 2, TrackerError: 1}
+	sm.trackerHealthCache[1] = trackerHealthSnapshotOf(4, 2, 1)
 	sm.trackerHealthMu.Unlock()
 
 	layered := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
@@ -3041,7 +3043,7 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 	mapping := newValidatedTrackerMapping()
 	sm := &SyncManager{
 		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
-		trackerHealthCache:      map[int]*TrackerHealthCounts{1: {Unregistered: 4, TrackerDown: 2, TrackerError: 1}},
+		trackerHealthCache:      map[int]*TrackerHealthSnapshot{1: trackerHealthSnapshotOf(4, 2, 1)},
 	}
 	client := &Client{instanceID: 1, trackerIncludeSupported: true}
 

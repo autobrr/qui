@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/autobrr/go-torrent/bencode"
@@ -584,4 +585,122 @@ func TestDecodeTransmissionResumeFileStructuredPeers(t *testing.T) {
 			assert.Equal(t, "all", resume.Progress.Blocks)
 		})
 	}
+}
+
+func TestReplacePath(t *testing.T) {
+	t.Parallel()
+
+	data := filepath.Join(string(filepath.Separator), "data")
+
+	tests := []struct {
+		name  string
+		path  string
+		rules []PathReplace
+		want  string
+	}{
+		{name: "posix prefix", path: "/mnt/old/tv/Show", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: filepath.Join(data, "tv", "Show")},
+		{name: "posix exact", path: "/mnt/old", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: data},
+		{name: "posix trailing slash in rule", path: "/mnt/old/tv", rules: []PathReplace{{From: "/mnt/old/", To: data}}, want: filepath.Join(data, "tv")},
+		{name: "posix root", path: "/tv", rules: []PathReplace{{From: "/", To: data}}, want: filepath.Join(data, "tv")},
+		{name: "posix component boundary", path: "/mnt/older/tv", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: "/mnt/older/tv"},
+		{name: "posix root skips unc", path: `\\nas\share\tv`, rules: []PathReplace{{From: "/", To: data}}, want: `\\nas\share\tv`},
+		{name: "posix keeps literal backslash", path: `/mnt/old/a\b`, rules: []PathReplace{{From: "/mnt/old", To: data}}, want: filepath.Join(data, `a\b`)},
+		{name: "posix case-sensitive", path: "/MNT/old/tv", rules: []PathReplace{{From: "/mnt/old", To: data}}, want: "/MNT/old/tv"},
+		{name: "windows prefix", path: `D:\Downloads\tv\Show`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv", "Show")},
+		{name: "windows case and slashes", path: `d:/downloads/tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows drive root", path: `D:\tv`, rules: []PathReplace{{From: `D:\`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc mixed slashes", path: `//nas/share\Show`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "Show")},
+		{name: "windows unc leading slash then backslash", path: `/\nas\share\tv`, rules: []PathReplace{{From: `\\nas\share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows unc case", path: `\\nas\share\tv`, rules: []PathReplace{{From: `\\NAS\Share`, To: data}}, want: filepath.Join(data, "tv")},
+		{name: "windows component boundary", path: `D:\Downloads2\tv`, rules: []PathReplace{{From: `D:\Downloads`, To: data}}, want: `D:\Downloads2\tv`},
+		{
+			name: "first match wins",
+			path: "/mnt/old/tv",
+			rules: []PathReplace{
+				{From: "/mnt/old/tv", To: filepath.Join(data, "shows")},
+				{From: "/mnt/old", To: data},
+			},
+			want: filepath.Join(data, "shows"),
+		},
+		{name: "no rules", path: `D:\Downloads\tv`, want: `D:\Downloads\tv`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, replacePath(tt.path, tt.rules))
+		})
+	}
+}
+
+func TestParsePathReplace(t *testing.T) {
+	t.Parallel()
+
+	to := t.TempDir()
+
+	r, err := ParsePathReplace(`D:\Downloads=` + to)
+	require.NoError(t, err)
+	assert.Equal(t, PathReplace{From: `D:\Downloads`, To: to}, r)
+
+	r, err = ParsePathReplace("/=" + to)
+	require.NoError(t, err)
+	assert.Equal(t, PathReplace{From: "/", To: to}, r)
+
+	for _, rule := range []string{`D:\Downloads`, `D:\Downloads=`, "=" + to, `D:\Downloads=data`, `\\=` + to, `\=` + to, "//=" + to} {
+		_, err := ParsePathReplace(rule)
+		assert.Error(t, err, rule)
+	}
+}
+
+func TestForeignAbs(t *testing.T) {
+	t.Parallel()
+
+	windows := runtime.GOOS == "windows"
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "Name/a.mkv", want: false},
+		{path: `Name\a.mkv`, want: false},
+		{path: `\Season/episode.mkv`, want: false},
+		{path: `E:/Extras\b.mkv`, want: !windows},
+		{path: `E:\Extras\b.mkv`, want: !windows},
+		{path: "e:/Extras/b.mkv", want: !windows},
+		{path: `\\nas\share\b.mkv`, want: !windows},
+		{path: "/mnt/extras/b.mkv", want: windows},
+		{path: filepath.Join(t.TempDir(), "b.mkv"), want: false},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, foreignAbs(tt.path), tt.path)
+	}
+}
+
+func TestCopyFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.torrent")
+	dst := filepath.Join(dir, "dst.torrent")
+	require.NoError(t, os.WriteFile(src, []byte("d4:infod4:name4:testee"), 0o600))
+
+	require.NoError(t, CopyFile(src, dst))
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, "d4:infod4:name4:testee", string(got))
+
+	// a read error mid-copy (src is a directory) must leave neither dst nor
+	// a temp file behind, or the next run would skip the torrent as imported
+	failDst := filepath.Join(dir, "fail.torrent")
+	require.Error(t, CopyFile(t.TempDir(), failDst))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.ElementsMatch(t, []string{"src.torrent", "dst.torrent"}, names)
 }

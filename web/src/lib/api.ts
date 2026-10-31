@@ -2077,6 +2077,12 @@ class ApiClient {
     })
   }
 
+  async applyAutomationNow(instanceId: number, ruleId: number): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/${ruleId}/apply`, {
+      method: "POST",
+    })
+  }
+
   async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)

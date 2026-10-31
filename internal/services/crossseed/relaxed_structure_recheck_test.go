@@ -88,7 +88,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		withAdder(service)
 		result := service.processCrossSeedCandidate(
 			context.Background(), candidate, []byte("torrent"), newHash, "",
-			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil,
+			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil, nil,
 		)
 		return result, sync
 	}
@@ -228,7 +228,7 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 				},
 				service.releaseCache.Parse(renameOnlySourceFile),
 				sourceFiles,
-				nil,
+				nil, nil,
 			)
 
 			require.True(t, result.Success, "message: %s", result.Message)
