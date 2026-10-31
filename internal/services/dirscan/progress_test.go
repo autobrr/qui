@@ -125,24 +125,31 @@ func (b statBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 }
 
 // A torrent file the index could not read, or read without an identity,
-// leaves the index incomplete. A missing one does not, since the torrent no
-// longer has it there.
+// leaves the index incomplete. So does a missing file that the torrent wants,
+// since a completed torrent has it on disk. A missing skipped file does not,
+// since qBittorrent never wrote it.
 //
 // regression: #3613
 func TestBuildFileIDIndexCompleteness(t *testing.T) {
+	notExist := &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
+	notDir := &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}
 	for _, tt := range []struct {
-		name string
-		info *fsops.LstatInfo
-		err  error
-		want bool
+		name     string
+		priority int
+		info     *fsops.LstatInfo
+		err      error
+		want     bool
 	}{
-		{name: "missing file", err: &fs.PathError{Op: "stat", Err: fs.ErrNotExist}, want: true},
-		{name: "parent is a file", err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: true},
-		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false},
-		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false},
+		{name: "missing skipped file", err: notExist, want: true},
+		{name: "parent of a skipped file is a file", err: notDir, want: true},
+		{name: "missing wanted file", priority: 1, err: notExist, want: false},
+		{name: "parent of a wanted file is a file", priority: 1, err: notDir, want: false},
+		{name: "unreadable file", priority: 1, err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false},
+		{name: "no identity", priority: 1, info: &fsops.LstatInfo{Size: 1}, want: false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := &Service{torrentFiles: stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}}}
+			files := qbt.TorrentFiles{{Name: "other.mkv", Priority: tt.priority}}
+			svc := &Service{torrentFiles: stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": files}}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
 
 			index, err := svc.buildFileIDIndex(t.Context(), 1, backend, nil)

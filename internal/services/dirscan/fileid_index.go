@@ -25,8 +25,9 @@ import (
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
 	// complete is set when qBittorrent answered with the file list of every
-	// completed torrent and qui read every one of those files that is on disk,
-	// so a file missing from byKey is known not to seed.
+	// completed torrent and qui read every file of those torrents except the
+	// skipped ones that are not on disk, so a file missing from byKey is known
+	// not to seed.
 	complete bool
 }
 
@@ -144,10 +145,13 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 		info, err := backend.Stat(ctx, absPath)
 		if err != nil {
 			statErrors++
-			// A missing file shows the torrent no longer has it there. A file
-			// qui could not read shows nothing, so the index cannot rule out
-			// that it is seeded.
-			if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
+			// qBittorrent lists a skipped file (priority 0) that it never
+			// wrote, so its absence says nothing. A wanted file of a completed
+			// torrent is on disk, so if it is missing, or qui could not read
+			// it, qui does not see the save path as qBittorrent does, and the
+			// index cannot rule out that a file is seeded.
+			missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+			if !missing || file.Priority > 0 {
 				index.complete = false
 			}
 			continue
