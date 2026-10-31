@@ -77,6 +77,7 @@ export function useTorrentTableVirtualization({
     }, [rows]),
     // Report the end during the scroll too. A report only after the scroll
     // pauses lets a steady scroll reach the last loaded row and stop there.
+    // The phone cards keep that pause check (TorrentCardsMobile).
     onChange: (instance) => {
       const vRows = instance.getVirtualItems();
       const lastItem = vRows.at(-1);
