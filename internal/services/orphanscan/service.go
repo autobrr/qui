@@ -998,6 +998,23 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// the preview. At the cap, still check directories to set Truncated correctly.
 	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
 		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, result.categoryPaths, protected, gracePeriod, backend)
+		// A torrent can reach an empty folder through a symlink or a bind mount,
+		// which the paths above cannot see. The sftp tier reads no identity, so
+		// it lists by path, and it cannot delete.
+		if len(abandoned) > 0 && models.FilesystemCapabilitiesOf(instance).Identity {
+			reached, err := collectInUseIDs(ctx, backend, instance, torrentDirs(d, result.torrentPaths))
+			switch {
+			case ctx.Err() != nil:
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			case err != nil:
+				log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: listing no abandoned directory, cannot read the identity of a torrent folder")
+				scanWarnings = append(scanWarnings, fmt.Sprintf("No abandoned directories are listed: could not check which folders torrents use: %v", err))
+				abandoned = nil
+			default:
+				abandoned = dropDirsTorrentsReach(ctx, abandoned, reached, backend)
+			}
+		}
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
 		allOrphans = dedupeOrphans(d, append(allOrphans, abandoned...))
 	}

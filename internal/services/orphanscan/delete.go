@@ -204,18 +204,19 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 	return nil
 }
 
-// inUseIDs holds the identity of every torrent file on disk at delete time.
-// The file map protects by path, so without these a torrent that reaches a
-// listed file through a second path since the scan, such as a bind mount, a
-// symlinked folder or a hardlink, would lose it. The scan keeps such a file by
-// identity, and the delete keeps it the same way.
+// inUseIDs holds the identity of every torrent file on disk at delete time, and
+// of the folders along the torrents' paths when a run lists folders. The file
+// map protects by path, so without these a torrent that reaches a listed file
+// or folder through a second path, such as a bind mount, a symlinked folder or
+// a hardlink, would lose it. A file and a folder never share an identity, so
+// one set holds both.
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
 }
 
-// collectInUseIDs reads the identity of each torrent path through backend,
-// following links, as qBittorrent does. A path that is not on disk, or that
+// collectInUseIDs reads the identity of each torrent file or folder through
+// backend, following links, as qBittorrent does. A path that is not on disk, or that
 // runs into a symlink loop, protects nothing, since qBittorrent cannot read it
 // either. A path qui may not look up is skipped, as the scan skips a denied
 // subtree. Any other failure is returned, a denied identity read included,
@@ -250,7 +251,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			return nil, err
 		}
 		info := infos[i]
-		if !info.Mode.IsRegular() {
+		if !info.Mode.IsRegular() && !info.IsDir {
 			continue
 		}
 		key, err := fileKey(info, instance)
@@ -260,7 +261,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		ids.keys[key] = struct{}{}
 	}
 	if denied > 0 {
-		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent files qui may not look up")
+		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent paths qui may not look up")
 	}
 	return ids, nil
 }
@@ -270,6 +271,20 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 // link is kept when one of them is a torrent's.
 func (ids *inUseIDs) holds(info *fsops.LstatInfo) (bool, error) {
 	if ids == nil || !info.Mode.IsRegular() {
+		return false, nil
+	}
+	key, err := fileKey(info, ids.instance)
+	if err != nil {
+		return false, err
+	}
+	_, ok := ids.keys[key]
+	return ok, nil
+}
+
+// reaches reports whether a torrent's path leads to info, a folder read with
+// Lstat, under any spelling.
+func (ids *inUseIDs) reaches(info *fsops.LstatInfo) (bool, error) {
+	if ids == nil {
 		return false, nil
 	}
 	key, err := fileKey(info, ids.instance)

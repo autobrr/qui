@@ -144,13 +144,13 @@ func (b *slashBackend) children(dir string) []fsops.DirEntry {
 }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	// Each file and folder is its own inode, as the identity checks need.
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(p))
 	if _, ok := b.dirs[p]; ok {
-		return &fsops.LstatInfo{Path: p, IsDir: true, Nlinks: 1}, nil
+		return &fsops.LstatInfo{Path: p, IsDir: true, FileID: hardlink.UnixFileID(1, h.Sum64()), Nlinks: 1}, nil
 	}
 	if size, ok := b.files[p]; ok {
-		// Each file is its own inode, as the delete's identity check needs.
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(p))
 		return &fsops.LstatInfo{Path: p, Size: size, FileID: hardlink.UnixFileID(1, h.Sum64()), Nlinks: 1}, nil
 	}
 	return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrNotExist}

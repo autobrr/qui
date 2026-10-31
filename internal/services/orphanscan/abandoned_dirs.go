@@ -159,3 +159,70 @@ func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normC
 	}
 	return false
 }
+
+// torrentDirs returns every folder above the torrent files, up to the
+// filesystem root, once each. A torrent can reach a folder under another
+// spelling before it writes anything, and an unwritten subfolder is reached
+// only by its file's path, so each level counts.
+func torrentDirs(d fsops.PathDialect, files []string) []string {
+	seen := make(map[string]struct{})
+	var dirs []string
+	for _, file := range files {
+		dirs = addUpToRoot(d, d.Dir(file), seen, dirs)
+	}
+	return dirs
+}
+
+// addUpToRoot adds dir and each folder above it to seen and to added, and
+// stops at the first one seen already holds.
+func addUpToRoot(d fsops.PathDialect, dir string, seen map[string]struct{}, added []string) []string {
+	for {
+		if _, ok := seen[dir]; ok {
+			return added
+		}
+		seen[dir] = struct{}{}
+		added = append(added, dir)
+		parent := d.Dir(dir)
+		if parent == dir {
+			return added
+		}
+		dir = parent
+	}
+}
+
+// dropDirsTorrentsReach removes each listed folder a torrent reaches under
+// another spelling, such as a symlink, a bind mount or a junction, along with
+// the listed folders that hold it, which can no longer be emptied. A folder
+// whose identity cannot be read could be one of them, so it goes too.
+func dropDirsTorrentsReach(ctx context.Context, dirs []OrphanFile, reached *inUseIDs, backend fsops.Backend) []OrphanFile {
+	paths := make([]string, len(dirs))
+	for i := range dirs {
+		paths[i] = dirs[i].Path
+	}
+	infos, errs := fsops.LstatAll(ctx, backend, paths)
+
+	d := backend.Paths()
+	kept := make(map[string]struct{})
+	for i, p := range paths {
+		err := errs[i]
+		if err == nil {
+			var ok bool
+			if ok, err = reached.reaches(infos[i]); err == nil && !ok {
+				continue
+			}
+		}
+		log.Debug().Err(err).Str("dir", p).Msg("orphanscan: a torrent may use this directory under another path, not treating it as abandoned")
+		addUpToRoot(d, p, kept, nil)
+	}
+	if len(kept) == 0 {
+		return dirs
+	}
+
+	out := make([]OrphanFile, 0, len(dirs))
+	for _, dir := range dirs {
+		if _, ok := kept[dir.Path]; !ok {
+			out = append(out, dir)
+		}
+	}
+	return out
+}

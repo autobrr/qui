@@ -53,6 +53,9 @@ type orphanOnlyOptions struct {
 	ignorePaths func(defaultSavePath string) []string
 	// events, when set, gets the notifications of the service.
 	events chan notifications.Event
+	// beforeScan runs once the service is wired, before the scan, so a test
+	// can make the fake client report more torrents.
+	beforeScan func(svc *Service, torrentSavePath string)
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -143,6 +146,9 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	trigger := "manual"
 	if opts.scheduled {
 		trigger = "scheduled"
+	}
+	if opts.beforeScan != nil {
+		opts.beforeScan(svc, torrentSavePath)
 	}
 	runID, err := store.CreateRunIfNoActive(t.Context(), 1, trigger)
 	require.NoError(t, err)
