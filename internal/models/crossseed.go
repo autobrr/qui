@@ -2141,6 +2141,9 @@ type crossSeedSearchResultPayload struct {
 	Status       CrossSeedSearchResultStatus `json:"status,omitempty"`
 	Message      string                      `json:"message,omitempty"`
 	ProcessedAt  time.Time                   `json:"processedAt"`
+
+	CrossSeedInstanceID   int    `json:"crossSeedInstanceId,omitzero"`
+	CrossSeedInstanceName string `json:"crossSeedInstanceName,omitempty"`
 }
 
 func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) error {
@@ -2169,6 +2172,9 @@ func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) erro
 			Status:       status,
 			Message:      payload.Message,
 			ProcessedAt:  payload.ProcessedAt,
+
+			CrossSeedInstanceID:   payload.CrossSeedInstanceID,
+			CrossSeedInstanceName: payload.CrossSeedInstanceName,
 		})
 	}
 	*dest = results
