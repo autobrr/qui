@@ -136,7 +136,6 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 			}
 		}
 		switch {
-		case top == nil:
 		case entry.Err != nil:
 			// A denied subtree is skipped, any other read error drops the folder.
 			if !errors.Is(entry.Err, fs.ErrPermission) {

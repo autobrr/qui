@@ -60,7 +60,11 @@ func (b *slashBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops
 
 func slashEntry(p, rel string, mode fs.FileMode) fsops.WalkEntry {
 	e := fsops.WalkEntry{RelPath: rel}
-	e.Path, e.Mode, e.IsDir, e.IsSymlink, e.Size = p, mode, mode.IsDir(), mode&fs.ModeSymlink != 0, 1
+	e.Path = p
+	e.Mode = mode
+	e.IsDir = mode.IsDir()
+	e.IsSymlink = mode&fs.ModeSymlink != 0
+	e.Size = 1
 	return e
 }
 
