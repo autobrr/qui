@@ -5354,6 +5354,12 @@ func (s *Service) processCrossSeedCandidate(
 		facts.LinkFallbackRecheck = facts.LinkFallbackRecheck || hlResult.RequiresFullRecheck
 		facts.LinkFallback = facts.LinkFallback || hlResult.FallbackToRegular
 	}
+	if candidate.route != nil {
+		// No path reaches this today. It stays so that a new link mode exit
+		// cannot make a regular add that shares the Source instance's files (ADR 0035).
+		result.Message = "A routed cross-seed never falls back to a regular add"
+		return result
+	}
 
 	// If link mode fell through (Used=false), a category may already have been created
 	// with a link-mode base dir (e.g., handleError after ensureCrossCategory when
