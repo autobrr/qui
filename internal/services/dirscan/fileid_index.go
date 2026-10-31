@@ -68,7 +68,9 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 	// Before the first sync the cache holds no torrents, which reads the same
 	// as an instance that seeds nothing. Check before the read, so a sync that
 	// lands in between cannot pass an empty read as complete.
-	synced := s.torrentFiles.HasSynced(ctx, instanceID)
+	if !s.torrentFiles.HasSynced(ctx, instanceID) {
+		return nil, errors.New("instance not ready: waiting for first sync")
+	}
 	torrents, err := s.torrentFiles.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cached torrents: %w", err)
@@ -76,7 +78,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 
 	hashes, savePaths := collectCompletedTorrentSavePaths(torrents)
 
-	index := &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: synced}
+	index := &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: true}
 	if len(hashes) == 0 {
 		return index, nil
 	}
