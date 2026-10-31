@@ -169,23 +169,18 @@ func buildTrackedFileUpsert(
 	}
 
 	// A file already seeding stays so, even when it changed on disk, until the
-	// index shows the torrent is gone.
-	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding &&
-		(alreadySeeding || !seeding.knowsNotSeeding(scanned.FileID)) {
-		status = models.DirScanFileStatusAlreadySeeding
-		matchedTorrentHash = ""
-		matchedIndexerID = nil
-		searchedIndexerIDs = nil
-	}
-
-	// If the torrent disappeared since the last scan, clear already_seeding so the file becomes eligible again.
-	// Only an index that built in full, checked against the file's identity, shows that.
-	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding && !alreadySeeding &&
-		seeding.knowsNotSeeding(scanned.FileID) {
-		status = models.DirScanFileStatusPending
-		matchedTorrentHash = ""
-		matchedIndexerID = nil
-		searchedIndexerIDs = nil
+	// index shows the torrent is gone. Only an index that built in full,
+	// checked against the file's identity, shows that. Then the file becomes
+	// eligible again.
+	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding {
+		if alreadySeeding || !seeding.knowsNotSeeding(scanned.FileID) {
+			status = models.DirScanFileStatusAlreadySeeding
+			matchedTorrentHash = ""
+			matchedIndexerID = nil
+			searchedIndexerIDs = nil
+		} else {
+			status = models.DirScanFileStatusPending
+		}
 	}
 
 	// If the file changed on disk, clear any prior match and reprocess.
