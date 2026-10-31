@@ -83,14 +83,24 @@ func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
 	require.False(t, ok, "a pre-tag width decodes to no identity and is never indexed")
 }
 
-// stubTorrentFiles is a qBittorrent that seeds one other completed torrent.
-// It answers the torrent list with err, and the file lists with files.
+// stubTorrentFiles is a qBittorrent that seeds one other completed torrent,
+// or none when empty is set. It answers the torrent list with err, and the
+// file lists with files. unsynced is an instance before its first sync.
 type stubTorrentFiles struct {
-	err   error
-	files map[string]qbt.TorrentFiles
+	err      error
+	files    map[string]qbt.TorrentFiles
+	empty    bool
+	unsynced bool
+}
+
+func (f stubTorrentFiles) HasSynced(context.Context, int) bool {
+	return !f.unsynced
 }
 
 func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	if f.empty {
+		return nil, f.err
+	}
 	other := &qbt.Torrent{Hash: "bbbb", Progress: 1, SavePath: "/elsewhere"}
 	return []qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: other}}}, f.err
 }
@@ -161,6 +171,17 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 		{
 			name: "torrent removed",
 			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}},
+			want: models.DirScanFileStatusPending,
+		},
+		// regression: #3613
+		{
+			name: "first sync not done",
+			qbt:  stubTorrentFiles{empty: true, unsynced: true},
+			want: models.DirScanFileStatusAlreadySeeding,
+		},
+		{
+			name: "instance seeds nothing",
+			qbt:  stubTorrentFiles{empty: true},
 			want: models.DirScanFileStatusPending,
 		},
 	} {

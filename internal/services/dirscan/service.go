@@ -131,6 +131,15 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 	return torrent, exists, nil
 }
 
+// syncManagerTorrentFiles adds the first-sync check of the seeding index to
+// SyncManager.
+type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
+
+func (f syncManagerTorrentFiles) HasSynced(ctx context.Context, instanceID int) bool {
+	client, err := f.GetClient(ctx, instanceID)
+	return err == nil && !client.GetLastSyncUpdate().IsZero()
+}
+
 // NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
@@ -163,7 +172,7 @@ func NewService(
 
 	var torrentFiles torrentFilesReader
 	if syncManager != nil {
-		torrentFiles = syncManager
+		torrentFiles = syncManagerTorrentFiles{syncManager}
 	}
 
 	return &Service{
