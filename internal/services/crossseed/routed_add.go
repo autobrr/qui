@@ -4,9 +4,13 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -62,6 +66,32 @@ func (s *Service) routeOf(ctx context.Context, instanceID int) (*candidateRoute,
 	}
 	// The rule check also makes sure that the Cross-seed instance is available.
 	return &candidateRoute{rows: route.Rows, crossSeed: crossSeed}, s.crossSeedRoutes.Check(ctx, route)
+}
+
+// sortSourceInstancesFirst puts the candidates of Source instances first, in a stable
+// sort. A routed add then builds its own link tree on the Cross-seed instance
+// before a match on that instance adds the same torrent there in its own mode.
+func (s *Service) sortSourceInstancesFirst(ctx context.Context, candidates []CrossSeedCandidate) {
+	if s.crossSeedRoutes == nil || len(candidates) < 2 {
+		return
+	}
+	routes, err := s.crossSeedRoutes.List(ctx)
+	if err != nil {
+		// Each candidate reads its route again, and that read reports the failure.
+		log.Debug().Err(err).Msg("[CROSSSEED] Failed to read cross-seed routes; candidates keep their order")
+		return
+	}
+	routed := make(map[int]bool, len(routes))
+	for _, route := range routes {
+		routed[route.SourceInstanceID] = true
+	}
+	rank := func(c CrossSeedCandidate) int {
+		if routed[c.InstanceID] {
+			return 0
+		}
+		return 1
+	}
+	slices.SortStableFunc(candidates, func(a, b CrossSeedCandidate) int { return cmp.Compare(rank(a), rank(b)) })
 }
 
 // routeFailure returns the status and message of a failed route read or rule check.
