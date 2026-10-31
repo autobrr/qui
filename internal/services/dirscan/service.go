@@ -1775,8 +1775,8 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	matches := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
-	return matches, searcheeOutcome{searched: searchComplete}
+	matches, retry := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return matches, searcheeOutcome{searched: searchComplete && !retry}
 }
 
 // sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
@@ -2169,7 +2169,7 @@ func (s *Service) tryMatchResults(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) []*searcheeMatch {
+) (matches []*searcheeMatch, retry bool) {
 	matches, stats := tryMatchResultsPerIndexer(
 		response.Results,
 		minSize,
@@ -2181,7 +2181,9 @@ func (s *Service) tryMatchResults(
 			return false
 		},
 		func(result *jackett.SearchResult) *searcheeMatch {
-			return s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+			match, retryResult := s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+			retry = retry || retryResult
+			return match
 		},
 	)
 
@@ -2205,9 +2207,9 @@ func (s *Service) tryMatchResults(
 		}
 	}
 	if len(matches) == 0 {
-		return nil
+		return nil, retry
 	}
-	return matches
+	return matches, retry
 }
 
 func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists, checked bool) {
@@ -2243,6 +2245,8 @@ func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int,
 }
 
 // tryMatchAndInject downloads a torrent, matches files, and injects if successful.
+// retry is set when a linked instance of a cross-seed route is unavailable, so
+// the searchee stays pending and the next scan tries the match again.
 func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -2254,10 +2258,10 @@ func (s *Service) tryMatchAndInject(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) *searcheeMatch {
+) (match *searcheeMatch, retry bool) {
 	torrentData, parsed := s.downloadAndParseTorrent(ctx, result, l)
 	if parsed == nil {
-		return nil
+		return nil, false
 	}
 
 	matchResult := matcher.Match(searchee, parsed.Files)
@@ -2265,7 +2269,7 @@ func (s *Service) tryMatchAndInject(
 	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
-		return nil
+		return nil, false
 	}
 
 	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
@@ -2273,11 +2277,11 @@ func (s *Service) tryMatchAndInject(
 	case refusal == nil:
 	case refusal.Status == "blocked":
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
-		return nil
+		return nil, false
 	case refusal.Status != "exists":
 		// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
 		l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
-		return nil
+		return nil, errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
 	default:
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
 		return &searcheeMatch{
@@ -2289,7 +2293,7 @@ func (s *Service) tryMatchAndInject(
 			inQBittorrent:   true,
 			injected:        false,
 			injectionFailed: false,
-		}
+		}, false
 	}
 
 	logDirScanAcceptedMatch(l, searchee, parsed, matchResult, decision)
@@ -2348,7 +2352,7 @@ func (s *Service) tryMatchAndInject(
 		searchResult:    result,
 		injected:        injected,
 		injectionFailed: injectionFailed,
-	}
+	}, false
 }
 
 func logDirScanMatchRejection(

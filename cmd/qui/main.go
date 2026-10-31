@@ -784,6 +784,7 @@ func (app *Application) runServer() {
 	crossSeedService.SetBackendPool(backendPool)
 	crossSeedRoutes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, backendPool)
 	crossSeedService.SetCrossSeedRoutes(crossSeedRoutes)
+	crossSeedService.Adder().SetCrossSeedRoutes(crossSeedRoutes)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)

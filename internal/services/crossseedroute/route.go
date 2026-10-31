@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
+
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -93,6 +95,62 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	return nil
 }
 
+// HashFinder finds a torrent by any of its hashes on one instance.
+type HashFinder interface {
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+}
+
+// FindLinked looks for hashes on the Cross-seed instance or the Source
+// instances of instanceID, and names where it found one. It skips a turned-off
+// Source instance, because its route does nothing then.
+func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+	route, err := s.Get(ctx, instanceID)
+	if err != nil {
+		return nil, "", fmt.Errorf("read cross-seed route: %w", err)
+	}
+	if route != nil {
+		torrent, name, err := s.findOn(ctx, finder, route.CrossSeedInstanceID, hashes)
+		if errors.Is(err, ErrUnavailable) {
+			return nil, "", crossSeedUnavailable(err)
+		}
+		if torrent != nil || err != nil {
+			return torrent, "Cross-seed instance " + name, err
+		}
+	}
+
+	sources, err := s.ListSources(ctx, instanceID)
+	if err != nil {
+		return nil, "", fmt.Errorf("read cross-seed routes: %w", err)
+	}
+	for _, sourceID := range sources {
+		torrent, name, err := s.findOn(ctx, finder, sourceID, hashes)
+		switch {
+		case errors.Is(err, qbittorrent.ErrInstanceDisabled):
+		case errors.Is(err, ErrUnavailable):
+			return nil, "", fmt.Errorf("%w. Enable %s or clear its cross-seed route", err, name)
+		case torrent != nil || err != nil:
+			return torrent, "Source instance " + name, err
+		}
+	}
+	return nil, "", nil
+}
+
+// findOn looks for hashes on one instance, after CheckAvailable.
+func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+	instance, err := s.instances.Get(ctx, instanceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := s.CheckAvailable(ctx, instanceID, false); err != nil {
+		return nil, instance.Name, err
+	}
+	torrent, _, err := finder.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, instance.Name, fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, err)
+	}
+	return torrent, instance.Name, nil
+}
+
 // Check returns a *RuleError when route breaks a route rule. Any other error
 // is a failed read, such as models.ErrInstanceNotFound.
 func (s *Service) Check(ctx context.Context, route *models.CrossSeedRoute) error {
@@ -158,7 +216,7 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 		if !errors.Is(err, ErrUnavailable) {
 			return nil, err
 		}
-		return nil, &RuleError{Message: "Cross-seed instance unavailable: " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": "), Err: err}
+		return nil, crossSeedUnavailable(err)
 	}
 
 	backend, _, err := s.backends.Resolve(ctx, source.ID)
@@ -170,6 +228,12 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 		return nil, err
 	}
 	return rows, checkMappedPaths(rows, models.FilesystemAccessMode(crossSeed) == models.FilesystemModeLocal)
+}
+
+// crossSeedUnavailable rewords an ErrUnavailable error of a Cross-seed
+// instance as "Cross-seed instance unavailable: <name>: <cause>".
+func crossSeedUnavailable(err error) error {
+	return &RuleError{Message: "Cross-seed instance unavailable: " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": "), Err: err}
 }
 
 // cleanRows returns one row for each base folder of source, keyed with

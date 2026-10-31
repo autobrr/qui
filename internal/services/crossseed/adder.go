@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
 // adderSync is what the Adder sends to qBittorrent.
@@ -35,6 +36,7 @@ type Adder struct {
 	settler            *Settler
 	resumeBudget       func(context.Context) int64
 	runExternalProgram func(ctx context.Context, instanceID int, hashes []string)
+	routes             *crossseedroute.Service
 }
 
 // NewAdder builds the Adder. resumeBudget returns the Max auto-start download
@@ -53,6 +55,13 @@ func NewAdder(
 		resumeBudget:       resumeBudget,
 		runExternalProgram: runExternalProgram,
 	}
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035), so the Pre-add
+// check also reads the hashes on the instances that a route links. Without
+// them, it checks no linked instance. Safe to call once at startup.
+func (a *Adder) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	a.routes = routes
 }
 
 // VerifyReason is why a match must pass a full recheck before it seeds.
@@ -232,8 +241,10 @@ type AddResult struct {
 const blocklistCheckFailed = "Failed to check cross-seed blocklist"
 
 // Check runs the Pre-add check for the v1 and v2 hashes of a torrent. Only
-// facts.ManualAssembly applies here: it skips the blocklist. A non-nil result is
-// a refusal, and the check it returns then is empty.
+// facts.ManualAssembly applies here: it skips the blocklist. With the routes
+// wired, a hash on a linked instance refuses as exists too, and only the
+// blocklist of instanceID applies. A non-nil result is a refusal, and the check
+// it returns then is empty.
 func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...string) (PreAddCheck, *AddResult) {
 	check := PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 
@@ -251,6 +262,22 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 			Str("existingName", existing.Name).
 			Msg("Cross-seed apply skipped: torrent already exists in instance")
 		return PreAddCheck{}, &AddResult{Status: "exists", Message: "Torrent already exists in this instance", Existing: existing}
+	}
+	if a.routes != nil {
+		linked, where, err := a.routes.FindLinked(ctx, a.sync, instanceID, check.hashes)
+		if err != nil {
+			return PreAddCheck{}, &AddResult{Status: "error", Message: err.Error(), Err: err}
+		}
+		if linked != nil {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Strs("torrentHashes", check.hashes).
+				Str("existingHash", linked.Hash).
+				Str("existingName", linked.Name).
+				Str("linkedInstance", where).
+				Msg("Cross-seed apply skipped: torrent already exists in a linked instance")
+			return PreAddCheck{}, &AddResult{Status: "exists", Message: "Torrent already exists in " + where, Existing: linked}
+		}
 	}
 
 	if a.blocklist != nil && !facts.ManualAssembly {
