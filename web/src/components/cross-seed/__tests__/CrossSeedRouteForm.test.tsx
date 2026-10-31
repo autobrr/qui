@@ -230,6 +230,17 @@ describe("CrossSeedRouteForm rows", () => {
     expect(screen.getByRole("button", { name: "routeForm.clearRoute" })).toBeTruthy()
   })
 
+  it("does not save or test a saved route that it could not read", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    renderForm(source)
+
+    expect(await screen.findByLabelText("/data/a")).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.testRoute" }).disabled).toBe(true)
+  })
+
   it("suggests folders of the Cross-seed instance", async () => {
     mocks.instances.instances = [source, crossSeed]
     serve()

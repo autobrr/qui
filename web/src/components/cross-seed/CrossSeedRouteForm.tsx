@@ -148,7 +148,9 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   }
 
   const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
-  const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && !busy
+  // Until the saved route is read, the rows have empty paths, and a save would erase the route.
+  const routeRead = saved === undefined || savedRoute !== undefined
+  const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
   const picker = (
     <div className="space-y-2">
