@@ -1290,6 +1290,23 @@ func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 }
 
 func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testing.T) {
+	tests := []struct {
+		name        string
+		linked      bool
+		wantMessage string
+	}{
+		{name: "torrent on the instance", wantMessage: "torrent already exists on instance 1"},
+		{name: "torrent on the Cross-seed instance", linked: true, wantMessage: "Torrent already exists in Cross-seed instance seeds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testApplySeasonPackAlreadyExists(t, tt.linked, tt.wantMessage)
+		})
+	}
+}
+
+func testApplySeasonPackAlreadyExists(t *testing.T, linked bool, wantMessage string) {
+	t.Helper()
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	baseDir := t.TempDir()
@@ -1322,7 +1339,14 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	// The existing torrent on the instance has the same hash.
-	withLinkAdder(svc).existing = &qbt.Torrent{Hash: meta.HashV1, Name: fix.packName, Progress: 1.0}
+	sync := withLinkAdder(svc)
+	sync.existing = &qbt.Torrent{Hash: meta.HashV1, Name: fix.packName, Progress: 1.0}
+	if linked {
+		// Only the Cross-seed instance of the instance has the torrent.
+		sync.existingOn = 2
+		_, db := adderBlocklist(t, "")
+		svc.adder.SetCrossSeedRoutes(adderRoutes(t, db, adderLink{}))
+	}
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1332,6 +1356,7 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "already_exists", resp.Reason)
+	require.Equal(t, wantMessage, resp.Message)
 
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "apply", store.runs[0].Phase)

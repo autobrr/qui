@@ -1156,6 +1156,15 @@ func (s *Service) processRootSearchee(
 		if outcome.searched {
 			hadSearchSuccess = true
 		}
+		if outcome.retry {
+			// The season search ran first and marked these episode files
+			// attempted. Unmark them, so they stay pending.
+			for _, f := range item.searchee.Files {
+				if f != nil {
+					delete(attemptedFiles, f.Path)
+				}
+			}
+		}
 		if outcome.searchError {
 			hadSearchError = true
 			hasProcessingError = true
@@ -1619,6 +1628,9 @@ type searcheeOutcome struct {
 	// the searchee stays pending and the next scan retries it.
 	searched    bool
 	searchError bool
+	// retry is set when a linked instance of a cross-seed route was
+	// unavailable, so the searchee's files must stay pending.
+	retry bool
 }
 
 type tryMatchResultsStats struct {
@@ -1776,7 +1788,7 @@ func (s *Service) processSearchee(
 
 	// Try to match and inject
 	matches, retry := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
-	return matches, searcheeOutcome{searched: searchComplete && !retry}
+	return matches, searcheeOutcome{searched: searchComplete && !retry, retry: retry}
 }
 
 // sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.

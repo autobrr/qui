@@ -217,6 +217,10 @@ const (
 	AddLeftPaused
 )
 
+// existsInThisInstance is the refusal message for a torrent that the checked
+// instance already has. A torrent on a linked instance names that instance.
+const existsInThisInstance = "Torrent already exists in this instance"
+
 // AddResult is the result of a Pre-add check refusal or of an add.
 type AddResult struct {
 	Outcome AddOutcome
@@ -261,7 +265,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 			Str("existingHash", existing.Hash).
 			Str("existingName", existing.Name).
 			Msg("Cross-seed apply skipped: torrent already exists in instance")
-		return PreAddCheck{}, &AddResult{Status: "exists", Message: "Torrent already exists in this instance", Existing: existing}
+		return PreAddCheck{}, &AddResult{Status: "exists", Message: existsInThisInstance, Existing: existing}
 	}
 	if a.routes != nil {
 		linked, where, err := a.routes.FindLinked(ctx, a.sync, instanceID, check.hashes)

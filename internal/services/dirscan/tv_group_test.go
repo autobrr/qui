@@ -53,7 +53,9 @@ func (s *episodeSearcher) SearchWithScope(_ context.Context, req *jackett.Torzna
 }
 
 // An injected single episode does not cover the other episodes of its season,
-// so the run still searches them. An injected season pack does.
+// so the run still searches them. An injected season pack does. An episode
+// that waits for an offline linked instance stays pending after a season
+// search with no result.
 //
 // regression: #3571
 func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
@@ -62,11 +64,14 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 	tests := []struct {
 		name         string
 		seasonPack   bool
+		offlineLink  bool
 		wantSearched []string
 		wantAdded    int
+		wantStatus   models.DirScanFileStatus
 	}{
-		{name: "episode injects", wantSearched: []string{"season", "E01", "E02", "E03"}, wantAdded: 3},
-		{name: "season pack injects", seasonPack: true, wantSearched: []string{"season"}, wantAdded: 1},
+		{name: "episode injects", wantSearched: []string{"season", "E01", "E02", "E03"}, wantAdded: 3, wantStatus: models.DirScanFileStatusMatched},
+		{name: "season pack injects", seasonPack: true, wantSearched: []string{"season"}, wantAdded: 1, wantStatus: models.DirScanFileStatusMatched},
+		{name: "offline linked instance keeps episodes pending", offlineLink: true, wantSearched: []string{"season", "E01", "E02", "E03"}, wantStatus: models.DirScanFileStatusPending},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -141,6 +146,9 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 
 			manager := &recordingTorrentManager{}
 			adder := testAdder(manager, (&settleFake{}).idle(), nil)
+			if tt.offlineLink {
+				adder.SetCrossSeedRoutes(dirScanRoutes(t, db, dirScanLink{state: "offline"}))
+			}
 			cacheDB := &cacheTouchDB{DB: db, done: make(chan struct{}, len(root.Files)+1)}
 			parser := NewParser(nil)
 			svc := &Service{
@@ -185,7 +193,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, files, len(root.Files))
 			for _, f := range files {
-				require.Equal(t, models.DirScanFileStatusMatched, f.Status, f.FilePath)
+				require.Equal(t, tt.wantStatus, f.Status, f.FilePath)
 			}
 		})
 	}
