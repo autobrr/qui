@@ -49,6 +49,15 @@ describe("RouteProtectionConfirmDialog", () => {
     expect(text).not.toContain("Move or delete those torrents")
   })
 
+  it("keeps Continue off while the count loads", () => {
+    renderDialog({ routedTorrents: undefined })
+    expect(document.body.textContent).toContain("Counting routed torrents")
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(true)
+    cleanup()
+    renderDialog({ routedTorrents: null })
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(false)
+  })
+
   it("gives the notice as the dialog description, for screen readers", () => {
     renderDialog()
     const describedBy = screen.getByRole("alertdialog").getAttribute("aria-describedby")

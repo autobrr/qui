@@ -73,7 +73,8 @@ export function RouteProtectionConfirmDialog({
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("routeConfirm.cancel")}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{t("routeConfirm.confirm")}</AlertDialogAction>
+          {/* The user sees the count before they confirm. A failed read makes it unknown, not stuck. */}
+          <AlertDialogAction onClick={onConfirm} disabled={notice.routedTorrents === undefined}>{t("routeConfirm.confirm")}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
