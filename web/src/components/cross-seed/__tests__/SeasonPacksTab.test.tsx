@@ -152,6 +152,18 @@ describe("SeasonPacksTab season pack runs", () => {
     expect(screen.queryByText("Pack.applied.1")).toBeNull()
   })
 
+  it("offers links only for hidden runs that match the name search", async () => {
+    mocks.listRuns.mockResolvedValue([makeRun(1, "failed"), makeRun(2, "failed"), makeRun(3, "skipped")])
+    renderTab()
+    await openRunsPanel()
+    await screen.findByText(/seasonPackRuns\.noMatches/)
+
+    fireEvent.change(screen.getByPlaceholderText("seasonPackRuns.filterByName"), { target: { value: "failed.2" } })
+
+    await screen.findByRole("button", { name: "seasonPackRuns.showStatus.failed:1" })
+    expect(screen.queryByRole("button", { name: /seasonPackRuns\.showStatus\.skipped/ })).toBeNull()
+  })
+
   it("offers a link for each hidden status with runs when no run matches", async () => {
     mocks.listRuns.mockResolvedValue([makeRun(1, "failed"), makeRun(2, "failed"), makeRun(3, "skipped")])
     renderTab()

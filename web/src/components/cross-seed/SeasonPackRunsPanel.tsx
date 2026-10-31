@@ -53,6 +53,12 @@ function statusFilterOf(status: SeasonPackRun["status"]): StatusFilter {
   return status === "ready_no_threshold" ? "ready" : status
 }
 
+function countByStatusFilter(runs: SeasonPackRun[]): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = { applied: 0, ready: 0, skipped: 0, failed: 0 }
+  for (const run of runs) counts[statusFilterOf(run.status)]++
+  return counts
+}
+
 function seasonPackStatusVariant(status: SeasonPackRun["status"]) {
   switch (status) {
     case "ready":
@@ -95,26 +101,26 @@ export function SeasonPackRunsPanel({
     parse: parseStatusFilters,
   })
 
-  const statusCounts = useMemo(() => {
-    const counts: Record<StatusFilter, number> = { applied: 0, ready: 0, skipped: 0, failed: 0 }
-    for (const run of runs) counts[statusFilterOf(run.status)]++
-    return counts
-  }, [runs])
+  const statusCounts = useMemo(() => countByStatusFilter(runs), [runs])
 
-  const filteredRuns = useMemo(() => {
+  const searchedRuns = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return runs.filter(run => {
-      if (!statusFilters.includes(statusFilterOf(run.status))) return false
-      if (query && !run.torrentName.toLowerCase().includes(query)) return false
-      return true
-    })
-  }, [runs, search, statusFilters])
+    return query ? runs.filter(run => run.torrentName.toLowerCase().includes(query)) : runs
+  }, [runs, search])
+
+  // The empty-state links count only runs that match the name search, so a link never opens an empty list.
+  const searchedCounts = useMemo(() => countByStatusFilter(searchedRuns), [searchedRuns])
+
+  const filteredRuns = useMemo(
+    () => searchedRuns.filter(run => statusFilters.includes(statusFilterOf(run.status))),
+    [searchedRuns, statusFilters]
+  )
 
   const toggleStatusFilter = (filter: StatusFilter) => {
     setStatusFilters(prev => prev.includes(filter) ? prev.filter(item => item !== filter) : [...prev, filter])
   }
 
-  const hiddenStatusesWithRuns = STATUS_FILTERS.filter(filter => !statusFilters.includes(filter) && statusCounts[filter] > 0)
+  const hiddenStatusesWithRuns = STATUS_FILTERS.filter(filter => !statusFilters.includes(filter) && searchedCounts[filter] > 0)
 
   return (
     <div className="pt-3 border-t border-border/50">
@@ -198,7 +204,7 @@ export function SeasonPackRunsPanel({
                       onClick={() => toggleStatusFilter(filter)}
                       className="text-foreground underline-offset-2 hover:underline"
                     >
-                      {t(SHOW_STATUS_KEYS[filter], { total: statusCounts[filter] })}
+                      {t(SHOW_STATUS_KEYS[filter], { total: searchedCounts[filter] })}
                     </button>
                   </Fragment>
                 ))}
