@@ -17,13 +17,16 @@ const maxSeasonPackRunHistory = 200
 
 // SeasonPackRun records one season-pack webhook processing attempt.
 type SeasonPackRun struct {
-	ID              int64     `json:"id"`
-	TorrentName     string    `json:"torrentName"`
-	Phase           string    `json:"phase"`
-	Status          string    `json:"status"`
-	Reason          string    `json:"reason"`
-	Message         string    `json:"message"`
-	InstanceID      *int      `json:"instanceId,omitempty"`
+	ID          int64  `json:"id"`
+	TorrentName string `json:"torrentName"`
+	Phase       string `json:"phase"`
+	Status      string `json:"status"`
+	Reason      string `json:"reason"`
+	Message     string `json:"message"`
+	InstanceID  *int   `json:"instanceId,omitempty"`
+	// AddedInstanceID is the instance that receives the add: the Cross-seed
+	// instance of a routed apply, or InstanceID.
+	AddedInstanceID *int      `json:"addedInstanceId,omitempty"`
 	MatchedEpisodes int       `json:"matchedEpisodes"`
 	TotalEpisodes   int       `json:"totalEpisodes"`
 	Coverage        float64   `json:"coverage"`
@@ -47,20 +50,17 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 		return nil, errors.New("run cannot be nil")
 	}
 
-	var instanceID sql.NullInt64
-	if run.InstanceID != nil {
-		instanceID = sql.NullInt64{Int64: int64(*run.InstanceID), Valid: true}
-	}
+	instanceID, addedInstanceID := nullInt(run.InstanceID), nullInt(run.AddedInstanceID)
 
 	var id int64
 	if dbinterface.DialectOf(s.db) != "postgres" {
 		res, err := s.db.ExecContext(ctx, `
 			INSERT INTO season_pack_runs
-				(torrent_name, phase, status, reason, message, instance_id, matched_episodes, total_episodes, coverage, link_mode)
+				(torrent_name, phase, status, reason, message, instance_id, added_instance_id, matched_episodes, total_episodes, coverage, link_mode)
 			VALUES
-				(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, run.TorrentName, run.Phase, run.Status, run.Reason, run.Message,
-			instanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode)
+			instanceID, addedInstanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode)
 		if err != nil {
 			return nil, fmt.Errorf("insert season pack run: %w", err)
 		}
@@ -72,12 +72,12 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 	} else {
 		err := s.db.QueryRowContext(ctx, `
 			INSERT INTO season_pack_runs
-				(torrent_name, phase, status, reason, message, instance_id, matched_episodes, total_episodes, coverage, link_mode)
+				(torrent_name, phase, status, reason, message, instance_id, added_instance_id, matched_episodes, total_episodes, coverage, link_mode)
 			VALUES
-				(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			RETURNING id
 		`, run.TorrentName, run.Phase, run.Status, run.Reason, run.Message,
-			instanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode).Scan(&id)
+			instanceID, addedInstanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode).Scan(&id)
 		if err != nil {
 			return nil, fmt.Errorf("insert season pack run: %w", err)
 		}
@@ -98,7 +98,7 @@ func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPack
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, torrent_name, phase, status, reason, message,
-		       instance_id, matched_episodes, total_episodes, coverage, link_mode,
+		       instance_id, added_instance_id, matched_episodes, total_episodes, coverage, link_mode,
 		       created_at
 		FROM season_pack_runs
 		ORDER BY created_at DESC, id DESC
@@ -127,29 +127,17 @@ func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPack
 func (s *SeasonPackRunStore) get(ctx context.Context, id int64) (*SeasonPackRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, torrent_name, phase, status, reason, message,
-		       instance_id, matched_episodes, total_episodes, coverage, link_mode,
+		       instance_id, added_instance_id, matched_episodes, total_episodes, coverage, link_mode,
 		       created_at
 		FROM season_pack_runs
 		WHERE id = ?
 	`, id)
 
-	var r SeasonPackRun
-	var instanceID sql.NullInt64
-
-	if err := row.Scan(
-		&r.ID, &r.TorrentName, &r.Phase, &r.Status, &r.Reason, &r.Message,
-		&instanceID, &r.MatchedEpisodes, &r.TotalEpisodes, &r.Coverage, &r.LinkMode,
-		&r.CreatedAt,
-	); err != nil {
+	r, err := scanSeasonPackRun(row)
+	if err != nil {
 		return nil, fmt.Errorf("get season pack run: %w", err)
 	}
-
-	if instanceID.Valid {
-		instID := int(instanceID.Int64)
-		r.InstanceID = &instID
-	}
-
-	return &r, nil
+	return r, nil
 }
 
 func (s *SeasonPackRunStore) prune(ctx context.Context) error {
@@ -170,20 +158,29 @@ func (s *SeasonPackRunStore) prune(ctx context.Context) error {
 
 func scanSeasonPackRun(s sqlScanner) (*SeasonPackRun, error) {
 	var r SeasonPackRun
-	var instanceID sql.NullInt64
+	var instanceID, addedInstanceID sql.NullInt64
 
 	if err := s.Scan(
 		&r.ID, &r.TorrentName, &r.Phase, &r.Status, &r.Reason, &r.Message,
-		&instanceID, &r.MatchedEpisodes, &r.TotalEpisodes, &r.Coverage, &r.LinkMode,
+		&instanceID, &addedInstanceID, &r.MatchedEpisodes, &r.TotalEpisodes, &r.Coverage, &r.LinkMode,
 		&r.CreatedAt,
 	); err != nil {
 		return nil, err
 	}
-
-	if instanceID.Valid {
-		id := int(instanceID.Int64)
-		r.InstanceID = &id
-	}
-
+	r.InstanceID, r.AddedInstanceID = intPtr(instanceID), intPtr(addedInstanceID)
 	return &r, nil
+}
+
+func nullInt(id *int) sql.NullInt64 {
+	if id == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*id), Valid: true}
+}
+
+func intPtr(id sql.NullInt64) *int {
+	if !id.Valid {
+		return nil
+	}
+	return new(int(id.Int64))
 }

@@ -68,6 +68,15 @@ type candidateRoute struct {
 	backend fsops.Backend
 }
 
+// receiverOf returns the instance that gets the add of a match on
+// instanceID: the Cross-seed instance of r, or instanceID without a route.
+func (r *candidateRoute) receiverOf(instanceID int) int {
+	if r == nil {
+		return instanceID
+	}
+	return r.crossSeed.ID
+}
+
 // receiver returns the instance that gets the add of c.
 func (c CrossSeedCandidate) receiver() (int, string) {
 	if c.route != nil {
@@ -142,35 +151,30 @@ func routeFailure(err error) (string, string) {
 	return crossSeedUnavailableStatus, crossSeedUnavailablePrefix + ruleErr.Message
 }
 
-// loadSource reads the Source instance's row and backend for route from one
-// capability read. It returns a failed result when the row no longer allows a
-// routed add. A routed add never falls back to a regular add.
-func (s *Service) loadSource(ctx context.Context, candidate CrossSeedCandidate) *InstanceCrossSeedResult {
-	backend, source, err := s.getBackendPool().Require(ctx, candidate.InstanceID, models.CapabilityWrite)
+// loadSource reads the row and backend of sourceID, the Source instance of
+// route, from one capability read. It returns the status and message of a
+// failure when the row no longer allows a routed add, or empty strings. A
+// routed add never falls back to a regular add.
+func (s *Service) loadSource(ctx context.Context, route *candidateRoute, sourceID int) (string, string) {
+	backend, source, err := s.getBackendPool().Require(ctx, sourceID, models.CapabilityWrite)
 	if err != nil {
-		result := candidate.newResult("error", fmt.Sprintf("Failed to read the Source instance: %v", err))
-		return &result
+		return "error", fmt.Sprintf("Failed to read the Source instance: %v", err)
 	}
-	var broken string
 	switch {
 	case models.FilesystemAccessMode(source) != models.FilesystemModeLocal:
-		broken = source.Name + " needs Local Filesystem Access to route its cross-seeds"
+		return crossSeedUnavailableStatus, crossSeedUnavailablePrefix + source.Name + " needs Local Filesystem Access to route its cross-seeds"
 	case !source.UseHardlinks && !source.UseReflinks:
-		broken = source.Name + " must use hardlink or reflink mode to route its cross-seeds"
+		return crossSeedUnavailableStatus, crossSeedUnavailablePrefix + source.Name + " must use hardlink or reflink mode to route its cross-seeds"
 	}
-	if broken != "" {
-		result := candidate.newResult(crossSeedUnavailableStatus, crossSeedUnavailablePrefix+broken)
-		return &result
-	}
-	candidate.route.source, candidate.route.backend = source, backend
-	return nil
+	route.source, route.backend = source, backend
+	return "", ""
 }
 
-// checkVisible makes sure that the Cross-seed instance lists target, a linked
-// file of the plan under baseDir on the Source instance. It returns a failed
-// result when the Cross-seed instance cannot see the file or is unavailable.
-func (s *Service) checkVisible(ctx context.Context, candidate CrossSeedCandidate, d fsops.PathDialect, baseDir, target string) *InstanceCrossSeedResult {
-	route := candidate.route
+// checkVisible makes sure that the Cross-seed instance of route lists target,
+// a linked file of the plan under baseDir on the Source instance. It returns
+// the status and message of a failure when the Cross-seed instance cannot see
+// the file or is unavailable, or empty strings.
+func (s *Service) checkVisible(ctx context.Context, route *candidateRoute, d fsops.PathDialect, baseDir, target string) (string, string) {
 	dir, _ := crossseedroute.ToCrossSeed(d, route.rows, baseDir, d.Dir(target))
 	name := d.Base(target)
 	key := failedRouteDir{route.source.ID, fsops.CleanPath(d, baseDir)}
@@ -182,22 +186,20 @@ func (s *Service) checkVisible(ctx context.Context, candidate CrossSeedCandidate
 	if _, ok := failed.Load(key); ok {
 		retries = 0
 	}
-	stopped := func() *InstanceCrossSeedResult {
-		result := candidate.newResult("error", "Visibility check stopped: "+context.Cause(ctx).Error())
-		return &result
+	stopped := func() (string, string) {
+		return "error", "Visibility check stopped: " + context.Cause(ctx).Error()
 	}
 	for attempt := 0; ; attempt++ {
 		content, err := s.syncManager.GetDirectoryContentCtx(ctx, route.crossSeed.ID, dir, qbt.DirectoryContentFiles, false)
 		found, err := crossseedroute.ListingHas(content, err, dir, name)
 		switch {
 		case found:
-			return nil
+			return "", ""
 		case ctx.Err() != nil:
 			return stopped()
 		case err != nil && !errors.Is(err, crossseedroute.ErrCannotSeeFolder):
 			cause := strings.TrimPrefix(err.Error(), crossseedroute.ErrUnavailable.Error()+": ")
-			result := candidate.newResult(crossSeedUnavailableStatus, crossSeedUnavailablePrefix+route.crossSeed.Name+": "+cause)
-			return &result
+			return crossSeedUnavailableStatus, crossSeedUnavailablePrefix + route.crossSeed.Name + ": " + cause
 		case attempt < retries:
 			select {
 			case <-ctx.Done():
@@ -207,7 +209,6 @@ func (s *Service) checkVisible(ctx context.Context, candidate CrossSeedCandidate
 			continue
 		}
 		failed.Store(key, struct{}{})
-		result := candidate.newResult(crossSeedCannotSeeStatus, "Cross-seed instance cannot see the data at "+dir)
-		return &result
+		return crossSeedCannotSeeStatus, "Cross-seed instance cannot see the data at " + dir
 	}
 }

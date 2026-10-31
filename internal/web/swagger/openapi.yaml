@@ -9139,7 +9139,7 @@ components:
           type: boolean
         reason:
           type: string
-          description: Empty when ready. unsafe_piece_boundary means hardlink piece boundary protection blocked the pack. Other file layout failures use layout_mismatch.
+          description: Empty when ready. unsafe_piece_boundary means hardlink piece boundary protection blocked the pack. Other file layout failures use layout_mismatch. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
         message:
           type: string
         targets:
@@ -9172,7 +9172,7 @@ components:
           format: int64
         destination:
           type: string
-          description: Resolved save directory under the instance link directory preset.
+          description: Resolved save directory under the instance link directory preset. When the instance routes its cross-seeds, the path where its Cross-seed instance sees that directory.
         default_category:
           type: string
         link_mode:
@@ -9261,13 +9261,13 @@ components:
           description: Whether the season pack was added to qBittorrent
         reason:
           type: string
-          description: Machine-readable reason code
+          description: Machine-readable reason code. crossseed_instance_unavailable means that an eligible instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. The whole apply then stops. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
         message:
           type: string
           description: Human-readable explanation
         instanceId:
           type: integer
-          description: Instance the torrent was added to
+          description: Instance that holds the matched episodes. When it routes its cross-seeds, its Cross-seed instance gets the add.
         matchedEpisodes:
           type: integer
         totalEpisodes:
@@ -9301,6 +9301,11 @@ components:
         instanceId:
           type: integer
           nullable: true
+          description: Instance that holds the matched episodes
+        addedInstanceId:
+          type: integer
+          nullable: true
+          description: Instance that gets the add. It is the Cross-seed instance when instanceId routes its cross-seeds, otherwise instanceId. Set on apply and resume rows.
         matchedEpisodes:
           type: integer
         totalEpisodes:

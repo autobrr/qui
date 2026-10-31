@@ -5162,8 +5162,8 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message = "A routed cross-seed needs hardlink or reflink mode, and an unvalidated Manual match cannot use it"
 			return result
 		}
-		if failed := s.loadSource(ctx, candidate); failed != nil {
-			return *failed
+		if status, message := s.loadSource(ctx, candidate.route, candidate.InstanceID); status != "" {
+			return candidate.newResult(status, message)
 		}
 		instance = candidate.route.source
 	} else {

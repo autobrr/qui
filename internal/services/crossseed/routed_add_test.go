@@ -49,6 +49,8 @@ type routedSync struct {
 	categories map[int]map[string]string
 	existing   map[int]bool
 	addErr     error
+	// cached holds the torrent views of each instance for season packs.
+	cached map[int][]qbittorrent.CrossInstanceTorrentView
 	// The Cross-seed instance lists links at routedMapped. Each listing goes
 	// in listed. listErr answers every listing, and the first hidden listings
 	// miss every entry.
@@ -81,6 +83,10 @@ func (f *routedSync) GetDirectoryContentCtx(_ context.Context, instanceID int, d
 		names[i] = dir + "/" + entry.Name()
 	}
 	return names, nil
+}
+
+func (f *routedSync) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return f.cached[instanceID], nil
 }
 
 func (f *routedSync) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {

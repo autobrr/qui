@@ -28,12 +28,13 @@ func TestSeasonPackRunStore_CreateAndList(t *testing.T) {
 
 	ctx := context.Background()
 
-	instanceID := 1
+	instanceID, addedInstanceID := 1, 2
 	created, err := store.Create(ctx, &models.SeasonPackRun{
 		TorrentName:     "Show.S01.1080p.WEB-DL-GRP",
 		Phase:           "check",
 		Status:          "ready",
 		InstanceID:      &instanceID,
+		AddedInstanceID: &addedInstanceID,
 		MatchedEpisodes: 10,
 		TotalEpisodes:   12,
 		Coverage:        0.8333,
@@ -50,6 +51,7 @@ func TestSeasonPackRunStore_CreateAndList(t *testing.T) {
 	require.Equal(t, "ready", runs[0].Status)
 	require.NotNil(t, runs[0].InstanceID)
 	require.Equal(t, 1, *runs[0].InstanceID)
+	require.Equal(t, &addedInstanceID, runs[0].AddedInstanceID)
 	require.Equal(t, 10, runs[0].MatchedEpisodes)
 	require.Equal(t, 12, runs[0].TotalEpisodes)
 	require.InDelta(t, 0.8333, runs[0].Coverage, 0.0001)
@@ -73,6 +75,7 @@ func TestSeasonPackRunStore_CreateWithoutInstance(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, created.ID)
 	require.Nil(t, created.InstanceID)
+	require.Nil(t, created.AddedInstanceID)
 	require.Equal(t, "below threshold", created.Reason)
 }
 
