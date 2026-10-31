@@ -391,14 +391,15 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 
 	// A routed file counts only on a file that a torrent of this instance holds.
 	// Its path joins seenPaths, so the cross-instance step does not count it a
-	// second time on a Cross-seed instance with Local Filesystem Access.
+	// second time on a Cross-seed instance with Local Filesystem Access. Its link
+	// count is left out: an incremental update keeps the routed scan, and a count
+	// from before a removal would read as an outside link.
 	for _, lf := range routedFiles {
 		key, ok := fsops.FileKeyOf(lf.fileID, instance)
 		tracker := globalFileIDMap[key]
 		if !ok || tracker == nil {
 			continue
 		}
-		tracker.nlink = max(tracker.nlink, lf.nlink)
 		tracker.routed = true
 		if _, seen := seenPaths[lf.path]; !seen {
 			seenPaths[lf.path] = struct{}{}

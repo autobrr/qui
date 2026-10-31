@@ -217,6 +217,33 @@ func TestHardlinkIndexUpdateKeepsRoutedLinks(t *testing.T) {
 	require.Equal(t, HardlinkScopeTorrentsOnly, updated.CrossScopeByHash[routedSourceHash])
 }
 
+func TestHardlinkIndexUpdateAfterARemovalKeepsRoutedLinksInside(t *testing.T) {
+	rig := newRoutedRig(t, false)
+	copyDir := filepath.Join(rig.dir, "copy")
+	require.NoError(t, os.MkdirAll(copyDir, 0o700))
+	copyFile := filepath.Join(copyDir, "movie.mkv")
+	require.NoError(t, os.Link(filepath.Join(rig.dir, "data", "movie.mkv"), copyFile))
+	sourceCopy := qbt.Torrent{Hash: "3333333333333333333333333333333333333333", SavePath: copyDir}
+	// Unlinked torrents keep the removal inside the incremental budget.
+	torrents := make([]qbt.Torrent, 1, 5)
+	torrents[0] = rig.source
+	for _, hash := range []string{"aa", "bb", "cc"} {
+		createFile(t, filepath.Join(rig.dir, hash, "movie.mkv"))
+		torrents = append(torrents, qbt.Torrent{Hash: hash, SavePath: filepath.Join(rig.dir, hash)})
+	}
+	built := rig.index(t, append(torrents, sourceCopy)...)
+	require.Equal(t, HardlinkScopeTorrentsOnly, built.ScopeByHash[routedSourceHash])
+
+	// The copy leaves with its files: the file now has two links, the Source
+	// path and the routed path.
+	require.NoError(t, os.Remove(copyFile))
+	updated := rig.index(t, torrents...)
+
+	require.Equal(t, built.builtAt, updated.builtAt, "the update must be incremental, not a full build")
+	require.Equal(t, HardlinkScopeTorrentsOnly, updated.ScopeByHash[routedSourceHash])
+	require.Equal(t, HardlinkScopeTorrentsOnly, updated.CrossScopeByHash[routedSourceHash])
+}
+
 func TestHardlinkIndexRebuildsWhenRoutedTorrentsChange(t *testing.T) {
 	rig := newRoutedRig(t, false)
 	require.Equal(t, HardlinkScopeTorrentsOnly, rig.index(t, rig.source).ScopeByHash[routedSourceHash])
