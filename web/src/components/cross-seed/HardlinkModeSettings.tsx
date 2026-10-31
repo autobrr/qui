@@ -143,7 +143,11 @@ export function HardlinkModeSettings({
     const route = routes?.find(r => r.sourceInstanceId === instance.id)
     if (route && (form.useHardlinks || form.useReflinks)) {
       const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
-      const removed = route.rows.filter(row => !kept.includes(baseDirKey(row.baseDir)))
+      // A base folder saved after the route has no stored row, but the route read
+      // gives it an empty one, and the orphan scan protects the torrents under it.
+      const removed = [...route.rows.map(row => row.baseDir), ...instance.hardlinkBaseDir.split(",")]
+        .map(baseDirKey)
+        .filter(dir => dir && !kept.includes(dir))
       if (removed.length) {
         // The dialog opens at once and fills in the count, so a second click cannot open it twice.
         const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
@@ -151,7 +155,7 @@ export function HardlinkModeSettings({
         const pending = { instance, crossSeedName, routedTorrents: undefined }
         setPendingSave(pending)
         void api.getCrossSeedRoute(instance.id)
-          .then(read => countRoutedTorrents(read?.rows.filter(row => removed.some(r => r.baseDir === row.baseDir)) ?? []))
+          .then(read => countRoutedTorrents(read?.rows.filter(row => removed.includes(baseDirKey(row.baseDir))) ?? []))
           .catch(() => null)
           .then(routedTorrents => setPendingSave(prev => prev === pending ? { ...pending, routedTorrents } : prev))
         return

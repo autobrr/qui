@@ -139,6 +139,37 @@ describe("HardlinkModeSettings", () => {
       }
     })
 
+    it("asks before a save that removes a base folder added after the route save", async () => {
+      // The route read gives the newer base folder an empty row, and the orphan scan protects the torrents under it.
+      mocks.translation.t = ((key: string, options?: { count?: number }) => options?.count === undefined ? key : `${key}:${options.count}`) as typeof mocks.translation.t
+      mocks.getCrossSeedRoute.mockResolvedValue({
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [
+          { baseDir: "/data/links", mappedPath: "/mnt/links", routedTorrents: 4 },
+          { baseDir: "/data/more", mappedPath: "", routedTorrents: 7 },
+          { baseDir: "/data/new", mappedPath: "", routedTorrents: 5 },
+        ],
+      })
+      try {
+        mocks.instances.instances = [{ ...source, hardlinkBaseDir: "/data/links, /data/more/, /data/new" }, seedbox]
+        mocks.routes.data = [{
+          sourceInstanceId: 1,
+          crossSeedInstanceId: 2,
+          rows: [{ baseDir: "/data/links", mappedPath: "/mnt/links" }, { baseDir: "/data/more", mappedPath: "" }],
+        }]
+        render(<HardlinkModeSettings pooledPartialCompletionEnabled={false} onPooledPartialCompletionEnabledChange={() => {}} />)
+        fireEvent.click(screen.getByText("qbit"))
+        fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/links, /data/more" } })
+        fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+
+        await screen.findByText("routeConfirm.count:5")
+        expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
+      } finally {
+        mocks.translation.t = (key: string) => key
+      }
+    })
+
     it("says the count is unknown when the route read gives no count", async () => {
       mocks.getCrossSeedRoute.mockResolvedValue({
         sourceInstanceId: 1,
