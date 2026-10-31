@@ -608,3 +608,25 @@ func TestCrossSeedRouteLoadNeedsEveryFileList(t *testing.T) {
 	_, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
 	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 }
+
+// A base folder added after the save can be the folder that a saved row maps
+// to. Its torrents then match two rows, so qui counts and loads none of them.
+func TestCrossSeedRouteNewBaseFolderOnAMappedPathBreaksTheRoute(t *testing.T) {
+	f := newRouteFixture(t)
+	library := filepath.Join(t.TempDir(), "links")
+	mapped := filepath.Join(t.TempDir(), "seeds")
+	source := f.source("library", models.FilesystemModeLocal, library)
+	crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
+	require.Equal(t, http.StatusOK, f.save(source, crossSeed, models.CrossSeedRouteRow{BaseDir: library, MappedPath: mapped}).Code)
+	source = f.update(source, &models.InstanceUpdateParams{HardlinkBaseDir: new(library + "," + mapped)})
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{{Hash: "a", SavePath: filepath.Join(mapped, "tv")}}
+	f.torrents.files = map[string]qbt.TorrentFiles{"a": {{Name: "a.mkv"}}}
+
+	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.NotEmpty(t, got.BrokenRule)
+	assert.Equal(t, []*int{nil, nil}, routedCounts(got))
+
+	_, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	_, broken := errors.AsType[*crossseedroute.RuleError](err)
+	assert.True(t, broken, "got %v", err)
+}

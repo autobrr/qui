@@ -106,7 +106,8 @@ type RoutedTorrents struct {
 // LoadRouted returns the torrents of sourceID's Cross-seed instance that are
 // under a row of the route, or nil when sourceID has no route. When the
 // Cross-seed instance is unavailable or a read fails, the error matches
-// ErrUnavailable.
+// ErrUnavailable. When two rows map to the same or nested folders on the
+// Cross-seed instance, the error is a *RuleError.
 func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID int) (*RoutedTorrents, error) {
 	route, err := s.Get(ctx, sourceID)
 	if err != nil || route == nil {
@@ -170,6 +171,11 @@ func (s *Service) readCrossSeed(ctx context.Context, read TorrentReader, route *
 			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 	}()
+	// A base folder added after the save can map to the folder of a saved
+	// row, and a torrent under it must not count for the wrong row.
+	if err := checkMappedPaths(route.Rows, false); err != nil {
+		return nil, nil, err
+	}
 	if err := s.CheckAvailable(ctx, route.CrossSeedInstanceID, false); err != nil {
 		return nil, nil, err
 	}

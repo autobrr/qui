@@ -82,7 +82,8 @@ func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Requ
 	}
 
 	counts, err := h.routes.CountRouted(ctx, h.torrents, route)
-	if err != nil && !errors.Is(err, crossseedroute.ErrUnavailable) {
+	_, brokenRows := errors.AsType[*crossseedroute.RuleError](err)
+	if err != nil && !brokenRows && !errors.Is(err, crossseedroute.ErrUnavailable) {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to count routed torrents")
 		RespondError(w, http.StatusInternalServerError, "Failed to count routed torrents")
 		return
