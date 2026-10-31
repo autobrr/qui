@@ -528,15 +528,20 @@ func linkedPeerFixture(t *testing.T, f *modeFixture, path func(string) string, r
 // The save path of an overlapping instance is a symlink inside the scan root,
 // or a folder below one. The walk skips the link and finds the file only at
 // the target, so the scan reads its identity through the link and keeps it
-// (#3572).
+// (#3572). On a filesystem that ignores case, the peer can spell the scan
+// root in another case.
+//
+// regression: #3572
 func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		remote bool
+		fold   bool
 		rel    string
 	}{
 		{name: "local, link is the save path", rel: "linked"},
 		{name: "local, save path below a link", rel: "linked/sub"},
+		{name: "local, peer spells the scan root in another case", fold: true, rel: "linked"},
 		{name: "exec tier, link is the save path", remote: true, rel: "linked"},
 		{name: "exec tier, save path below a link", remote: true, rel: "linked/sub"},
 	} {
@@ -549,7 +554,19 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 			} else {
 				f = newModeFixture(t, "orphanscan-linked-peer-local", models.FilesystemModeLocal, nil)
 			}
-			movie := linkedPeerFixture(t, f, path, tc.rel)
+			save := path
+			if tc.fold {
+				// A symlink stands in for a filesystem that ignores case.
+				root := filepath.Dir(f.orphan)
+				parent := filepath.Dir(root)
+				foldedParent := filepath.Join(filepath.Dir(parent), strings.ToUpper(filepath.Base(parent)))
+				require.NotEqual(t, parent, foldedParent)
+				require.NoError(t, os.Symlink(parent, foldedParent))
+				t.Cleanup(func() { _ = os.Remove(foldedParent) })
+				folded := filepath.Join(foldedParent, filepath.Base(root))
+				save = func(p string) string { return strings.Replace(p, root, folded, 1) }
+			}
+			movie := linkedPeerFixture(t, f, save, tc.rel)
 
 			run := f.scan(t, "manual")
 			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)

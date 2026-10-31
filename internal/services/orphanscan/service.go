@@ -1880,23 +1880,30 @@ func linkedPeerRoots(ctx context.Context, peerRoots, scanRoots, walkRoots []stri
 		}
 		return ok
 	}
+	// Compare as the protected paths do: a peer may spell a root in another
+	// case on a filesystem that ignores it.
+	norm := func(p string) string { return fsops.NormalizePath(d, p) }
 	var linked []string
 	for _, root := range peerRoots {
-		if slices.Contains(scanRoots, root) {
+		nRoot := norm(root)
+		if slices.ContainsFunc(scanRoots, func(s string) bool { return norm(s) == nRoot }) {
 			continue
 		}
-		under := func(w string) bool { return isPathUnderNormalized(d, root, w) }
+		under := func(w string) bool { return isPathUnderNormalized(d, nRoot, norm(w)) }
 		if !slices.ContainsFunc(walkRoots, under) {
 			continue
 		}
 		// As walkReaches, but the root itself must be a real directory too.
 		reached := func(w string) bool {
-			for dir := root; dir != w && dir != w+d.Separator(); dir = d.Dir(dir) {
+			nw := norm(w)
+			for dir := root; ; dir = d.Dir(dir) {
+				if n := norm(dir); n == nw || n == nw+d.Separator() {
+					return true
+				}
 				if !isRealDir(dir) || d.Dir(dir) == dir {
 					return false
 				}
 			}
-			return true
 		}
 		if !slices.ContainsFunc(walkRoots, func(w string) bool { return under(w) && reached(w) }) {
 			linked = append(linked, root)
