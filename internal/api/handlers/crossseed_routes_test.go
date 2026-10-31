@@ -46,6 +46,12 @@ type routeFixture struct {
 
 func newRouteFixture(t *testing.T) *routeFixture {
 	t.Helper()
+	return newRouteFixtureWithBackend(t, local.NewBackend())
+}
+
+// newRouteFixtureWithBackend uses backend as the backend of local instances.
+func newRouteFixtureWithBackend(t *testing.T, backend fsops.Backend) *routeFixture {
+	t.Helper()
 	db := testdb.NewMigratedSQLite(t, "cross-seed-routes")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -53,7 +59,7 @@ func newRouteFixture(t *testing.T) *routeFixture {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
-	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPoolWithRemote(instances, local.NewBackend(), func(*models.Instance) fsops.Backend {
+	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPoolWithRemote(instances, backend, func(*models.Instance) fsops.Backend {
 		// The route test refuses a remote instance before it uses the backend.
 		return nil
 	}))

@@ -135,6 +135,10 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 			unavailable.Unavailable = "Cross-seed instance unavailable: " + crossSeed.Name + ": " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": ")
 			return unavailable, nil
 		}
+		// A request that ended is not a write failure of this folder.
+		if err != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		result.Rows[i].Result = outcome
 		if err != nil {
 			result.Rows[i].Error = err.Error()

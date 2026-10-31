@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
@@ -288,4 +291,37 @@ func TestCrossSeedRouteListingCheck(t *testing.T) {
 		require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 		require.NotErrorIs(t, err, crossseedroute.ErrCannotSeeFolder)
 	})
+}
+
+// cancelOnSecondMkdirAll cancels the test before the second base folder, as a
+// request deadline that runs out between two folders does.
+type cancelOnSecondMkdirAll struct {
+	fsops.Backend
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (b *cancelOnSecondMkdirAll) MkdirAll(ctx context.Context, path string, perm fs.FileMode) error {
+	b.calls++
+	if b.calls == 2 {
+		b.cancel()
+	}
+	return b.Backend.MkdirAll(ctx, path, perm)
+}
+
+func TestCrossSeedRouteTestStopsWhenTheRequestEnds(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	backend := &cancelOnSecondMkdirAll{Backend: local.NewBackend(), cancel: cancel}
+	f := newRouteFixtureWithBackend(t, backend)
+	first := t.TempDir()
+	second := t.TempDir()
+	source := f.source("library", models.FilesystemModeLocal, first, second)
+	crossSeed := f.instance("seeds", listingQBittorrent(t, diskListing(map[string]string{first: first, second: second})), models.FilesystemModeNone)
+
+	got, err := f.routes.Test(ctx, &models.CrossSeedRoute{SourceInstanceID: source.ID, CrossSeedInstanceID: crossSeed.ID})
+
+	require.ErrorIs(t, err, context.Canceled, "a request that ends is not a write failure: %+v", got)
+	assertOnlyFolders(t, first)
+	assertOnlyFolders(t, second)
 }
