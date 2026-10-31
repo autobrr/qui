@@ -2109,6 +2109,18 @@ type buildFileMapResult struct {
 	torrentPaths []string
 }
 
+// mergeProtection adds the files, skipped roots and metadata roots of
+// another instance to r, never its scan roots, and returns the number of new
+// files.
+func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFileMapResult) int {
+	added := r.fileMap.MergeFrom(other.fileMap)
+	r.torrentPaths = append(r.torrentPaths, other.torrentPaths...)
+	r.skippedRoots = mergeRootLists(d, r.skippedRoots, other.skippedRoots)
+	r.metadataRoots = mergeRootLists(d, r.metadataRoots, other.metadataRoots)
+	r.scanRoots = filterCoveredScanRoots(d, r.scanRoots, r.skippedRoots)
+	return added
+}
+
 func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
@@ -2379,11 +2391,7 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			return nil, fmt.Errorf("overlapping %s unavailable (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 		}
 
-		added := result.fileMap.MergeFrom(otherResult.fileMap)
-		result.torrentPaths = append(result.torrentPaths, otherResult.torrentPaths...)
-		result.skippedRoots = mergeRootLists(d, result.skippedRoots, otherResult.skippedRoots)
-		result.metadataRoots = mergeRootLists(d, result.metadataRoots, otherResult.metadataRoots)
-		result.scanRoots = filterCoveredScanRoots(d, result.scanRoots, result.skippedRoots)
+		added := result.mergeProtection(d, otherResult)
 		log.Debug().
 			Int("instance", inst.ID).
 			Int("filesAdded", added).
@@ -2391,7 +2399,50 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			Msg("orphanscan: merged cross-instance torrent files (overlapping scan roots)")
 	}
 
+	if err := s.mergeRouted(ctx, instanceID, d, scope.TorrentPaths, result); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+// mergeRouted protects the files of the routed torrents on instanceID's
+// Cross-seed instance, mapped back to instanceID's paths (ADR 0035). Like a
+// peer, it adds files, skipped roots and metadata roots, never scan roots.
+// Unlike the peer loop, a turned-off Cross-seed instance fails the scan.
+func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathDialect, wantPaths bool, result *buildFileMapResult) error {
+	if s.crossSeedRoutes == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	routed, err := s.crossSeedRoutes.LoadRouted(ctx, freshTorrents{s.sync}, instanceID)
+	switch {
+	case errors.Is(err, crossseedroute.ErrUnavailable):
+		return fmt.Errorf("%w. Enable it in qui or clear the cross-seed route of this instance", crossseedroute.CrossSeedUnavailable(err))
+	case err != nil:
+		return fmt.Errorf("read the cross-seed route: %w", err)
+	case routed == nil:
+		return nil
+	}
+	other, err := buildFileMapFromTorrents(d, routed.Torrents, routed.Files, wantPaths)
+	if err != nil {
+		return fmt.Errorf("routed torrents of the Cross-seed instance: %w", err)
+	}
+	added := result.mergeProtection(d, other)
+	log.Debug().Int("instance", instanceID).Int("filesAdded", added).Msg("orphanscan: merged routed torrent files of the Cross-seed instance")
+	return nil
+}
+
+// freshTorrents reads the Cross-seed instance as buildInstanceFileMap reads a
+// peer: fresh torrents and file lists.
+type freshTorrents struct{ sync syncReader }
+
+func (r freshTorrents) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	return r.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+}
+
+func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	return r.sync.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hashes)
 }
 
 func torrentHashes(torrents []qbt.Torrent) []string {
