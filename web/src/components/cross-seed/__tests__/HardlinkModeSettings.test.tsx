@@ -175,12 +175,14 @@ describe("HardlinkModeSettings", () => {
       expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
     })
 
-    it("keeps Save changes off while the route read runs, and saves when it finds no route", async () => {
+    it("keeps Save changes and the form off while the route read runs, and saves when it finds no route", async () => {
       let answer: ((value: unknown) => void) | undefined
       mocks.getCrossSeedRoute.mockImplementation(() => new Promise(resolve => { answer = resolve }))
       saveBaseDirs("/data/more")
 
       expect(screen.getByRole<HTMLButtonElement>("button", { name: "rules.saveChanges" }).disabled).toBe(true)
+      // The dialog counts the form read at Save, so an edit now would save folders it did not count.
+      expect(screen.getByPlaceholderText<HTMLInputElement>("rules.baseDirectoriesPlaceholder").disabled).toBe(true)
       expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
       await act(async () => answer?.(null))
       expect(mocks.instances.updateInstance).toHaveBeenCalledTimes(1)

@@ -277,7 +277,8 @@ export function HardlinkModeSettings({
                         <RadioGroup
                           value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
                           onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
-                          disabled={isUpdating}
+                          // The dialog counts the form read at Save, so the form waits for the route read.
+                          disabled={isUpdating || checking}
                           className="space-y-2"
                         >
                           <div className="flex items-start gap-3">
@@ -328,6 +329,7 @@ export function HardlinkModeSettings({
                                 placeholder={t("rules.baseDirectoriesPlaceholder")}
                                 value={form.hardlinkBaseDir}
                                 onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                                disabled={checking}
                               />
                             </div>
 
@@ -338,6 +340,7 @@ export function HardlinkModeSettings({
                                 onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
                                   handleFormChange(instance.id, "hardlinkDirPreset", value, form)
                                 }
+                                disabled={checking}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
@@ -357,6 +360,7 @@ export function HardlinkModeSettings({
                                 onCheckedChange={(checked) =>
                                   handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
                                 }
+                                disabled={checking}
                               />
                               <div className="flex items-center gap-1.5">
                                 <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
@@ -375,7 +379,7 @@ export function HardlinkModeSettings({
                         <Button
                           size="sm"
                           onClick={() => handleSave(instance)}
-                          // Without the route list, a save could remove a mapped base folder with no confirm.
+                          // A second click during the route read would start a second check.
                           disabled={isUpdating || checking}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

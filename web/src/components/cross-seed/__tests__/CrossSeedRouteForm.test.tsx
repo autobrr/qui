@@ -546,7 +546,7 @@ describe("CrossSeedRouteForm confirm", () => {
     expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("says the count is unknown when a later route read fails", async () => {
+  it("keeps Save off and says the count is unknown when a later route read fails", async () => {
     mocks.instances.instances = [source, crossSeed]
     serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
     server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
@@ -554,6 +554,8 @@ describe("CrossSeedRouteForm confirm", () => {
     await screen.findByLabelText("/data/a")
     server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
     await act(() => queryClient.refetchQueries({ queryKey: [...crossSeedRoutesKey, 1] }))
+    // The cached rows can be old: another tab can have changed the route.
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true))
     fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
 
     expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()

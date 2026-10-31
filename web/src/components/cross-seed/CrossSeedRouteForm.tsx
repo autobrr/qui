@@ -184,8 +184,9 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
 
   const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
   // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
-  // A refetch keeps the old cached rows, so a save or a clear waits for it too.
-  const routeRead = routesRead && !isFetchingRoute && (saved === undefined || savedRoute !== undefined)
+  // A refetch keeps the old cached rows, so a save or a clear waits for it too,
+  // and a failed refetch keeps Save off: another tab can have changed the route.
+  const routeRead = routesRead && !isFetchingRoute && !routeReadFailed && (saved === undefined || savedRoute !== undefined)
   const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
   const picker = (
