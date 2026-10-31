@@ -462,7 +462,7 @@ func (b deniedIdentityStatBackend) Stat(ctx context.Context, p string) (*fsops.L
 
 // A torrent file that qui can look up but whose identity it may not read could
 // be a listed file under another path, so the run stops before it deletes
-// anything. Only a denied look up is skipped.
+// anything. Only a denied lookup is skipped.
 // regression: #3596
 func TestExecuteDeletion_TorrentFileWithoutReadableIdentityStopsTheRunBeforeAnyDelete(t *testing.T) {
 	var orphan, opaque string
