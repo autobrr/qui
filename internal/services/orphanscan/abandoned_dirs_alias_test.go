@@ -411,3 +411,63 @@ func TestExecuteScan_SFTPTierListsEmptyFolderBySpelling(t *testing.T) {
 	require.Contains(t, fileStatuses(t, f.store, run.ID), sftpPath(movie))
 	require.False(t, run.Partial, "run message: %s", run.ErrorMessage)
 }
+
+// fileListLess makes the fake client report, besides the owned torrent, one
+// torrent at savePath whose file list qBittorrent does not have yet.
+func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
+	late := qbt.Torrent{Hash: "late", SavePath: savePath, State: qbt.TorrentStateCheckingResumeData}
+	if magnet {
+		late.State, late.HasMetadata = qbt.TorrentStateMetaDl, new(false)
+	}
+	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "owned", SavePath: ownedSavePath, State: qbt.TorrentStatePausedUp}, late}, nil
+	}
+	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv")}, nil
+	}
+}
+
+// A magnet without metadata, or a torrent qBittorrent is still checking, has
+// no file list, so only its save path says where it will write. A save path
+// that is a symlink to an empty folder keeps that folder, in the scan and in
+// the delete.
+// regression: #3652
+func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlias(t *testing.T) {
+	for _, magnet := range []bool{true, false} {
+		name := map[bool]string{true: "magnet without metadata", false: "torrent being checked"}[magnet]
+		t.Run("scan, "+name, func(t *testing.T) {
+			var alias, leftover string
+			opts := orphanOnlyOptions{beforeScan: func(svc *Service, ownedSavePath string) {
+				fileListLess(svc, ownedSavePath, alias, magnet)
+			}}
+			f := newOrphanOnlyFixture(t, "orphanscan-scan-dir-alias-no-files", opts, func(defaultSavePath string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "Magnet"), 0o750))
+				leftover = filepath.Join(defaultSavePath, "leftover")
+				require.NoError(t, os.MkdirAll(leftover, 0o750))
+				alias = filepath.Join(filepath.Dir(defaultSavePath), "alias")
+				symlinkOrSkip(t, filepath.Join(defaultSavePath, "Magnet"), alias)
+			})
+
+			require.Equal(t, []string{leftover}, f.previewedDirs(t))
+		})
+		t.Run("delete, "+name, func(t *testing.T) {
+			var magnetDir, leftover string
+			f := newOrphanOnlyFixture(t, "orphanscan-delete-dir-alias-no-files", orphanOnlyOptions{}, func(defaultSavePath string) {
+				magnetDir = filepath.Join(defaultSavePath, "Magnet")
+				leftover = filepath.Join(defaultSavePath, "leftover")
+				require.NoError(t, os.MkdirAll(magnetDir, 0o750))
+				require.NoError(t, os.MkdirAll(leftover, 0o750))
+			})
+			require.ElementsMatch(t, []string{magnetDir, leftover}, f.previewedDirs(t))
+
+			alias := filepath.Join(filepath.Dir(f.defaultSavePath), "alias")
+			symlinkOrSkip(t, magnetDir, alias)
+			fileListLess(f.svc, f.torrentSavePath, alias, magnet)
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+			require.DirExists(t, magnetDir)
+			require.NoDirExists(t, leftover)
+			require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, f.runID)[magnetDir])
+		})
+	}
+}

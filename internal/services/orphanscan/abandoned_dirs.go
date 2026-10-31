@@ -160,21 +160,30 @@ func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normC
 	return false
 }
 
-// torrentDirs returns every folder above the torrent files, up to the
-// filesystem root, once each. A torrent can reach a folder under another
-// spelling before it writes anything, and an unwritten subfolder is reached
-// only by its file's path, so each level counts.
-func torrentDirs(d fsops.PathDialect, files []string) []string {
+// torrentDirs returns every folder above the torrent files, and each of
+// saveRoots and the folders above it, up to the filesystem root, once each.
+// A torrent can reach a folder under another spelling before it writes
+// anything, and an unwritten subfolder is reached only by its file's path, so
+// each level counts. saveRoots are the save paths of torrents with no file
+// list yet, which say where they will write.
+func torrentDirs(d fsops.PathDialect, files []string, saveRoots ...string) []string {
 	seen := make(map[string]struct{})
 	var dirs []string
 	for _, file := range files {
 		dirs = addUpToRoot(d, d.Dir(file), seen, dirs)
 	}
+	for _, root := range saveRoots {
+		dirs = addUpToRoot(d, root, seen, dirs)
+	}
 	return dirs
 }
 
-// addUpToRoot adds dir and each folder above it to seen and to added, and
-// stops at the first one seen already holds.
+// reachedDirs is torrentDirs for a file map result.
+func reachedDirs(d fsops.PathDialect, result *buildFileMapResult) []string {
+	return torrentDirs(d, result.torrentPaths, slices.Concat(result.metadataRoots, result.skippedRoots)...)
+}
+
+// addUpToRoot stops at the first folder already seen, so a shared prefix costs once.
 func addUpToRoot(d fsops.PathDialect, dir string, seen map[string]struct{}, added []string) []string {
 	for {
 		if _, ok := seen[dir]; ok {

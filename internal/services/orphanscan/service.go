@@ -1002,7 +1002,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		// which the paths above cannot see. The sftp tier reads no identity, so
 		// it lists by path, and it cannot delete.
 		if len(abandoned) > 0 && models.FilesystemCapabilitiesOf(instance).Identity {
-			reached, err := collectInUseIDs(ctx, backend, instance, torrentDirs(d, result.torrentPaths))
+			reached, err := collectInUseIDs(ctx, backend, instance, reachedDirs(d, result))
 			switch {
 			case ctx.Err() != nil:
 				s.markCanceled(ctx, instanceID, runID)
@@ -1517,7 +1517,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			paths = fileMapResult.torrentPaths
 		}
 		if len(dirEntries) > 0 {
-			paths = slices.Concat(paths, torrentDirs(d, fileMapResult.torrentPaths))
+			paths = slices.Concat(paths, reachedDirs(d, fileMapResult))
 		}
 		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, paths)
 		if err != nil {
