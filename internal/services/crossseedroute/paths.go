@@ -130,8 +130,10 @@ type RoutedTorrents struct {
 	// when it is under no row.
 	Torrents []qbt.Torrent
 	// Files holds the file lists by hash. The names stay relative to the save
-	// path, as qBittorrent reports them.
+	// path, as qBittorrent reports them. ListRouted leaves it nil.
 	Files map[string]qbt.TorrentFiles
+
+	crossSeedInstanceID int
 }
 
 // LoadRouted returns the torrents of sourceID's Cross-seed instance that are
@@ -140,6 +142,19 @@ type RoutedTorrents struct {
 // ErrUnavailable. When two rows map to the same or nested folders on the
 // Cross-seed instance, the error is a *RuleError.
 func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID int) (*RoutedTorrents, error) {
+	routed, err := s.ListRouted(ctx, read, sourceID)
+	if err != nil || routed == nil {
+		return nil, err
+	}
+	if err := routed.LoadFiles(ctx, read); err != nil {
+		return nil, err
+	}
+	return routed, nil
+}
+
+// ListRouted is LoadRouted without the file lists, for a caller that reads
+// them only when the torrents changed.
+func (s *Service) ListRouted(ctx context.Context, read TorrentReader, sourceID int) (*RoutedTorrents, error) {
 	route, err := s.Get(ctx, sourceID)
 	if err != nil || route == nil {
 		return nil, err
@@ -148,10 +163,7 @@ func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID i
 	if err != nil {
 		return nil, err
 	}
-	var (
-		torrents []qbt.Torrent
-		hashes   []string
-	)
+	routed := &RoutedTorrents{crossSeedInstanceID: route.CrossSeedInstanceID}
 	for _, torrent := range all {
 		savePath, row := FromCrossSeed(d, route.Rows, torrent.SavePath)
 		if row < 0 {
@@ -159,20 +171,30 @@ func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID i
 		}
 		torrent.SavePath = savePath
 		torrent.ContentPath, _ = FromCrossSeed(d, route.Rows, torrent.ContentPath)
-		torrents = append(torrents, torrent)
-		hashes = append(hashes, torrent.Hash)
+		routed.Torrents = append(routed.Torrents, torrent)
 	}
-	files, err := read.GetTorrentFilesBatch(ctx, route.CrossSeedInstanceID, hashes)
+	return routed, nil
+}
+
+// LoadFiles reads the file lists of the torrents into Files. Errors are as
+// for LoadRouted.
+func (r *RoutedTorrents) LoadFiles(ctx context.Context, read TorrentReader) error {
+	hashes := make([]string, len(r.Torrents))
+	for i := range r.Torrents {
+		hashes[i] = r.Torrents[i].Hash
+	}
+	files, err := read.GetTorrentFilesBatch(ctx, r.crossSeedInstanceID, hashes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: read the file lists of the Cross-seed instance: %w", ErrUnavailable, err)
+		return fmt.Errorf("%w: read the file lists of the Cross-seed instance: %w", ErrUnavailable, err)
 	}
 	// The reader leaves out a file list that it fails to read.
 	for _, hash := range hashes {
 		if _, ok := files[hash]; !ok {
-			return nil, fmt.Errorf("%w: read the file list of torrent %s on the Cross-seed instance", ErrUnavailable, hash)
+			return fmt.Errorf("%w: read the file list of torrent %s on the Cross-seed instance", ErrUnavailable, hash)
 		}
 	}
-	return &RoutedTorrents{Torrents: torrents, Files: files}, nil
+	r.Files = files
+	return nil
 }
 
 // CountRouted returns, for each row of route, the number of the Cross-seed
