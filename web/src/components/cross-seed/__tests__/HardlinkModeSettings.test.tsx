@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { FilesystemCapabilities, Instance } from "@/types"
@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   routeFormProps: [] as { localWrite: boolean }[],
   translation: { t: (key: string) => key },
-  routes: { data: [] as unknown[] },
+  routes: { data: [] as unknown[] | undefined, isSuccess: true },
   getCrossSeedRoute: vi.fn(),
 }))
 
@@ -42,6 +42,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   mocks.routes.data = []
+  mocks.routes.isSuccess = true
 })
 
 const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
@@ -148,6 +149,57 @@ describe("HardlinkModeSettings", () => {
 
       await screen.findByText("routeConfirm.countUnknown")
       expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
+    })
+
+    it("keeps Save changes off until the route list is read", () => {
+      mocks.instances.instances = [source, seedbox]
+      mocks.routes.data = undefined
+      mocks.routes.isSuccess = false
+      render(<HardlinkModeSettings pooledPartialCompletionEnabled={false} onPooledPartialCompletionEnabledChange={() => {}} />)
+      fireEvent.click(screen.getByText("qbit"))
+      fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/more" } })
+
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "rules.saveChanges" }).disabled).toBe(true)
+    })
+
+    it("keeps the count of a cancelled confirm out of the next confirm", async () => {
+      mocks.translation.t = ((key: string, options?: { count?: number }) => options?.count === undefined ? key : `${key}:${options.count}`) as typeof mocks.translation.t
+      const read = (routedLinks: number, routedMore: number) => ({
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/links", mappedPath: "/mnt/links", routedTorrents: routedLinks }, { baseDir: "/data/more", mappedPath: "", routedTorrents: routedMore }],
+      })
+      const resolves: ((value: unknown) => void)[] = []
+      mocks.getCrossSeedRoute.mockImplementation(() => new Promise(resolve => resolves.push(resolve)))
+      try {
+        saveBaseDirs("/data/more")
+        fireEvent.click(await screen.findByRole("button", { name: "routeConfirm.cancel" }))
+        fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/links" } })
+        fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+        await screen.findByText("routeConfirm.counting")
+
+        await act(async () => resolves[0](read(4, 7)))
+        expect(screen.queryByText("routeConfirm.count:4")).toBeNull()
+        expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeConfirm.confirm" }).disabled).toBe(true)
+
+        await act(async () => resolves[1](read(4, 7)))
+        expect(await screen.findByText("routeConfirm.count:7")).toBeTruthy()
+      } finally {
+        mocks.translation.t = (key: string) => key
+      }
+    })
+
+    it("matches a decomposed base folder to its saved route row", () => {
+      const cafe = "/data/cafe\u0301"
+      mocks.instances.instances = [{ ...source, hardlinkBaseDir: cafe }, seedbox]
+      mocks.routes.data = [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: cafe.normalize("NFC"), mappedPath: "/mnt/cafe" }] }]
+      render(<HardlinkModeSettings pooledPartialCompletionEnabled={false} onPooledPartialCompletionEnabledChange={() => {}} />)
+      fireEvent.click(screen.getByText("qbit"))
+      fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: `${cafe}, /data/new` } })
+      fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+
+      expect(mocks.getCrossSeedRoute).not.toHaveBeenCalled()
+      expect(mocks.instances.updateInstance).toHaveBeenCalledTimes(1)
     })
 
     it("saves without a confirm when every mapped base folder stays", () => {

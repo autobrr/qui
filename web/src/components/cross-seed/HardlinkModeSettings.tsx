@@ -32,10 +32,11 @@ function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
 }
 
-// ponytail: trims and drops a trailing separator only, so an unclean path such
-// as "/data//links" reads as removed and opens one confirm too many.
+// ponytail: trims, drops a trailing separator, and applies NFC as the server
+// keys do. An unclean path such as "/data//links" reads as removed and opens
+// one confirm too many.
 function baseDirKey(dir: string): string {
-  return dir.trim().replace(/(?<=.)[\\/]+$/, "")
+  return dir.trim().normalize("NFC").replace(/(?<=.)[\\/]+$/, "")
 }
 
 /** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
@@ -59,7 +60,7 @@ export function HardlinkModeSettings({
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
-  const { data: routes } = useCrossSeedRoutes()
+  const { data: routes, isSuccess: routesRead } = useCrossSeedRoutes()
   const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null | undefined } | null>(null)
 
   const activeInstances = useMemo(
@@ -146,11 +147,13 @@ export function HardlinkModeSettings({
       if (removed.length) {
         // The dialog opens at once and fills in the count, so a second click cannot open it twice.
         const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
-        setPendingSave({ instance, crossSeedName, routedTorrents: undefined })
+        // The count fills only this confirm, not a later one that the user opened after a cancel.
+        const pending = { instance, crossSeedName, routedTorrents: undefined }
+        setPendingSave(pending)
         void api.getCrossSeedRoute(instance.id)
           .then(read => countRoutedTorrents(read?.rows.filter(row => removed.some(r => r.baseDir === row.baseDir)) ?? []))
           .catch(() => null)
-          .then(routedTorrents => setPendingSave(prev => prev?.instance.id === instance.id ? { ...prev, routedTorrents } : prev))
+          .then(routedTorrents => setPendingSave(prev => prev === pending ? { ...pending, routedTorrents } : prev))
         return
       }
     }
@@ -373,7 +376,8 @@ export function HardlinkModeSettings({
                         <Button
                           size="sm"
                           onClick={() => handleSave(instance)}
-                          disabled={isUpdating}
+                          // Without the route list, a save could remove a mapped base folder with no confirm.
+                          disabled={isUpdating || !routesRead}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           {t("rules.saveChanges")}

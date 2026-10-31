@@ -104,7 +104,8 @@ export function CrossSeedDeleteNotice({ instanceId }: { instanceId: number }) {
 
   if (!sources.length) return null
   return (
-    <div className="space-y-3">
+    // Many Source instances scroll here, so the Delete button stays on screen.
+    <div className="max-h-[40vh] space-y-3 overflow-y-auto">
       {sources.map((source, i) => {
         const read = reads[i]
         const routedTorrents = read?.isError? null: read?.data === undefined? undefined: read.data === null ? 0 : countRoutedTorrents(read.data.rows)

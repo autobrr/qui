@@ -86,7 +86,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { instances = [] } = useInstances()
   const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
-  const { data: savedRoute, isLoading: isLoadingRoute } = useCrossSeedRoute(instance, saved !== undefined)
+  const { data: savedRoute, isLoading: isLoadingRoute, isError: routeReadFailed } = useCrossSeedRoute(instance, saved !== undefined)
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
   // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
   const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never } | { clear: false; baseDirs?: string[] } | null>(null)
@@ -300,7 +300,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
         onConfirm={() => (confirm?.clear ? clearRoute : saveRoute).mutate()}
         sourceName={instance.name}
         crossSeedName={savedCrossSeed?.name ?? ""}
-        routedTorrents={confirmRows && countRoutedTorrents(confirmRows)}
+        // A failed read makes the count unknown, so a clear is not stuck on Counting.
+        routedTorrents={confirmRows ? countRoutedTorrents(confirmRows) : routeReadFailed ? null : undefined}
         clear={confirm?.clear}
       />
     </div>
