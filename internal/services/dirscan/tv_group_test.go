@@ -65,6 +65,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 		name         string
 		seasonPack   bool
 		offlineLink  bool
+		noEpisodes   bool
 		wantSearched []string
 		wantAdded    int
 		wantStatus   models.DirScanFileStatus
@@ -72,6 +73,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 		{name: "episode injects", wantSearched: []string{"season", "E01", "E02", "E03"}, wantAdded: 3, wantStatus: models.DirScanFileStatusMatched},
 		{name: "season pack injects", seasonPack: true, wantSearched: []string{"season"}, wantAdded: 1, wantStatus: models.DirScanFileStatusMatched},
 		{name: "offline linked instance keeps episodes pending", offlineLink: true, wantSearched: []string{"season", "E01", "E02", "E03"}, wantStatus: models.DirScanFileStatusPending},
+		{name: "offline linked instance keeps a season pack pending", seasonPack: true, offlineLink: true, noEpisodes: true, wantSearched: []string{"season", "E01", "E02", "E03"}, wantStatus: models.DirScanFileStatusPending},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,6 +131,9 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 				}
 			}
 			for i, f := range root.Files {
+				if tt.noEpisodes {
+					break
+				}
 				searcher.episodes[i+1] = []jackett.SearchResult{addResult(fmt.Sprintf("ep-%d", i+1), &metainfo.Info{
 					Name:        f.RelPath,
 					PieceLength: 16384,

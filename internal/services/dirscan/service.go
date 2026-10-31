@@ -1074,6 +1074,9 @@ func (s *Service) processRootSearchee(
 	// The set of indexers this scan considers; recorded on no_match stamps so a
 	// later scan can reopen the file when new indexers appear.
 	consideredIndexerIDs := sortedIndexerIDs(enabledIndexerIDs)
+	// Files of a work item that asked for a retry stay pending, also when a
+	// season search and its episode searches cover the same files.
+	retryFiles := make(map[string]struct{})
 	hadSearchSuccess := false
 	hadSearchError := false
 	hasProcessingError := false
@@ -1157,11 +1160,9 @@ func (s *Service) processRootSearchee(
 			hadSearchSuccess = true
 		}
 		if outcome.retry {
-			// The season search ran first and marked these episode files
-			// attempted. Unmark them, so they stay pending.
 			for _, f := range item.searchee.Files {
 				if f != nil {
-					delete(attemptedFiles, f.Path)
+					retryFiles[f.Path] = struct{}{}
 				}
 			}
 		}
@@ -1275,6 +1276,10 @@ func (s *Service) processRootSearchee(
 				}
 			}
 		}
+	}
+
+	for path := range retryFiles {
+		delete(attemptedFiles, path)
 	}
 
 	finalizeCtx := ctx
