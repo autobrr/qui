@@ -195,6 +195,7 @@ describe("CrossSeedRouteForm rows", () => {
     { name: "an empty row inside a mapped row", a: "/data", b: "" },
     { name: "drive letters in another case", a: "D:\\Data", b: "d:/data" },
     { name: "folders that nest after .. is resolved", a: "/mnt/x/../data", b: "/mnt/data/b" },
+    { name: "a UNC share and a .. above it", a: "//nas/share/../a", b: "//nas/share/a/b" },
   ])("refuses two rows that map to $name", async ({ a, b }) => {
     mocks.instances.instances = [source, crossSeed]
     serve()

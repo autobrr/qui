@@ -40,7 +40,8 @@ function crossSeedKey(path: string): string {
   const parts: string[] = []
   for (const part of slashed.split("/")) {
     if (part === "..") {
-      if (parts.length > (drive ? 1 : 0)) parts.pop()
+      // .. stops at the drive, and at the server and share of a UNC path.
+      if (parts.length > (root === "//" ? 2 : drive ? 1 : 0)) parts.pop()
     } else if (part !== "." && part !== "") {
       parts.push(part)
     }
