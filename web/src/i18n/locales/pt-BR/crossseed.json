@@ -517,6 +517,7 @@
     "deleteSource": "Após esta exclusão, {{source}} volta a adicionar cross-seeds a si mesma.",
     "routesUnknown": "O qui não conseguiu ler as rotas de cross-seed, então não pode indicar as instâncias de origem que perdem a proteção após esta exclusão.",
     "routeReadFailed": "O qui não conseguiu ler a rota de cross-seed de {{source}}, então não salvou a alteração.",
+    "routeChanged": "A rota de cross-seed de {{source}} mudou em outra aba, então o qui não salvou o formulário. Confira a rota e salve de novo.",
     "confirm": "Continuar",
     "cancel": "Cancelar"
   },

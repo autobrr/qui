@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { HttpResponse, http } from "msw"
 import type { ChangeEvent, ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 
 import i18n from "@/i18n"
 import { server } from "@/test/msw/server"
@@ -282,7 +283,8 @@ describe("CrossSeedRouteForm rows", () => {
     server.use(
       http.get("*/api/cross-seed/routes/:id", async () => {
         reads++
-        if (reads > 1) await refreshed
+        // The first read loads the form, the second is the check of Save, the third is the refresh.
+        if (reads > 2) await refreshed
         return HttpResponse.json(before)
       }),
       http.put("*/api/cross-seed/routes/1", () => HttpResponse.json(before))
@@ -292,7 +294,7 @@ describe("CrossSeedRouteForm rows", () => {
     fireEvent.change(await screen.findByLabelText("/data/a"), { target: { value: "/mnt/new" } })
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
     fireEvent.click(await screen.findByRole("button", { name: "routeConfirm.confirm" }))
-    await waitFor(() => expect(reads).toBe(2))
+    await waitFor(() => expect(reads).toBe(3))
 
     expect(screen.getByLabelText<HTMLInputElement>("/data/a").value).toBe("/mnt/new")
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
@@ -441,6 +443,50 @@ describe("CrossSeedRouteForm confirm", () => {
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
     fireEvent.click(await confirmButton())
     await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("saves nothing and reloads the form when another tab changed the route", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    const changed = { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/other", routedTorrents: 3 }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }] }
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(changed)))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByDisplayValue("/mnt/other")).toBeTruthy()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library")
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
+  })
+
+  it("saves nothing when another tab saved a route that the form does not know", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    const writes: string[] = []
+    server.use(
+      http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }] })),
+      http.put("*/api/cross-seed/routes/1", () => {
+        writes.push("save")
+        return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+      })
+    )
+    renderForm(source)
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    fireEvent.change(picker(), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(writes).toEqual([])
+  })
+
+  it("saves nothing and says so when the check of Save cannot read the route", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeReadFailed|library", expect.anything()))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
   })
 
   it("asks before a change of Cross-seed instance, with the routed torrents under all rows", async () => {

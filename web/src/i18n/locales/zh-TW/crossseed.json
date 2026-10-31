@@ -507,6 +507,7 @@
     "deleteSource": "刪除後，{{source}} 會再次把交叉做種加入自身。",
     "routesUnknown": "qui 無法讀取輔種路由，因此無法列出此次刪除後失去保護的來源實例。",
     "routeReadFailed": "qui 無法讀取 {{source}} 的輔種路由，因此未儲存此變更。",
+    "routeChanged": "{{source}} 的交叉做種路由已在另一個分頁中變更，因此 qui 未儲存此表單。請檢查路由後再次儲存。",
     "confirm": "繼續",
     "cancel": "取消"
   },

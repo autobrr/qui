@@ -517,6 +517,7 @@
     "deleteSource": "Après cette suppression, {{source}} ajoute de nouveau les cross-seeds à lui-même.",
     "routesUnknown": "qui n'a pas pu lire les routes de cross-seed et ne peut donc pas indiquer les instances source qui perdent leur protection après cette suppression.",
     "routeReadFailed": "qui n'a pas pu lire la route de cross-seed de {{source}} et n'a donc pas enregistré la modification.",
+    "routeChanged": "La route de cross-seed de {{source}} a changé dans un autre onglet. qui n'a donc pas enregistré le formulaire. Vérifiez la route, puis enregistrez de nouveau.",
     "confirm": "Continuer",
     "cancel": "Annuler"
   },

@@ -17,7 +17,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { CrossSeedRouteRow, CrossSeedRouteTestRowResult, Instance } from "@/types"
+import type { CrossSeedRouteRow, CrossSeedRouteStatus, CrossSeedRouteTestRowResult, Instance } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { useId, useState } from "react"
@@ -61,6 +61,12 @@ function splitBaseDirs(configured: string): string[] {
   return [...dirs.values()]
 }
 
+// The routed torrent counts can change between two reads, so they are left out.
+function sameRoute(a: CrossSeedRouteStatus | null, b: CrossSeedRouteStatus | null): boolean {
+  const key = (route: CrossSeedRouteStatus | null) => JSON.stringify(route && [route.crossSeedInstanceId, route.rows.map(row => [row.baseDir, row.mappedPath])])
+  return key(a) === key(b)
+}
+
 function nested(parent: string, child: string): boolean {
   return parent === child || child.startsWith(parent.replace(/\/$/, "") + "/")
 }
@@ -89,6 +95,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { data: savedRoute, isLoading: isLoadingRoute, isFetching: isFetchingRoute, isError: routeReadFailed } = useCrossSeedRoute(instance, saved !== undefined)
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
   // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
+  const [checking, setChecking] = useState(false)
   const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never } | { clear: false; baseDirs?: string[] } | null>(null)
 
   const sourceNames = routes
@@ -159,7 +166,20 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
+  // The route is read again first: another tab can have saved or changed it,
+  // and a save overwrites it. A changed route reloads the form and saves nothing.
   const handleSave = () => {
+    setChecking(true)
+    void api.getCrossSeedRoute(instance.id)
+      .then(current => {
+        if (sameRoute(current, savedRoute ?? null)) return decideSave()
+        toast.error(t("routeConfirm.routeChanged", { source: instance.name }))
+        return onRouteChanged()
+      })
+      .catch((error: Error) => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message }))
+      .finally(() => setChecking(false))
+  }
+  const decideSave = () => {
     if (!saved) return saveRoute.mutate()
     if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
     // The read also gives a base folder added after the save an empty row, and the orphan scan protects the torrents under it.
@@ -182,7 +202,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     }))
   }
 
-  const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
+  const busy = checking || testRoute.isPending || saveRoute.isPending || clearRoute.isPending
   // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
   // A refetch keeps the old cached rows, so a save or a clear waits for it too,
   // and a failed refetch keeps Save off: another tab can have changed the route.

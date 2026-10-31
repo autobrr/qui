@@ -530,6 +530,7 @@
     "deleteSource": "Po tomto smazání bude {{source}} opět přidávat cross-seedy sama sobě.",
     "routesUnknown": "qui nemohl načíst trasy křížového sdílení, takže nemůže uvést zdrojové instance, které po tomto smazání ztratí ochranu.",
     "routeReadFailed": "qui nemohl načíst trasu křížového sdílení instance {{source}}, takže změnu neuložil.",
+    "routeChanged": "Cross-seed trasa {{source}} se změnila v jiné kartě, proto qui formulář neuložil. Zkontrolujte trasu a uložte znovu.",
     "confirm": "Pokračovat",
     "cancel": "Zrušit"
   },

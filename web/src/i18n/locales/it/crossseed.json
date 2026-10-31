@@ -517,6 +517,7 @@
     "deleteSource": "Dopo questa eliminazione, {{source}} aggiunge di nuovo i cross-seed a se stessa.",
     "routesUnknown": "qui non è riuscito a leggere le route di cross-seed, quindi non può indicare le istanze di origine che perdono la protezione dopo questa eliminazione.",
     "routeReadFailed": "qui non è riuscito a leggere la route di cross-seed di {{source}}, quindi non ha salvato la modifica.",
+    "routeChanged": "Il percorso di cross-seed di {{source}} è cambiato in un'altra scheda, quindi qui non ha salvato il modulo. Controlla il percorso, poi salva di nuovo.",
     "confirm": "Continua",
     "cancel": "Annulla"
   },
