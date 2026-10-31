@@ -5,6 +5,7 @@ package crossseedroute
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -133,6 +134,12 @@ func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID i
 	if err != nil {
 		return nil, fmt.Errorf("%w: read the file lists of the Cross-seed instance: %w", ErrUnavailable, err)
 	}
+	// The reader leaves out a file list that it fails to read.
+	for _, hash := range hashes {
+		if _, ok := files[hash]; !ok {
+			return nil, fmt.Errorf("%w: read the file list of torrent %s on the Cross-seed instance", ErrUnavailable, hash)
+		}
+	}
 	return &RoutedTorrents{Torrents: torrents, Files: files}, nil
 }
 
@@ -155,7 +162,14 @@ func (s *Service) CountRouted(ctx context.Context, read TorrentReader, route *mo
 
 // readCrossSeed reads the torrents of route's Cross-seed instance after the
 // availability check, with the Source instance's path dialect.
-func (s *Service) readCrossSeed(ctx context.Context, read TorrentReader, route *models.CrossSeedRoute) (fsops.PathDialect, []qbt.Torrent, error) {
+func (s *Service) readCrossSeed(ctx context.Context, read TorrentReader, route *models.CrossSeedRoute) (_ fsops.PathDialect, _ []qbt.Torrent, err error) {
+	defer func() {
+		// A read that the deadline of ctx cut off means that the Cross-seed
+		// instance did not answer in time.
+		if err != nil && ctx.Err() != nil && !errors.Is(err, ErrUnavailable) {
+			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
+		}
+	}()
 	if err := s.CheckAvailable(ctx, route.CrossSeedInstanceID, false); err != nil {
 		return nil, nil, err
 	}

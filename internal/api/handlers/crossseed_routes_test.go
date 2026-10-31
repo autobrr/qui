@@ -555,3 +555,56 @@ func TestCrossSeedRouteLoadMapsTorrentsBack(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, routed)
 }
+
+// A base folder that the Source instance gains after the save acts as an
+// empty row: same path on both instances.
+func TestCrossSeedRouteNewBaseFolderKeepsTheSamePath(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, other := routedSetup(t, f)
+	added := filepath.Join(t.TempDir(), "links")
+	source = f.update(source, &models.InstanceUpdateParams{HardlinkBaseDir: new(strings.Join([]string{library, other, added}, ","))})
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{{Hash: "new", SavePath: filepath.Join(added, "tv")}}
+	f.torrents.files = map[string]qbt.TorrentFiles{"new": {{Name: "a.mkv"}}}
+
+	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.Empty(t, got.BrokenRule)
+	assert.Equal(t, []models.CrossSeedRouteRow{
+		{BaseDir: library},
+		{BaseDir: other, MappedPath: "/seeds/links"},
+		{BaseDir: added},
+	}, plainRows(got))
+	assert.Equal(t, []*int{new(0), new(0), new(1)}, routedCounts(got))
+
+	routed, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []qbt.Torrent{{Hash: "new", SavePath: filepath.Join(added, "tv")}}, routed.Torrents)
+}
+
+// A read that the deadline cuts off means that the Cross-seed instance did not
+// answer in time, so the route read shows null counts and not an error.
+func TestCrossSeedRouteCountAfterTheDeadlineIsUnavailable(t *testing.T) {
+	f := newRouteFixture(t)
+	source, _, _, _ := routedSetup(t, f)
+	route, err := f.routes.Get(t.Context(), source.ID)
+	require.NoError(t, err)
+
+	expired, cancel := context.WithDeadline(t.Context(), time.Now())
+	defer cancel()
+	_, err = f.routes.CountRouted(expired, f.torrents, route)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+}
+
+// The torrent reader leaves out a file list that it fails to read, so a
+// missing list means that the Cross-seed instance is unavailable.
+func TestCrossSeedRouteLoadNeedsEveryFileList(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, _ := routedSetup(t, f)
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{
+		{Hash: "read", SavePath: library},
+		{Hash: "failed", SavePath: library},
+	}
+	f.torrents.files = map[string]qbt.TorrentFiles{"read": {{Name: "a.mkv"}}}
+
+	_, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+}

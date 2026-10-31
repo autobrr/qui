@@ -5198,7 +5198,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Get the cross-seed route of a Source instance
-      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes. Each row gives routedTorrents, the number of the Cross-seed instance's torrents under it, or null when the Cross-seed instance is unavailable.
+      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes. A base folder that the Source instance gained after the save shows as a row with an empty mappedPath. Each row gives routedTorrents, the number of the Cross-seed instance's torrents under it, or null when the Cross-seed instance is unavailable.
       responses:
         '200':
           description: The saved route with its rule status, or null

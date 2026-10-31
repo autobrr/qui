@@ -93,6 +93,30 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	return nil
 }
 
+// Get returns the route of a Source instance, or nil when it has none. A base
+// folder that the Source instance gained after the save gets an empty row, so
+// it keeps the same path on both instances.
+func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error) {
+	route, err := s.CrossSeedRouteStore.Get(ctx, sourceInstanceID)
+	if err != nil || route == nil {
+		return route, err
+	}
+	source, err := s.instances.Get(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	backend, _, err := s.backends.Resolve(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range BaseDirKeys(backend.Paths(), source.HardlinkBaseDir) {
+		if !slices.ContainsFunc(route.Rows, func(row models.CrossSeedRouteRow) bool { return row.BaseDir == key }) {
+			route.Rows = append(route.Rows, models.CrossSeedRouteRow{BaseDir: key})
+		}
+	}
+	return route, nil
+}
+
 // Check returns a *RuleError when route breaks a route rule. Any other error
 // is a failed read, such as models.ErrInstanceNotFound.
 func (s *Service) Check(ctx context.Context, route *models.CrossSeedRoute) error {
@@ -139,7 +163,7 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 	if crossSeed.ID == source.ID {
 		return nil, broken("%s cannot be its own Cross-seed instance", source.Name)
 	}
-	if own, err := s.Get(ctx, crossSeed.ID); err != nil {
+	if own, err := s.CrossSeedRouteStore.Get(ctx, crossSeed.ID); err != nil {
 		return nil, err
 	} else if own != nil {
 		return nil, broken("%s routes its own cross-seeds, so it cannot be a Cross-seed instance", crossSeed.Name)
