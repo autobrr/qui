@@ -9,7 +9,7 @@ import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import type { TorrentAction, useTorrentActions } from "@/hooks/useTorrentActions"
 import type { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
-import { EMPTY_LOAD_MORE_WINDOW, loadMoreWindowReducer } from "@/lib/load-more-window"
+import { EMPTY_LOAD_MORE_WINDOW, LOAD_MORE_STEP, loadMoreWindowReducer } from "@/lib/load-more-window"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { combineFilterExpr, isCrossSeedExpr } from "@/lib/torrent-filters"
 import type { ActionTarget } from "@/lib/torrent-selection"
@@ -95,12 +95,19 @@ export function useTorrentListController({
     dispatch({ type: "pageLoaded" })
   }
 
-  const canLoadPage = !hasLoadedAll && !isLoadingMore
+  // The table reports on each scroll frame near the end, so this must be cheap.
   const reportNearEnd = () => {
-    if (loadMoreWindow.loadedRows >= loadMoreWindow.listLength && canLoadPage) {
+    // Ask for the next server page when the window shows the last step in
+    // memory, so its rows arrive before a fast scroll reaches them.
+    // loadNextPage ignores a call while a page loads.
+    if (loadMoreWindow.loadedRows + LOAD_MORE_STEP >= loadMoreWindow.listLength) {
       loadNextPage()
     }
-    dispatch({ type: "nearEnd", canLoadPage })
+    const event = { type: "nearEnd", hasMorePages: !hasLoadedAll } as const
+    // A dispatch that changes nothing still renders the Layout again.
+    if (loadMoreWindowReducer(loadMoreWindow, event) !== loadMoreWindow) {
+      dispatch(event)
+    }
   }
 
   return {

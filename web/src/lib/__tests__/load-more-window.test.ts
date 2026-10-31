@@ -14,9 +14,9 @@ function run(events: LoadMoreWindowEvent[], state: LoadMoreWindow = EMPTY_LOAD_M
 // 1,000 rows in memory, and the user scrolled to row 400.
 const scrolled = run([
   { type: "dataArrived", length: 1000 },
-  { type: "nearEnd", canLoadPage: true },
-  { type: "nearEnd", canLoadPage: true },
-  { type: "nearEnd", canLoadPage: true },
+  { type: "nearEnd", hasMorePages: true },
+  { type: "nearEnd", hasMorePages: true },
+  { type: "nearEnd", hasMorePages: true },
 ])
 
 describe("loadMoreWindowReducer", () => {
@@ -41,19 +41,19 @@ describe("loadMoreWindowReducer", () => {
   })
 
   it("shows the next 100 rows from memory near the end, and asks for no server page", () => {
-    const next = loadMoreWindowReducer(scrolled, { type: "nearEnd", canLoadPage: true })
+    const next = loadMoreWindowReducer(scrolled, { type: "nearEnd", hasMorePages: true })
     expect(next.loadedRows).toBe(500)
     expect(next.pageRequested).toBe(false)
   })
 
   it("shows the rest of the rows in memory", () => {
     const almost = run([{ type: "dataArrived", length: 150 }])
-    expect(loadMoreWindowReducer(almost, { type: "nearEnd", canLoadPage: false }).loadedRows).toBe(150)
+    expect(loadMoreWindowReducer(almost, { type: "nearEnd", hasMorePages: false }).loadedRows).toBe(150)
   })
 
   it("asks for a server page near the end of the rows in memory, and shows its rows when it loads", () => {
     const atEnd = run([{ type: "dataArrived", length: 100 }])
-    const requested = loadMoreWindowReducer(atEnd, { type: "nearEnd", canLoadPage: true })
+    const requested = loadMoreWindowReducer(atEnd, { type: "nearEnd", hasMorePages: true })
     expect(requested.pageRequested).toBe(true)
     expect(requested.loadedRows).toBe(100)
 
@@ -62,18 +62,18 @@ describe("loadMoreWindowReducer", () => {
   })
 
   it("keeps the request when a page brings no rows", () => {
-    const requested = run([{ type: "dataArrived", length: 100 }, { type: "nearEnd", canLoadPage: true }])
+    const requested = run([{ type: "dataArrived", length: 100 }, { type: "nearEnd", hasMorePages: true }])
     expect(loadMoreWindowReducer(requested, { type: "pageLoaded" })).toBe(requested)
   })
 
   it("does nothing at the end of the data", () => {
     const atEnd = run([{ type: "dataArrived", length: 100 }])
-    expect(loadMoreWindowReducer(atEnd, { type: "nearEnd", canLoadPage: false })).toBe(atEnd)
+    expect(loadMoreWindowReducer(atEnd, { type: "nearEnd", hasMorePages: false })).toBe(atEnd)
   })
 
   it("ignores a page that loads after the user changed the filters", () => {
     const atEnd = run([{ type: "dataArrived", length: 100 }])
-    const reset = run([{ type: "nearEnd", canLoadPage: true }, { type: "queryChanged" }, { type: "dataArrived", length: 200 }, { type: "pageLoaded" }], atEnd)
+    const reset = run([{ type: "nearEnd", hasMorePages: true }, { type: "queryChanged" }, { type: "dataArrived", length: 200 }, { type: "pageLoaded" }], atEnd)
     expect(reset.loadedRows).toBe(100)
   })
 
