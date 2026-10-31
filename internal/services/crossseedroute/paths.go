@@ -46,7 +46,8 @@ func ToCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, baseDir, 
 // a Source instance path with the Source instance's dialect d. It also returns
 // the index of the row that matched, or -1 when p is under no row.
 func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p string) (string, int) {
-	reported := crossSeedPath(p)
+	raw := pathcmp.NormalizePath(p)
+	reported := nfc(raw)
 	if reported == "" {
 		return "", -1
 	}
@@ -62,16 +63,28 @@ func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p strin
 		if rest == "" {
 			return row.BaseDir, i
 		}
+		if reported != raw {
+			// NFC keeps each "/", so the last parts of raw hold rest as reported.
+			head := raw
+			for range strings.Count(rest, "/") + 1 {
+				head, _, _ = strings.CutLast(head, "/")
+			}
+			rest = raw[len(head)+1:]
+		}
 		return d.Join(row.BaseDir, d.FromSlash(rest)), i
 	}
 	return "", -1
 }
 
 // crossSeedPath returns p from pathcmp.NormalizePath in NFC, the form of the
-// base folder keys, so that a decomposed name matches its composed form. An
-// ASCII path is already NFC, and the check of norm allocates.
+// base folder keys, so that a decomposed name matches its composed form.
 func crossSeedPath(p string) string {
-	p = pathcmp.NormalizePath(p)
+	return nfc(pathcmp.NormalizePath(p))
+}
+
+// nfc returns p in NFC. An ASCII path is already NFC, and the check of norm
+// allocates.
+func nfc(p string) string {
 	for i := range len(p) {
 		if p[i] >= utf8.RuneSelf {
 			if utf8.ValidString(p) && !norm.NFC.IsNormalString(p) {

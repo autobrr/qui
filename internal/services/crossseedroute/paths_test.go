@@ -72,6 +72,7 @@ func TestFromCrossSeed(t *testing.T) {
 		{name: "empty path", rows: twoRows, path: "", wantRow: -1},
 		// Base folder keys are NFC, and qBittorrent can report a decomposed name.
 		{name: "decomposed name under an NFC base folder", rows: oneRow("/data/Caf\u00e9", ""), path: "/data/Cafe\u0301/tv", want: "/data/Caf\u00e9/tv", wantRow: 0},
+		{name: "decomposed child name kept", rows: oneRow("/data/torrents", "/seeds"), path: "/seeds/tv/Cafe\u0301", want: "/data/torrents/tv/Cafe\u0301", wantRow: 0},
 		{name: "NFC name under a decomposed mapped path", rows: oneRow("/data/torrents", "/mnt/Cafe\u0301"), path: "/mnt/Caf\u00e9/tv", want: "/data/torrents/tv", wantRow: 0},
 	}
 	for _, tt := range tests {
