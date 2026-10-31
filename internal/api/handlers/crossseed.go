@@ -1809,7 +1809,7 @@ func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Req
 
 	limit := 20
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 400 {
 			limit = parsed
 		}
 	}

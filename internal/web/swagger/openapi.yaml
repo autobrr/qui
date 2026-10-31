@@ -5429,7 +5429,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 200
+            maximum: 400
             default: 20
           description: Maximum number of runs to return
       responses:
