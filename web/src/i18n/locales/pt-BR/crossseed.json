@@ -516,6 +516,7 @@
     "clear": "{{crossSeed}} mantém os torrents roteados, e os arquivos deles ficam nas pastas base de {{source}}. Mova ou exclua esses torrents antes de limpar a rota.",
     "deleteSource": "Após esta exclusão, {{source}} volta a adicionar cross-seeds a si mesma.",
     "routesUnknown": "O qui não conseguiu ler as rotas de cross-seed, então não pode indicar as instâncias de origem que perdem a proteção após esta exclusão.",
+    "routeReadFailed": "O qui não conseguiu ler a rota de cross-seed de {{source}}, então não salvou a alteração.",
     "confirm": "Continuar",
     "cancel": "Cancelar"
   },

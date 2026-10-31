@@ -506,6 +506,7 @@
     "clear": "{{crossSeed}} 会保留已路由的种子，其文件仍留在 {{source}} 的基础文件夹中。清除路由前，请先移动或删除这些种子。",
     "deleteSource": "删除后，{{source}} 会再次把交叉做种添加到自身。",
     "routesUnknown": "qui 无法读取辅种路由，因此无法列出此次删除后失去保护的源实例。",
+    "routeReadFailed": "qui 无法读取 {{source}} 的辅种路由，因此未保存此更改。",
     "confirm": "继续",
     "cancel": "取消"
   },

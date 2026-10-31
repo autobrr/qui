@@ -516,6 +516,7 @@
     "clear": "{{crossSeed}} conserva els torrents encaminats, i els seus fitxers es queden a les carpetes base de {{source}}. Moveu o suprimiu aquests torrents abans d'esborrar la ruta.",
     "deleteSource": "Després d'aquesta supressió, {{source}} torna a afegir els cross-seeds a si mateixa.",
     "routesUnknown": "qui no ha pogut llegir les rutes de cross-seed, així que no pot indicar quines instàncies d'origen perden la protecció després d'aquesta eliminació.",
+    "routeReadFailed": "qui no ha pogut llegir la ruta de cross-seed de {{source}}, així que no ha desat el canvi.",
     "confirm": "Continua",
     "cancel": "Cancel·la"
   },

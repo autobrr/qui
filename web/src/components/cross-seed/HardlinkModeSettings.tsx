@@ -17,7 +17,6 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { Instance } from "@/types"
@@ -60,8 +59,8 @@ export function HardlinkModeSettings({
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
-  const { data: routes, isSuccess: routesRead } = useCrossSeedRoutes()
-  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null | undefined } | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null } | null>(null)
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -139,27 +138,23 @@ export function HardlinkModeSettings({
     }
 
     // A switch to Regular or an empty list on a Source instance gets the
-    // server's refusal (#3259). Removing a mapped base folder asks first.
-    const route = routes?.find(r => r.sourceInstanceId === instance.id)
-    if (route && (form.useHardlinks || form.useReflinks)) {
-      const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
-      // A base folder saved after the route has no stored row, but the route read
-      // gives it an empty one, and the orphan scan protects the torrents under it.
-      const removed = [...route.rows.map(row => row.baseDir), ...instance.hardlinkBaseDir.split(",")]
-        .map(baseDirKey)
-        .filter(dir => dir && !kept.includes(dir))
-      if (removed.length) {
-        // The dialog opens at once and fills in the count, so a second click cannot open it twice.
-        const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
-        // The count fills only this confirm, not a later one that the user opened after a cancel.
-        const pending = { instance, crossSeedName, routedTorrents: undefined }
-        setPendingSave(pending)
-        void api.getCrossSeedRoute(instance.id)
-          .then(read => countRoutedTorrents(read?.rows.filter(row => removed.includes(baseDirKey(row.baseDir))) ?? []))
-          .catch(() => null)
-          .then(routedTorrents => setPendingSave(prev => prev === pending ? { ...pending, routedTorrents } : prev))
-        return
-      }
+    // server's refusal (#3259). Removing a base folder of a route asks first.
+    // The route is read now, not from a cached list, because another tab can have saved one.
+    if (form.useHardlinks || form.useReflinks) {
+      setChecking(true)
+      void api.getCrossSeedRoute(instance.id)
+        .then(route => {
+          const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
+          // The read also has an empty row for a base folder saved after the route,
+          // and the orphan scan protects the torrents under it.
+          const removed = route?.rows.filter(row => !kept.includes(baseDirKey(row.baseDir))) ?? []
+          if (!route || !removed.length) return saveInstance(instance)
+          const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
+          setPendingSave({ instance, crossSeedName, routedTorrents: countRoutedTorrents(removed) })
+        })
+        .catch((error: Error) => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message }))
+        .finally(() => setChecking(false))
+      return
     }
     saveInstance(instance)
   }
@@ -381,7 +376,7 @@ export function HardlinkModeSettings({
                           size="sm"
                           onClick={() => handleSave(instance)}
                           // Without the route list, a save could remove a mapped base folder with no confirm.
-                          disabled={isUpdating || !routesRead}
+                          disabled={isUpdating || checking}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           {t("rules.saveChanges")}

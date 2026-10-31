@@ -516,6 +516,7 @@
     "clear": "{{crossSeed}} behält die gerouteten Torrents, und ihre Dateien bleiben in den Basisordnern von {{source}}. Verschiebe oder lösche diese Torrents, bevor du die Route entfernst.",
     "deleteSource": "{{source}} fügt Cross-Seeds nach dem Löschen wieder sich selbst hinzu.",
     "routesUnknown": "qui konnte die Cross-Seed-Routen nicht lesen und kann daher nicht angeben, welche Quellinstanzen nach dem Löschen ihren Schutz verlieren.",
+    "routeReadFailed": "qui konnte die Cross-Seed-Route von {{source}} nicht lesen und hat die Änderung daher nicht gespeichert.",
     "confirm": "Fortfahren",
     "cancel": "Abbrechen"
   },

@@ -529,6 +529,7 @@
     "clear": "{{crossSeed}} si směrované torrenty ponechá a jejich soubory zůstanou v základních složkách {{source}}. Před zrušením trasy tyto torrenty přesuňte nebo smažte.",
     "deleteSource": "Po tomto smazání bude {{source}} opět přidávat cross-seedy sama sobě.",
     "routesUnknown": "qui nemohl načíst trasy křížového sdílení, takže nemůže uvést zdrojové instance, které po tomto smazání ztratí ochranu.",
+    "routeReadFailed": "qui nemohl načíst trasu křížového sdílení instance {{source}}, takže změnu neuložil.",
     "confirm": "Pokračovat",
     "cancel": "Zrušit"
   },
