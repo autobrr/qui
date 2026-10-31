@@ -177,7 +177,8 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 			// it, qui does not see the save path as qBittorrent does, and the
 			// index cannot rule out that a file is seeded.
 			missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
-			if !missing || file.Priority > 0 {
+			// Only the first reason is kept, and an unmapped save path fails every file.
+			if index.complete && (!missing || file.Priority > 0) {
 				index.markIncomplete(fmt.Sprintf("torrent %s file %s: %v", hash, file.Name, err))
 			}
 			continue
@@ -185,7 +186,9 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 
 		key, ok := fsops.FileKeyOf(info.FileID, nil)
 		if !ok {
-			index.markIncomplete(fmt.Sprintf("torrent %s file %s: no file identity at %s", hash, file.Name, absPath))
+			if index.complete {
+				index.markIncomplete(fmt.Sprintf("torrent %s file %s: no file identity at %s", hash, file.Name, absPath))
+			}
 			continue
 		}
 		index.byKey[key] = hash
