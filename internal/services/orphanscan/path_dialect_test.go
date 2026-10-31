@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"hash/fnv"
 	"io/fs"
 	"path"
 	"slices"
@@ -20,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // winRootTestDialect carries Windows drive and UNC roots through ignore matching on
@@ -146,7 +148,10 @@ func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, err
 		return &fsops.LstatInfo{Path: p, IsDir: true, Nlinks: 1}, nil
 	}
 	if size, ok := b.files[p]; ok {
-		return &fsops.LstatInfo{Path: p, Size: size, Nlinks: 1}, nil
+		// Each file is its own inode, as the delete's identity check needs.
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(p))
+		return &fsops.LstatInfo{Path: p, Size: size, FileID: hardlink.UnixFileID(1, h.Sum64()), Nlinks: 1}, nil
 	}
 	return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrNotExist}
 }
@@ -241,7 +246,7 @@ func TestPathDialect_FileMapKeys(t *testing.T) {
 
 	torrents := []qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
 	files := map[string]qbt.TorrentFiles{"h": {{Name: "Show/E01.mkv"}, {Name: "a\\b.mkv"}}}
-	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files)
+	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files, false)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"/srv/data"}, result.scanRoots)

@@ -281,6 +281,37 @@ describe("useTorrentListController — load more", () => {
     expect(result.current.list.hasMoreRows).toBe(false)
   })
 
+  // regression: #3657
+  it("loads the next server page while the last 100 rows in memory still wait to show", async () => {
+    const { result } = renderLayout()
+    await flush()
+    act(() => result.current.list.reportNearEnd())
+    act(() => result.current.list.reportNearEnd())
+    await flush()
+    expect(pagesRequested()).toContain(1)
+    expect(result.current.list.torrents).toHaveLength(350)
+    expect(result.current.list.loadedRows).toBe(300)
+  })
+
+  // regression: #3657
+  it("shows the rows of a page that was still loading when the user reached the end", async () => {
+    let sendPage: () => void = () => {}
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => params.page === 0
+      ? Promise.resolve(makeResponse({ torrents: rows(300), total: 350, hasMore: true }))
+      : new Promise(resolve => { sendPage = () => resolve(makeResponse({ torrents: rows(50, 300), total: 350, hasMore: false })) }))
+    const { result } = renderLayout()
+    await flush()
+    act(() => result.current.list.reportNearEnd())
+    act(() => result.current.list.reportNearEnd())
+    await flush()
+    expect(result.current.list.isLoadingMore).toBe(true)
+
+    act(() => result.current.list.reportNearEnd())
+    sendPage()
+    await flush()
+    expect(result.current.list.loadedRows).toBe(350)
+  })
+
   it("starts again at the first rows when the user changes a filter, the search or the sort", async () => {
     const { result, rerender } = renderLayout()
     await flush()

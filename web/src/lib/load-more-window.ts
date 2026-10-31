@@ -23,9 +23,9 @@ export type LoadMoreWindowEvent =
   | { type: "queryChanged" }
   // A stream update, a poll or a server page changed the number of rows in memory.
   | { type: "dataArrived"; length: number }
-  // The user reached the end of the loaded rows. canLoadPage: the server has
-  // more rows and no page is loading.
-  | { type: "nearEnd"; canLoadPage: boolean }
+  // The user reached the end of the loaded rows. hasMorePages: the server has
+  // more rows, also while a page loads.
+  | { type: "nearEnd"; hasMorePages: boolean }
   // A server page finished loading and its rows are in memory.
   | { type: "pageLoaded" }
 
@@ -53,7 +53,7 @@ export function loadMoreWindowReducer(state: LoadMoreWindow, event: LoadMoreWind
       if (state.loadedRows < state.listLength) {
         return { ...state, loadedRows: nextStep(state) }
       }
-      if (event.canLoadPage && !state.pageRequested) {
+      if (event.hasMorePages && !state.pageRequested) {
         return { ...state, pageRequested: true }
       }
       return state

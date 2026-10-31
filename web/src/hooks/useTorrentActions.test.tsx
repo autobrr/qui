@@ -828,3 +828,24 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     expect(countListRefetches(refetchSpy)).toBe(2)
   })
 })
+
+describe("useTorrentActions - stable handlers", () => {
+  // The table rows get these handlers through one memoized bundle. A handler
+  // that changes on each render makes every visible row render again on scroll.
+  it("keeps the action handlers when the hook renders again", () => {
+    const { wrapper } = makeHarness()
+    const instanceIds = [INSTANCE_ID]
+    const { result, rerender } = renderHook(
+      () => useTorrentActions({ instanceId: INSTANCE_ID, instanceIds }),
+      { wrapper }
+    )
+    const first = result.current
+
+    rerender()
+
+    expect(result.current.handleAction).toBe(first.handleAction)
+    expect(result.current.handleSetCategory).toBe(first.handleSetCategory)
+    expect(result.current.prepareRecheckAction).toBe(first.prepareRecheckAction)
+    expect(result.current.prepareReannounceAction).toBe(first.prepareReannounceAction)
+  })
+})

@@ -66,15 +66,32 @@ func (s *switchableInstance) set(mode models.FilesystemMode) {
 }
 
 // countingBackend is a backend that can really delete, so a refusal that
-// fails to hold shows up as a Remove call and a missing file.
+// fails to hold shows up as a Remove call and a missing file. It passes the
+// batch reads through, as the backend it wraps answers them, so the exec tier
+// takes the find batch it takes in production. batches, when set, counts the
+// StatBatch calls the wrapped backend answers in one request.
 type countingBackend struct {
 	fsops.Backend
 	removes *atomic.Int32
+	batches *atomic.Int32
 }
+
+var _ fsops.BatchStater = countingBackend{}
 
 func (b countingBackend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
 	b.removes.Add(1)
 	return b.Backend.Remove(ctx, path, opts)
+}
+
+func (b countingBackend) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	if _, ok := b.Backend.(fsops.BatchStater); ok && b.batches != nil {
+		b.batches.Add(1)
+	}
+	return fsops.StatAll(ctx, b.Backend, paths)
+}
+
+func (b countingBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	return fsops.LstatAll(ctx, b.Backend, paths)
 }
 
 // noIdentityBackend reports files without their identity, as the sftp tier does.
@@ -110,6 +127,7 @@ type modeFixture struct {
 	db       *database.DB
 	instance *switchableInstance
 	removes  *atomic.Int32
+	batches  *atomic.Int32
 	events   chan notifications.Event
 	orphan   string
 	owned    string
@@ -284,11 +302,11 @@ func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models
 	require.NoError(t, err)
 
 	var pool *sshpool.Pool
-	removes := &atomic.Int32{}
+	removes, batches := &atomic.Int32{}, &atomic.Int32{}
 	f := newModeFixture(t, name, models.FilesystemModeRemote, func(inst *models.Instance) fsops.Backend {
-		return countingBackend{Backend: remote.New(pool, inst), removes: removes}
+		return countingBackend{Backend: remote.New(pool, inst), removes: removes, batches: batches}
 	})
-	f.removes = removes
+	f.removes, f.batches = removes, batches
 	pool = sshpool.NewPool(sshpool.NewDialer(sftpCreds{rows: f.instance, key: sshtest.PrivateKey(""), pin: hostKey.PublicKey().Marshal()}))
 	t.Cleanup(pool.Close)
 	f.instance.mu.Lock()

@@ -217,7 +217,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     scheduleTorrentListRefetches(queryClient, firstDelay)
   }, [queryClient])
 
-  const mutation = useMutation({
+  const { mutate, mutateAsync, isPending: isActionPending } = useMutation({
     mutationFn: (data: TorrentActionData) => {
       const { clientHashes, clientCount, ...payload } = data
       void clientHashes
@@ -502,8 +502,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   // Action handlers. Each takes the action value and the Action target (ADR 0034).
   const handleAction = useCallback((action: TorrentAction, target: ActionTarget, options?: { enable?: boolean }) => {
-    mutation.mutate({ action, instanceIds, ...targetData(target), ...options })
-  }, [instanceIds, mutation])
+    mutate({ action, instanceIds, ...targetData(target), ...options })
+  }, [instanceIds, mutate])
 
   const handleDelete = useCallback(async (target: ActionTarget, crossSeedTargets: TorrentActionTarget[] = []) => {
     // A select-all request cannot list hashes, and a request on one instance leaves out
@@ -513,7 +513,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     const mergedTargets = target.kind === "selectAll" || otherInstance ? [] : crossSeedTargets
     const mergedHashes = mergedTargets.map(t => t.hash)
     const data = targetData(target)
-    await mutation.mutateAsync({
+    await mutateAsync({
       action: "delete",
       instanceIds,
       ...data,
@@ -527,7 +527,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     // never repeats a torrent of the select-all delete (#3341).
     if (mergedTargets.length === 0 && crossSeedTargets.length) {
       const crossSeedHashes = crossSeedTargets.map(t => t.hash)
-      await mutation.mutateAsync({
+      await mutateAsync({
         scope: otherInstance ? ALL_INSTANCES_ID : undefined,
         action: "delete",
         instanceIds,
@@ -540,7 +540,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     }
     setShowDeleteDialog(false)
     setDeleteCrossSeeds(false)
-  }, [mutation, deleteFiles, instanceIds, instanceId])
+  }, [mutateAsync, deleteFiles, instanceIds, instanceId])
 
   const handleUpdateTags = useCallback(async (plan: TagUpdatePlan, target: ActionTarget) => {
     if ((plan.add.length === 0) && (plan.remove.length === 0)) {
@@ -551,19 +551,19 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   }, [updateTagsMutation, instanceIds])
 
   const handleSetComment = useCallback(async (comment: string, target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "setComment", instanceIds, ...targetData(target), comment })
+    await mutateAsync({ action: "setComment", instanceIds, ...targetData(target), comment })
     setShowCommentDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleSetCategory = useCallback(async (category: string, target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "setCategory", instanceIds, ...targetData(target), category })
+    await mutateAsync({ action: "setCategory", instanceIds, ...targetData(target), category })
     setShowCategoryDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleSetShareLimit = useCallback(async (limits: ShareLimits, target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "setShareLimit", instanceIds, ...targetData(target), ...limits })
+    await mutateAsync({ action: "setShareLimit", instanceIds, ...targetData(target), ...limits })
     setShowShareLimitDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleSetSpeedLimits = useCallback(async (
     { uploadLimit, downloadLimit }: { uploadLimit: number; downloadLimit: number },
@@ -572,31 +572,31 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     const data = { instanceIds, ...targetData(target) }
     const promises = []
     if (uploadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setUploadLimit", ...data, uploadLimit }))
+      promises.push(mutateAsync({ action: "setUploadLimit", ...data, uploadLimit }))
     }
     if (downloadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setDownloadLimit", ...data, downloadLimit }))
+      promises.push(mutateAsync({ action: "setDownloadLimit", ...data, downloadLimit }))
     }
     if (promises.length > 0) {
       await Promise.all(promises)
     }
     setShowSpeedLimitDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleRecheck = useCallback(async (target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "recheck", instanceIds, ...targetData(target) })
+    await mutateAsync({ action: "recheck", instanceIds, ...targetData(target) })
     setShowRecheckDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleReannounce = useCallback(async (target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "reannounce", instanceIds, ...targetData(target) })
+    await mutateAsync({ action: "reannounce", instanceIds, ...targetData(target) })
     setShowReannounceDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleSetLocation = useCallback(async (location: string, target: ActionTarget) => {
-    await mutation.mutateAsync({ action: "setLocation", instanceIds, ...targetData(target), location })
+    await mutateAsync({ action: "setLocation", instanceIds, ...targetData(target), location })
     setShowLocationDialog(false)
-  }, [mutation, instanceIds])
+  }, [mutateAsync, instanceIds])
 
   const handleRenameTorrent = useCallback(async (hash: string, name: string) => {
     const trimmed = name.trim()
@@ -681,16 +681,16 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   }, [])
 
   const handleTmmConfirm = useCallback((target: ActionTarget) => {
-    mutation.mutate({ action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM, instanceIds, ...targetData(target), enable: pendingTmmEnable })
+    mutate({ action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM, instanceIds, ...targetData(target), enable: pendingTmmEnable })
     setShowTmmDialog(false)
-  }, [mutation, pendingTmmEnable, instanceIds])
+  }, [mutate, pendingTmmEnable, instanceIds])
 
   const proceedToLocationDialog = useCallback(() => {
     setShowLocationWarningDialog(false)
     setShowLocationDialog(true)
   }, [])
 
-  const isPending = mutation.isPending || updateTagsMutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
+  const isPending = isActionPending || updateTagsMutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
 
 
   return {

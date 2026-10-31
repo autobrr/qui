@@ -195,7 +195,7 @@ export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isR
 
 /** Get translated label for a field group */
 export function getFieldGroupLabel(label: string, t: TFunction): string {
-  return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });
+  return t(`queryBuilder.fieldGroups.${label}`);
 }
 
 // Numeric fields show these operators as symbols, which need no translation.

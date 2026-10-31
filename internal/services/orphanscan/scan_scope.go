@@ -24,6 +24,9 @@ type scanScope struct {
 	// PersistedRoots are the roots a previous run recorded; deletion is still
 	// bounded by them after the settings behind them change.
 	PersistedRoots []string
+	// TorrentPaths keeps each torrent file's path in the result, which only
+	// the delete needs, to read the files' identities.
+	TorrentPaths bool
 }
 
 // scopeFromSettings reads the scope out of an instance's settings; nil means
