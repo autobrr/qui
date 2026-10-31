@@ -162,6 +162,9 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.want, index.complete)
 			require.Equal(t, tt.indexed, index.len())
+			if !tt.want {
+				require.Contains(t, index.incompleteReason, "torrent bbbb file other.mkv")
+			}
 		})
 	}
 }

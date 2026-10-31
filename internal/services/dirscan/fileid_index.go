@@ -25,10 +25,20 @@ import (
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
 	// complete is set when qBittorrent answered with the file list of every
-	// completed torrent and qui read every file of those torrents except the
-	// skipped ones that are not on disk, so a file missing from byKey is known
-	// not to seed.
+	// completed torrent it does not report as missing files, and qui read
+	// every file of those torrents except the skipped ones that are not on
+	// disk, so a file missing from byKey is known not to seed.
 	complete bool
+	// incompleteReason names the first thing that left the index incomplete,
+	// so a user can find why already seeding files keep their status.
+	incompleteReason string
+}
+
+func (idx *seedingIndex) markIncomplete(reason string) {
+	if idx.complete {
+		idx.complete = false
+		idx.incompleteReason = reason
+	}
 }
 
 func (idx *seedingIndex) len() int {
@@ -93,7 +103,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 	// fetch.
 	for _, hash := range hashes {
 		if _, ok := filesByHash[canonicalizeHash(hash)]; !ok {
-			index.complete = false
+			index.markIncomplete("no file list for torrent " + hash)
 			break
 		}
 	}
@@ -107,6 +117,11 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 		statErrors += addTorrentFilesToFileIDIndex(ctx, index, hash, savePath, files, backend)
 	}
 
+	if l != nil && !index.complete {
+		l.Info().
+			Str("reason", index.incompleteReason).
+			Msg("dirscan: seeding index incomplete, already seeding files keep their status")
+	}
 	if l != nil {
 		l.Debug().
 			Int("torrents", len(hashes)).
@@ -161,14 +176,14 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 			// index cannot rule out that a file is seeded.
 			missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 			if !missing || file.Priority > 0 {
-				index.complete = false
+				index.markIncomplete(fmt.Sprintf("torrent %s file %s: %v", hash, file.Name, err))
 			}
 			continue
 		}
 
 		key, ok := fsops.FileKeyOf(info.FileID, nil)
 		if !ok {
-			index.complete = false
+			index.markIncomplete(fmt.Sprintf("torrent %s file %s: no file identity at %s", hash, file.Name, absPath))
 			continue
 		}
 		index.byKey[key] = hash
