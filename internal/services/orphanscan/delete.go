@@ -215,8 +215,9 @@ type inUseIDs struct {
 }
 
 // collectInUseIDs reads the identity of each torrent path through backend,
-// following links, as qBittorrent does. A path that is not on disk protects
-// nothing. A path qui may not look up is skipped, as the scan skips a denied
+// following links, as qBittorrent does. A path that is not on disk, or that
+// runs into a symlink loop, protects nothing, since qBittorrent cannot read it
+// either. A path qui may not look up is skipped, as the scan skips a denied
 // subtree. Any other failure is returned, a denied identity read included,
 // because a file the run cannot identify could be one of the targets.
 func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string) (*inUseIDs, error) {
@@ -234,7 +235,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 	denied, firstDenied := 0, ""
 	for i := range unique {
 		if err := errs[i]; err != nil {
-			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
 				continue
 			}
 			// A backend that wraps both errors lost the link, which says

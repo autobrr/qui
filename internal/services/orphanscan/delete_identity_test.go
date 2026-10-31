@@ -190,6 +190,35 @@ func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 	require.NoFileExists(t, orphan)
 }
 
+// A torrent file whose path runs into a symlink loop protects nothing, since
+// qBittorrent cannot read it either, and the run goes on. A remote instance
+// reads such a path as missing, because OpenSSH's sftp-server answers ELOOP as
+// no such file.
+// regression: #3596
+func TestExecuteDeletion_TorrentFileBehindASymlinkLoopDoesNotStopTheRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not report a symlink loop as ELOOP")
+	}
+
+	var orphan, loopDir string
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-loop-late", orphanOnlyOptions{}, func(defaultSavePath string) {
+		orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
+		writeFile(t, orphan)
+		loopDir = filepath.Join(filepath.Dir(defaultSavePath), "loop")
+		require.NoError(t, os.MkdirAll(loopDir, 0o750))
+	})
+	symlinkOrSkip(t, "b", filepath.Join(loopDir, "a"))
+	symlinkOrSkip(t, "a", filepath.Join(loopDir, "b"))
+
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: loopDir}, "a/movie.mkv", "b")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	require.NoFileExists(t, orphan)
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", run.Status, "run error: %s", run.ErrorMessage)
+}
+
 // A disc unit is listed as one directory, and a torrent that reaches a file
 // inside it through an alias keeps the whole unit.
 // regression: #3596
