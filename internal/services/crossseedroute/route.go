@@ -97,6 +97,30 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	return nil
 }
 
+// Get returns the route of a Source instance, or nil when it has none. A base
+// folder that the Source instance gained after the save gets an empty row, so
+// it keeps the same path on both instances.
+func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error) {
+	route, err := s.CrossSeedRouteStore.Get(ctx, sourceInstanceID)
+	if err != nil || route == nil {
+		return route, err
+	}
+	source, err := s.instances.Get(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	backend, _, err := s.backends.Resolve(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range BaseDirKeys(backend.Paths(), source.HardlinkBaseDir) {
+		if !slices.ContainsFunc(route.Rows, func(row models.CrossSeedRouteRow) bool { return row.BaseDir == key }) {
+			route.Rows = append(route.Rows, models.CrossSeedRouteRow{BaseDir: key})
+		}
+	}
+	return route, nil
+}
+
 // HashFinder finds a torrent by any of its hashes on one instance.
 type HashFinder interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
@@ -106,7 +130,7 @@ type HashFinder interface {
 // instances of instanceID, and names where it found one. It skips a turned-off
 // Source instance, because its route does nothing then.
 func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
-	route, err := s.Get(ctx, instanceID)
+	route, err := s.CrossSeedRouteStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, "", fmt.Errorf("read cross-seed route: %w", err)
 	}
@@ -199,7 +223,7 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 	if crossSeed.ID == source.ID {
 		return nil, broken("%s cannot be its own Cross-seed instance", source.Name)
 	}
-	if own, err := s.Get(ctx, crossSeed.ID); err != nil {
+	if own, err := s.CrossSeedRouteStore.Get(ctx, crossSeed.ID); err != nil {
 		return nil, err
 	} else if own != nil {
 		return nil, broken("%s routes its own cross-seeds, so it cannot be a Cross-seed instance", crossSeed.Name)
@@ -390,7 +414,7 @@ func (s *Service) Delete(ctx context.Context, sourceInstanceID int) error {
 func (s *Service) DropRemovedBaseDirs(ctx context.Context, sourceInstanceID int) error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
-	route, err := s.Get(ctx, sourceInstanceID)
+	route, err := s.CrossSeedRouteStore.Get(ctx, sourceInstanceID)
 	if err != nil || route == nil {
 		return err
 	}
@@ -432,7 +456,7 @@ func splitBaseDirs(configured string) []string {
 // crossSeedKey compares paths in the Cross-seed instance's form, which has no
 // dialect: either separator, case kept except on a drive-letter path.
 func crossSeedKey(p string) string {
-	p = pathcmp.NormalizePath(p)
+	p = crossSeedPath(p)
 	if pathcmp.IsWindowsDriveAbs(p) {
 		return strings.ToLower(p)
 	}

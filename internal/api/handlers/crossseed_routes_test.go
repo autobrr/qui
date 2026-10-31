@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +36,7 @@ type routeFixture struct {
 	t         *testing.T
 	instances *models.InstanceStore
 	routes    *crossseedroute.Service
+	torrents  *fakeRouteTorrents
 	router    *chi.Mux
 	// instancesHandler serves the instance routes that can break a route.
 	instancesHandler *InstancesHandler
@@ -51,7 +54,8 @@ func newRouteFixture(t *testing.T) *routeFixture {
 	t.Cleanup(func() { _ = clientPool.Close() })
 
 	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPool(instances, local.NewBackend()))
-	handler := &CrossSeedHandler{instanceStore: instances, routes: routes}
+	torrents := &fakeRouteTorrents{torrents: map[int][]qbt.Torrent{}, files: map[string]qbt.TorrentFiles{}}
+	handler := &CrossSeedHandler{instanceStore: instances, routes: routes, torrents: torrents}
 	router := chi.NewRouter()
 	router.Route("/api/cross-seed/routes", func(r chi.Router) {
 		r.Get("/", handler.ListCrossSeedRoutes)
@@ -74,6 +78,7 @@ func newRouteFixture(t *testing.T) *routeFixture {
 		t:                t,
 		instances:        instances,
 		routes:           routes,
+		torrents:         torrents,
 		router:           router,
 		instancesHandler: instancesHandler,
 		qbt:              fakeQBittorrent(t, "2.11.2"),
@@ -336,7 +341,7 @@ func TestCrossSeedRouteSaveReadClearList(t *testing.T) {
 
 	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
 	assert.Equal(t, crossSeed.ID, got.CrossSeedInstanceID)
-	assert.Equal(t, wantRows, got.Rows)
+	assert.Equal(t, wantRows, plainRows(got))
 	assert.Empty(t, got.BrokenRule)
 
 	// Several Source instances can route to one Cross-seed instance.
@@ -356,7 +361,7 @@ func TestCrossSeedRouteSaveReadClearList(t *testing.T) {
 	_, err = f.instances.SetActiveState(t.Context(), crossSeed.ID, false)
 	require.NoError(t, err)
 	got = decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
-	assert.Equal(t, wantRows, got.Rows)
+	assert.Equal(t, wantRows, plainRows(got))
 	assert.Contains(t, got.BrokenRule, "Cross-seed instance unavailable")
 
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, source.ID, nil).Code)
@@ -439,6 +444,213 @@ func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
 	start := time.Now()
 	require.ErrorIs(t, f.routes.CheckAvailable(ctx, instance.ID, false), crossseedroute.ErrUnavailable)
 	assert.Less(t, time.Since(start), 30*time.Second, "the login must stop at the deadline of ctx, not after the 60-second pool default")
+}
+
+// fakeRouteTorrents answers the torrent reads of the route loader per instance.
+type fakeRouteTorrents struct {
+	torrents map[int][]qbt.Torrent
+	files    map[string]qbt.TorrentFiles
+	err      error
+	// asked holds the hashes of each file read.
+	asked [][]string
+}
+
+func (f *fakeRouteTorrents) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.torrents[instanceID], nil
+}
+
+func (f *fakeRouteTorrents) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.asked = append(f.asked, hashes)
+	files := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		if list, ok := f.files[hash]; ok {
+			files[hash] = list
+		}
+	}
+	return files, nil
+}
+
+func plainRows(route *crossSeedRouteResponse) []models.CrossSeedRouteRow {
+	rows := make([]models.CrossSeedRouteRow, len(route.Rows))
+	for i, row := range route.Rows {
+		rows[i] = row.CrossSeedRouteRow
+	}
+	return rows
+}
+
+func routedCounts(route *crossSeedRouteResponse) []*int {
+	counts := make([]*int, len(route.Rows))
+	for i, row := range route.Rows {
+		counts[i] = row.RoutedTorrents
+	}
+	return counts
+}
+
+// routedSetup saves a route with a same-path row (library) and a mapped row
+// (other, seen as /seeds/links on the Cross-seed instance).
+func routedSetup(t *testing.T, f *routeFixture) (source, crossSeed *models.Instance, library, other string) {
+	t.Helper()
+	library = filepath.Join(t.TempDir(), "links")
+	other = filepath.Join(t.TempDir(), "links")
+	source = f.source("library", models.FilesystemModeLocal, library, other)
+	crossSeed = f.instance("seeds", f.qbt, models.FilesystemModeNone)
+	rec := f.save(source, crossSeed, models.CrossSeedRouteRow{BaseDir: other, MappedPath: "/seeds/links"})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	return source, crossSeed, library, other
+}
+
+func TestCrossSeedRouteReadCountsRoutedTorrents(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, _ := routedSetup(t, f)
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{
+		{Hash: "a", SavePath: filepath.Join(library, "tv")},
+		{Hash: "b", SavePath: "/seeds/links"},
+		{Hash: "c", SavePath: `\seeds\links\movies\`},
+		{Hash: "d", SavePath: "/downloads"},
+	}
+	// The Source instance's own torrents never count.
+	f.torrents.torrents[source.ID] = []qbt.Torrent{{Hash: "e", SavePath: library}}
+
+	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.Equal(t, []*int{new(1), new(2)}, routedCounts(got))
+	assert.Empty(t, f.torrents.asked, "a count reads no file lists")
+
+	// A failed torrent read leaves every count unknown.
+	f.torrents.err = errors.New("connection refused")
+	got = decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.Equal(t, []*int{nil, nil}, routedCounts(got))
+	f.torrents.err = nil
+
+	// So does a Cross-seed instance that is turned off in qui.
+	_, err := f.instances.SetActiveState(t.Context(), crossSeed.ID, false)
+	require.NoError(t, err)
+	rec := f.do(http.MethodGet, source.ID, nil)
+	assert.Contains(t, rec.Body.String(), `"routedTorrents":null`)
+	assert.Equal(t, []*int{nil, nil}, routedCounts(decodeRoute(t, rec)))
+}
+
+func TestCrossSeedRouteLoadMapsTorrentsBack(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, other := routedSetup(t, f)
+	files := qbt.TorrentFiles{{Name: "Show/e01.mkv"}}
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{
+		{Hash: "mapped", SavePath: "/seeds/links/tv", ContentPath: "/seeds/links/tv/Show"},
+		{Hash: "same", SavePath: filepath.Join(library, "tv"), ContentPath: filepath.Join(library, "tv", "Show")},
+		{Hash: "moved", SavePath: "/seeds/links", ContentPath: "/elsewhere/Show"},
+		{Hash: "outside", SavePath: "/downloads", ContentPath: "/downloads/Show"},
+	}
+	f.torrents.files = map[string]qbt.TorrentFiles{"mapped": files, "same": files, "moved": files, "outside": files}
+
+	routed, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []qbt.Torrent{
+		{Hash: "mapped", SavePath: filepath.Join(other, "tv"), ContentPath: filepath.Join(other, "tv", "Show")},
+		{Hash: "same", SavePath: filepath.Join(library, "tv"), ContentPath: filepath.Join(library, "tv", "Show")},
+		// A content path under no row is dropped.
+		{Hash: "moved", SavePath: other},
+	}, routed.Torrents)
+	assert.Equal(t, map[string]qbt.TorrentFiles{"mapped": files, "same": files, "moved": files}, routed.Files)
+	assert.Equal(t, [][]string{{"mapped", "same", "moved"}}, f.torrents.asked, "no file list for a torrent under no row")
+
+	// The files of the mapped torrent land under the Source instance's base folder.
+	assert.Equal(t, filepath.Join(other, "tv", "Show", "e01.mkv"), filepath.Join(routed.Torrents[0].SavePath, filepath.FromSlash(routed.Files["mapped"][0].Name)))
+
+	f.torrents.err = errors.New("connection refused")
+	_, err = f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+	f.torrents.err = nil
+
+	_, err = f.instances.SetActiveState(t.Context(), crossSeed.ID, false)
+	require.NoError(t, err)
+	_, err = f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+
+	// An instance without a route has nothing to load.
+	other2 := f.source("other", models.FilesystemModeLocal, filepath.Join(t.TempDir(), "links"))
+	routed, err = f.routes.LoadRouted(t.Context(), f.torrents, other2.ID)
+	require.NoError(t, err)
+	assert.Nil(t, routed)
+}
+
+// A base folder that the Source instance gains after the save acts as an
+// empty row: same path on both instances.
+func TestCrossSeedRouteNewBaseFolderKeepsTheSamePath(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, other := routedSetup(t, f)
+	added := filepath.Join(t.TempDir(), "links")
+	source = f.update(source, &models.InstanceUpdateParams{HardlinkBaseDir: new(strings.Join([]string{library, other, added}, ","))})
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{{Hash: "new", SavePath: filepath.Join(added, "tv")}}
+	f.torrents.files = map[string]qbt.TorrentFiles{"new": {{Name: "a.mkv"}}}
+
+	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.Empty(t, got.BrokenRule)
+	assert.Equal(t, []models.CrossSeedRouteRow{
+		{BaseDir: library},
+		{BaseDir: other, MappedPath: "/seeds/links"},
+		{BaseDir: added},
+	}, plainRows(got))
+	assert.Equal(t, []*int{new(0), new(0), new(1)}, routedCounts(got))
+
+	routed, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []qbt.Torrent{{Hash: "new", SavePath: filepath.Join(added, "tv")}}, routed.Torrents)
+}
+
+// A read that the deadline cuts off means that the Cross-seed instance did not
+// answer in time, so the route read shows null counts and not an error.
+func TestCrossSeedRouteCountAfterTheDeadlineIsUnavailable(t *testing.T) {
+	f := newRouteFixture(t)
+	source, _, _, _ := routedSetup(t, f)
+	route, err := f.routes.Get(t.Context(), source.ID)
+	require.NoError(t, err)
+
+	expired, cancel := context.WithDeadline(t.Context(), time.Now())
+	defer cancel()
+	_, err = f.routes.CountRouted(expired, f.torrents, route)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+}
+
+// The torrent reader leaves out a file list that it fails to read, so a
+// missing list means that the Cross-seed instance is unavailable.
+func TestCrossSeedRouteLoadNeedsEveryFileList(t *testing.T) {
+	f := newRouteFixture(t)
+	source, crossSeed, library, _ := routedSetup(t, f)
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{
+		{Hash: "read", SavePath: library},
+		{Hash: "failed", SavePath: library},
+	}
+	f.torrents.files = map[string]qbt.TorrentFiles{"read": {{Name: "a.mkv"}}}
+
+	_, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
+}
+
+// A base folder added after the save can be the folder that a saved row maps
+// to. Its torrents then match two rows, so qui counts and loads none of them.
+func TestCrossSeedRouteNewBaseFolderOnAMappedPathBreaksTheRoute(t *testing.T) {
+	f := newRouteFixture(t)
+	library := filepath.Join(t.TempDir(), "links")
+	mapped := filepath.Join(t.TempDir(), "seeds")
+	source := f.source("library", models.FilesystemModeLocal, library)
+	crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
+	require.Equal(t, http.StatusOK, f.save(source, crossSeed, models.CrossSeedRouteRow{BaseDir: library, MappedPath: mapped}).Code)
+	source = f.update(source, &models.InstanceUpdateParams{HardlinkBaseDir: new(library + "," + mapped)})
+	f.torrents.torrents[crossSeed.ID] = []qbt.Torrent{{Hash: "a", SavePath: filepath.Join(mapped, "tv")}}
+	f.torrents.files = map[string]qbt.TorrentFiles{"a": {{Name: "a.mkv"}}}
+
+	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
+	assert.NotEmpty(t, got.BrokenRule)
+	assert.Equal(t, []*int{nil, nil}, routedCounts(got))
+
+	_, err := f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
+	_, broken := errors.AsType[*crossseedroute.RuleError](err)
+	assert.True(t, broken, "got %v", err)
 }
 
 // putInstance sends an instance update with the instance's own name, host,

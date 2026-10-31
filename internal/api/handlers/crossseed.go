@@ -34,6 +34,7 @@ type CrossSeedHandler struct {
 	instanceStore      *models.InstanceStore
 	seasonPackRunStore *models.SeasonPackRunStore
 	routes             *crossseedroute.Service
+	torrents           crossseedroute.TorrentReader
 	gazelleBaseURL     string // tests point the Gazelle key check at a stub tracker
 }
 
@@ -510,6 +511,7 @@ func NewCrossSeedHandler(
 	instanceStore *models.InstanceStore,
 	seasonPackRunStore *models.SeasonPackRunStore,
 	routes *crossseedroute.Service,
+	torrents crossseedroute.TorrentReader,
 ) *CrossSeedHandler {
 	return &CrossSeedHandler{
 		service:            service,
@@ -517,6 +519,7 @@ func NewCrossSeedHandler(
 		instanceStore:      instanceStore,
 		seasonPackRunStore: seasonPackRunStore,
 		routes:             routes,
+		torrents:           torrents,
 	}
 }
 

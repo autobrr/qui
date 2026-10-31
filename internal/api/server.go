@@ -401,6 +401,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.instanceStore,
 		s.seasonPackRunStore,
 		s.crossSeedRoutes,
+		s.syncManager,
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
