@@ -59,13 +59,14 @@ func (b *slashBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops
 }
 
 func slashEntry(p, rel string, mode fs.FileMode) fsops.WalkEntry {
-	e := fsops.WalkEntry{RelPath: rel}
-	e.Path = p
-	e.Mode = mode
-	e.IsDir = mode.IsDir()
-	e.IsSymlink = mode&fs.ModeSymlink != 0
-	e.Size = 1
-	return e
+	return fsops.WalkEntry{
+		RelPath:   rel,
+		Path:      p,
+		Mode:      mode,
+		IsDir:     mode.IsDir(),
+		IsSymlink: mode&fs.ModeSymlink != 0,
+		Size:      1,
+	}
 }
 
 // On any host, a scan of a remote root groups the walk and builds paths in
