@@ -594,6 +594,7 @@ func (s *Service) addSeasonPack(
 		Applied:         true,
 		Message:         message,
 		InstanceID:      inst.ID,
+		AddedInstanceID: receiverID,
 		MatchedEpisodes: matched,
 		TotalEpisodes:   prep.totalEpisodes,
 		Coverage:        coverage,

@@ -4752,6 +4752,12 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		// Name the assembled pack so run results and notification samples show what was added.
 		MatchedTorrent: &MatchedTorrent{Name: torrentName},
 	}
+	if resp.AddedInstanceID != 0 && resp.AddedInstanceID != resp.InstanceID {
+		added.CrossSeedInstanceID = resp.AddedInstanceID
+		if inst, instErr := s.instanceStore.Get(ctx, resp.AddedInstanceID); instErr == nil && inst != nil {
+			added.CrossSeedInstanceName = inst.Name
+		}
+	}
 	for i := range response.Results {
 		if response.Results[i].InstanceID == resp.InstanceID {
 			added.InstanceName = response.Results[i].InstanceName

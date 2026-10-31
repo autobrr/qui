@@ -102,6 +102,7 @@ func TestRoutedSeasonPackLandsOnTheCrossSeedInstance(t *testing.T) {
 
 			require.True(t, resp.Applied, resp.Reason+": "+resp.Message)
 			assert.Equal(t, r.source.ID, resp.InstanceID)
+			assert.Equal(t, r.crossSeed.ID, resp.AddedInstanceID)
 			require.Empty(t, r.sync.adds[r.source.ID], "the Source instance never gets a routed add")
 			adds := r.sync.adds[r.crossSeed.ID]
 			require.Len(t, adds, 1)
@@ -137,6 +138,7 @@ func TestSeasonPackWithoutARouteAddsToTheSourceInstance(t *testing.T) {
 	assert.Empty(t, r.sync.adds[r.crossSeed.ID])
 	assert.Empty(t, r.sync.listed)
 	assert.Equal(t, &r.source.ID, r.lastRun().AddedInstanceID)
+	assert.Equal(t, r.source.ID, resp.AddedInstanceID)
 }
 
 // The route maps with the base folder of the tree that the cross-device retry

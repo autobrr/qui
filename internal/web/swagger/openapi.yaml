@@ -9268,6 +9268,9 @@ components:
         instanceId:
           type: integer
           description: Instance that holds the matched episodes. When it routes its cross-seeds, its Cross-seed instance gets the add.
+        addedInstanceId:
+          type: integer
+          description: Instance that got the add. It is the Cross-seed instance when instanceId routes its cross-seeds, and instanceId otherwise.
         matchedEpisodes:
           type: integer
         totalEpisodes:
