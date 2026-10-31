@@ -566,6 +566,8 @@ type Service struct {
 
 	activityPublisher activity.Publisher
 	crossSeedRoutes   *crossseedroute.Service
+	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
+	routedTorrents crossseedroute.TorrentReader
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -596,6 +598,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
+		routedTorrents:            syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
