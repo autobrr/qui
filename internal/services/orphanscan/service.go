@@ -2140,27 +2140,23 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 			continue
 		}
 
-		scanRoots[savePath] = struct{}{}
-		for _, f := range files {
-			p := d.Join(savePath, d.FromSlash(f.Name))
-			if wantPaths {
-				torrentPaths = append(torrentPaths, p)
-			}
-			tfm.Add(fsops.NormalizePath(d, p))
-		}
-
-		// Auto TMM can update save_path to the category root without moving the
-		// payload. content_path still reflects the real on-disk location.
-		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
-		if actualSavePath != "" && actualSavePath != savePath {
-			scanRoots[actualSavePath] = struct{}{}
+		add := func(root string) {
+			scanRoots[root] = struct{}{}
 			for _, f := range files {
-				p := d.Join(actualSavePath, d.FromSlash(f.Name))
+				p := d.Join(root, d.FromSlash(f.Name))
 				if wantPaths {
 					torrentPaths = append(torrentPaths, p)
 				}
 				tfm.Add(fsops.NormalizePath(d, p))
 			}
+		}
+		add(savePath)
+
+		// Auto TMM can update save_path to the category root without moving the
+		// payload. content_path still reflects the real on-disk location.
+		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
+		if actualSavePath != "" && actualSavePath != savePath {
+			add(actualSavePath)
 		}
 	}
 
