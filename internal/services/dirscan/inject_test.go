@@ -57,9 +57,14 @@ type torrentManager interface {
 type adderQbit struct {
 	torrentAdder
 	existing *qbt.Torrent
+	// existingOn limits existing to one instance when it is set.
+	existingOn int
 }
 
-func (q adderQbit) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+	if q.existingOn != 0 && instanceID != q.existingOn {
+		return nil, false, nil
+	}
 	return q.existing, q.existing != nil, nil
 }
 
