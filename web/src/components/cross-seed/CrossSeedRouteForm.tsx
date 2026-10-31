@@ -301,8 +301,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
         onConfirm={() => (confirm?.clear ? clearRoute : saveRoute).mutate()}
         sourceName={instance.name}
         crossSeedName={savedCrossSeed?.name ?? ""}
-        // A failed read makes the count unknown, so a clear is not stuck on Counting.
-        routedTorrents={confirmRows ? countRoutedTorrents(confirmRows) : routeReadFailed ? null : undefined}
+        // A failed read makes the count unknown, also over an older cached read.
+        routedTorrents={routeReadFailed ? null : confirmRows && countRoutedTorrents(confirmRows)}
         clear={confirm?.clear}
       />
     </div>

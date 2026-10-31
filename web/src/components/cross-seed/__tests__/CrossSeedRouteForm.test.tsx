@@ -4,13 +4,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ChangeEvent, ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import i18n from "@/i18n"
 import { server } from "@/test/msw/server"
+import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import type { CrossSeedRoute, CrossSeedRouteStatus, CrossSeedRouteTestResult, FilesystemCapabilities, Instance } from "@/types"
 
 const mocks = vi.hoisted(() => ({
@@ -91,11 +92,12 @@ function serve({ routes = [] as CrossSeedRoute[], read = null as CrossSeedRouteS
 
 function renderForm(instance: Instance, canWriteLocally = instance.capabilities.write && instance.filesystemMode === "local") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <CrossSeedRouteForm instance={instance} localWrite={canWriteLocally} />
     </QueryClientProvider>
   )
+  return { ...view, queryClient }
 }
 
 const picker = () => screen.getByLabelText<HTMLSelectElement>("picker")
@@ -517,6 +519,19 @@ describe("CrossSeedRouteForm confirm", () => {
 
     expect(await screen.findByText("routeConfirm.count|library|seedbox|0")).toBeTruthy()
     expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("says the count is unknown when a later route read fails", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
+    const { queryClient } = renderForm(source)
+    await screen.findByLabelText("/data/a")
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    await act(() => queryClient.refetchQueries({ queryKey: [...crossSeedRoutesKey, 1] }))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
   })
 
   it("asks before a route clear and says the Cross-seed instance keeps the routed torrents", async () => {
