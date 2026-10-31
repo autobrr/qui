@@ -134,14 +134,15 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	notExist := &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
 	onDisk := &fsops.LstatInfo{Size: 1, FileID: hardlink.UnixFileID(7, 42)}
 	for _, tt := range []struct {
-		name     string
-		noList   bool
-		priority int
-		info     *fsops.LstatInfo
-		err      error
-		want     bool
-		indexed  int
-		reason   string
+		name      string
+		noList    bool
+		emptyList bool
+		priority  int
+		info      *fsops.LstatInfo
+		err       error
+		want      bool
+		indexed   int
+		reason    string
 	}{
 		{name: "file on disk", priority: 1, info: onDisk, want: true, indexed: 1},
 		{name: "missing skipped file", err: notExist, want: true},
@@ -150,11 +151,16 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no file list", noList: true, want: false, reason: "no file list for torrent bbbb"},
+		// regression: #3613
+		{name: "empty file list", emptyList: true, want: false, reason: "empty file list for torrent bbbb"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			lists := map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv", Priority: tt.priority}}}
 			if tt.noList {
 				lists = map[string]qbt.TorrentFiles{}
+			}
+			if tt.emptyList {
+				lists = map[string]qbt.TorrentFiles{"bbbb": {}}
 			}
 			svc := &Service{torrentFiles: stubTorrentFiles{files: lists}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}

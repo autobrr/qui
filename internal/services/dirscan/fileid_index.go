@@ -100,10 +100,15 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}
 	// The sync manager leaves out a torrent whose file list it could not
-	// fetch.
+	// fetch, and passes on an empty list, which a completed torrent never has.
 	for _, hash := range hashes {
-		if _, ok := filesByHash[canonicalizeHash(hash)]; !ok {
+		files, ok := filesByHash[canonicalizeHash(hash)]
+		if !ok {
 			index.markIncomplete("no file list for torrent " + hash)
+			break
+		}
+		if len(files) == 0 {
+			index.markIncomplete("empty file list for torrent " + hash)
 			break
 		}
 	}
