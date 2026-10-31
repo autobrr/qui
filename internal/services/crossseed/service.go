@@ -130,6 +130,7 @@ type qbittorrentSync interface {
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
+	GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, mode qbt.DirectoryContentMode, withMetadata bool) (any, error)
 }
 
 // dedupCacheEntry stores cached deduplication results to avoid recomputation.
@@ -344,8 +345,11 @@ type Service struct {
 	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
 	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
 	// real MediaInfo analyzer.
-	mediaIDCacheStore         mediaIDCache
-	crossSeedRoutes           *crossseedroute.Service
+	mediaIDCacheStore mediaIDCache
+	crossSeedRoutes   *crossseedroute.Service
+	// visibleRetryDelay, when set, is the wait between the listings of a
+	// visibility check. Tests set it; zero means the 5-second default.
+	visibleRetryDelay         time.Duration
 	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
@@ -2731,6 +2735,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if torrent == nil {
 		return nil
 	}
+	ctx = withRouteRun(ctx)
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
@@ -3020,7 +3025,8 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch, InstanceID: opts.InstanceID})
 	}
 
-	go s.searchRunLoop(runCtx, state)
+	// One Library Scan run shares one memory of failed route folders.
+	go s.searchRunLoop(withRouteRun(runCtx), state)
 
 	return storedRun, nil
 }
@@ -3246,6 +3252,7 @@ func (s *Service) signalAutomationWake() {
 }
 
 func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, opts AutomationRunOptions) (*models.CrossSeedRun, error) {
+	ctx = withRouteRun(ctx)
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
@@ -4515,6 +4522,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 // It finds existing 100% complete torrents that match the content and adds the new torrent
 // paused to the same location with matching category and ATM state
 func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	// A webhook or manual request is one Trigger run. A run that started its
+	// memory of failed route folders earlier keeps it.
+	ctx = withRouteRun(ctx)
 	if req.TorrentData == "" {
 		return nil, errors.New("torrent_data is required")
 	}
@@ -8141,6 +8151,7 @@ func torrentSearchResultInfoHashes(infoHashV1, infoHashV2 string) []string {
 
 // ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
 func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
+	ctx = withRouteRun(ctx)
 	if req == nil || len(req.Selections) == 0 {
 		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
@@ -10481,7 +10492,7 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 				if result.Success {
 					addedResults = append(addedResults, result)
 				}
-			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", crossSeedUnavailableStatus:
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", crossSeedUnavailableStatus, crossSeedCannotSeeStatus:
 				failedResults = append(failedResults, result)
 			}
 		}

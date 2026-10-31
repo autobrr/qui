@@ -6,11 +6,13 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +49,38 @@ type routedSync struct {
 	categories map[int]map[string]string
 	existing   map[int]bool
 	addErr     error
+	// The Cross-seed instance lists links at routedMapped. Each listing goes
+	// in listed. listErr answers every listing, and the first hidden listings
+	// miss every entry.
+	crossSeedID int
+	links       string
+	listed      []string
+	listErr     error
+	hidden      int
+}
+
+func (f *routedSync) GetDirectoryContentCtx(_ context.Context, instanceID int, dir string, _ qbt.DirectoryContentMode, _ bool) (any, error) {
+	f.listed = append(f.listed, dir)
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	if f.hidden > 0 {
+		f.hidden--
+		return []string{}, nil
+	}
+	rel, ok := strings.CutPrefix(dir, routedMapped)
+	if !ok || instanceID != f.crossSeedID {
+		return nil, fmt.Errorf("%w: 404", qbt.ErrUnexpectedStatus)
+	}
+	entries, err := os.ReadDir(filepath.Join(f.links, filepath.FromSlash(rel)))
+	if err != nil {
+		return nil, fmt.Errorf("%w: 404", qbt.ErrUnexpectedStatus)
+	}
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = dir + "/" + entry.Name()
+	}
+	return names, nil
 }
 
 func (f *routedSync) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -76,7 +110,9 @@ func (f *routedSync) CreateCategory(_ context.Context, instanceID int, name, sav
 // Cross-seed instance "seeds", both on local fake qBittorrents. lib holds
 // the matched torrent in downloads, and its base folder is links.
 type routedRig struct {
-	t         *testing.T
+	t *testing.T
+	// ctx is the context of each add. It is t.Context() unless a test sets it.
+	ctx       context.Context
 	db        *database.DB
 	svc       *Service
 	sync      *routedSync
@@ -96,7 +132,7 @@ func newRoutedRig(t *testing.T, crossSeedDown bool) *routedRig {
 	t.Helper()
 	ctx := t.Context()
 	tmp := t.TempDir()
-	r := &routedRig{t: t, downloads: filepath.Join(tmp, "downloads"), links: filepath.Join(tmp, "links")}
+	r := &routedRig{t: t, ctx: ctx, downloads: filepath.Join(tmp, "downloads"), links: filepath.Join(tmp, "links")}
 	r.db = testdb.NewMigratedSQLite(t, "routed-add")
 	var err error
 	r.instances, err = models.NewInstanceStore(r.db, []byte("01234567890123456789012345678901"))
@@ -129,9 +165,11 @@ func newRoutedRig(t *testing.T, crossSeedDown bool) *routedRig {
 			files: map[string]qbt.TorrentFiles{routedMatched: r.files},
 			props: map[string]*qbt.TorrentProperties{routedMatched: {SavePath: r.downloads}},
 		},
-		adds:       map[int][]map[string]string{},
-		categories: map[int]map[string]string{},
-		existing:   map[int]bool{},
+		adds:        map[int][]map[string]string{},
+		categories:  map[int]map[string]string{},
+		existing:    map[int]bool{},
+		crossSeedID: r.crossSeed.ID,
+		links:       r.links,
 	}
 	r.writeDownloads(r.files)
 
@@ -149,6 +187,7 @@ func newRoutedRig(t *testing.T, crossSeedDown bool) *routedRig {
 	r.svc.aligner = testAligner(r.sync)
 	r.svc.SetBackendPool(fsops.NewPool(r.instances, local.NewBackend()))
 	r.svc.SetCrossSeedRoutes(routes)
+	r.svc.visibleRetryDelay = time.Nanosecond
 	r.svc.adder = NewAdder(r.sync, r.svc.blocklistStore, r.settler, func(context.Context) int64 { return adderBudget }, r.svc.RunExternalProgram)
 	r.svc.adder.SetCrossSeedRoutes(routes)
 	return r
@@ -204,7 +243,7 @@ func (r *routedRig) add(req *CrossSeedRequest, addedTo map[int]struct{}, sourceF
 	if req == nil {
 		req = &CrossSeedRequest{}
 	}
-	return r.svc.processCrossSeedCandidate(r.t.Context(), r.candidate(), []byte("torrent"), adderV1, "", routedName,
+	return r.svc.processCrossSeedCandidate(r.ctx, r.candidate(), []byte("torrent"), adderV1, "", routedName,
 		req, r.svc.releaseCache.Parse(routedName), sourceFiles, nil, addedTo)
 }
 
@@ -290,17 +329,18 @@ func TestRoutedAddWithoutARouteAddsToTheSourceInstance(t *testing.T) {
 
 func TestRoutedAddMapsSubfolders(t *testing.T) {
 	tests := []struct {
-		name  string
-		files qbt.TorrentFiles
+		name       string
+		files      qbt.TorrentFiles
+		wantListed string
 	}{
 		{name: "disc layout", files: qbt.TorrentFiles{
 			{Name: routedName + "/BDMV/STREAM/00000.m2ts", Size: 5},
 			{Name: routedName + "/BDMV/index.bdmv", Size: 3},
-		}},
+		}, wantListed: routedMapped + "/" + routedName + "/BDMV/STREAM"},
 		{name: "pack with subfolders", files: qbt.TorrentFiles{
 			{Name: routedName + "/Disc 1/movie.part1.mkv", Size: 5},
 			{Name: routedName + "/Disc 2/movie.part2.mkv", Size: 4},
-		}},
+		}, wantListed: routedMapped + "/" + routedName + "/Disc 1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -315,6 +355,7 @@ func TestRoutedAddMapsSubfolders(t *testing.T) {
 			r.requireRouted(result)
 			require.Len(t, r.sync.adds[r.crossSeed.ID], 1)
 			assert.Equal(t, routedMapped, r.sync.adds[r.crossSeed.ID][0]["savepath"])
+			assert.Equal(t, []string{tt.wantListed}, r.sync.listed, "the check lists the folder of a linked file")
 			for _, file := range tt.files {
 				assert.True(t, r.linked(r.links, file.Name), file.Name)
 			}
@@ -676,18 +717,123 @@ func TestRoutedCategorySavePath(t *testing.T) {
 	}
 }
 
-func TestWebhookNotificationCountsAnUnavailableCrossSeedInstanceAsFailed(t *testing.T) {
+func TestWebhookNotificationCountsRoutedFailures(t *testing.T) {
 	t.Parallel()
 
-	notifier := &recordingNotifier{}
-	s := &Service{notifier: notifier}
-	resp := &CrossSeedResponse{Results: []InstanceCrossSeedResult{
+	for _, failed := range []InstanceCrossSeedResult{
 		{InstanceName: "lib", Status: crossSeedUnavailableStatus, Message: "Cross-seed instance unavailable: seeds: offline"},
-	}}
+		{InstanceName: "lib", Status: crossSeedCannotSeeStatus, Message: "Cross-seed instance cannot see the data at /seeds/links"},
+	} {
+		t.Run(failed.Status, func(t *testing.T) {
+			t.Parallel()
+			notifier := &recordingNotifier{}
+			s := &Service{notifier: notifier}
+			resp := &CrossSeedResponse{Results: []InstanceCrossSeedResult{failed}}
 
-	s.notifyWebhookApply(t.Context(), &AutobrrApplyRequest{TorrentName: routedName}, resp, nil, time.Now())
+			s.notifyWebhookApply(t.Context(), &AutobrrApplyRequest{TorrentName: routedName}, resp, nil, time.Now())
 
-	require.Len(t, notifier.events, 1)
-	require.Equal(t, 1, notifier.events[0].CrossSeed.Failed)
-	require.Equal(t, "Cross-seed instance unavailable: seeds: offline", notifier.events[0].ErrorMessage)
+			require.Len(t, notifier.events, 1)
+			require.Equal(t, 1, notifier.events[0].CrossSeed.Failed)
+			require.Equal(t, failed.Message, notifier.events[0].ErrorMessage)
+		})
+	}
+}
+
+// The top folder is taken by an empty folder, so the tree goes into the
+// folder with a short hash. The second add finds every target there already
+// linked, so its build creates no file. The check lists the folder that the
+// tree used.
+func TestRoutedAddChecksTheFolderThatTheTreeUsed(t *testing.T) {
+	r := newRoutedRig(t, false)
+	require.NoError(t, os.MkdirAll(filepath.Join(r.links, routedName), 0o755))
+	hashed := routedMapped + "/" + pathutil.HashedIsolationFolder(adderV1, routedName)
+
+	for i := range 2 {
+		result := r.add(nil, nil, nil)
+
+		require.True(t, result.Success, "add %d: %s", i+1, result.Message)
+		assert.Equal(t, hashed, r.sync.adds[r.crossSeed.ID][i]["savepath"], "add %d", i+1)
+		assert.Equal(t, hashed+"/"+routedName, r.sync.listed[i], "add %d lists the folder of a linked file", i+1)
+	}
+}
+
+func TestRoutedAddStopsWhenTheCrossSeedInstanceCannotSeeTheData(t *testing.T) {
+	tests := []struct {
+		name        string
+		hidden      int
+		listErr     error
+		wantStatus  string
+		wantMessage string
+		wantListed  int
+	}{
+		{
+			name:        "the entry stays missing",
+			hidden:      100,
+			wantStatus:  crossSeedCannotSeeStatus,
+			wantMessage: "Cross-seed instance cannot see the data at " + routedMapped + "/" + routedName,
+			wantListed:  1 + visibleRetries,
+		},
+		{
+			name:        "an answer other than 200",
+			listErr:     fmt.Errorf("%w: 404", qbt.ErrUnexpectedStatus),
+			wantStatus:  crossSeedCannotSeeStatus,
+			wantMessage: "Cross-seed instance cannot see the data at " + routedMapped + "/" + routedName,
+			wantListed:  1 + visibleRetries,
+		},
+		{
+			name:        "a transport error",
+			listErr:     errors.New("connection refused"),
+			wantStatus:  crossSeedUnavailableStatus,
+			wantMessage: "Cross-seed instance unavailable: seeds: list " + routedMapped + "/" + routedName + ": connection refused",
+			wantListed:  1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRoutedRig(t, false)
+			r.sync.hidden, r.sync.listErr = tt.hidden, tt.listErr
+
+			result := r.add(nil, nil, nil)
+
+			require.False(t, result.Success)
+			assert.Equal(t, tt.wantStatus, result.Status)
+			assert.Equal(t, tt.wantMessage, result.Message)
+			assert.Len(t, r.sync.listed, tt.wantListed)
+			r.requireRouted(result)
+			assert.Empty(t, r.sync.adds[r.crossSeed.ID], "a failed check adds nothing")
+			assert.Empty(t, r.sync.categories[r.crossSeed.ID], "a failed check creates no category")
+			r.requireNoLinkTree()
+		})
+	}
+}
+
+func TestRoutedAddPassesWhenTheEntryShowsUpOnARetry(t *testing.T) {
+	r := newRoutedRig(t, false)
+	r.sync.hidden = 1
+
+	result := r.add(nil, nil, nil)
+
+	require.True(t, result.Success, result.Message)
+	assert.Len(t, r.sync.listed, 2)
+	assert.Len(t, r.sync.adds[r.crossSeed.ID], 1)
+}
+
+// After a check fails for a base folder, a later add under that folder in
+// the same run lists once. A new run retries again.
+func TestRoutedAddRetriesAFailedFolderOncePerRun(t *testing.T) {
+	r := newRoutedRig(t, false)
+	r.sync.hidden = 100
+	r.ctx = withRouteRun(t.Context())
+
+	first := r.add(nil, nil, nil)
+	second := r.add(nil, nil, nil)
+
+	assert.Equal(t, crossSeedCannotSeeStatus, first.Status)
+	assert.Equal(t, crossSeedCannotSeeStatus, second.Status)
+	assert.Len(t, r.sync.listed, 1+visibleRetries+1, "the second add lists once")
+
+	r.sync.listed = nil
+	r.ctx = withRouteRun(t.Context())
+	assert.Equal(t, crossSeedCannotSeeStatus, r.add(nil, nil, nil).Status)
+	assert.Len(t, r.sync.listed, 1+visibleRetries, "a new run retries")
 }

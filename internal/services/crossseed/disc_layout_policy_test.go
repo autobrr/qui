@@ -697,3 +697,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	// The fallback adds the torrent paused, so the failed alignment needs no pause.
 	require.Empty(t, mockSync.bulkActions)
 }
+
+func (*discPolicySyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

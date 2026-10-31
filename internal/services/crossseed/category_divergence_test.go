@@ -130,3 +130,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	require.Equal(t, "false", base.addedOptions["autoTMM"], "autoTMM must be disabled when the cross category save path diverges")
 	require.Equal(t, "/downloads/tv/Show.S01E01", base.addedOptions["savepath"])
 }
+
+func (*divergentCategorySyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

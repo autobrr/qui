@@ -4,9 +4,15 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -18,6 +24,37 @@ import (
 const crossSeedUnavailableStatus = "crossseed_instance_unavailable"
 
 const crossSeedUnavailablePrefix = "Cross-seed instance unavailable: "
+
+// crossSeedCannotSeeStatus is the result status of a routed add whose
+// Cross-seed instance does not list the linked files.
+const crossSeedCannotSeeStatus = "crossseed_instance_cannot_see_data"
+
+// ponytail: the visibility check lists 3 more times over about 15 seconds. NFS
+// can cache a folder listing for up to 60 seconds, so a slow mount can still
+// fail a good add. Lower the NFS cache time, or wait longer here if users hit it.
+const (
+	visibleRetries    = 3
+	visibleRetryDelay = 5 * time.Second
+)
+
+// failedRouteDirsKey holds, in a context, a *sync.Map of each failedRouteDir
+// whose visibility check failed in one Trigger run. A later add under such a
+// base folder lists once.
+type failedRouteDirsKey struct{}
+
+type failedRouteDir struct {
+	sourceID int
+	baseDir  string
+}
+
+// withRouteRun starts the memory of failed base folders for one Trigger run.
+// A ctx that already holds one keeps it.
+func withRouteRun(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(failedRouteDirsKey{}).(*sync.Map); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, failedRouteDirsKey{}, &sync.Map{})
+}
 
 // candidateRoute is the route of a routed add (ADR 0035). The add goes to
 // crossSeed in link mode, with the tree on the Source instance's disk.
@@ -99,4 +136,50 @@ func (s *Service) loadSource(ctx context.Context, candidate CrossSeedCandidate) 
 	}
 	candidate.route.source, candidate.route.backend = source, backend
 	return nil
+}
+
+// checkVisible makes sure that the Cross-seed instance lists target, a linked
+// file of the plan under baseDir on the Source instance. It returns a failed
+// result when the Cross-seed instance cannot see the file or is unavailable.
+func (s *Service) checkVisible(ctx context.Context, candidate CrossSeedCandidate, d fsops.PathDialect, baseDir, target string) *InstanceCrossSeedResult {
+	route := candidate.route
+	dir, _ := crossseedroute.ToCrossSeed(d, route.rows, baseDir, d.Dir(target))
+	name := d.Base(target)
+	key := failedRouteDir{route.source.ID, fsops.CleanPath(d, baseDir)}
+	failed, ok := ctx.Value(failedRouteDirsKey{}).(*sync.Map)
+	if !ok {
+		failed = &sync.Map{}
+	}
+	retries := visibleRetries
+	if _, ok := failed.Load(key); ok {
+		retries = 0
+	}
+	stopped := func() *InstanceCrossSeedResult {
+		result := candidate.newResult("error", "Visibility check stopped: "+context.Cause(ctx).Error())
+		return &result
+	}
+	for attempt := 0; ; attempt++ {
+		content, err := s.syncManager.GetDirectoryContentCtx(ctx, route.crossSeed.ID, dir, qbt.DirectoryContentFiles, false)
+		found, err := crossseedroute.ListingHas(content, err, dir, name)
+		switch {
+		case found:
+			return nil
+		case ctx.Err() != nil:
+			return stopped()
+		case err != nil && !errors.Is(err, crossseedroute.ErrCannotSeeFolder):
+			cause := strings.TrimPrefix(err.Error(), crossseedroute.ErrUnavailable.Error()+": ")
+			result := candidate.newResult(crossSeedUnavailableStatus, crossSeedUnavailablePrefix+route.crossSeed.Name+": "+cause)
+			return &result
+		case attempt < retries:
+			select {
+			case <-ctx.Done():
+				return stopped()
+			case <-time.After(cmp.Or(s.visibleRetryDelay, visibleRetryDelay)):
+			}
+			continue
+		}
+		failed.Store(key, struct{}{})
+		result := candidate.newResult(crossSeedCannotSeeStatus, "Cross-seed instance cannot see the data at "+dir)
+		return &result
+	}
 }

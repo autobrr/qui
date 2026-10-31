@@ -8463,7 +8463,7 @@ components:
           type: boolean
         status:
           type: string
-          description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule.
+          description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
         message:
           type: string
           nullable: true

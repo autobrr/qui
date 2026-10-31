@@ -359,3 +359,7 @@ func TestExecuteCompletionSearch_OPSSourceAsksREDThroughTheAPIAndTorznab(t *test
 	require.Positive(t, genericSearches.Load(), "the OPS torrent must ask the other Torznab indexers")
 	require.Zero(t, redTorznabSearches.Load(), "RED has a key, so its Torznab indexer must not be asked")
 }
+
+func (*completionGazelleSyncMock) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
