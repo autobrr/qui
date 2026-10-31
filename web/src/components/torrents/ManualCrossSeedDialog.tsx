@@ -188,15 +188,14 @@ export function ManualCrossSeedDialog({
         } else {
           toast.success(t("manualCrossSeed.applySuccess"))
         }
-        // A routed add lands on the Cross-seed instance. The result names it. An
-        // assembly reply has no result, so it uses the route that the dialog read.
-        const addedInstanceId = firstResult
-          ? firstResult.crossSeedInstanceId ?? instanceId
-          : crossSeedInstance?.id ?? instanceId
+        // A routed add lands on the Cross-seed instance, and the result names it.
+        // An assembly reply does not name the instance that got the add, so every
+        // torrent list refreshes.
+        const queryKey = firstResult ? ["torrents-list", firstResult.crossSeedInstanceId ?? instanceId] : ["torrents-list"]
         // Same post-add delay as AddTorrentDialog: give qBittorrent a beat to
         // register the torrent before the list refetch.
         setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: ["torrents-list", addedInstanceId] })
+          void queryClient.invalidateQueries({ queryKey })
         }, 500)
         handleOpenChange(false)
         onApplied?.()

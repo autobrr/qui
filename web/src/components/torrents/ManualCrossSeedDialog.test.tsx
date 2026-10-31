@@ -147,6 +147,20 @@ it("refreshes the source list when the result is not routed, also with a cached 
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["torrents-list", 2] })
 })
 
+it("refreshes every torrent list after an assembly, also when the route request failed", async () => {
+  vi.mocked(api.listCrossSeedRoutes).mockRejectedValue(new Error("offline"))
+  const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
+  vi.mocked(api.checkManualAssemble).mockResolvedValue(preview)
+  vi.mocked(api.applyManualAssemble).mockResolvedValue({ ...preview, applied: true })
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByRole("button", { name: "manualCrossSeed.apply" }).hasAttribute("disabled")).toBe(false))
+  fireEvent.click(ui.getByRole("button", { name: "manualCrossSeed.apply" }))
+
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["torrents-list"] }), { timeout: 2000 })
+})
+
 it("says where a routed season pack assembly goes", async () => {
   mockRoute()
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
