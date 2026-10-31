@@ -136,6 +136,8 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 			}
 		}
 		switch {
+		case top == nil:
+			// A walk racing a rename can list more entries under a name first seen as a file.
 		case entry.Err != nil:
 			// A denied subtree is skipped, any other read error drops the folder.
 			if !errors.Is(entry.Err, fs.ErrPermission) {

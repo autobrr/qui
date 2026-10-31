@@ -188,6 +188,51 @@ func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.
 	return out, nil
 }
 
+// A local walk that races a rename can list a root-level name as a file
+// that is no searchee and then list more entries under it. Those entries are
+// ignored, and the other searchees are kept.
+//
+// regression: #3613
+func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
+	t.Parallel()
+
+	notDir := fsops.WalkEntry{
+		Path:    "/data/Movie",
+		RelPath: "Movie",
+		Err:     &fs.PathError{Op: "readdirent", Path: "/data/Movie", Err: syscall.ENOTDIR},
+	}
+	for _, tt := range []struct {
+		name  string
+		swaps []fsops.WalkEntry
+	}{
+		{
+			name:  "folder became a file",
+			swaps: []fsops.WalkEntry{slashEntry("/data/Movie", "Movie", 0), notDir},
+		},
+		{
+			name: "folder became a link to a folder",
+			swaps: []fsops.WalkEntry{
+				slashEntry("/data/Movie", "Movie", fs.ModeSymlink),
+				slashEntry("/data/Movie/a.mkv", "Movie/a.mkv", 0),
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			walk := append([]fsops.WalkEntry{slashEntry("/data", ".", fs.ModeDir)}, tt.swaps...)
+			walk = append(walk,
+				slashEntry("/data/Other", "Other", fs.ModeDir),
+				slashEntry("/data/Other/b.mkv", "Other/b.mkv", 0),
+			)
+			result, err := NewScanner(newSlashBackend(walk...)).ScanDirectory(t.Context(), "/data")
+			require.NoError(t, err)
+			require.Len(t, result.Searchees, 1)
+			require.Equal(t, "/data/Other", result.Searchees[0].Path)
+		})
+	}
+}
+
 // A denied subfolder inside a searchee is skipped, and any other read error
 // drops the searchee.
 func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
