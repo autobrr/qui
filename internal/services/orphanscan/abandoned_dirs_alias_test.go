@@ -430,15 +430,23 @@ func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
 // A magnet without metadata, or a torrent qBittorrent is still checking, has
 // no file list, so only its save path says where it will write. A save path
 // that is a symlink to an empty folder keeps that folder, in the scan and in
-// the delete.
+// the delete, and so does one whose not yet created parent is such a symlink.
 // regression: #3652
 func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlias(t *testing.T) {
-	for _, magnet := range []bool{true, false} {
+	for _, tc := range []struct {
+		magnet bool
+		// below is the save path below the symlink, not created yet.
+		below string
+	}{{true, ""}, {false, ""}, {true, filepath.Join("not-yet", "deeper")}, {false, filepath.Join("not-yet", "deeper")}} {
+		magnet := tc.magnet
 		name := map[bool]string{true: "magnet without metadata", false: "torrent being checked"}[magnet]
+		if tc.below != "" {
+			name += ", save path not created yet"
+		}
 		t.Run("scan, "+name, func(t *testing.T) {
 			var alias, leftover string
 			opts := orphanOnlyOptions{beforeScan: func(svc *Service, ownedSavePath string) {
-				fileListLess(svc, ownedSavePath, alias, magnet)
+				fileListLess(svc, ownedSavePath, filepath.Join(alias, tc.below), magnet)
 			}}
 			f := newOrphanOnlyFixture(t, "orphanscan-scan-dir-alias-no-files", opts, func(defaultSavePath string) {
 				require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "Magnet"), 0o750))
@@ -462,7 +470,7 @@ func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlia
 
 			alias := filepath.Join(filepath.Dir(f.defaultSavePath), "alias")
 			symlinkOrSkip(t, magnetDir, alias)
-			fileListLess(f.svc, f.torrentSavePath, alias, magnet)
+			fileListLess(f.svc, f.torrentSavePath, filepath.Join(alias, tc.below), magnet)
 			f.svc.executeDeletion(t.Context(), 1, f.runID)
 
 			require.DirExists(t, magnetDir)
@@ -470,6 +478,33 @@ func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlia
 			require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, f.runID)[magnetDir])
 		})
 	}
+}
+
+// A run that lists no folder reads no torrent folder, so a failed read names
+// only the files.
+// regression: #3652
+func TestExecuteDeletion_FilesOnlyRunErrorNamesOnlyFiles(t *testing.T) {
+	var junk, broken string
+	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+		return lateEIOStatBackend{Backend: b, path: &broken}
+	}}
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-files-only-error", opts, func(defaultSavePath string) {
+		junk = filepath.Join(defaultSavePath, "junk.mkv")
+		writeFile(t, junk)
+	})
+	require.Equal(t, map[string]string{junk: "pending: "}, fileStatuses(t, f.store, f.runID))
+
+	late := filepath.Join(filepath.Dir(f.defaultSavePath), "late")
+	broken = filepath.Join(late, "x.mkv")
+	writeFile(t, broken)
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "x.mkv")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", run.Status)
+	require.Contains(t, run.ErrorMessage, "could not check which files torrents use")
+	require.FileExists(t, junk)
 }
 
 // A disc unit holding a symlink to a folder a torrent reaches is still deleted
