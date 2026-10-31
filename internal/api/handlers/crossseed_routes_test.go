@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -33,6 +35,8 @@ type routeFixture struct {
 	instances *models.InstanceStore
 	routes    *crossseedroute.Service
 	router    *chi.Mux
+	// instancesHandler serves the instance routes that can break a route.
+	instancesHandler *InstancesHandler
 	// qbt answers as qBittorrent 5.0 (WebAPI 2.11.2); old answers as 4.6.
 	qbt, old, offline string
 }
@@ -55,15 +59,26 @@ func newRouteFixture(t *testing.T) *routeFixture {
 		r.Put("/{instanceID}", handler.SaveCrossSeedRoute)
 		r.Delete("/{instanceID}", handler.ClearCrossSeedRoute)
 	})
+	sshPool := sshpool.NewPool(sshpool.NewDialer(instances))
+	t.Cleanup(sshPool.Close)
+	instancesHandler := NewInstancesHandler(instances, nil, nil, clientPool, nil, nil, sshpool.NewDialer(instances), sshPool)
+	instancesHandler.SetCrossSeedRoutes(routes)
+	router.Route("/api/instances/{instanceID}", func(r chi.Router) {
+		r.Put("/", instancesHandler.UpdateInstance)
+		r.Delete("/", instancesHandler.DeleteInstance)
+		r.Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
+		r.Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
+	})
 
 	return &routeFixture{
-		t:         t,
-		instances: instances,
-		routes:    routes,
-		router:    router,
-		qbt:       fakeQBittorrent(t, "2.11.2"),
-		old:       fakeQBittorrent(t, "2.11.1"),
-		offline:   fakeQBittorrent(t, ""),
+		t:                t,
+		instances:        instances,
+		routes:           routes,
+		router:           router,
+		instancesHandler: instancesHandler,
+		qbt:              fakeQBittorrent(t, "2.11.2"),
+		old:              fakeQBittorrent(t, "2.11.1"),
+		offline:          fakeQBittorrent(t, ""),
 	}
 }
 
@@ -121,6 +136,11 @@ func (f *routeFixture) do(method string, instanceID int, body any) *httptest.Res
 	if instanceID != 0 {
 		path += strconv.Itoa(instanceID)
 	}
+	return f.request(method, path, body)
+}
+
+func (f *routeFixture) request(method, path string, body any) *httptest.ResponseRecorder {
+	f.t.Helper()
 	var payload strings.Builder
 	if body != nil {
 		require.NoError(f.t, json.NewEncoder(&payload).Encode(body))
@@ -363,19 +383,21 @@ func TestCrossSeedRouteDeletedWithEitherInstance(t *testing.T) {
 	f := newRouteFixture(t)
 	library := filepath.Join(t.TempDir(), "links")
 	crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
-	kept := f.source("kept", models.FilesystemModeLocal, library)
+	first := f.source("first", models.FilesystemModeLocal, library)
+	second := f.source("second", models.FilesystemModeLocal, library)
 	deleted := f.source("deleted", models.FilesystemModeLocal, library)
-	require.Equal(t, http.StatusOK, f.save(kept, crossSeed).Code)
-	require.Equal(t, http.StatusOK, f.save(deleted, crossSeed).Code)
+	for _, source := range []*models.Instance{first, second, deleted} {
+		require.Equal(t, http.StatusOK, f.save(source, crossSeed).Code)
+	}
 
-	require.NoError(t, f.instances.Delete(t.Context(), deleted.ID))
-	routes, err := f.routes.List(t.Context())
+	require.Equal(t, http.StatusOK, f.request(http.MethodDelete, "/api/instances/"+strconv.Itoa(deleted.ID), nil).Code)
+	sources, err := f.routes.ListSources(t.Context(), crossSeed.ID)
 	require.NoError(t, err)
-	require.Len(t, routes, 1)
-	assert.Equal(t, kept.ID, routes[0].SourceInstanceID)
+	assert.Equal(t, []int{first.ID, second.ID}, sources)
 
-	require.NoError(t, f.instances.Delete(t.Context(), crossSeed.ID))
-	routes, err = f.routes.List(t.Context())
+	// Deleting the Cross-seed instance clears the route on each Source instance.
+	require.Equal(t, http.StatusOK, f.request(http.MethodDelete, "/api/instances/"+strconv.Itoa(crossSeed.ID), nil).Code)
+	routes, err := f.routes.List(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, routes)
 }
@@ -417,4 +439,213 @@ func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
 	start := time.Now()
 	require.ErrorIs(t, f.routes.CheckAvailable(ctx, instance.ID, false), crossseedroute.ErrUnavailable)
 	assert.Less(t, time.Since(start), 30*time.Second, "the login must stop at the deadline of ctx, not after the 60-second pool default")
+}
+
+// putInstance sends an instance update with the instance's own name, host,
+// and username, plus fields.
+func (f *routeFixture) putInstance(instance *models.Instance, fields map[string]any) *httptest.ResponseRecorder {
+	f.t.Helper()
+	body := map[string]any{"name": instance.Name, "host": instance.Host, "username": instance.Username}
+	maps.Copy(body, fields)
+	return f.request(http.MethodPut, "/api/instances/"+strconv.Itoa(instance.ID), body)
+}
+
+// withSSH gives instance SSH credentials for a closed local port, with a host
+// key pin when pin is set.
+func (f *routeFixture) withSSH(instance *models.Instance, pin bool) *models.Instance {
+	f.t.Helper()
+	ctx := f.t.Context()
+	require.NoError(f.t, f.instances.SetSSHCredentials(ctx, instance.ID, "127.0.0.1", 1, "qui", sshtest.PrivateKey("")))
+	if pin {
+		require.NoError(f.t, f.instances.SetHostKeyPin(ctx, instance.ID, "127.0.0.1", 1, sshtest.NewSigner().PublicKey().Marshal()))
+	}
+	instance, err := f.instances.Get(ctx, instance.ID)
+	require.NoError(f.t, err)
+	return instance
+}
+
+func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
+	library := filepath.Join(t.TempDir(), "links")
+	seeds := filepath.Join(t.TempDir(), "seeds")
+	newCredentials := func(f *routeFixture, instance *models.Instance) *httptest.ResponseRecorder {
+		return f.request(http.MethodPut, "/api/instances/"+strconv.Itoa(instance.ID)+"/ssh-credentials",
+			SSHCredentialsRequest{Host: "127.0.0.1", Port: 1, Username: "qui", PrivateKey: sshtest.PrivateKey("")})
+	}
+	update := func(fields map[string]any) func(*routeFixture, *models.Instance) *httptest.ResponseRecorder {
+		return func(f *routeFixture, instance *models.Instance) *httptest.ResponseRecorder {
+			return f.putInstance(instance, fields)
+		}
+	}
+
+	cases := []struct {
+		name string
+		// setup saves a route from "library" to "seeds" and returns the instance to change.
+		setup  func(f *routeFixture) *models.Instance
+		change func(f *routeFixture, instance *models.Instance) *httptest.ResponseRecorder
+		want   string
+	}{
+		{
+			name: "source turns off link mode",
+			setup: func(f *routeFixture) *models.Instance {
+				source := f.source("library", models.FilesystemModeLocal, library)
+				require.Equal(t, http.StatusOK, f.save(source, f.instance("seeds", f.qbt, models.FilesystemModeNone)).Code)
+				return source
+			},
+			change: update(map[string]any{"useHardlinks": false}),
+			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off hardlink and reflink mode",
+		},
+		{
+			name: "source empties its base folder list",
+			setup: func(f *routeFixture) *models.Instance {
+				source := f.source("library", models.FilesystemModeLocal, library)
+				require.Equal(t, http.StatusOK, f.save(source, f.instance("seeds", f.qbt, models.FilesystemModeNone)).Code)
+				return source
+			},
+			change: update(map[string]any{"hardlinkBaseDir": " , "}),
+			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off hardlink and reflink mode or remove all base folders",
+		},
+		{
+			// A remote instance has Write, so only the access mode tells that
+			// the Source instance leaves local mode.
+			name: "source leaves local mode",
+			setup: func(f *routeFixture) *models.Instance {
+				source := f.withSSH(f.source("library", models.FilesystemModeLocal, library), true)
+				require.Equal(t, http.StatusOK, f.save(source, f.instance("seeds", f.qbt, models.FilesystemModeNone)).Code)
+				return source
+			},
+			change: update(map[string]any{"hasLocalFilesystemAccess": false}),
+			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off Local Filesystem Access",
+		},
+		{
+			name: "source adds a base folder that nests with a mapped one",
+			setup: func(f *routeFixture) *models.Instance {
+				source := f.source("library", models.FilesystemModeLocal, library)
+				require.Equal(t, http.StatusOK, f.save(source, f.instance("seeds", f.qbt, models.FilesystemModeNone),
+					models.CrossSeedRouteRow{BaseDir: library, MappedPath: seeds}).Code)
+				return source
+			},
+			change: update(map[string]any{"hardlinkBaseDir": library + "," + filepath.Join(seeds, "more")}),
+			want:   "This instance routes its cross-seeds to seeds, and " + library + " and " + filepath.Join(seeds, "more") + " map to the same or nested folders on the Cross-seed instance. Clear the route before you add this base folder.",
+		},
+		{
+			name: "cross-seed instance becomes remote through an instance update",
+			setup: func(f *routeFixture) *models.Instance {
+				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeLocal), true)
+				require.Equal(t, http.StatusOK, f.save(f.source("library", models.FilesystemModeLocal, library), crossSeed).Code)
+				return crossSeed
+			},
+			change: update(map[string]any{"hasLocalFilesystemAccess": false}),
+			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance. Clear the route of library first",
+		},
+		{
+			// The route already breaks the moved-row rule, and the change
+			// breaks another one.
+			name: "cross-seed instance with a broken route becomes remote",
+			setup: func(f *routeFixture) *models.Instance {
+				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeLocal), true)
+				source := f.source("library", models.FilesystemModeLocal, library)
+				require.NoError(t, f.routes.Upsert(t.Context(), &models.CrossSeedRoute{SourceInstanceID: source.ID, CrossSeedInstanceID: crossSeed.ID,
+					Rows: []models.CrossSeedRouteRow{{BaseDir: library, MappedPath: seeds}}}))
+				return crossSeed
+			},
+			change: update(map[string]any{"hasLocalFilesystemAccess": false}),
+			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance",
+		},
+		{
+			// Removing the credentials keeps the pin, so new credentials for
+			// the same endpoint make the instance remote with no host key confirm.
+			name: "cross-seed instance becomes remote through new credentials",
+			setup: func(f *routeFixture) *models.Instance {
+				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeNone), true)
+				require.NoError(t, f.instances.ClearSSHCredentials(t.Context(), crossSeed.ID))
+				crossSeed, err := f.instances.Get(t.Context(), crossSeed.ID)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, f.save(f.source("library", models.FilesystemModeLocal, library), crossSeed).Code)
+				return crossSeed
+			},
+			change: newCredentials,
+			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance",
+		},
+		{
+			// Nothing listens on the port, so a dial before the refusal answers 502.
+			name: "cross-seed instance becomes remote through a host key pin",
+			setup: func(f *routeFixture) *models.Instance {
+				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeNone), false)
+				require.Equal(t, http.StatusOK, f.save(f.source("library", models.FilesystemModeLocal, library), crossSeed).Code)
+				return crossSeed
+			},
+			change: func(f *routeFixture, instance *models.Instance) *httptest.ResponseRecorder {
+				var body SSHHostKeyRequest
+				require.NoError(t, json.Unmarshal([]byte(hostKeyBody(sshtest.NewSigner().PublicKey())), &body))
+				return f.request(http.MethodPost, "/api/instances/"+strconv.Itoa(instance.ID)+"/ssh-host-key", body)
+			},
+			want: "library routes its cross-seeds to this instance, so this instance cannot be a remote instance",
+		},
+		{
+			name: "cross-seed instance turns on Local Filesystem Access while a row changes the path",
+			setup: func(f *routeFixture) *models.Instance {
+				crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
+				require.Equal(t, http.StatusOK, f.save(f.source("library", models.FilesystemModeLocal, library), crossSeed,
+					models.CrossSeedRouteRow{BaseDir: library, MappedPath: "/seeds/links"}).Code)
+				return crossSeed
+			},
+			change: update(map[string]any{"hasLocalFilesystemAccess": true}),
+			want:   "library routes its cross-seeds to this instance and maps " + library + " to /seeds/links. Clear the route of library before you turn on Local Filesystem Access",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newRouteFixture(t)
+			// The refusal comes before the orphan scan lock, so a running
+			// deletion does not turn it into a 409.
+			f.instancesHandler.orphanScan = &fakeOrphanScan{deleting: true}
+			instance := tc.setup(f)
+			routesBefore, err := f.routes.List(t.Context())
+			require.NoError(t, err)
+
+			rec := tc.change(f, instance)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			var body struct{ Error string }
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			assert.Contains(t, body.Error, tc.want)
+			stored, err := f.instances.Get(t.Context(), instance.ID)
+			require.NoError(t, err)
+			assert.Equal(t, instance, stored, "a refused change is not stored")
+			routesAfter, err := f.routes.List(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, routesBefore, routesAfter)
+		})
+	}
+}
+
+func TestInstanceUpdateDropsTheRowOfARemovedBaseFolder(t *testing.T) {
+	f := newRouteFixture(t)
+	library := filepath.Join(t.TempDir(), "links")
+	other := filepath.Join(t.TempDir(), "links")
+	source := f.source("library", models.FilesystemModeLocal, library, other)
+	require.Equal(t, http.StatusOK, f.save(source, f.instance("seeds", f.qbt, models.FilesystemModeNone),
+		models.CrossSeedRouteRow{BaseDir: library, MappedPath: "/seeds/a"},
+		models.CrossSeedRouteRow{BaseDir: other, MappedPath: "/seeds/b"}).Code)
+
+	rec := f.putInstance(source, map[string]any{"hardlinkBaseDir": library})
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	route, err := f.routes.Get(t.Context(), source.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []models.CrossSeedRouteRow{{BaseDir: library, MappedPath: "/seeds/a"}}, route.Rows)
+}
+
+// A change refuses only what it breaks, so a route that already breaks a rule
+// the same way does not block other edits to the instance.
+func TestInstanceUpdateAllowsAChangeToARouteThatAlreadyBreaksARule(t *testing.T) {
+	f := newRouteFixture(t)
+	source := f.instance("library", f.qbt, models.FilesystemModeLocal)
+	crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
+	require.NoError(t, f.routes.Upsert(t.Context(), &models.CrossSeedRoute{SourceInstanceID: source.ID, CrossSeedInstanceID: crossSeed.ID}))
+
+	rec := f.putInstance(source, map[string]any{"name": "renamed"})
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
