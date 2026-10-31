@@ -225,6 +225,25 @@ describe("CrossSeedRouteForm rows", () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(false)
   })
 
+  it("gives each form its own row inputs when two Source instances share a base folder", async () => {
+    const other = makeInstance(3, "other-library")
+    mocks.instances.instances = [source, crossSeed, other]
+    serve()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CrossSeedRouteForm instance={source} localWrite />
+        <CrossSeedRouteForm instance={other} localWrite />
+      </QueryClientProvider>
+    )
+
+    const pickers = screen.getAllByLabelText<HTMLSelectElement>("picker")
+    await waitFor(() => expect(pickers[1].options.length).toBeGreaterThan(1))
+    for (const each of pickers) fireEvent.change(each, { target: { value: "2" } })
+
+    expect(new Set(screen.getAllByLabelText("/data/a")).size).toBe(2)
+  })
+
   it("shows one row for two spellings of one base folder", async () => {
     const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/a/, /data/b" })
     mocks.instances.instances = [instance, crossSeed]

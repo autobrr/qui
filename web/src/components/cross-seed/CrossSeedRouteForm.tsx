@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils"
 import type { CrossSeedRouteRow, CrossSeedRouteTestRowResult, Instance } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -292,6 +292,8 @@ function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disable
   disabled: boolean
 }) {
   const { t } = useTranslation("crossseed")
+  // Unique in the page: two Source instances can share a Cross-seed instance and a base folder.
+  const id = useId()
   const { data: capabilities } = useInstanceCapabilities(crossSeedInstanceId)
   const suggestsFolders = capabilities?.supportsPathAutocomplete ?? false
   const { suggestions, handleInputChange, handleSelect, handleKeyDown, handleBlur, highlightedIndex, showSuggestions, inputRef, listRef } =
@@ -299,10 +301,10 @@ function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disable
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={`route-row-${crossSeedInstanceId}-${baseDir}`} className="text-xs text-muted-foreground">{baseDir}</Label>
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{baseDir}</Label>
       <Input
         ref={inputRef}
-        id={`route-row-${crossSeedInstanceId}-${baseDir}`}
+        id={id}
         autoComplete="off"
         spellCheck={false}
         value={value}
