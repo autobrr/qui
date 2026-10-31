@@ -172,7 +172,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     setConfirm({ clear: false, baseDirs: changed })
   }
   const handleClear = () => setConfirm({ clear: true })
-  const confirmRows = savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
+  // A null read means another tab cleared the route, so no routed torrent loses protection.
+  const confirmRows = savedRoute === null ? [] : savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
 
   const edit = (next: { crossSeedInstanceId?: number; baseDir?: string; mappedPath?: string }) => {
     testRoute.reset()

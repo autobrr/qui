@@ -507,6 +507,18 @@ describe("CrossSeedRouteForm confirm", () => {
     expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it("counts no routed torrents when the route read finds the route gone", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
+    renderForm(source)
+    await screen.findByLabelText("/data/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|0")).toBeTruthy()
+    expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it("asks before a route clear and says the Cross-seed instance keeps the routed torrents", async () => {
     const writes = serveSaved()
     await screen.findByDisplayValue("/mnt/a")
