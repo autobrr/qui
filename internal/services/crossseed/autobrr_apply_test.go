@@ -1031,3 +1031,43 @@ func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 		})
 	}
 }
+
+func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Aurora.Signal.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Aurora.Signal.2025.1080p.WEB-DL.H.265-LUMA"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 45, Name: "primary", IsActive: true}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+		}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	var runs []any
+	service.crossSeedInvoker = func(ctx context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+		runs = append(runs, ctx.Value(failedRouteDirsKey{}))
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: crossSeedCannotSeeStatus}}}, nil
+	}
+
+	_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	// Each try of the webhook sees the same memory of failed route folders, so
+	// a later try under a hidden folder lists once.
+	require.Len(t, runs, 2)
+	require.NotNil(t, runs[0], "the webhook does not start a route run")
+	require.Same(t, runs[0], runs[1])
+}

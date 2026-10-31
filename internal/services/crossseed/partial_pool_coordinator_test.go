@@ -2678,3 +2678,7 @@ func partialPoolTestSnapshot(member *models.CrossSeedPartialPoolMember, amountLe
 	}
 	return snapshot
 }
+
+func (*recheckResumeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

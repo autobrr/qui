@@ -26,17 +26,23 @@ import (
 var ErrCannotSeeFolder = errors.New("cannot see the folder")
 
 // Lists reports whether the qBittorrent directory listing of dir on
-// instanceID holds an entry named name. It compares the last path element of
-// each entry, with either separator, and ignores case on a drive-letter entry.
-// An answer other than 200 matches ErrCannotSeeFolder. Any other failure, such
-// as a transport error or a qBittorrent version older than 5.0, matches
-// ErrUnavailable.
+// instanceID holds an entry named name, as ListingHas reads it.
 func (s *Service) Lists(ctx context.Context, instanceID int, dir, name string, mode qbt.DirectoryContentMode) (bool, error) {
 	client, err := s.clients.GetClient(ctx, instanceID)
 	if err != nil {
 		return false, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	content, err := client.ListDirectoryCtx(ctx, dir, mode, false)
+	return ListingHas(content, err, dir, name)
+}
+
+// ListingHas reads the answer of a qBittorrent directory listing of dir, and
+// reports whether it holds an entry named name. It compares the last path
+// element of each entry, with either separator, and ignores case on a
+// drive-letter entry. An answer other than 200 matches ErrCannotSeeFolder. Any
+// other failure, such as a transport error or a qBittorrent version older than
+// 5.0, matches ErrUnavailable.
+func ListingHas(content any, err error, dir, name string) (bool, error) {
 	switch {
 	// go-qbittorrent puts the status code only in the text, so a 404 and a
 	// 400 look the same here.

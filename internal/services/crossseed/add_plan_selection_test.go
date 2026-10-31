@@ -257,3 +257,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	require.Equal(t, matchedHash, result.MatchedTorrent.Hash)
 	require.Contains(t, sync.bulkActions, "pause:"+newHash)
 }
+
+func (*alignmentFailureSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

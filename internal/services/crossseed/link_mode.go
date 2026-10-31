@@ -454,6 +454,32 @@ func (s *Service) processLinkMode(
 		return handle(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
 	}
 
+	// Rollback only what this attempt created: the destination can be shared
+	// with an earlier successful add for the same release (discussion #2282).
+	// WithoutCancel: a cancelled run must still roll back its partial tree.
+	rollback := func() {
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
+			log.Warn().
+				Err(rollbackErr).
+				Str("destDir", destDir).
+				Msg(logPrefix + "failed to rollback link tree")
+		}
+	}
+
+	// The plan, not created, names a linked file: the build skips a target
+	// that already is the same file, so created can be empty.
+	if candidate.route != nil {
+		if failed := s.checkVisible(ctx, candidate, d, selectedBaseDir, plan.Files[0].TargetPath); failed != nil {
+			rollback()
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentName", torrentName).
+				Str("reason", failed.Message).
+				Msg(logPrefix + "routed add stopped by the visibility check")
+			return linkModeResult{Used: true, Result: *failed}
+		}
+	}
+
 	// Ensure cross-seed category exists with the correct save path derived from
 	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
@@ -481,8 +507,6 @@ func (s *Service) processLinkMode(
 	if pooledCompletion && poolDescriptorErr == nil && mode.poolReplaceable {
 		poolReplaceablePaths = partialPoolReplaceableTargets(plan.RootDir, poolDescriptors)
 	}
-
-	// The visibility check of a routed add (#3265) goes here, before the add.
 
 	// Link mode: files are pre-created, so the save path points to the tree root.
 	// Force contentLayout=Original to match the link tree layout exactly
@@ -559,15 +583,7 @@ func (s *Service) processLinkMode(
 		},
 	})
 	if added.Outcome == AddRefused {
-		// Rollback only what this attempt created: the destination can be shared
-		// with an earlier successful add for the same release (discussion #2282).
-		// WithoutCancel: a cancelled run must still roll back its partial tree.
-		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
-			log.Warn().
-				Err(rollbackErr).
-				Str("destDir", destDir).
-				Msg(logPrefix + "failed to rollback link tree")
-		}
+		rollback()
 		log.Error().
 			Str("reason", added.Message).
 			Int("instanceID", candidate.InstanceID).

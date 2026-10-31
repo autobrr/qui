@@ -1252,3 +1252,7 @@ func (*duplicateFilteringSyncManager) GetCategories(context.Context, int) (map[s
 func (*duplicateFilteringSyncManager) CreateCategory(context.Context, int, string, string) error {
 	return nil
 }
+
+func (*duplicateFilteringSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

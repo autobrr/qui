@@ -550,3 +550,7 @@ func TestGetMatchTypeFromTitle_SeasonlessBatchRanges(t *testing.T) {
 		})
 	}
 }
+
+func (*candidateSelectionSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

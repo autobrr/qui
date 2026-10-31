@@ -4355,3 +4355,19 @@ func TestFindCandidatesSkipsSourceThatIsNotSettled(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Candidates, 1)
 }
+
+func (*fakeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*mockRecoverSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*infohashTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*rssFilterTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

@@ -198,3 +198,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	require.Contains(t, result.Message, "Content file sizes do not match")
 	require.Nil(t, sync.addTorrentOpts, "AddTorrent should not be called when reuse safety checks fail")
 }
+
+func (*reflinkFallbackSafetySyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

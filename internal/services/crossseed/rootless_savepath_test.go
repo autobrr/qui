@@ -537,3 +537,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	require.NotContains(t, sync.addedOptions, "useDownloadPath", "autoTMM places the torrent, so qui sends no download path")
 	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
 }
+
+func (*rootlessSavePathSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
