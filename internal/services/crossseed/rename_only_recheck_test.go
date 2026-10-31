@@ -111,7 +111,7 @@ func TestProcessCrossSeedCandidate_RenameOnlySingleFileSkipsRecheckSkip(t *testi
 	req := &CrossSeedRequest{SkipRecheck: true, StartPaused: &startPaused}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
@@ -143,7 +143,7 @@ func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *tes
 	req := &CrossSeedRequest{SkipRecheck: true}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
@@ -194,7 +194,7 @@ func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
 			req := &CrossSeedRequest{SkipRecheck: tt.skipRecheck}
 
 			withAdder(service)
-			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil)
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil, nil)
 
 			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
 			if tt.wantAction == "" {
@@ -220,7 +220,7 @@ func TestProcessCrossSeedCandidate_RenameOnlyStillRechecksWithoutSkipRecheck(t *
 	req := &CrossSeedRequest{SkipRecheck: false, SkipAutoResume: true}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
@@ -297,7 +297,7 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			req := &CrossSeedRequest{SkipRecheck: true}
 
 			withAdder(service)
-			result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", tt.sourceFiles[0].Name, req, service.releaseCache.Parse(tt.sourceFiles[0].Name), tt.sourceFiles, nil)
+			result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", tt.sourceFiles[0].Name, req, service.releaseCache.Parse(tt.sourceFiles[0].Name), tt.sourceFiles, nil, nil)
 
 			require.False(t, result.Success)
 			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
@@ -341,7 +341,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckIsQueued(t *testing.T) {
 
 				req := &CrossSeedRequest{}
 				withAdder(service)
-				result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+				result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 				require.True(t, result.Success, "message: %s", result.Message)
 				require.NotContains(t, result.Message, "manual intervention required")
@@ -368,7 +368,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNot
 
 		req := &CrossSeedRequest{SkipAutoResume: true}
 		withAdder(service)
-		result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+		result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "message: %s", result.Message)
 		require.NotContains(t, result.Message, "manual intervention required")

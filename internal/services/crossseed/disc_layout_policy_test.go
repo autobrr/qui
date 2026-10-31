@@ -203,7 +203,7 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 			&CrossSeedRequest{StartPaused: &startPaused},
 			service.releaseCache.Parse(newName),
 			sourceFiles,
-			nil,
+			nil, nil,
 		)
 
 		require.True(t, result.Success, result.Message)
@@ -308,7 +308,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		// Verify the torrent was added successfully
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -400,7 +400,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		// Verify the torrent was added successfully
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -491,7 +491,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -592,7 +592,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 		require.Equal(t, "added", result.Status)
@@ -689,7 +689,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)

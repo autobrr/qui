@@ -3747,12 +3747,14 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	for _, instanceResult := range resp.Results {
 		mapped := models.CrossSeedRunResult{
-			InstanceID:   instanceResult.InstanceID,
-			InstanceName: instanceResult.InstanceName,
-			IndexerName:  result.Indexer,
-			Success:      instanceResult.Success,
-			Status:       instanceResult.Status,
-			Message:      instanceResult.Message,
+			InstanceID:            instanceResult.InstanceID,
+			InstanceName:          instanceResult.InstanceName,
+			IndexerName:           result.Indexer,
+			Success:               instanceResult.Success,
+			Status:                instanceResult.Status,
+			Message:               instanceResult.Message,
+			CrossSeedInstanceID:   instanceResult.CrossSeedInstanceID,
+			CrossSeedInstanceName: instanceResult.CrossSeedInstanceName,
 		}
 		if instanceResult.MatchedTorrent != nil {
 			hash := instanceResult.MatchedTorrent.Hash
@@ -4603,11 +4605,15 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		}
 	}
 
-	// Process each instance with matching candidates
+	// Process each instance with matching candidates. addedTo holds the
+	// instances that an add gave the torrent in this call, so that a routed add
+	// does not add it to its Cross-seed instance a second time.
+	addedTo := map[int]struct{}{}
 	for _, candidate := range candidatesResp.Candidates {
-		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, meta.HashV2, meta.Name, req, sourceRelease, meta.Files, meta.Info)
+		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, meta.HashV2, meta.Name, req, sourceRelease, meta.Files, meta.Info, addedTo)
 		response.Results = append(response.Results, result)
 		if result.Success {
+			addedTo[cmp.Or(result.CrossSeedInstanceID, result.InstanceID)] = struct{}{}
 			response.Success = true
 			if candidate.titleRescue {
 				response.titleRescueUsed = true
@@ -4972,18 +4978,34 @@ func (s *Service) processCrossSeedCandidate(
 	sourceRelease *rls.Release,
 	sourceFiles qbt.TorrentFiles,
 	torrentInfo *metainfo.Info,
+	addedTo map[int]struct{},
 ) InstanceCrossSeedResult {
-	result := InstanceCrossSeedResult{
-		InstanceID:   candidate.InstanceID,
-		InstanceName: candidate.InstanceName,
-		Success:      false,
-		Status:       "error",
+	// A route sends the add to the Cross-seed instance (ADR 0035). Its rule
+	// check, with the availability check, runs before the Pre-add check, which
+	// then runs for the Cross-seed instance.
+	route, routeErr := s.routeOf(ctx, candidate.InstanceID)
+	candidate.route = route
+	result := candidate.newResult("error", "")
+	if routeErr != nil {
+		result.Status, result.Message = routeFailure(routeErr)
+		return result
 	}
 
-	check, refusal := s.adder.Check(ctx, candidate.InstanceID, AddFacts{}, torrentHash, torrentHashV2)
+	receiverID, receiverName := candidate.receiver()
+	if _, added := addedTo[receiverID]; added {
+		// The torrent list of the instance can lag behind the add.
+		result.Status = "exists"
+		result.Message = "Torrent already added to " + receiverName + " in this run"
+		return result
+	}
+	check, refusal := s.adder.Check(ctx, receiverID, AddFacts{}, torrentHash, torrentHashV2)
 	if refusal != nil {
 		result.Status = refusal.Status
 		result.Message = refusal.Message
+		if candidate.route != nil && refusal.Message == existsInThisInstance {
+			// The result names the instance that holds the match, not this one.
+			result.Message = "Torrent already exists in Cross-seed instance " + receiverName
+		}
 		if refusal.Existing != nil {
 			result.MatchedTorrent = &MatchedTorrent{
 				Hash:     refusal.Existing.Hash,
@@ -5101,7 +5123,20 @@ func (s *Service) processCrossSeedCandidate(
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
-	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
+	var instance *models.Instance
+	var instanceErr error
+	if candidate.route != nil {
+		if manualUnvalidated {
+			result.Message = "A routed cross-seed needs hardlink or reflink mode, and an unvalidated Manual match cannot use it"
+			return result
+		}
+		if failed := s.loadSource(ctx, candidate); failed != nil {
+			return *failed
+		}
+		instance = candidate.route.source
+	} else {
+		instance, instanceErr = s.instanceStore.Get(ctx, candidate.InstanceID)
+	}
 	// An unvalidated Manual match has no validated file correspondence to link
 	// (zero overlap would fail materialization outright), so it always takes the
 	// regular paused add + recheck path.
@@ -9641,6 +9676,12 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
 		return result, fmt.Errorf("cross-seed failed: %w", err)
 	}
+	for _, instanceResult := range resp.Results {
+		if instanceResult.CrossSeedInstanceID != 0 {
+			result.CrossSeedInstanceID, result.CrossSeedInstanceName = instanceResult.CrossSeedInstanceID, instanceResult.CrossSeedInstanceName
+			break
+		}
+	}
 
 	if resp.Success {
 		result.Status = models.CrossSeedSearchResultStatusAdded
@@ -10434,7 +10475,7 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 				if result.Success {
 					addedResults = append(addedResults, result)
 				}
-			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error":
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", crossSeedUnavailableStatus:
 				failedResults = append(failedResults, result)
 			}
 		}
@@ -12269,7 +12310,8 @@ func (s *Service) linkPresetDir(
 	case "by-tracker":
 		return d.Join(baseDir, pathutil.SanitizePathSegment(s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)))
 	case "by-instance":
-		return d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+		_, name := candidate.receiver()
+		return d.Join(baseDir, pathutil.SanitizePathSegment(name))
 	default: // "flat" or unknown
 		return baseDir
 	}
@@ -12342,8 +12384,14 @@ func (s *Service) buildCategorySavePath(
 	req *CrossSeedRequest,
 ) string {
 	presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
-	if presetDir == baseDir { // flat
-		return baseDir
+	flat := presetDir == baseDir
+	if candidate.route != nil {
+		// Map before normalizePath, which needs no dialect but loses the one
+		// that the map needs. A link tree maps under the same row first.
+		presetDir, _ = crossseedroute.ToCrossSeed(d, candidate.route.rows, baseDir, presetDir)
+	}
+	if flat {
+		return presetDir
 	}
 	return normalizePath(presetDir)
 }

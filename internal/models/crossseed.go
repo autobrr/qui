@@ -263,6 +263,10 @@ type CrossSeedRunResult struct {
 	Message            string  `json:"message,omitempty"`
 	MatchedTorrentHash *string `json:"matchedTorrentHash,omitempty"`
 	MatchedTorrentName *string `json:"matchedTorrentName,omitempty"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add. InstanceID stays the instance that holds the match.
+	CrossSeedInstanceID   int    `json:"crossSeedInstanceId,omitzero"`
+	CrossSeedInstanceName string `json:"crossSeedInstanceName,omitempty"`
 }
 
 // CrossSeedRun stores the persisted automation run metadata.
@@ -321,6 +325,10 @@ type CrossSeedSearchResult struct {
 	Status       CrossSeedSearchResultStatus `json:"status"`
 	Message      string                      `json:"message,omitempty"`
 	ProcessedAt  time.Time                   `json:"processedAt"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add.
+	CrossSeedInstanceID   int    `json:"crossSeedInstanceId,omitzero"`
+	CrossSeedInstanceName string `json:"crossSeedInstanceName,omitempty"`
 }
 
 // CrossSeedSearchRun stores metadata for library search automation runs.
