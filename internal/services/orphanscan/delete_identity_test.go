@@ -440,7 +440,7 @@ func TestExecuteDeletion_UnreadableTorrentFileStopsTheRunBeforeAnyDelete(t *test
 	run, err := f.store.GetRun(t.Context(), f.runID)
 	require.NoError(t, err)
 	require.Equal(t, "failed", run.Status)
-	require.Contains(t, run.ErrorMessage, "could not check which files torrents use")
+	require.Contains(t, run.ErrorMessage, "could not check which files or folders torrents use")
 	require.Contains(t, run.ErrorMessage, broken)
 	require.Contains(t, run.ErrorMessage, "Fix access to that path or remove the torrent, then run a new scan.")
 }
@@ -483,7 +483,7 @@ func TestExecuteDeletion_TorrentFileWithoutReadableIdentityStopsTheRunBeforeAnyD
 	run, err := f.store.GetRun(t.Context(), f.runID)
 	require.NoError(t, err)
 	require.Equal(t, "failed", run.Status)
-	require.Contains(t, run.ErrorMessage, "could not check which files torrents use")
+	require.Contains(t, run.ErrorMessage, "could not check which files or folders torrents use")
 	require.Contains(t, run.ErrorMessage, opaque)
 }
 

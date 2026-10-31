@@ -1530,7 +1530,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			case errors.Is(err, fsops.ErrConnectionLost):
 				s.failRun(ctx, runID, instanceID, "Deletion stopped before deleting anything: the connection to the remote instance was lost while qui checked which files torrents use. Run a new scan to try again.")
 			default:
-				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which files torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", err))
+				what := "files"
+				if len(dirEntries) > 0 {
+					what = "files or folders"
+				}
+				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which %s torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", what, err))
 			}
 			return
 		}

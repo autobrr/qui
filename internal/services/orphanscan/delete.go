@@ -209,8 +209,9 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 // of the folders along the torrents' paths when a run lists folders. The file
 // map protects by path, so without these a torrent that reaches a listed file
 // or folder through a second path, such as a bind mount, a symlinked folder or
-// a hardlink, would lose it. A file and a folder never share an identity, so
-// one set holds both.
+// a hardlink, would lose it. One set holds both, which is safe only because
+// holds asks about regular files: a symlink to a reached folder inside a disc
+// unit must not keep the unit (#3612).
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
@@ -271,15 +272,10 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 // file read with Lstat. Like the scan (#3487), a target with more than one
 // link is kept when one of them is a torrent's.
 func (ids *inUseIDs) holds(info *fsops.LstatInfo) (bool, error) {
-	if ids == nil || !info.Mode.IsRegular() {
+	if !info.Mode.IsRegular() {
 		return false, nil
 	}
-	key, err := fileKey(info, ids.instance)
-	if err != nil {
-		return false, err
-	}
-	_, ok := ids.keys[key]
-	return ok, nil
+	return ids.reaches(info)
 }
 
 // reaches reports whether a torrent's path leads to info, a folder read with

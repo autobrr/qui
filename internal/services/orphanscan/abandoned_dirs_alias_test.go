@@ -206,7 +206,7 @@ func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 			*broken = filepath.Join(base, "late", "Sub")
 			require.NoError(t, os.MkdirAll(*broken, 0o750))
 			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: filepath.Dir(*broken)}, "Sub/x.mkv")
-		}, "could not check which files torrents use", ""},
+		}, "could not check which files or folders torrents use", ""},
 		{"listed folder identity unreadable", func(t *testing.T, f *orphanOnlyFixture, opaque *string, _ *string, _ string) {
 			*opaque = filepath.Join(f.defaultSavePath, "Movie")
 		}, "", "failed: file identity"},
@@ -470,4 +470,26 @@ func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlia
 			require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, f.runID)[magnetDir])
 		})
 	}
+}
+
+// A disc unit holding a symlink to a folder a torrent reaches is still deleted
+// whole, as before: only a torrent's file inside a unit keeps it (#3612).
+// regression: #3652
+func TestExecuteDeletion_DiscUnitHoldingASymlinkToAFolderATorrentReachesIsDeleted(t *testing.T) {
+	var unit, stored string
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-dir-link", orphanOnlyOptions{}, func(defaultSavePath string) {
+		unit = filepath.Join(defaultSavePath, "Movie")
+		writeFile(t, filepath.Join(unit, "BDMV", "STREAM", "00000.m2ts"))
+		stored = filepath.Join(filepath.Dir(defaultSavePath), "store", "Folder")
+		require.NoError(t, os.MkdirAll(stored, 0o750))
+		symlinkOrSkip(t, stored, filepath.Join(unit, "BDMV", "LINK"))
+		require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "leftover"), 0o750))
+	})
+	require.Contains(t, fileStatuses(t, f.store, f.runID), unit, "the scan lists it")
+
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: stored}, "x.mkv")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	require.Equal(t, "deleted: ", fileStatuses(t, f.store, f.runID)[unit])
+	require.DirExists(t, stored)
 }
