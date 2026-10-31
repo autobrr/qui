@@ -132,7 +132,10 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 
 	for i := range torrents {
 		t := torrents[i].Torrent
-		if t.Hash == "" || t.Progress < 1.0 || t.SavePath == "" {
+		// qBittorrent does not seed a torrent whose files it reports missing,
+		// so its files are not already seeding and cannot leave the index
+		// incomplete.
+		if t.Hash == "" || t.Progress < 1.0 || t.SavePath == "" || t.State == qbt.TorrentStateMissingFiles {
 			continue
 		}
 		hashes = append(hashes, t.Hash)

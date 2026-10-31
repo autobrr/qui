@@ -89,6 +89,7 @@ func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
 type stubTorrentFiles struct {
 	err      error
 	files    map[string]qbt.TorrentFiles
+	state    qbt.TorrentState
 	empty    bool
 	unsynced bool
 }
@@ -104,7 +105,7 @@ func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbi
 	if f.empty {
 		return nil, f.err
 	}
-	other := &qbt.Torrent{Hash: "bbbb", Progress: 1, SavePath: "/elsewhere"}
+	other := &qbt.Torrent{Hash: "bbbb", Progress: 1, SavePath: "/elsewhere", State: f.state}
 	return []qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: other}}}, f.err
 }
 
@@ -127,34 +128,40 @@ func (b statBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 // A torrent file the index could not read, or read without an identity,
 // leaves the index incomplete. So does a missing file that the torrent wants,
 // since a completed torrent has it on disk. A missing skipped file does not,
-// since qBittorrent never wrote it.
+// since qBittorrent may not have written it. A torrent qBittorrent reports
+// as missing files seeds nothing, so it is left out.
 //
 // regression: #3613
 func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	notExist := &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
-	notDir := &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}
+	onDisk := &fsops.LstatInfo{Size: 1, FileID: hardlink.UnixFileID(7, 42)}
 	for _, tt := range []struct {
 		name     string
+		state    qbt.TorrentState
 		priority int
 		info     *fsops.LstatInfo
 		err      error
 		want     bool
+		indexed  int
 	}{
+		{name: "file on disk", priority: 1, info: onDisk, want: true, indexed: 1},
 		{name: "missing skipped file", err: notExist, want: true},
-		{name: "parent of a skipped file is a file", err: notDir, want: true},
+		{name: "parent of a skipped file is a file", err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: true},
 		{name: "missing wanted file", priority: 1, err: notExist, want: false},
-		{name: "parent of a wanted file is a file", priority: 1, err: notDir, want: false},
-		{name: "unreadable file", priority: 1, err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false},
-		{name: "no identity", priority: 1, info: &fsops.LstatInfo{Size: 1}, want: false},
+		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false},
+		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false},
+		{name: "torrent reported missing files", state: qbt.TorrentStateMissingFiles, priority: 1, err: notExist, want: true},
+		{name: "file of a torrent reported missing files", state: qbt.TorrentStateMissingFiles, priority: 1, info: onDisk, want: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			files := qbt.TorrentFiles{{Name: "other.mkv", Priority: tt.priority}}
-			svc := &Service{torrentFiles: stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": files}}}
+			svc := &Service{torrentFiles: stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": files}, state: tt.state}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
 
 			index, err := svc.buildFileIDIndex(t.Context(), 1, backend, nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, index.complete)
+			require.Equal(t, tt.indexed, index.len())
 		})
 	}
 }
