@@ -19,7 +19,8 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
   // A routed result names the instance that held the match and the Cross-seed instance.
   const instanceLabel = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? crossSeedRouteText(t, result.instanceName, result.crossSeedInstanceName, result.success) : result.instanceName
-  const instanceBadgeWidth = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "max-w-64" : "w-20"
+  // A routed label is long, so it shrinks on a narrow screen and leaves room for the release name.
+  const instanceBadgeSize = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "shrink min-w-0 max-w-64" : "shrink-0 w-20"
   const hasResults = run.results && run.results.length > 0
   const successResults = run.results?.filter(r => r.success) ?? []
   const failedResults = run.results?.filter(r => !r.success && r.message) ?? []
@@ -56,7 +57,7 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
           <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
             {successResults.map((result, i) => (
               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                <Badge variant="default" className={`text-[10px] shrink-0 ${instanceBadgeWidth(result)} justify-center truncate`} title={instanceLabel(result)}>{instanceLabel(result)}</Badge>
+                <Badge variant="default" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`} title={instanceLabel(result)}><span className="truncate">{instanceLabel(result)}</span></Badge>
                 {result.indexerName && (
                   <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
                 )}
@@ -74,7 +75,7 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
                   return (
                     <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
                       <div className="flex items-center gap-2">
-                        <Badge variant="destructive" className={`text-[10px] shrink-0 ${instanceBadgeWidth(result)} justify-center truncate`} title={instanceLabel(result)}>{instanceLabel(result)}</Badge>
+                        <Badge variant="destructive" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`} title={instanceLabel(result)}><span className="truncate">{instanceLabel(result)}</span></Badge>
                         {result.indexerName && (
                           <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
                         )}

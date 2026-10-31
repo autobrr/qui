@@ -689,12 +689,13 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                   <div className="space-y-1">
                     {searchRuns.map(run => {
                       const sourceName = instances.find(instance => instance.id === run.instanceId)?.name ?? String(run.instanceId)
-                      // A routed result names the Cross-seed instance that got the add.
-                      const routeLabel = (result: CrossSeedSearchResult) => result.crossSeedInstanceName && (
-                        <span className="shrink-0 text-muted-foreground/80">
-                          {crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")}
-                        </span>
-                      )
+                      // A routed result names the Cross-seed instance that got the add. The label
+                      // truncates on a narrow screen, so the release name keeps its room.
+                      const routeLabel = (result: CrossSeedSearchResult) => {
+                        if (!result.crossSeedInstanceName) return null
+                        const text = crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")
+                        return <span className="min-w-0 truncate text-muted-foreground/80" title={text}>{text}</span>
+                      }
                       const successResults = run.results?.filter(r => r.status === "added") ?? []
                       const failedResults = run.results?.filter(r => r.status === "failed") ?? []
                       const skippedResults = run.results?.filter(r => r.status === "skipped") ?? []

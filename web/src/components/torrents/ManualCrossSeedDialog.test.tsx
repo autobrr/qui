@@ -132,6 +132,21 @@ it("says where a routed Manual match goes and refreshes the torrent list of the 
   await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["torrents-list", 2] }), { timeout: 2000 })
 })
 
+it("refreshes the source list when the result is not routed, also with a cached route", async () => {
+  mockRoute()
+  const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
+  // The route was cleared after the dialog read it.
+  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink" }] })
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByText("manualCrossSeed.routedTo:seeds")).toBeTruthy())
+  fireEvent.click(ui.getByRole("button", { name: "manualCrossSeed.apply" }))
+
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["torrents-list", 1] }), { timeout: 2000 })
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["torrents-list", 2] })
+})
+
 it("says where a routed season pack assembly goes", async () => {
   mockRoute()
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
