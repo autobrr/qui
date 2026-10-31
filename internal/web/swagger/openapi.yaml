@@ -5168,6 +5168,107 @@ paths:
         '503':
           description: Completion settings store not configured
 
+  /api/cross-seed/routes:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed routes
+      description: Returns every saved route from a Source instance to its Cross-seed instance, so a client can see which instances route to which.
+      responses:
+        '200':
+          description: Saved routes, ordered by Source instance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedRoute'
+        '500':
+          description: Failed to list cross-seed routes
+
+  /api/cross-seed/routes/{instanceId}:
+    parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Source instance ID
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get the cross-seed route of a Source instance
+      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes.
+      responses:
+        '200':
+          description: The saved route with its rule status, or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CrossSeedRouteStatus'
+                  - type: 'null'
+        '400':
+          description: Invalid instance ID
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to read or check the cross-seed route
+    put:
+      tags:
+        - Cross-Seed
+      summary: Save the cross-seed route of a Source instance
+      description: |
+        Saves the Cross-seed instance of a Source instance and the mapped path of each base folder. A base folder without a row, or with an empty mapped path, keeps the same path on both instances. The API refuses a route that breaks a route rule:
+        the Source instance must use hardlink or reflink mode with at least one base folder, have Local Filesystem Access, and not be a Cross-seed instance itself;
+        the Cross-seed instance must be another instance, have no route of its own, not be a remote instance, be online, and run qBittorrent 5.0 or later;
+        each mapped path must be absolute, no two rows may map to the same or nested paths, and every row keeps the same path when the Cross-seed instance has Local Filesystem Access.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - crossSeedInstanceId
+              properties:
+                crossSeedInstanceId:
+                  type: integer
+                rows:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CrossSeedRouteRow'
+      responses:
+        '200':
+          description: The saved route, with one row for each base folder of the Source instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedRoute'
+        '400':
+          description: Invalid request, or the route breaks a route rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or Cross-seed instance not found
+        '500':
+          description: Failed to save the cross-seed route
+    delete:
+      tags:
+        - Cross-Seed
+      summary: Clear the cross-seed route of a Source instance
+      responses:
+        '204':
+          description: Route cleared, or there was none
+        '400':
+          description: Invalid instance ID
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to clear the cross-seed route
+
   /api/cross-seed/season-pack/check:
     post:
       tags:
@@ -8392,6 +8493,44 @@ components:
           type: string
         note:
           type: string
+
+    CrossSeedRouteRow:
+      type: object
+      required:
+        - baseDir
+        - mappedPath
+      properties:
+        baseDir:
+          type: string
+          description: A base folder of the Source instance, cleaned with its path rules
+        mappedPath:
+          type: string
+          description: Where the Cross-seed instance sees the base folder. Empty means the same path on both instances.
+
+    CrossSeedRoute:
+      type: object
+      required:
+        - sourceInstanceId
+        - crossSeedInstanceId
+        - rows
+      properties:
+        sourceInstanceId:
+          type: integer
+        crossSeedInstanceId:
+          type: integer
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedRouteRow'
+
+    CrossSeedRouteStatus:
+      allOf:
+        - $ref: '#/components/schemas/CrossSeedRoute'
+        - type: object
+          properties:
+            brokenRule:
+              type: string
+              description: The route rule that the saved route breaks. Absent when the route passes every rule.
 
     InstanceCrossSeedCompletionSettings:
       type: object

@@ -41,6 +41,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
@@ -781,13 +782,17 @@ func (app *Application) runServer() {
 		return remotebackend.New(sshPool, inst)
 	})
 	crossSeedService.SetBackendPool(backendPool)
+	crossSeedRoutes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, backendPool)
+	crossSeedService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
+	automationService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
+	orphanScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
 	syncManager.SetFolderCleanup(folderCleanup)
@@ -800,6 +805,7 @@ func (app *Application) runServer() {
 	dirScanStore := models.NewDirScanStore(db)
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
+	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
@@ -946,6 +952,7 @@ func (app *Application) runServer() {
 		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		SeasonPackRunStore:               seasonPackRunStore,
+		CrossSeedRoutes:                  crossSeedRoutes,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DiscScanStore:                    discScanStore,
