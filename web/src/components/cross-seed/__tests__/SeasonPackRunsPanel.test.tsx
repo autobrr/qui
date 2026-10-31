@@ -21,7 +21,11 @@ vi.mock("@/lib/api", () => ({
 
 import { SeasonPackRunsPanel } from "../SeasonPackRunsPanel"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // The panel keeps its status filters in localStorage.
+  localStorage.clear()
+})
 
 function makeRun(overrides: Partial<SeasonPackRun>): SeasonPackRun {
   return {
@@ -56,6 +60,8 @@ describe("SeasonPackRunsPanel instances", () => {
 
   it("labels the reason of a failed routed apply", async () => {
     renderPanel(makeRun({ status: "failed", reason: "crossseed_instance_unavailable", instanceId: 1, addedInstanceId: 2 }))
+    // The panel shows only applied runs by default.
+    fireEvent.click(screen.getByRole("button", { name: /^seasonPackRuns\.statusLabels\.failed / }))
 
     expect(screen.getByText("· crossseed:routeStatus.unavailable")).toBeTruthy()
     expect(await screen.findByText("crossseed:route.foundOnRoutedTo:lib->seeds")).toBeTruthy()
