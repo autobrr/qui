@@ -469,14 +469,14 @@ func (s *Service) processLinkMode(
 	// The plan, not created, names a linked file: the build skips a target
 	// that already is the same file, so created can be empty.
 	if candidate.route != nil {
-		if failed := s.checkVisible(ctx, candidate, d, selectedBaseDir, plan.Files[0].TargetPath); failed != nil {
+		if status, message := s.checkVisible(ctx, candidate.route, d, selectedBaseDir, plan.Files[0].TargetPath); status != "" {
 			rollback()
 			log.Warn().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentName", torrentName).
-				Str("reason", failed.Message).
+				Str("reason", message).
 				Msg(logPrefix + "routed add stopped by the visibility check")
-			return linkModeResult{Used: true, Result: *failed}
+			return failure(status, message)
 		}
 	}
 
