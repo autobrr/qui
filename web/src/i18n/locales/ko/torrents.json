@@ -764,7 +764,8 @@
       "fewerIndexers": "더 적은 인덱서를 선택하여 검색해 보세요",
       "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
       "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
-    }
+    },
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다."
   },
   "columnFilter": {
     "filterColumn": "{{column}} 필터링",
@@ -1575,6 +1576,7 @@
     "tags": "태그",
     "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
     "savePath": "저장 경로(실제 대상 위치)",
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
     "cancel": "취소",
     "apply": "크로스시드 추가",
     "applying": "추가 중...",

@@ -16,9 +16,11 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCrossSeedInstanceOf } from "@/hooks/useCrossSeedInstanceOf"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
+import { crossSeedRouteStatusKeys } from "@/lib/cross-seed-utils"
 import { fileToBase64, overlapPercent } from "@/lib/manual-cross-seed"
 import { formatBytes } from "@/lib/utils"
 import type { ManualCrossSeedProposal } from "@/types"
@@ -49,6 +51,7 @@ export function ManualCrossSeedDialog({
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
   const { data: metadata } = useInstanceMetadata(instanceId)
+  const crossSeedInstance = useCrossSeedInstanceOf(instanceId, open)
 
   const [file, setFile] = useState<File | null>(null)
   const [torrentData, setTorrentData] = useState<string | null>(null)
@@ -185,14 +188,21 @@ export function ManualCrossSeedDialog({
         } else {
           toast.success(t("manualCrossSeed.applySuccess"))
         }
+        // A routed add lands on the Cross-seed instance.
+        const addedInstanceId = firstResult?.crossSeedInstanceId ?? crossSeedInstance?.id ?? instanceId
         // Same post-add delay as AddTorrentDialog: give qBittorrent a beat to
         // register the torrent before the list refetch.
         setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
+          void queryClient.invalidateQueries({ queryKey: ["torrents-list", addedInstanceId] })
         }, 500)
         handleOpenChange(false)
         onApplied?.()
       } else {
+        const routeStatusKey = crossSeedRouteStatusKeys[firstResult?.status ?? ""]
+        if (!response.assembly && routeStatusKey) {
+          toast.error(t("manualCrossSeed.applyFailed", { message: t(routeStatusKey) }), { description: firstResult?.message })
+          return
+        }
         toast.error(t("manualCrossSeed.applyFailed", { message: response.assembly ? assemblyReason(response.assembly.reason) : firstResult?.message ?? firstResult?.status ?? "" }))
       }
     },
@@ -246,7 +256,10 @@ export function ManualCrossSeedDialog({
     ...(proposalsQuery.data?.defaultTags ?? []),
     ...selectedTags,
   ])).sort()
-  const assemblyReason = (reason: string) => t(`manualCrossSeed.pack.reasons.${reason}`, { defaultValue: t("manualCrossSeed.pack.checkFailed") })
+  const assemblyReason = (reason: string) => {
+    const routeStatusKey = crossSeedRouteStatusKeys[reason]
+    return routeStatusKey ? t(routeStatusKey) : t(`manualCrossSeed.pack.reasons.${reason}`, { defaultValue: t("manualCrossSeed.pack.checkFailed") })
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -496,6 +509,9 @@ export function ManualCrossSeedDialog({
                 <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs break-all">
                   {assembling ? preview?.destination : selectedProposal?.effectiveSavePath}
                 </p>
+                {crossSeedInstance && (
+                  <p className="text-xs text-muted-foreground">{t("manualCrossSeed.routedTo", { instance: crossSeedInstance.name })}</p>
+                )}
               </div>
             </div>
           )}

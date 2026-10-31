@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import { afterEach, describe, it, expect, vi } from "vitest"
-import { cleanup, render } from "@testing-library/react"
+import { cleanup, fireEvent, render } from "@testing-library/react"
 import type { CrossSeedRun } from "@/types"
 
 // RSSRunItem only calls useTranslation; override it with an interpolating
@@ -15,7 +15,8 @@ vi.mock("react-i18next", async (importOriginal) => {
     ...actual,
     useTranslation: () => ({
       t: (key: string, opts?: Record<string, unknown>) =>
-        opts && "message" in opts ? `${key}:${String(opts.message)}` : key,
+        opts && "message" in opts ? `${key}:${String(opts.message)}`
+          : opts && "crossSeed" in opts ? `${key}:${String(opts.source)}->${String(opts.crossSeed)}` : key,
     }),
   }
 })
@@ -61,5 +62,56 @@ describe("RSSRunItem", () => {
     // React drops title={undefined}, so a span[title] query cannot see the
     // guard; assert on the rendered text instead.
     expect(container.textContent).not.toContain("automation.runError")
+  })
+
+  it("shows only the instance name on a result that is not routed", () => {
+    const { container } = render(
+      <RSSRunItem
+        run={makeRun({ status: "success", results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added", matchedTorrentName: "Cedar.Harbor.S01E01" }] })}
+        formatDateValue={() => "just now"}
+      />
+    )
+    fireEvent.click(container.querySelector("[aria-expanded]")!)
+
+    expect(container.querySelector("span[title=\"lib\"]")?.textContent).toBe("lib")
+    expect(container.textContent).not.toContain("route.")
+  })
+
+  it("names the instance that held the match and the Cross-seed instance on a routed add", () => {
+    const { container } = render(
+      <RSSRunItem
+        run={makeRun({
+          status: "success",
+          results: [{
+            instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", matchedTorrentName: "Cedar.Harbor.S01E01",
+            crossSeedInstanceId: 2, crossSeedInstanceName: "seeds",
+          }],
+        })}
+        formatDateValue={() => "just now"}
+      />
+    )
+    fireEvent.click(container.querySelector("[aria-expanded]")!)
+
+    expect(container.textContent).toContain("crossseed:route.foundOnAddedTo:lib->seeds")
+  })
+
+  it("labels the status of a failed routed add", () => {
+    const { container } = render(
+      <RSSRunItem
+        run={makeRun({
+          status: "partial",
+          results: [{
+            instanceId: 1, instanceName: "lib", success: false, status: "crossseed_instance_cannot_see_data", message: "backend detail",
+            crossSeedInstanceId: 2, crossSeedInstanceName: "seeds",
+          }],
+        })}
+        formatDateValue={() => "just now"}
+      />
+    )
+    fireEvent.click(container.querySelector("[aria-expanded]")!)
+
+    expect(container.textContent).toContain("crossseed:routeStatus.cannotSeeData")
+    expect(container.textContent).toContain("backend detail")
+    expect(container.textContent).toContain("crossseed:route.foundOnRoutedTo:lib->seeds")
   })
 })

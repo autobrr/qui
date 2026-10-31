@@ -40,11 +40,12 @@
     "enableSwitch": "Ativar automação RSS",
     "intervalLabel": "Intervalo de execução RSS (minutos)",
     "intervalTooltip": "A automação processa o feed completo de cada indexador Torznab ativado a cada execução. O intervalo mínimo é de {{min}} minutos para evitar sobrecarregar os indexadores.",
-    "targetInstances": "Instâncias alvo",
+    "instancesToSearch": "Instâncias para buscar",
+    "instancesToSearchHelp": "A automação RSS busca correspondências nos torrents destas instâncias. Quando uma instância tem uma instância de cross-seed, o qui adiciona os cross-seeds encontrados nela a essa instância de cross-seed.",
     "selectInstances": "Selecione as instâncias do qBittorrent",
     "noActiveInstances": "Nenhuma instância ativa disponível",
     "noInstancesAvailable": "Nenhuma instância disponível.",
-    "pickInstance": "Escolha pelo menos uma instância para receber cross-seeds.",
+    "pickInstance": "Escolha pelo menos uma instância para buscar.",
     "instancesSelected": "Instâncias selecionadas: {{count}}.",
     "targetIndexers": "Indexadores alvo",
     "allEnabledIndexers": "Todos os indexadores ativados (deixe vazio para todos)",
@@ -55,13 +56,13 @@
     "includeCategories": "Incluir categorias",
     "allCategories": "Todas as categorias (deixe vazio para todas)",
     "typeToAddCategories": "Digite para adicionar categorias",
-    "selectInstancesToLoadCategories": "Selecione instâncias alvo para carregar categorias",
+    "selectInstancesToLoadCategories": "Selecione as instâncias para buscar e carregar as categorias",
     "allCategoriesIncluded": "Todas as categorias serão incluídas.",
     "selectedCategoriesMatched": "Categorias correspondentes: {{count}}.",
     "includeTags": "Incluir tags",
     "allTags": "Todas as tags (deixe vazio para todas)",
     "typeToAddTags": "Digite para adicionar tags",
-    "selectInstancesToLoadTags": "Selecione instâncias alvo para carregar tags",
+    "selectInstancesToLoadTags": "Selecione as instâncias para buscar e carregar as tags",
     "allTagsIncluded": "Todas as tags serão incluídas.",
     "selectedTagsMatched": "Tags correspondentes: {{count}}.",
     "excludeCategories": "Excluir categorias",
@@ -425,9 +426,9 @@
     "baseDirRequired": "O diretório base deve ser definido primeiro.",
     "unknownError": "Erro desconhecido",
     "noIndexersConfigured": "Nenhum indexador Torznab configurado",
-    "pickInstanceBeforeRunning": "Escolha pelo menos uma instância para receber cross-seeds antes de executar a automação RSS.",
+    "pickInstanceBeforeRunning": "Escolha pelo menos uma instância para buscar antes de executar a automação RSS.",
     "enableAutomationAfterIndexers": "Ative a automação RSS apenas depois de configurar os indexadores Torznab.",
-    "saveSettingsFirst": "Salve as configurações de automação RSS para aplicar as instâncias alvo atualizadas antes de executar.",
+    "saveSettingsFirst": "Salve as configurações de automação RSS para aplicar as instâncias para buscar atualizadas antes de executar.",
     "selectInstanceToRun": "Selecione uma instância para execução",
     "seededSearchNeedsGazelle": "A Busca de Torrents Semeados requer o Gazelle",
     "enableGazelleDescription": "Ative a correspondência Gazelle (OPS/RED) antes de executar com o Torznab desativado.",
@@ -674,5 +675,13 @@
       "cancel": "Cancelar",
       "delete": "Excluir"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Encontrado em {{source}}, adicionado a {{crossSeed}}",
+    "foundOnRoutedTo": "Encontrado em {{source}}, encaminhado para {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Instância de cross-seed indisponível",
+    "cannotSeeData": "A instância de cross-seed não vê os dados"
   }
 }

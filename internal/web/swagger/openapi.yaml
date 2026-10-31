@@ -5661,7 +5661,7 @@ paths:
                           type: string
                         effective_save_path:
                           type: string
-                          description: Where a Manual match apply would land the torrent (target save path, or the link-mode destination)
+                          description: Where a Manual match apply would land the torrent (target save path, or the link-mode destination). When the instance routes its cross-seeds, the path where its Cross-seed instance sees that destination.
                         overlap_bytes:
                           type: integer
                           format: int64

@@ -40,11 +40,12 @@
     "enableSwitch": "Activa l'automatització d'RSS",
     "intervalLabel": "Interval d'execució de l'RSS (minuts)",
     "intervalTooltip": "A cada execució, l'automatització processa el canal sencer de cada indexador de Torznab activat. L'interval mínim és de {{min}} minuts per no castigar els indexadors.",
-    "targetInstances": "Instàncies de destinació",
+    "instancesToSearch": "Instàncies on cercar",
+    "instancesToSearchHelp": "L'automatització d'RSS cerca coincidències als torrents d'aquestes instàncies. Quan una instància té una instància de cross-seed, qui afegeix a aquesta instància de cross-seed els cross-seed que hi troba.",
     "selectInstances": "Selecciona instàncies de qBittorrent",
     "noActiveInstances": "No hi ha cap instància activa disponible",
     "noInstancesAvailable": "No hi ha cap instància disponible.",
-    "pickInstance": "Tria com a mínim una instància per rebre els cross-seed.",
+    "pickInstance": "Tria com a mínim una instància on cercar.",
     "instancesSelected": "{{count}} instància/es seleccionada/es.",
     "targetIndexers": "Indexadors de destinació",
     "allEnabledIndexers": "Tots els indexadors activats (deixa-ho buit per a tots)",
@@ -55,13 +56,13 @@
     "includeCategories": "Inclou aquestes categories",
     "allCategories": "Totes les categories (deixa-ho buit per a totes)",
     "typeToAddCategories": "Escriu per afegir categories",
-    "selectInstancesToLoadCategories": "Selecciona les instàncies de destinació per carregar les categories",
+    "selectInstancesToLoadCategories": "Selecciona les instàncies on cercar per carregar les categories",
     "allCategoriesIncluded": "S'hi inclouran totes les categories.",
     "selectedCategoriesMatched": "Només es tindran en compte {{count}} categoria/es seleccionada/es.",
     "includeTags": "Inclou aquestes etiquetes",
     "allTags": "Totes les etiquetes (deixa-ho buit per a totes)",
     "typeToAddTags": "Escriu per afegir etiquetes",
-    "selectInstancesToLoadTags": "Selecciona les instàncies de destinació per carregar les etiquetes",
+    "selectInstancesToLoadTags": "Selecciona les instàncies on cercar per carregar les etiquetes",
     "allTagsIncluded": "S'hi inclouran totes les etiquetes.",
     "selectedTagsMatched": "Només es tindran en compte {{count}} etiqueta/es seleccionada/es.",
     "excludeCategories": "Exclou aquestes categories",
@@ -425,9 +426,9 @@
     "baseDirRequired": "Primer cal definir el directori base.",
     "unknownError": "Error desconegut",
     "noIndexersConfigured": "No hi ha cap indexador de Torznab configurat",
-    "pickInstanceBeforeRunning": "Tria com a mínim una instància per rebre els cross-seed abans d'executar l'automatització d'RSS.",
+    "pickInstanceBeforeRunning": "Tria com a mínim una instància on cercar abans d'executar l'automatització d'RSS.",
     "enableAutomationAfterIndexers": "Activa l'automatització d'RSS només després d'haver configurat els indexadors de Torznab.",
-    "saveSettingsFirst": "Desa la configuració de l'automatització d'RSS per aplicar les instàncies de destinació actualitzades abans d'executar-la.",
+    "saveSettingsFirst": "Desa la configuració de l'automatització d'RSS per aplicar les instàncies on cercar actualitzades abans d'executar-la.",
     "selectInstanceToRun": "Selecciona una instància sobre la qual executar-ho",
     "seededSearchNeedsGazelle": "La cerca de torrents sembrats necessita Gazelle",
     "enableGazelleDescription": "Activa la coincidència amb Gazelle (OPS/RED) abans d'executar-ho amb Torznab desactivat.",
@@ -674,5 +675,13 @@
       "cancel": "Cancel·la",
       "delete": "Elimina"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Trobat a {{source}}, afegit a {{crossSeed}}",
+    "foundOnRoutedTo": "Trobat a {{source}}, redirigit a {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Instància de cross-seed no disponible",
+    "cannotSeeData": "La instància de cross-seed no veu les dades"
   }
 }

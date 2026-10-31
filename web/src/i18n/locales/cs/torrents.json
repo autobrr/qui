@@ -882,7 +882,8 @@
       "fewerIndexers": "Vyhledávejte s méně indexery",
       "useRss": "Použijte funkci RSS automatizace pro trvalé křížové sdílení",
       "checkIndexers": "Zkontrolujte help stránky indexerů a zjistěte, které jsou omezené"
-    }
+    },
+    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrovat {{column}}",
@@ -1731,6 +1732,7 @@
     "tags": "Štítky",
     "newTagPlaceholder": "Zadejte štítek a stiskněte Enter",
     "savePath": "Cesta uložení (skutečné umístění)",
+    "routedTo": "Křížové sdílení jde do instance pro křížové sdílení {{instance}}.",
     "cancel": "Zrušit",
     "apply": "Přidat cross-seed",
     "applying": "Přidávání...",

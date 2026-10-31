@@ -8,25 +8,38 @@ import type { ManualAssembleResponse, ManualCrossSeedProposalsResponse } from "@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
-import { afterEach, expect, it, vi } from "vitest"
+import { toast } from "sonner"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 import "@/i18n"
 
 const { metadataResult, translationResult } = vi.hoisted(() => ({
   metadataResult: { data: undefined },
-  translationResult: { t: (key: string) => key },
+  // Echoes the key, plus the instance name or the message that the routed text interpolates.
+  translationResult: { t: (key: string, opts?: { instance?: string; message?: string }) => opts?.instance ?? opts?.message ? `${key}:${opts.instance ?? opts.message}` : key },
 }))
 
 vi.mock("@/lib/api", () => ({ api: {
   getManualCrossSeedProposals: vi.fn(), checkManualAssemble: vi.fn(),
   applyManualAssemble: vi.fn(), applyManualCrossSeed: vi.fn(),
+  listCrossSeedRoutes: vi.fn(), getInstances: vi.fn(),
 } }))
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/lib/manual-cross-seed", () => ({ fileToBase64: async () => "torrent", overlapPercent: (fraction: number) => Math.round(fraction * 100) }))
 vi.mock("react-i18next", async (importOriginal) => ({ ...await importOriginal<typeof import("react-i18next")>(), useTranslation: () => translationResult }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
-afterEach(() => { cleanup(); vi.resetAllMocks() })
+beforeEach(() => {
+  vi.mocked(api.listCrossSeedRoutes).mockResolvedValue([])
+  vi.mocked(api.getInstances).mockResolvedValue([])
+})
+afterEach(() => { cleanup(); vi.resetAllMocks(); vi.restoreAllMocks() })
+
+// Instance 1 routes its cross-seeds to the Cross-seed instance "seeds".
+function mockRoute() {
+  vi.mocked(api.listCrossSeedRoutes).mockResolvedValue([{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] }])
+  vi.mocked(api.getInstances).mockResolvedValue([{ id: 1, name: "lib" }, { id: 2, name: "seeds" }] as Awaited<ReturnType<typeof api.getInstances>>)
+}
 
 const proposals: ManualCrossSeedProposalsResponse = {
   packMode: true, packEpisodeCount: 4, assemblyUnavailableReason: "", proposalLimit: 14, proposalsTruncated: false,
@@ -37,6 +50,8 @@ const preview: ManualAssembleResponse = {
   ready: true, applied: false, reason: "", message: "", targets: proposals.proposals.map(p => ({ hash: p.hash, name: p.name, reason: "" })),
   matchedEpisodes: 2, totalEpisodes: 4, coverage: 0.5, linkedBytes: 200, missingBytes: 200, destination: "/links/local", defaultCategory: "pack", linkMode: "hardlink",
 }
+
+const singleProposals: ManualCrossSeedProposalsResponse = { ...proposals, packMode: false, pinnedCategory: "" }
 
 function openDialog() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
@@ -102,4 +117,59 @@ it("shows disabled pack checkboxes with a reason while retaining single-target s
   expect(ui.getAllByRole("checkbox").every(box => box.hasAttribute("disabled"))).toBe(true)
   expect(ui.getByText("manualCrossSeed.pack.reasons.no_link_mode")).toBeTruthy()
   expect(ui.getByRole("button", { name: "manualCrossSeed.apply" }).hasAttribute("disabled")).toBe(false)
+})
+
+it("says where a routed Manual match goes and refreshes the torrent list of the Cross-seed instance", async () => {
+  mockRoute()
+  const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
+  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }] })
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByText("manualCrossSeed.routedTo:seeds")).toBeTruthy())
+  fireEvent.click(ui.getByRole("button", { name: "manualCrossSeed.apply" }))
+
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["torrents-list", 2] }), { timeout: 2000 })
+})
+
+it("says where a routed season pack assembly goes", async () => {
+  mockRoute()
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
+  vi.mocked(api.checkManualAssemble).mockResolvedValue({ ...preview, destination: "/seeds-data/pack" })
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByText("/seeds-data/pack")).toBeTruthy())
+  expect(ui.getByText("manualCrossSeed.routedTo:seeds")).toBeTruthy()
+})
+
+it("shows no routed note for an instance without a route", async () => {
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByText("/old-path")).toBeTruthy())
+  expect(ui.queryByText(/manualCrossSeed\.routedTo/)).toBeNull()
+})
+
+it("labels a failed routed Manual match in the toast", async () => {
+  mockRoute()
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
+  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: false, results: [{
+    instanceId: 1, instanceName: "lib", success: false, status: "crossseed_instance_cannot_see_data",
+    message: "backend detail", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds",
+  }] })
+  const ui = openDialog()
+  await waitFor(() => expect(ui.getByText("/old-path")).toBeTruthy())
+
+  fireEvent.click(ui.getByRole("button", { name: "manualCrossSeed.apply" }))
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("manualCrossSeed.applyFailed:crossseed:routeStatus.cannotSeeData", { description: "backend detail" }))
+})
+
+it("labels a routed assembly reason", async () => {
+  mockRoute()
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
+  vi.mocked(api.checkManualAssemble).mockResolvedValue({ ...preview, ready: false, reason: "crossseed_instance_unavailable" })
+  const ui = openDialog()
+
+  await waitFor(() => expect(ui.getByText("crossseed:routeStatus.unavailable")).toBeTruthy())
 })

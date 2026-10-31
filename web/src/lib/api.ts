@@ -29,6 +29,7 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
+  CrossSeedRoute,
   CrossSeedInstanceResult,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
@@ -488,6 +489,8 @@ type RawCrossSeedInstanceResult = {
   status: string
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
+  cross_seed_instance_id?: number
+  cross_seed_instance_name?: string
 }
 
 function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): CrossSeedInstanceResult {
@@ -497,6 +500,8 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     success: instance.success,
     status: instance.status,
     message: instance.message,
+    crossSeedInstanceId: instance.cross_seed_instance_id,
+    crossSeedInstanceName: instance.cross_seed_instance_name,
     matchedTorrent: instance.matched_torrent? {
       hash: instance.matched_torrent.hash ?? "",
       name: instance.matched_torrent.name ?? "",
@@ -1693,6 +1698,10 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(payload),
     })
+  }
+
+  async listCrossSeedRoutes(): Promise<CrossSeedRoute[]> {
+    return this.request<CrossSeedRoute[]>("/cross-seed/routes")
   }
 
   async listCrossSeedBlocklist(instanceId?: number): Promise<CrossSeedBlocklistEntry[]> {

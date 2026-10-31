@@ -40,11 +40,12 @@
     "enableSwitch": "启用 RSS 自动化",
     "intervalLabel": "RSS 运行间隔（分钟）",
     "intervalTooltip": "自动化每次运行时会处理每个已启用 Torznab 索引器的完整订阅源。最小间隔为 {{min}} 分钟，以避免对索引器造成过多请求。",
-    "targetInstances": "目标实例",
+    "instancesToSearch": "要搜索的实例",
+    "instancesToSearchHelp": "RSS 自动化会在这些实例的种子中查找匹配。当实例有辅种实例时，qui 会把在该实例上找到的辅种添加到对应的辅种实例。",
     "selectInstances": "选择 qBittorrent 实例",
     "noActiveInstances": "没有可用的活跃实例",
     "noInstancesAvailable": "没有可用的实例。",
-    "pickInstance": "请选择至少一个实例来接收辅种。",
+    "pickInstance": "请选择至少一个要搜索的实例。",
     "instancesSelected": "已选择 {{count}} 个实例。",
     "targetIndexers": "目标索引器",
     "allEnabledIndexers": "所有已启用的索引器（留空表示全部）",
@@ -55,13 +56,13 @@
     "includeCategories": "包含分类",
     "allCategories": "所有分类（留空表示全部）",
     "typeToAddCategories": "输入以添加分类",
-    "selectInstancesToLoadCategories": "选择目标实例以加载分类",
+    "selectInstancesToLoadCategories": "选择要搜索的实例以加载分类",
     "allCategoriesIncluded": "将包含所有分类。",
     "selectedCategoriesMatched": "仅匹配已选择的 {{count}} 个分类。",
     "includeTags": "包含标签",
     "allTags": "所有标签（留空表示全部）",
     "typeToAddTags": "输入以添加标签",
-    "selectInstancesToLoadTags": "选择目标实例以加载标签",
+    "selectInstancesToLoadTags": "选择要搜索的实例以加载标签",
     "allTagsIncluded": "将包含所有标签。",
     "selectedTagsMatched": "仅匹配已选择的 {{count}} 个标签。",
     "excludeCategories": "排除分类",
@@ -419,9 +420,9 @@
     "baseDirRequired": "必须先设置基础目录。",
     "unknownError": "未知错误",
     "noIndexersConfigured": "未配置 Torznab 索引器",
-    "pickInstanceBeforeRunning": "运行 RSS 自动化前请先选择至少一个实例来接收辅种。",
+    "pickInstanceBeforeRunning": "运行 RSS 自动化前请先选择至少一个要搜索的实例。",
     "enableAutomationAfterIndexers": "请在配置 Torznab 索引器后再启用 RSS 自动化。",
-    "saveSettingsFirst": "请先保存 RSS 自动化设置以应用更新的目标实例后再运行。",
+    "saveSettingsFirst": "请先保存 RSS 自动化设置以应用更新的要搜索的实例后再运行。",
     "selectInstanceToRun": "请选择一个要运行的实例",
     "seededSearchNeedsGazelle": "做种搜索需要 Gazelle",
     "enableGazelleDescription": "在禁用 Torznab 的情况下运行前，请先启用 Gazelle 匹配（OPS/RED）。",
@@ -664,5 +665,13 @@
       "cancel": "取消",
       "delete": "删除"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "在 {{source}} 上找到，已添加到 {{crossSeed}}",
+    "foundOnRoutedTo": "在 {{source}} 上找到，已转发到 {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "辅种实例不可用",
+    "cannotSeeData": "辅种实例无法看到数据"
   }
 }

@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
+import { useInstances } from "@/hooks/useInstances"
 import { useClientSetting } from "@/lib/client-settings"
+import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import type { SeasonPackRun } from "@/types"
 import { ChevronDown, History, Loader2, RefreshCw, Search } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
@@ -94,7 +96,17 @@ export function SeasonPackRunsPanel({
   formatDateValue,
 }: SeasonPackRunsPanelProps) {
   const { t } = useTranslation("crossseed")
+  const { instances } = useInstances()
   const [open, setOpen] = useState(false)
+  // An instance that no longer exists keeps its id.
+  const instanceName = (id: number) => instances?.find(instance => instance.id === id)?.name ?? String(id)
+  const isRouted = (run: SeasonPackRun) =>
+    run.instanceId !== undefined && run.addedInstanceId !== undefined && run.addedInstanceId !== run.instanceId
+  const instanceLabel = (run: SeasonPackRun) => {
+    if (run.instanceId === undefined) return "—"
+    if (!isRouted(run)) return instanceName(run.instanceId)
+    return crossSeedRouteText(t, instanceName(run.instanceId), instanceName(run.addedInstanceId!), run.status === "applied")
+  }
   const [search, setSearch] = useState("")
   const [statusFilters, setStatusFilters] = useClientSetting<StatusFilter[]>("qui-season-pack-run-status-filters", {
     defaultValue: DEFAULT_STATUS_FILTERS,
@@ -213,7 +225,8 @@ export function SeasonPackRunsPanel({
               <div className="overflow-hidden rounded-md border border-border/70">
                 <div className="max-h-[420px] divide-y divide-border/70 overflow-y-auto">
                   {filteredRuns.map(run => {
-                    const reasonLabel = formatSeasonPackReason(run)
+                    const routeStatusKey = crossSeedRouteStatusKeys[run.reason]
+                    const reasonLabel = routeStatusKey ? t(routeStatusKey) : formatSeasonPackReason(run)
                     return (
                       <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                         <div className="min-w-0 space-y-1">
@@ -225,10 +238,11 @@ export function SeasonPackRunsPanel({
                           <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
                           {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:min-w-72 md:grid-cols-3">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:w-80 md:grid-cols-3">
                           <span>{t("seasonPackRuns.coverage")} <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
                           <span>{t("seasonPackRuns.episodes")} <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
-                          <span>{t("seasonPackRuns.instance")} <span className="font-medium text-foreground">{run.instanceId ?? "—"}</span></span>
+                          {/* A routed label is long, so it takes the full row and the column keeps its width. */}
+                          <span className={isRouted(run) ? "col-span-2 md:col-span-3" : undefined}>{t("seasonPackRuns.instance")} <span className="font-medium text-foreground">{instanceLabel(run)}</span></span>
                           <span>{t("seasonPackRuns.mode")} <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
                           <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>
                         </div>

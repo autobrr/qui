@@ -963,3 +963,18 @@ func TestLibraryScanNeedsTheCrossSeedInstance(t *testing.T) {
 		})
 	}
 }
+
+// A Manual match preview shows where the Cross-seed instance sees the tree,
+// also while the Cross-seed instance is offline: the preview reads the saved
+// route and sends nothing to the Cross-seed instance.
+func TestRoutedManualMatchPreviewShowsTheMappedPath(t *testing.T) {
+	r := newRoutedRig(t, true)
+	r.sync.cached = map[int][]qbittorrent.CrossInstanceTorrentView{r.source.ID: buildCrossInstanceViews(r.source, r.candidate().Torrents)}
+	torrentBytes := createNamedFileTestTorrent(t, routedName, routedName+".mkv", 100)
+
+	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, "")
+
+	require.NoError(t, err)
+	require.Len(t, resp.Proposals, 1)
+	assert.Equal(t, routedMapped, resp.Proposals[0].EffectiveSavePath)
+}

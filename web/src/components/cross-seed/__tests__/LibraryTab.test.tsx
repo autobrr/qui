@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   },
   searchSettings: { instanceId: 1, categories: [], tags: [], indexerIds: [] as number[], intervalSeconds: 60, cooldownMinutes: 720 },
   instances: [{ id: 1, name: "main", isActive: true }],
+  searchRuns: [] as unknown[],
   indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
@@ -29,7 +30,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts && "crossSeed" in opts ? `${key}:${String(opts.source)}->${String(opts.crossSeed)}` : key,
+  }),
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@tanstack/react-router", () => ({
@@ -47,7 +51,7 @@ vi.mock("@/lib/api", () => ({
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve(mocks.indexers),
     getCrossSeedSearchStatus: () => Promise.resolve({ running: false }),
-    listCrossSeedSearchRuns: () => Promise.resolve([]),
+    listCrossSeedSearchRuns: () => Promise.resolve(mocks.searchRuns),
     getCategories: () => Promise.resolve({}),
     getTags: () => Promise.resolve([]),
     patchCrossSeedSearchSettings: mocks.patchSearch,
@@ -75,6 +79,7 @@ afterEach(() => {
   Object.assign(mocks.settings, { gazelleEnabled: false, orpheusApiKey: "", redactedApiKey: "" })
   mocks.searchSettings.indexerIds = []
   mocks.indexers = []
+  mocks.searchRuns = []
 })
 
 function renderTab() {
@@ -166,5 +171,35 @@ describe("LibraryTab save", () => {
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
     expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], disableTorznab: false })
+  })
+})
+
+describe("LibraryTab run results", () => {
+  const run = (results: unknown[]) => ({
+    id: 7, instanceId: 1, status: "success", startedAt: "2026-01-01T00:00:00Z", totalTorrents: 1, processed: 1,
+    torrentsWithCrossSeeds: 1, crossSeedsAdded: 1, torrentsFailed: 0, torrentsSkipped: 0, filters: {}, indexerIds: [],
+    createdAt: "2026-01-01T00:00:00Z", results,
+  })
+  const result = { torrentHash: "abc", torrentName: "Cedar.Harbor.S01E01", indexerName: "alpha", releaseTitle: "Cedar.Harbor.S01E01", processedAt: "2026-01-01T00:00:00Z" }
+
+  async function openRun() {
+    renderTab()
+    fireEvent.click(await screen.findByText("scan.recentRuns"))
+    fireEvent.click(await screen.findByText("scan.torrentsCount"))
+  }
+
+  it("names the Cross-seed instance that received a routed add", async () => {
+    mocks.searchRuns = [run([{ ...result, status: "added", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }])]
+    await openRun()
+
+    expect(await screen.findByText("crossseed:route.foundOnAddedTo:main->seeds")).toBeTruthy()
+  })
+
+  it("shows no instance on an add that is not routed", async () => {
+    mocks.searchRuns = [run([{ ...result, status: "added" }])]
+    await openRun()
+
+    expect(await screen.findByText("Cedar.Harbor.S01E01")).toBeTruthy()
+    expect(screen.queryByText(/route\./)).toBeNull()
   })
 })

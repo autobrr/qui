@@ -97,19 +97,29 @@ func (c CrossSeedCandidate) newResult(status, message string) InstanceCrossSeedR
 // route, a non-nil error means that the route breaks a route rule or that the
 // Cross-seed instance is unavailable.
 func (s *Service) routeOf(ctx context.Context, instanceID int) (*candidateRoute, error) {
-	if s.crossSeedRoutes == nil {
-		return nil, nil
-	}
-	route, err := s.crossSeedRoutes.Get(ctx, instanceID)
+	route, saved, err := s.savedRouteOf(ctx, instanceID)
 	if err != nil || route == nil {
 		return nil, err
 	}
-	crossSeed, err := s.instanceStore.Get(ctx, route.CrossSeedInstanceID)
-	if err != nil {
-		return nil, err
-	}
 	// The rule check also makes sure that the Cross-seed instance is available.
-	return &candidateRoute{rows: route.Rows, crossSeed: crossSeed}, s.crossSeedRoutes.Check(ctx, route)
+	return route, s.crossSeedRoutes.Check(ctx, saved)
+}
+
+// savedRouteOf reads the saved route of instanceID without the rule check, or
+// nil when it has none.
+func (s *Service) savedRouteOf(ctx context.Context, instanceID int) (*candidateRoute, *models.CrossSeedRoute, error) {
+	if s.crossSeedRoutes == nil {
+		return nil, nil, nil
+	}
+	saved, err := s.crossSeedRoutes.Get(ctx, instanceID)
+	if err != nil || saved == nil {
+		return nil, nil, err
+	}
+	crossSeed, err := s.instanceStore.Get(ctx, saved.CrossSeedInstanceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &candidateRoute{rows: saved.Rows, crossSeed: crossSeed}, saved, nil
 }
 
 // sortSourceInstancesFirst puts the candidates of Source instances first, in a stable

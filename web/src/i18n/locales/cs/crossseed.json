@@ -40,11 +40,12 @@
     "enableSwitch": "Zapnout automatizaci RSS",
     "intervalLabel": "Interval RSS spuštění (minut)",
     "intervalTooltip": "Automatizace zpracovává celý feed z každého zapnutého Torznab indexeru při každém spuštění. Minimální interval je {{min}} minut, aby se nezatěžovaly indexery.",
-    "targetInstances": "Cílové instance",
+    "instancesToSearch": "Prohledávané instance",
+    "instancesToSearchHelp": "Automatizace RSS hledá shody v torrentech těchto instancí. Když má instance instanci pro křížové sdílení, qui přidá křížová sdílení nalezená na ní do této instance pro křížové sdílení.",
     "selectInstances": "Vybrat qBittorrent instance",
     "noActiveInstances": "Žádné aktivní instance",
     "noInstancesAvailable": "Žádné instance",
-    "pickInstance": "Vyberte alespoň jednu instanci, aby obdržela křížové sdílení.",
+    "pickInstance": "Vyberte alespoň jednu instanci k prohledání.",
     "instancesSelected": "{{count}} instance vybrána(y).",
     "targetIndexers": "Cílové indexery",
     "allEnabledIndexers": "Všechny zapnuté indexery (nechat prázdné pro všechny)",
@@ -55,13 +56,13 @@
     "includeCategories": "Zahrnout kategorie",
     "allCategories": "Všechny kategorie (nechat prázdné pro všechny)",
     "typeToAddCategories": "Zadat kategorii",
-    "selectInstancesToLoadCategories": "Vybrat cílové instance, aby načetly kategorie",
+    "selectInstancesToLoadCategories": "Vyberte prohledávané instance, aby se načetly kategorie",
     "allCategoriesIncluded": "Všechny kategorie budou zahrnuty.",
     "selectedCategoriesMatched": "Pouze {{count}} vybraná(é) kategorie bude(ou) shody.",
     "includeTags": "Zahrnout štítky",
     "allTags": "Všechny štítky (nechat prázdné pro všechny)",
     "typeToAddTags": "Zadat štítek",
-    "selectInstancesToLoadTags": "Vybrat cílové instance, aby načetly štítky",
+    "selectInstancesToLoadTags": "Vyberte prohledávané instance, aby se načetly štítky",
     "allTagsIncluded": "Všechny štítky budou zahrnuty.",
     "selectedTagsMatched": "Pouze {{count}} vybraný štítek(y) budou shody.",
     "excludeCategories": "Vyloučit kategorie",
@@ -433,9 +434,9 @@
     "baseDirRequired": "Nejprve musí být nastaven základní adresář.",
     "unknownError": "Neznámá chyba",
     "noIndexersConfigured": "Žádné Torznab indexery",
-    "pickInstanceBeforeRunning": "Vyberte alespoň jednu instanci, aby obdržela křížové sdílení před spuštěním automatizace RSS.",
+    "pickInstanceBeforeRunning": "Před spuštěním automatizace RSS vyberte alespoň jednu instanci k prohledání.",
     "enableAutomationAfterIndexers": "Povolit automatizaci RSS pouze po konfiguraci Torznab indexerů.",
-    "saveSettingsFirst": "Uložte nastavení automatizace RSS, aby se aplikovaly aktualizované cílové instance před spuštěním.",
+    "saveSettingsFirst": "Uložte nastavení automatizace RSS, aby se před spuštěním použily aktualizované prohledávané instance.",
     "selectInstanceToRun": "Vyberte instanci, proti které se má spustit",
     "seededSearchNeedsGazelle": "Hledání seedovaných torrentů vyžaduje Gazelle",
     "enableGazelleDescription": "Povolit shodování Gazelle (OPS/RED) před spuštěním s vypnutým Torznab.",
@@ -687,5 +688,13 @@
       "hardlink": "Hardlink",
       "reflink": "Reflink"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Nalezeno na {{source}}, přidáno do {{crossSeed}}",
+    "foundOnRoutedTo": "Nalezeno na {{source}}, přesměrováno do {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Instance pro křížové sdílení není dostupná",
+    "cannotSeeData": "Instance pro křížové sdílení nevidí data"
   }
 }
