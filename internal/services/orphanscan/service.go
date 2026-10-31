@@ -910,7 +910,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 	protected.setScanRoots(scanRoots)
-	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs()), backend)
+	// run.ScanPaths keeps every root so deletion still resolves the narrowest
+	// one per file, but walking an ancestor already covers its descendants.
+	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
+	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs(),
+		linkedPeerRoots(ctx, result.peerRoots, scanRoots, walkRoots, backend)), backend)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
@@ -920,9 +924,6 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
 
-	// run.ScanPaths keeps every root so deletion still resolves the narrowest
-	// one per file, but walking an ancestor already covers its descendants.
-	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
 	expectedAbsent := make(map[string]struct{}, len(result.declaredOnlyRoots))
 	for _, root := range result.declaredOnlyRoots {
 		expectedAbsent[root] = struct{}{}
@@ -1861,6 +1862,61 @@ func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
 }
 
+// linkedPeerRoots returns the save paths of merged instances below a walk root
+// that the walk does not reach, because the path is a symlink or a symlink is on
+// the way. The walk finds their files only at the target, under another path.
+// A scan root is walked or reached already, so a peer root that is also one
+// costs no lookup.
+func linkedPeerRoots(ctx context.Context, peerRoots, scanRoots, walkRoots []string, backend fsops.Backend) []string {
+	d := backend.Paths()
+	// Peer roots share their parents, and over SSH each lookup is a round trip.
+	realDirs := map[string]bool{}
+	isRealDir := func(p string) bool {
+		ok, seen := realDirs[p]
+		if !seen {
+			info, err := backend.Lstat(ctx, p)
+			ok = err == nil && info.IsDir && !info.IsSymlink
+			realDirs[p] = ok
+		}
+		return ok
+	}
+	// A peer may spell a walk root in another case on a filesystem that
+	// ignores it, so compare as the protected paths do.
+	norm := func(p string) string { return fsops.NormalizePath(d, p) }
+	var linked []string
+	for _, root := range peerRoots {
+		if slices.Contains(scanRoots, root) {
+			continue
+		}
+		under := func(w string) bool { return isPathUnderNormalized(d, norm(root), norm(w)) }
+		if !slices.ContainsFunc(walkRoots, under) {
+			continue
+		}
+		// As walkReaches, but the root itself must be a real directory too.
+		reached := func(w string) bool {
+			nw := norm(w)
+			for dir := root; dir != w && dir != w+d.Separator(); dir = d.Dir(dir) {
+				if !isRealDir(dir) {
+					return false
+				}
+				// The walk root in another case. Where case counts, a real
+				// folder of that name is a tree the walk never enters.
+				if n := norm(dir); n == nw || n == nw+d.Separator() {
+					return true
+				}
+				if d.Dir(dir) == dir {
+					return false
+				}
+			}
+			return true
+		}
+		if !slices.ContainsFunc(walkRoots, func(w string) bool { return under(w) && reached(w) }) {
+			linked = append(linked, root)
+		}
+	}
+	return linked
+}
+
 // ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
 // symlinks.
 func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
@@ -2107,6 +2163,9 @@ type buildFileMapResult struct {
 	// so the delete can read their identities. Peers' files join on merge.
 	// Filled only when the scope asks for them.
 	torrentPaths []string
+	// peerRoots are the save paths of the merged instances. They are never
+	// scan roots; the scan walks one only when a symlink hides it from the walk.
+	peerRoots []string
 }
 
 // mergeProtection adds the files, skipped roots and metadata roots of
@@ -2115,6 +2174,7 @@ type buildFileMapResult struct {
 func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFileMapResult) int {
 	added := r.fileMap.MergeFrom(other.fileMap)
 	r.torrentPaths = append(r.torrentPaths, other.torrentPaths...)
+	r.peerRoots = mergeRootLists(d, r.peerRoots, other.scanRoots)
 	r.skippedRoots = mergeRootLists(d, r.skippedRoots, other.skippedRoots)
 	r.metadataRoots = mergeRootLists(d, r.metadataRoots, other.metadataRoots)
 	r.scanRoots = filterCoveredScanRoots(d, r.scanRoots, r.skippedRoots)
