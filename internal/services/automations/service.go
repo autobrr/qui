@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -85,6 +86,7 @@ type automationSummary struct {
 	sampleErrors     []string
 	sampleSeen       map[string]struct{}
 	tagSampleSeen    map[string]struct{}
+	activities       []*models.AutomationActivity // the rows the run recorded, in order
 }
 
 type automationRuleSummary struct {
@@ -172,6 +174,10 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 	if count <= 0 {
 		count = 1
 	}
+	if activity.CreatedAt.IsZero() {
+		activity.CreatedAt = time.Now().UTC() // the store lets the database stamp the row and leaves this field unset
+	}
+	s.activities = append(s.activities, activity)
 	s.add(activity.Action, activity.Outcome, count)
 	s.addRuleAction(activity, count)
 	s.addSamplesFromActivity(activity)
@@ -555,9 +561,13 @@ type Service struct {
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
+	runningInstances      map[int]struct{}             // instances with a run that applies actions
 	mu                    sync.RWMutex
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
+	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
+	routedTorrents crossseedroute.TorrentReader
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -588,6 +598,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
+		routedTorrents:            syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -609,6 +620,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
@@ -705,7 +721,9 @@ func (s *Service) applyAll(ctx context.Context) {
 		if !instance.IsActive {
 			continue
 		}
-		if err := s.applyForInstance(ctx, instance.ID, false); err != nil {
+		if err := s.applyForInstance(ctx, instance.ID, false); errors.Is(err, ErrRunInProgress) {
+			log.Debug().Int("instanceID", instance.ID).Msg("automations: run in progress, skipping instance until the next check")
+		} else if err != nil {
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
@@ -715,6 +733,69 @@ func (s *Service) applyAll(ctx context.Context) {
 // It bypasses per-rule interval checks (force=true).
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
 	return s.applyForInstance(ctx, instanceID, true)
+}
+
+// ErrRunInProgress means that another run applies actions on the instance.
+var ErrRunInProgress = errors.New("automations: a run is in progress on this instance")
+
+// tryLockRun claims the instance for a run that applies actions. Only one such run acts on an instance at a time.
+func (s *Service) tryLockRun(instanceID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, running := s.runningInstances[instanceID]; running {
+		return false
+	}
+	if s.runningInstances == nil {
+		s.runningInstances = make(map[int]struct{})
+	}
+	s.runningInstances[instanceID] = struct{}{}
+	return true
+}
+
+func (s *Service) unlockRun(instanceID int) {
+	s.mu.Lock()
+	delete(s.runningInstances, instanceID)
+	s.mu.Unlock()
+}
+
+// ApplyRuleNow runs a single saved rule immediately and applies its actions, unless the rule itself is a dry run.
+// The rule is forced enabled for this execution only, and its interval is ignored.
+// Returns the activity rows written for this run, or ErrRunInProgress when another run acts on the instance.
+func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
+	if s.syncManager == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+	if rule.DryRun {
+		activities, err := s.ApplyRuleDryRun(ctx, instanceID, rule)
+		s.publishActivity(instanceID, activities)
+		return activities, err
+	}
+
+	if !s.tryLockRun(instanceID) {
+		return nil, ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
+	liveRule := *rule
+	liveRule.Enabled = true
+	activities, err := s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{&liveRule}, false)
+	if err != nil {
+		return nil, err
+	}
+	s.publishActivity(instanceID, activities)
+	return activities, nil
+}
+
+// publishActivity signals connected clients that this instance's automation activity changed so
+// they refetch instead of polling. It sends nothing when the run wrote no activity rows.
+func (s *Service) publishActivity(instanceID int, activities []*models.AutomationActivity) {
+	if len(activities) == 0 || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindAutomationActivity,
+		InstanceID: instanceID,
+	})
 }
 
 // ApplyRuleDryRun executes a single rule immediately in dry-run mode.
@@ -846,9 +927,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 	}
 
 	if evalCtx != nil {
-		if evalCtx.UnregisteredSet != nil {
-			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
+		pt.IsUnregistered = evalCtx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
@@ -889,11 +968,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	if s.syncManager != nil {
-		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
-		}
+		evalCtx.TrackerHealth = s.syncManager.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	// The cached index provides scope detection AND hardlink grouping in a single build.
@@ -1440,6 +1515,11 @@ func (s *Service) blockedDeleteCandidates(
 }
 
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
+	if !s.tryLockRun(instanceID) {
+		return ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
@@ -1469,18 +1549,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return err
 	}
 
-	// Signal connected clients that this instance's automation activity changed so
-	// they refetch instead of polling. Emitted only when activity rows were actually
-	// written this cycle (not on idle ticks), after writes and with no lock held.
-	if len(dryActivity) > 0 || len(liveActivity) > 0 {
-		if s.activityPublisher != nil {
-			s.activityPublisher.Publish(activity.Event{
-				Kind:       activity.KindAutomationActivity,
-				InstanceID: instanceID,
-			})
-		}
-	}
-
+	s.publishActivity(instanceID, append(dryActivity, liveActivity...))
 	return nil
 }
 
@@ -1763,7 +1832,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
-			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("tagMissingTrackerHealth", stats.TagSkippedMissingTrackerHealth).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 			Int("deleteNoMatch", stats.DeleteConditionNotMet).
 			Int("moveNoMatch", stats.MoveConditionNotMet).
@@ -1864,7 +1933,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": speedLimits}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -1946,7 +2015,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			limitCounts[limitKey] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": limitCounts}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -1992,7 +2061,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated pause activity
 	if pausedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": pausedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2038,7 +2107,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated resume activity
 	if resumedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": resumedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2084,7 +2153,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated recheck activity
 	if recheckedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": recheckedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": recheckedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2130,7 +2199,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated reannounce activity
 	if reannouncedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": reannouncedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": reannouncedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2186,7 +2255,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated auto management activity
 	if autoManagedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": autoManagedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2339,7 +2408,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Only record if there were actual changes
 		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 				"added":   addCounts,
 				"removed": removeCounts,
 			})
@@ -2405,7 +2474,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			categoryCounts[move.category]++
 		}
 
-		detailsJSON, _ := json.Marshal(map[string]any{
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 			"categories": categoryCounts,
 		})
 		activity := &models.AutomationActivity{
@@ -2471,7 +2540,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	if successCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"paths": successfulMovesByPath}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2686,7 +2755,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return nil, nil
+	return summary.activities, nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {

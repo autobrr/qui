@@ -3,6 +3,6 @@
 This file is an index. The rules live in `docs/standards/`. Linters and formatters enforce more rules. Their configuration is in `.golangci.yml` and `web/eslint.config.js`.
 
 - When you write or review code in any language, read `docs/standards/simplicity.md`. It covers code shape, Go types, and comments.
-- When you write or review a test, read `docs/standards/tests.md`.
+- When you write or review a test, read `docs/standards/tests.md`. For a frontend test, also read `docs/standards/frontend-tests.md`.
 - When you add a log line or change its level, read `docs/standards/logging.md`.
 - When you write or review a React Effect, React component state, a react-query cache filter, help text on a form field, a table, or a page layout, read `docs/standards/frontend-review.md`.

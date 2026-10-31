@@ -21,6 +21,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. _Avoid_: Consistency, sync.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
+- **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. _Avoid_: Action scope, selection payload.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
@@ -29,6 +30,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Tracker health**: qui's verdict on the trackers of one torrent: healthy, unregistered, tracker down, or tracker error. _Avoid_: tracker status.
 - **Tracker status**: The status that qBittorrent reports for one tracker of a torrent, such as working, not working, or updating. _Avoid_: tracker health.
+- **Grace hour**: The first hour after a torrent is added. During it, qui shows no unregistered label, but it can still show tracker down. _Avoid_: grace period.
 
 ## Themes
 
@@ -66,6 +68,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Title rescue**: A matching rule, not a search pass. A candidate whose title differs from the source is still accepted when the reported total size is exactly equal and every other release attribute matches. A search applies it only when the setting is on, and Skip recheck turns it off. The Batch matcher always applies it. _Avoid_: Rescue pass, fuzzy match.
 - **Query degradation**: A per-search flag telling the frontend the search ran at lower precision than intended (title-only when IDs were wanted). An ID-quality primary, arr- or tag-sourced, is not degraded.
 - **Trigger**: How a cross-seed was found: RSS, webhook, seeded search, completion, or interactive apply. Tags, auto-resume, and source filters are set per Trigger. _Avoid_: source (that is the source torrent), request source, mode.
+- **Settled source**: A source torrent that is complete and that qBittorrent is not moving or checking. Only a Settled source can give files to a cross-seed. Every Trigger reads the same rule. _Avoid_: ready, idle.
 - **Manual match**: A cross-seed apply where the user chooses the target torrent. Candidate discovery and the category and content-type gates are bypassed; the recheck is the arbiter of a wrong pick. _Avoid_: forced match, pinned match.
 - **Numbering scheme**: How a TV release names its episode: seasoned (`S04E15`) or absolute (`- 81`, no season). A pair of releases that use the same scheme compare episode numbers directly. _Avoid_: anime numbering, episode format.
 - **Episode map**: The Sonarr-sourced triple (season, episode, absolute) for one release name. It lets one seasoned and one absolute release count as the same episode. Exists only when Sonarr names exactly one episode and that episode has an absolute number; otherwise there is no map and the pair falls back to size evidence. _Avoid_: Sonarr mapping, episode translation, absolute lookup.
@@ -108,10 +111,16 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Pool member**: One torrent in a partial pool.
 - **Pool admission**: The step that makes a new partial add a pool member, and the window after it during which more members can join. _Avoid_: Admission alone (see Admitted Execution and Pre-add check).
 
+## Cross-seed instance
+
+- **Cross-seed instance**: The instance that receives the cross-seeds found on another instance. Set on the Source instance. _Avoid_: target instance, destination instance.
+- **Source instance**: An instance that names a Cross-seed instance and holds the matched torrents. _Avoid_: source (that is the source torrent), library instance.
+
 ## Automations
 
 - **Automation rule**: One saved set of conditions and actions that qui runs against the torrents of one instance on an interval. The UI calls it a workflow. _Avoid_: Workflow (outside UI copy), automation (for one rule).
 - **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
+- **Sort value**: What a workflow sorts or scores torrents by for one field, a number or text. It can differ from what a Condition compares. ADDED_ON sorts by date added, while a Condition compares age. _Avoid_: sort key.
 - **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
 - **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
 - **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.

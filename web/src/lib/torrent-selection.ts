@@ -5,6 +5,7 @@
 
 import type { ColumnFilter } from "@/lib/column-filter-utils"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { combineFilterExpr } from "@/lib/torrent-filters"
 import type { CrossInstanceTorrent, Torrent, TorrentFilters } from "@/types"
 
 // The torrent list selection, shared by the desktop table and the mobile cards.
@@ -150,7 +151,7 @@ export function rememberTickedTorrents(
 }
 
 // The request targets for selection keys, so a key reaches its torrent when the row is not loaded.
-export function getSelectionTargets(keys: Iterable<string>, isCrossInstance: boolean, instanceId: number): TorrentActionTarget[] {
+function selectionKeyTargets(keys: Iterable<string>, isCrossInstance: boolean, instanceId: number): TorrentActionTarget[] {
   const targets: TorrentActionTarget[] = []
   for (const key of keys) {
     if (!isCrossInstance) {
@@ -165,4 +166,82 @@ export function getSelectionTargets(keys: Iterable<string>, isCrossInstance: boo
     }
   }
   return targets
+}
+
+// What a selection reaches beyond the bulk action itself.
+export interface ActionTargetScope {
+  instanceId: number
+  // The instance subset of the Unified view.
+  instanceIds?: number[]
+  // The Sidebar filters.
+  filters: TorrentFilters
+  // Null on the mobile cards, which have no Column filters. inBrowser is set in
+  // cross-seed filter mode, where the table and not the backend applies them.
+  columnFilters: { expr: string | null; inBrowser: boolean } | null
+  search: string
+  // True when the request goes to the cross-instance endpoint: the Unified view and cross-seed filter mode.
+  isCrossInstance: boolean
+}
+
+// The select-all part of an Action target: one form of Exclusions for each scope.
+export interface SelectAllTarget {
+  filters: TorrentFilters
+  search: string
+  instanceIds?: number[]
+  excludeHashes?: string[]
+  excludeTargets?: TorrentActionTarget[]
+}
+
+// What one bulk action reaches (ADR 0034). count is the number that the user
+// sees. previewTorrents are the loaded torrents in the selection, for the
+// delete dialog and the cross-seed warning.
+export type ActionTarget = { count: number; previewTorrents: Torrent[] } & (
+  // Plain hashes on one instance. On the cross-instance endpoint, instance-and-hash pairs and never a bare hash.
+  | { kind: "ticks"; hashes: string[]; targets?: TorrentActionTarget[] }
+  | { kind: "selectAll"; selectAll: SelectAllTarget }
+)
+
+export const EMPTY_ACTION_TARGET: ActionTarget = { kind: "ticks", hashes: [], count: 0, previewTorrents: [] }
+
+// rows.loaded are the rows that the layout shows, rows.ticked the rows it remembers for each tick.
+export function buildActionTarget(
+  selection: TorrentSelectionState,
+  scope: ActionTargetScope,
+  rows: { loaded: Torrent[]; ticked: Torrent[]; totalCount: number }
+): ActionTarget {
+  const { instanceId, isCrossInstance, columnFilters } = scope
+  if (!selection.isAllSelected) {
+    const targets = selectionKeyTargets(selection.selected, isCrossInstance, instanceId)
+    return {
+      kind: "ticks",
+      ...(isCrossInstance ? { hashes: [], targets } : { hashes: targets.map(target => target.hash) }),
+      count: selection.selected.size,
+      previewTorrents: rows.ticked,
+    }
+  }
+
+  const previewTorrents = rows.loaded.filter(torrent => !selection.excluded.has(getSelectionIdentity(torrent, isCrossInstance, instanceId)))
+  const excluded = selectionKeyTargets(selection.excluded, isCrossInstance, instanceId)
+  return {
+    kind: "selectAll",
+    selectAll: {
+      // The Column filters AND the filter expression (ADR 0010).
+      filters: columnFilters ? { ...scope.filters, expr: combineFilterExpr(columnFilters.expr, scope.filters.expr) ?? "" } : scope.filters,
+      search: scope.search,
+      ...(isCrossInstance ? { instanceIds: scope.instanceIds, excludeTargets: excluded } : { excludeHashes: excluded.map(target => target.hash) }),
+    },
+    // The backend total does not know a Column filter that applies in the browser.
+    // ponytail: counts loaded rows only, so a cross-seed set past one page
+    // (300) under-reports; a cross-seed expression is one torrent's siblings.
+    count: columnFilters?.inBrowser ? previewTorrents.length : Math.max(0, rows.totalCount - selection.excluded.size),
+    previewTorrents,
+  }
+}
+
+// The request fields of an Action target, for a bulk action and the tag editor baseline.
+export function actionTargetRequest(target: ActionTarget) {
+  if (target.kind === "selectAll") {
+    return { hashes: [], selectAll: true, ...target.selectAll }
+  }
+  return { hashes: target.hashes, targets: target.targets, selectAll: false }
 }

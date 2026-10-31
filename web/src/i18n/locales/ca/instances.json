@@ -708,6 +708,24 @@
       "tagActions_one": "{{count}} acció d'etiqueta",
       "tagActions_other": "{{count}} accions d'etiqueta"
     },
+    "runWorkflowNow": {
+      "action": "Executa ara",
+      "title": "Vols executar \"{{name}}\" ara?",
+      "description": "qui executa el workflow desat una vegada ara i aplica les seves accions als torrents que coincideixen. També s'executa quan el workflow està desactivat.",
+      "dryRunDescription": "Aquest workflow està configurat com a execució de prova, així que qui només registra què faria. Cap torrent canvia.",
+      "actions": "Accions",
+      "cancel": "Cancel·la",
+      "confirm": "Executa ara",
+      "toast": {
+        "running": "S'està executant \"{{name}}\"…",
+        "completed": "S'ha completat l'execució de \"{{name}}\"",
+        "noChanges": "S'ha completat l'execució de \"{{name}}\". Cap torrent necessitava canvis.",
+        "completedWithErrors": "S'ha completat l'execució de \"{{name}}\" amb errors. Consulta el registre d'activitat.",
+        "dryRunCompleted": "S'ha completat l'execució de prova de \"{{name}}\"",
+        "inProgress": "Hi ha una execució en curs. Torna-ho a provar d'aquí a un moment.",
+        "failed": "No s'ha pogut executar el workflow"
+      }
+    },
     "workflowDialog": {
       "editWorkflow": "Edita el workflow",
       "addWorkflow": "Afegeix un workflow",

@@ -121,6 +121,8 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     excludeHashes: selectionRequest?.excludeHashes ?? [],
     excludeTargets: selectionRequest?.excludeTargets ?? [],
   }), [selectionRequest])
+  // Keyed on the contents: the torrent list rebuilds the request arrays on each
+  // stream update, and a new reference must not restart the tag read.
   const selectionRequestSnapshot = useMemo(() => ({
     instanceId: selectionRequest?.instanceId ?? -1,
     instanceIds: selectionRequest?.instanceIds,
@@ -131,26 +133,19 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     search: selectionRequest?.search,
     excludeHashes: selectionRequest?.excludeHashes,
     excludeTargets: selectionRequest?.excludeTargets,
-  }), [
-    selectionRequest?.excludeHashes,
-    selectionRequest?.excludeTargets,
-    selectionRequest?.filters,
-    selectionRequest?.hashes,
-    selectionRequest?.instanceId,
-    selectionRequest?.instanceIds,
-    selectionRequest?.search,
-    selectionRequest?.selectAll,
-    selectionRequest?.targets,
-  ])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [selectionRequestKey])
+  const requiresRemoteBaseline = hashCount > selectedTorrents.length
+  // The remote read gives the tags when the selection goes past the loaded rows,
+  // so a live sort or tag change on those rows must not restart it.
   const selectedTorrentTagsKey = useMemo(
-    () => JSON.stringify(selectedTorrents.map(torrent => torrent.tags)),
-    [selectedTorrents]
+    () => JSON.stringify(requiresRemoteBaseline ? [] : selectedTorrents.map(torrent => torrent.tags)),
+    [requiresRemoteBaseline, selectedTorrents]
   )
   const selectedTorrentTagValues = useMemo(
     () => JSON.parse(selectedTorrentTagsKey) as string[],
     [selectedTorrentTagsKey]
   )
-  const requiresRemoteBaseline = hashCount > selectedTorrents.length
   const hasValidInstance = selectionRequestSnapshot.instanceId >= 0
   const hasExplicitSelection = (selectionRequestSnapshot.targets?.length ?? 0) > 0 || (selectionRequestSnapshot.hashes?.length ?? 0) > 0
   const canFetchRemoteBaseline = hasValidInstance && (selectionRequestSnapshot.selectAll === true || hasExplicitSelection)
@@ -467,7 +462,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
           </div>
 
           {hasChanges ? (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground wrap-anywhere">
               {updatePlan.add.length > 0 && (
                 <div>{t("dialogs.tagEditor.addEverywhere", { tags: updatePlan.add.join(", ") })}</div>
               )}

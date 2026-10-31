@@ -975,3 +975,99 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, invocations)
 }
+
+// regression: #3626
+func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
+	t.Parallel()
+
+	const (
+		torrentName = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
+		actualSize  = int64(2_000_000)
+	)
+	moving := qbt.Torrent{
+		Hash: "moving", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateMoving,
+		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
+	}
+	settled := qbt.Torrent{
+		Hash: "settled", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateStalledUp,
+		SavePath: "/data/movies", ContentPath: "/data/movies/" + torrentName + ".mkv",
+	}
+
+	tests := []struct {
+		name        string
+		torrents    []qbt.Torrent
+		wantSources []string
+	}{
+		{name: "moving and settled copies use the settled copy", torrents: []qbt.Torrent{moving, settled}, wantSources: []string{"settled"}},
+		{name: "only a moving copy adds nothing", torrents: []qbt.Torrent{moving}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			instance := &models.Instance{ID: 44, Name: "primary", IsActive: true}
+			service := &Service{
+				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager:      newFakeSyncManager(instance, tt.torrents, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{}, nil
+				},
+			}
+			var sources []string
+			service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+				sources = append(sources, request.SearchDecision.SourceHash)
+				return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
+			}
+
+			response, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+				TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, torrentName, torrentName+".mkv", actualSize)),
+				TorrentName: torrentName,
+				InstanceIDs: []int{instance.ID},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantSources, sources)
+			require.Equal(t, tt.wantSources != nil, response.Success)
+		})
+	}
+}
+
+func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Aurora.Signal.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Aurora.Signal.2025.1080p.WEB-DL.H.265-LUMA"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 45, Name: "primary", IsActive: true}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+		}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	var runs []any
+	service.crossSeedInvoker = func(ctx context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+		runs = append(runs, ctx.Value(failedRouteDirsKey{}))
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: crossSeedCannotSeeStatus}}}, nil
+	}
+
+	_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	// Each try of the webhook sees the same memory of failed route folders, so
+	// a later try under a hidden folder lists once.
+	require.Len(t, runs, 2)
+	require.NotNil(t, runs[0], "the webhook does not start a route run")
+	require.Same(t, runs[0], runs[1])
+}

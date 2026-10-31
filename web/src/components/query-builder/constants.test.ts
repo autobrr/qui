@@ -137,3 +137,22 @@ describe("getTranslatedHardlinkScopes", () => {
     expect(constants.getTranslatedHardlinkScopes(i18n.getFixedT("en", "automations")).map((scope) => scope.value)).toEqual(["none", "torrents_only", "inside_qbittorrent", "outside_qbittorrent"])
   })
 })
+
+describe("SORT_FIELDS and SCORE_FIELDS", () => {
+  const scoreFields = [
+    "SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT", "FREE_SPACE",
+    "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEDING_TIME", "TIME_ACTIVE",
+    "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE",
+    "RATIO", "PROGRESS", "AVAILABILITY", "DL_SPEED", "UP_SPEED",
+    "NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE", "TRACKERS_COUNT",
+  ]
+  const textFields = ["NAME", "CATEGORY", "TAGS", "TRACKER", "STATE", "SAVE_PATH", "CONTENT_PATH", "COMMENT"]
+
+  it("offers each field with a Sort value except the clock fields for sort", () => {
+    expect([...constants.SORT_FIELDS].sort()).toEqual([...scoreFields, ...textFields].sort())
+  })
+
+  it("offers each field with a number Sort value except the clock fields for score", () => {
+    expect([...constants.SCORE_FIELDS].sort()).toEqual([...scoreFields].sort())
+  })
+})

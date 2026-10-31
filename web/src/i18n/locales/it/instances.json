@@ -671,6 +671,24 @@
       },
       "exported": "Esportato"
     },
+    "runWorkflowNow": {
+      "action": "Esegui ora",
+      "title": "Eseguire \"{{name}}\" ora?",
+      "description": "qui esegue ora una volta il workflow salvato e applica le sue azioni ai torrent corrispondenti. Viene eseguito anche quando il workflow è disattivato.",
+      "dryRunDescription": "Questo workflow è impostato come simulazione, quindi qui registra solo cosa farebbe. Nessun torrent cambia.",
+      "actions": "Azioni",
+      "cancel": "Annulla",
+      "confirm": "Esegui ora",
+      "toast": {
+        "running": "Esecuzione di \"{{name}}\"…",
+        "completed": "Esecuzione completata per \"{{name}}\"",
+        "noChanges": "Esecuzione completata per \"{{name}}\". Nessun torrent richiedeva modifiche.",
+        "completedWithErrors": "Esecuzione completata per \"{{name}}\" con errori. Consulta il registro attività.",
+        "dryRunCompleted": "Simulazione completata per \"{{name}}\"",
+        "inProgress": "È in corso un'altra esecuzione. Riprova tra un momento.",
+        "failed": "Impossibile eseguire il workflow"
+      }
+    },
     "workflowPreview": {
       "loadingPreview": "Caricamento dell'anteprima. Potrebbe richiedere del tempo...",
       "cancel": "Annulla",

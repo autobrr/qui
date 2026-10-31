@@ -4,12 +4,9 @@
  */
 
 import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
-import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
-import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
-import { useFilterLifecycle } from "@/hooks/torrent-table/useFilterLifecycle"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
@@ -22,7 +19,6 @@ import { useTorrentTableVirtualization } from "@/hooks/torrent-table/useTorrentT
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
-import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
@@ -31,8 +27,8 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
-import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
-import { hasSidebarFilters } from "@/lib/filter-views"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
@@ -273,6 +269,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [showLoadingState, setShowLoadingState] = useState(false)
 
   // Use the shared torrent actions hook
+  const torrentActions = useTorrentActions({
+    instanceId,
+    instanceIds,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        clearSelection()
+      }
+    },
+  })
   const {
     showDeleteDialog,
     closeDeleteDialog,
@@ -313,23 +318,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
-    contextHashes,
-    contextTorrents,
     isPending,
-    handleAction,
-    handleDelete,
-    handleUpdateTags,
-    handleSetComment,
-    handleSetCategory,
-    handleSetLocation,
-    handleRenameTorrent,
-    handleRenameFile,
-    handleRenameFolder,
-    handleSetShareLimit,
-    handleSetSpeedLimits,
-    handleRecheck,
-    handleReannounce,
-    handleTmmConfirm,
     proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
@@ -340,18 +329,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
-    prepareRecheckAction,
-    prepareReannounceAction,
     prepareTmmAction,
-  } = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        clearSelection()
-      }
-    },
-  })
+  } = torrentActions
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
@@ -362,27 +341,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const navigate = useNavigate()
 
-  const {
-    effectiveSearch,
-    columnFiltersExpr,
-    combinedFiltersExpr,
-    lastUserAction,
-    setLastUserAction,
-  } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
+  const { effectiveSearch, columnFiltersExpr } = useTorrentTableFilterExpr({ filters, columnFilters })
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
-
-  const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
-  const isVisibilitySettled = isHiddenDelayed || isVisible
-
-  // The list request; in cross-seed mode combinedFiltersExpr is the hash
-  // expression alone, unlike selectAllFilters which always joins the column filters.
-  const listFilters = useMemo(
-    () => ({ ...filters, expr: combinedFiltersExpr || undefined }),
-    [filters, combinedFiltersExpr]
-  )
 
   // Fetch torrents data with backend sorting
   const {
@@ -401,7 +364,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isStaleData,
     isLoadingMore,
     hasLoadedAll,
-    loadMore: backendLoadMore,
+    loadedRows,
+    hasMoreRows,
+    reportNearEnd,
+    listKey,
     streamConnected,
     streamMeta,
     isStreaming,
@@ -411,12 +377,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     streamRetryAttempt,
     isCrossSeedFiltering,
     isCrossInstanceEndpoint,
-  } = useTorrentsList(instanceId, {
-    enabled: true,
-    pollingEnabled: isVisibilitySettled,
+  } = useTorrentListController({
+    instanceId,
     instanceIds,
+    filters,
+    columnFiltersExpr,
     search: effectiveSearch,
-    filters: listFilters,
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -623,7 +589,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getVisibleRows: () => table.getRowModel().rows,
   })
 
-  const { publishSummary } = useTorrentSelectionContext()
+  const { selection, publishSummary } = useTorrentSelectionContext()
 
   // Memoize columns to avoid unnecessary recalculations
   const { columns, torrentIdentityCounts } = useTorrentTableColumns({
@@ -731,55 +697,32 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     activeSortField,
     activeSortOrder,
     setSorting,
-    setLastUserAction,
   })
 
-  // Get selected torrent hashes - handle both regular selection and "select all" mode
   const {
-    selectedHashes,
-    effectiveSelectionCount,
-    selectedTorrents,
+    actionTarget,
     selectedTotalSize,
     selectedFormattedSize,
     deleteDialogTotalSize,
     deleteDialogFormattedSize,
-    selectAllFilters,
-    selectAllExcludedTargets,
-    selectAllExcludeHashes,
   } = useTorrentSelectionDerivations({
-    isAllSelected,
-    excludedFromSelectAll,
-    selectedKeys,
+    selection,
     getSelectionIdentity,
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
     columnFiltersExpr,
     clientSideFiltering: isCrossSeedFiltering,
     filters,
+    search: effectiveSearch,
     stats,
     totalCount,
     isCrossInstanceEndpoint,
     instanceId,
-    contextTorrents,
+    instanceIds,
   })
+  const effectiveSelectionCount = actionTarget.count
+  const selectAllTarget = actionTarget.kind === "selectAll" ? actionTarget.selectAll : undefined
 
-  // Cross-seed warning for delete dialog, over the select-all scope that the delete sends
-  const crossSeedSelectAll = useMemo(
-    () => (isAllSelected? {
-      filters: selectAllFilters,
-      search: effectiveSearch,
-      excludeHashes: selectAllExcludeHashes,
-      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-      instanceIds,
-    }: undefined),
-    [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds]
-  )
-  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
-    instanceId,
-    contextTorrents,
-    selectAll: crossSeedSelectAll,
-    blockCrossSeeds,
-  })
   const queryClient = useQueryClient()
 
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
@@ -860,13 +803,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     allowSubcategories,
     supportsTrackerHealth,
     onSelectionChange: publishSummary,
-    selectedHashes,
-    selectedTorrents,
-    effectiveSelectionCount,
-    selectAllExcludeHashes,
-    selectAllExcludedTargets,
+    actionTarget,
     selectedTotalSize,
-    selectAllFilters,
   })
 
   // Callback for context menu to fetch field values on demand: explicit
@@ -875,21 +813,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     field: TorrentFieldName,
     selection?: TorrentFieldSelection
   ): Promise<string[]> => {
+    // The scope is only read without an explicit selection, so this is the
+    // select-all part of the Action target, like a bulk action (#1925).
     const scope: TorrentFieldScope = {
       isCrossInstance: isCrossInstanceEndpoint ?? false,
-      instanceIds,
       sort: activeSortField,
       order: activeSortOrder,
-      search: effectiveSearch,
-      // The scope is only read without an explicit selection, so this is the
-      // select-all set: column filters AND expr, like a bulk action (#1925).
-      filters: selectAllFilters,
-      excludeHashes: selectAllExcludeHashes,
-      excludeTargets: selectAllExcludedTargets,
+      ...selectAllTarget,
     }
     const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
-  }, [instanceId, selectAllFilters, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  }, [instanceId, selectAllTarget, activeSortField, activeSortOrder, isCrossInstanceEndpoint])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -899,17 +833,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     virtualizer,
     virtualRows,
     safeLoadedRows,
-    loadMore,
-    loadedRows,
-    setLoadedRows,
-    setIsLoadingMoreRows,
   } = useTorrentTableVirtualization({
     rows,
     desktopViewMode,
     sortedTorrentsLength: sortedTorrents.length,
+    loadedRows,
+    hasMoreRows,
+    reportNearEnd,
     hasLoadedAll,
     isLoadingMore,
-    backendLoadMore,
   })
 
   // Layout effect so the first paint already has the stretched Name width.
@@ -937,52 +869,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnVisibility, effectiveColumnSizing])
 
-  const { clearFiltersAtomically } = useFilterLifecycle({
-    virtualizer,
-    sortedTorrentsLength: sortedTorrents.length,
-    onFilterChange,
-    setColumnFilters,
-    setLoadedRows,
-    isCrossSeedFiltering,
-    columnFiltersLength: columnFilters.length,
-    visibleRowCount: rows.length,
-    loadedRows,
-  })
+  const clearAllFilters = useCallback(() => {
+    setColumnFilters([])
+    onFilterChange?.(EMPTY_SIDEBAR_FILTERS)
+  }, [setColumnFilters, onFilterChange])
 
-  // Reset when filters or search changes
+  // The controller starts the list again at the first rows; scroll to them.
   useEffect(() => {
-    // Only reset loadedRows for user-initiated changes, not data updates
-    const isRecentUserAction = lastUserAction && (Date.now() - lastUserAction.timestamp < 1000)
-
-    if (isRecentUserAction) {
-      const targetRows = Math.min(100, sortedTorrents.length || 0)
-      setLoadedRows(targetRows)
-      setIsLoadingMoreRows(false)
-
-      // User-initiated change: scroll to top
-      if (parentRef.current) {
-        parentRef.current.scrollTop = 0
-        setTimeout(() => {
-          virtualizer.scrollToOffset(0)
-          virtualizer.measure()
-        }, 0)
-      }
-    } else {
-      // Data update only: just remeasure without resetting loadedRows
-      setTimeout(() => {
-        virtualizer.measure()
-      }, 0)
+    if (parentRef.current) {
+      parentRef.current.scrollTop = 0
     }
-    // setLoadedRows / setIsLoadingMoreRows are stable setters from the virtualization
-    // hook; intentionally omitted to preserve the original effect's re-run timing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction])
+    virtualizer.scrollToOffset(0)
+  }, [listKey, parentRef, virtualizer])
 
   useTorrentTableArrowNavigation({
     rows,
     virtualizer,
     safeLoadedRows,
-    loadMore,
+    loadMore: reportNearEnd,
     isReadOnly,
     selectedTorrent,
     selectedKeys,
@@ -997,65 +901,45 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     selectAll,
   })
 
-  // Wrapper functions to adapt hook handlers to component needs
+  // Dialog wiring: each wrapper passes its value with the Action target to the handler.
   const {
-    contextClientMeta,
+    crossSeedWarning,
+    hasCrossSeedTag,
+    renameHash,
     runAction,
     handleExportWrapper,
     handleDeleteWrapper,
     handleSetCommentWrapper,
     handleTagsWrapper,
     handleSetCategoryWrapper,
-    handleSetCategoryDirect,
     handleSetLocationWrapper,
     handleRenameTorrentWrapper,
     handleRenameFileWrapper,
     handleRenameFolderWrapper,
+    prepareRecheckWrapper,
+    prepareReannounceWrapper,
     handleRecheckWrapper,
     handleReannounceWrapper,
     handleTmmConfirmWrapper,
     handleSetShareLimitWrapper,
     handleSetSpeedLimitsWrapper,
-    handleDropPayload,
-    handleDropPayloadConsumed,
-  } = useBulkActionWrappers({
-    handleAction,
-    handleDelete,
-    handleSetComment,
-    handleUpdateTags,
-    handleSetCategory,
-    handleSetLocation,
-    handleRenameTorrent,
-    handleRenameFile,
-    handleRenameFolder,
-    handleRecheck,
-    handleReannounce,
-    handleTmmConfirm,
-    handleSetShareLimit,
-    handleSetSpeedLimits,
-    contextHashes,
-    contextTorrents,
-    deleteCrossSeeds,
-    exportTorrents,
-    isAllSelected,
-    selectedHashes,
-    selectedTorrents,
-    effectiveSelectionCount,
-    selectAllFilters,
-    selectAllExcludeHashes,
-    selectAllExcludedTargets,
-    effectiveSearch,
-    activeSortField,
-    activeSortOrder,
-    crossSeedWarning,
-    shouldBlockCrossSeeds,
-    blockCrossSeedHashes,
-    isCrossInstanceEndpoint,
-    instanceIds,
+  } = useTorrentListActions({
     instanceId,
-    setDropPayload,
-    onAddTorrentModalChange,
+    actionTarget,
+    actions: torrentActions,
+    exportTorrents,
+    sort: activeSortField,
+    order: activeSortOrder,
   })
+
+  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
+    setDropPayload(payload)
+    onAddTorrentModalChange?.(true)
+  }, [onAddTorrentModalChange])
+
+  const handleDropPayloadConsumed = useCallback(() => {
+    setDropPayload(null)
+  }, [])
 
   // Latest-ref for the row interaction handlers: rows are memoized, so these
   // handlers must keep one identity for the lifetime of the table while still
@@ -1147,10 +1031,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const rowMenuProps = useMemo<TorrentRowMenuProps>(() => ({
     instanceId,
     readOnly: isReadOnly,
-    isAllSelected,
-    selectedHashes,
-    selectedTorrents,
-    effectiveSelectionCount,
+    actionTarget,
     onTorrentSelect,
     onAction: runAction,
     onPrepareDelete: prepareDeleteAction,
@@ -1162,11 +1043,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onPrepareSpeedLimits: prepareSpeedLimitAction,
     onPrepareLocation: prepareLocationAction,
     onPrepareRenameTorrent: prepareRenameTorrentAction,
-    onPrepareRecheck: prepareRecheckAction,
-    onPrepareReannounce: prepareReannounceAction,
+    onPrepareRecheck: prepareRecheckWrapper,
+    onPrepareReannounce: prepareReannounceWrapper,
     onPrepareTmm: prepareTmmAction,
     availableCategories,
-    onSetCategory: handleSetCategoryDirect,
+    onSetCategory: handleSetCategoryWrapper,
     isPending,
     onExport: handleExportWrapper,
     isExporting: isExportingTorrent,
@@ -1178,7 +1059,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckWrapper, prepareReannounceWrapper, prepareTmmAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1289,7 +1170,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             variant="outline"
                             size="icon"
                             className="relative mr-1"
-                            onClick={() => clearFiltersAtomically("columns-only")}
+                            onClick={() => setColumnFilters([])}
                           >
                             <X className="h-4 w-4" />
                             <span className="sr-only">{t("tableView.clearAllColumnFilters", { count: columnFilters.length })}</span>
@@ -1409,7 +1290,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 <TorrentListEmptyState
                   hasFilters={hasFilterControls}
                   hasSearch={hasSearchQuery}
-                  onClearFilters={() => clearFiltersAtomically("all")}
+                  onClearFilters={clearAllFilters}
                 />
               </div>
             )}
@@ -1742,9 +1623,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
         <TorrentTableDialogs
           instanceId={instanceId}
-          instanceIds={instanceIds}
-          contextHashes={contextHashes}
-          contextTorrents={contextTorrents}
+          actionTarget={actionTarget}
           isPending={isPending}
           showDeleteDialog={showDeleteDialog}
           closeDeleteDialog={closeDeleteDialog}
@@ -1792,6 +1671,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleSetShareLimitWrapper={handleSetShareLimitWrapper}
           handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
           handleSetLocationWrapper={handleSetLocationWrapper}
+          renameHash={renameHash}
           handleRenameTorrentWrapper={handleRenameTorrentWrapper}
           handleRenameFileWrapper={handleRenameFileWrapper}
           handleRenameFolderWrapper={handleRenameFolderWrapper}
@@ -1799,14 +1679,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleReannounceWrapper={handleReannounceWrapper}
           handleTmmConfirmWrapper={handleTmmConfirmWrapper}
           proceedToLocationDialog={proceedToLocationDialog}
-          selectAllFilters={selectAllFilters}
-          contextClientMeta={contextClientMeta}
-          isAllSelected={isAllSelected}
-          effectiveSelectionCount={effectiveSelectionCount}
           deleteDialogTotalSize={deleteDialogTotalSize}
           deleteDialogFormattedSize={deleteDialogFormattedSize}
-          selectAllExcludeHashes={selectAllExcludeHashes}
-          selectAllExcludedTargets={selectAllExcludedTargets}
           crossSeedWarning={crossSeedWarning}
           hasCrossSeedTag={hasCrossSeedTag}
           availableTags={availableTags}
@@ -1815,8 +1689,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           isLoadingCategories={isLoadingCategories}
           allowSubcategories={allowSubcategories}
           capabilities={capabilities}
-          isCrossInstanceEndpoint={isCrossInstanceEndpoint}
-          effectiveSearch={effectiveSearch}
         />
 
         {/* Instance Preferences Dialog */}

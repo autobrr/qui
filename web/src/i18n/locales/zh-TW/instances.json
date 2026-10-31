@@ -653,6 +653,24 @@
       },
       "exported": "已匯出"
     },
+    "runWorkflowNow": {
+      "action": "立即執行",
+      "title": "立即執行「{{name}}」？",
+      "description": "qui 會立即執行一次已儲存的工作流，並對符合的種子套用其動作。即使工作流已停用也會執行。",
+      "dryRunDescription": "此工作流設定為模擬執行，qui 只記錄將要執行的動作，不會變更任何種子。",
+      "actions": "動作",
+      "cancel": "取消",
+      "confirm": "立即執行",
+      "toast": {
+        "running": "正在執行「{{name}}」…",
+        "completed": "「{{name}}」執行完成",
+        "noChanges": "「{{name}}」執行完成。沒有需要變更的種子。",
+        "completedWithErrors": "「{{name}}」執行完成，但有錯誤。請查看活動記錄。",
+        "dryRunCompleted": "「{{name}}」的模擬執行已完成",
+        "inProgress": "已有執行正在進行。請稍後再試。",
+        "failed": "執行工作流失敗"
+      }
+    },
     "workflowPreview": {
       "loadingPreview": "正在載入預覽，這可能需要一些時間...",
       "cancel": "取消",

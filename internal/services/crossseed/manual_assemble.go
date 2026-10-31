@@ -212,6 +212,10 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				prep.rejected[hash] = "incomplete"
 				continue
 			}
+			if !isSettledSource(&torrent) {
+				prep.rejected[hash] = "not_settled"
+				continue
+			}
 			parsed := s.releaseCache.Parse(torrent.Name)
 			if parsed == nil {
 				prep.rejected[hash] = "no_episode_identity"

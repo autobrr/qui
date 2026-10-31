@@ -4,7 +4,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 
 ## Commands
 
-- `make precommit`: fmt + gofix on changed files, then `make lint` and `make lint-ratchet`.
+- `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint` and `make lint-ratchet`.
 - `make lint`: golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`. A frontend lint error in any file fails it, not only an error in a changed file.
 - `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request.
 - `make lint-json`: write lint output to `lint-report.json`.
@@ -20,7 +20,7 @@ The project uses golangci-lint v2. `.golangci.yml` lists the enabled linters and
 
 ## Version Pin
 
-CI pins the golangci-lint version in `.github/workflows/lint.yml`. A local golangci-lint must read the export data that your Go toolchain writes. golangci-lint v2.13.0 reads export data up to version 4, and Go 1.27.2 writes version 5. With that pair, lint reports false `typecheck` errors in packages that compile, and these errors can hide real issues.
+CI pins the golangci-lint version in `.github/workflows/lint.yml`. A local golangci-lint must read the export data that your Go toolchain writes. A golangci-lint that is older than your Go toolchain can fail to read that export data. With such a pair, lint reports false `typecheck` errors in packages that compile, and these errors can hide real issues.
 
 Bump the CI pin in its own PR. Run `make lint-full` first, because `make lint` reports only new issues, and a new golangci-lint version can find issues in old code.
 

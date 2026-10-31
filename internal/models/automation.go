@@ -124,9 +124,6 @@ func (c *SortingConfig) Validate() error {
 		if c.Field == "" {
 			return errors.New("simple sort requires field")
 		}
-		if !c.Field.IsNumeric() && !c.Field.IsString() {
-			return fmt.Errorf("unknown sort field: %s", c.Field)
-		}
 	case SortingTypeScore:
 
 		if len(c.ScoreRules) == 0 {
@@ -141,9 +138,6 @@ func (c *SortingConfig) Validate() error {
 				}
 				if r.FieldMultiplier.Field == "" {
 					return fmt.Errorf("score rule %d: field required for field multiplier", i)
-				}
-				if !r.FieldMultiplier.Field.IsNumeric() {
-					return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 				}
 			case ScoreRuleTypeConditional:
 				if r.Conditional == nil {
@@ -761,22 +755,6 @@ const (
 	FieldHardlinkScopeCross ConditionField = "HARDLINK_SCOPE_CROSS"
 )
 
-//nolint:exhaustive // Only sortable numeric fields belong here.
-func (f ConditionField) IsNumeric() bool {
-	switch f {
-	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
-		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
-		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
-		FieldRatio, FieldProgress, FieldAvailability,
-		FieldDlSpeed, FieldUpSpeed,
-		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
-		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:
-		return true
-	default:
-		return false
-	}
-}
-
 // WrapsBetween reports whether a BETWEEN range on this field wraps when the
 // minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
 // hour means the night that crosses midnight. A wrapped range stops before its
@@ -787,16 +765,6 @@ func (f ConditionField) IsNumeric() bool {
 func (f ConditionField) WrapsBetween() bool {
 	switch f {
 	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
-		return true
-	default:
-		return false
-	}
-}
-
-//nolint:exhaustive // Only sortable string fields belong here.
-func (f ConditionField) IsString() bool {
-	switch f {
-	case FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment:
 		return true
 	default:
 		return false

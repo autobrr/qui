@@ -5,6 +5,8 @@ package automations
 
 import (
 	"bytes"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1847,6 +1849,94 @@ func TestSortTorrents_RejectsUploadedOverSizeSorting(t *testing.T) {
 	})
 }
 
+func TestSortTorrents_SortableAndScorableFields(t *testing.T) {
+	scorable := []ConditionField{
+		FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
+		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
+		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
+		FieldRatio, FieldProgress, FieldAvailability, FieldDlSpeed, FieldUpSpeed,
+		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
+		models.FieldSystemHour, models.FieldSystemMinute, models.FieldSystemDayOfWeek, models.FieldSystemDay, models.FieldSystemMonth, models.FieldSystemYear,
+	}
+	sortable := append(slices.Clone(scorable),
+		FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment)
+	torrents := []qbt.Torrent{{Hash: "a"}, {Hash: "b"}}
+
+	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
+		sortValue := ConditionFields[field].Sort
+		require.False(t, sortValue.Number != nil && sortValue.Text != nil, "%s has a number and a text reader", field)
+
+		simple := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+		if err := SortTorrents(torrents, simple, nil); slices.Contains(sortable, field) {
+			require.NoError(t, err, field)
+		} else {
+			require.EqualError(t, err, "unsupported sort field: "+string(field))
+		}
+
+		score := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionASC, ScoreRules: []models.ScoreRule{{
+			Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: field, Multiplier: 1},
+		}}}
+		if err := SortTorrents(torrents, score, nil); slices.Contains(scorable, field) {
+			require.NoError(t, err, field)
+		} else {
+			require.EqualError(t, err, "field multiplier requires numeric field, got: "+string(field))
+		}
+	}
+}
+
+func TestSortTorrents_TextFieldsIgnoreCase(t *testing.T) {
+	set := map[ConditionField]func(*qbt.Torrent, string){
+		FieldName:        func(t *qbt.Torrent, v string) { t.Name = v },
+		FieldCategory:    func(t *qbt.Torrent, v string) { t.Category = v },
+		FieldTags:        func(t *qbt.Torrent, v string) { t.Tags = v },
+		FieldTracker:     func(t *qbt.Torrent, v string) { t.Tracker = v },
+		FieldState:       func(t *qbt.Torrent, v string) { t.State = qbt.TorrentState(v) },
+		FieldSavePath:    func(t *qbt.Torrent, v string) { t.SavePath = v },
+		FieldContentPath: func(t *qbt.Torrent, v string) { t.ContentPath = v },
+		FieldComment:     func(t *qbt.Torrent, v string) { t.Comment = v },
+	}
+	for field, setValue := range set {
+		// Case-sensitive order puts "B" before "a".
+		upper, lower := qbt.Torrent{Hash: "upper"}, qbt.Torrent{Hash: "lower"}
+		setValue(&upper, "B")
+		setValue(&lower, "a")
+		torrents := []qbt.Torrent{upper, lower}
+		config := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+		require.NoError(t, SortTorrents(torrents, config, nil))
+		require.Equal(t, "lower", torrents[0].Hash, field)
+	}
+}
+
+// These Sort values differ from what a Condition on the same field compares.
+func TestSortValues_DifferFromCondition(t *testing.T) {
+	scoreBy := func(field ConditionField) *models.SortingConfig {
+		return &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+			Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: field, Multiplier: 1},
+		}}}
+	}
+
+	t.Run("FREE_SPACE ignores the space to clear", func(t *testing.T) {
+		evalCtx := &EvalContext{FreeSpace: 100, SpaceToClear: 50}
+		require.InDelta(t, 100.0, CalculateScore(qbt.Torrent{}, scoreBy(FieldFreeSpace), evalCtx), 0)
+	})
+
+	t.Run("PROGRESS scores 0 to 100", func(t *testing.T) {
+		require.InDelta(t, 50.0, CalculateScore(qbt.Torrent{Progress: 0.5}, scoreBy(FieldProgress), nil), 0)
+	})
+
+	t.Run("ADDED_ON sorts by timestamp, ADDED_ON_AGE by age", func(t *testing.T) {
+		evalCtx := &EvalContext{NowUnix: 1000}
+		sortBy := func(field ConditionField) []string {
+			torrents := []qbt.Torrent{{Hash: "new", AddedOn: 900}, {Hash: "old", AddedOn: 100}}
+			config := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+			require.NoError(t, SortTorrents(torrents, config, evalCtx))
+			return []string{torrents[0].Hash, torrents[1].Hash}
+		}
+		require.Equal(t, []string{"old", "new"}, sortBy(FieldAddedOn))
+		require.Equal(t, []string{"new", "old"}, sortBy(FieldAddedOnAge))
+	})
+}
+
 func TestProcessTorrents_PauseResume(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
@@ -2777,12 +2867,12 @@ func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
 
 	for _, sentinel := range []int64{28800, 4294967295, -1, 0} {
 		torrent := qbt.Torrent{CompletionOn: sentinel}
-		require.Zero(t, getNumericFieldValue(torrent, models.FieldCompletionOn, evalCtx), "numeric, sentinel %d", sentinel)
+		require.Zero(t, ConditionFields[models.FieldCompletionOn].Sort.Number(torrent, evalCtx), "numeric, sentinel %d", sentinel)
 		require.Zero(t, getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, torrent), "age, sentinel %d", sentinel)
 	}
 
 	completed := qbt.Torrent{CompletionOn: 1699990000}
-	require.InDelta(t, float64(1699990000), getNumericFieldValue(completed, models.FieldCompletionOn, evalCtx), 0)
+	require.InDelta(t, float64(1699990000), ConditionFields[models.FieldCompletionOn].Sort.Number(completed, evalCtx), 0)
 	require.InDelta(t, float64(10000), getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, completed), 0)
 }
 

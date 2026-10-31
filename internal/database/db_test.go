@@ -887,6 +887,7 @@ func TestTransactionSerialization(t *testing.T) {
 
 	// Channel to coordinate the test
 	started := make(chan bool, 1)
+	release := make(chan struct{})
 	committed := make(chan bool, 1)
 
 	// Start first transaction in a goroutine
@@ -898,11 +899,9 @@ func TestTransactionSerialization(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Signal that we started
+		// Signal that we started, then hold the transaction open
 		started <- true
-
-		// Hold the transaction for a bit
-		time.Sleep(200 * time.Millisecond)
+		<-release
 
 		// Insert something
 		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
@@ -929,16 +928,21 @@ func TestTransactionSerialization(t *testing.T) {
 		t.Fatal("First transaction didn't start")
 	}
 
-	// Now try to start a second transaction - it should block until the first commits
-	start := time.Now()
-	tx2, err := db.BeginTx(ctx, nil)
-	elapsed := time.Since(start)
+	// A second transaction cannot begin while the first is open
+	waitCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	_, err := db.BeginTx(waitCtx, nil)
+	cancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Second transaction should wait while the first is open")
+	close(release)
 
+	// It begins after the first commits
+	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
 
-	// Should have taken at least 100ms (the sleep time in the first transaction)
-	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+	var count int
+	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
+	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
 
 	// Clean up
 	require.NoError(t, tx2.Rollback())

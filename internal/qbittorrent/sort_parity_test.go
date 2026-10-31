@@ -42,7 +42,7 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
 	for _, id := range ids {
 		sm.refreshTrackerHealthCounts(t.Context(), id)
-		require.NotZero(t, sm.GetTrackerHealthCounts(id).Unregistered, "the state sort must see tracker health")
+		require.NotZero(t, sm.GetTrackerHealthSnapshot(id).Count(TrackerHealthUnregistered), "the state sort must see tracker health")
 	}
 
 	for _, column := range append(sortGoldenColumns(), "instance") {

@@ -307,18 +307,47 @@ type DuplicateTorrentMatch struct {
 	MatchedHashes []string `json:"matched_hashes,omitempty"`
 }
 
-// TrackerHealthCounts holds cached tracker health status counts and hash sets for an instance.
-// These are refreshed in the background to avoid blocking API requests.
-// The counts are used for sidebar display, while the hash sets enable per-torrent
-// health display, health-status filtering, and state sorting on cache-only SSE refreshes.
-type TrackerHealthCounts struct {
-	Unregistered    int                 // count for sidebar
-	TrackerDown     int                 // count for sidebar
-	TrackerError    int                 // count for sidebar
-	UnregisteredSet map[string]struct{} // hashes of unregistered torrents
-	TrackerDownSet  map[string]struct{} // hashes of tracker_down torrents
-	TrackerErrorSet map[string]struct{} // hashes of tracker_error torrents
-	UpdatedAt       time.Time
+// TrackerHealthSnapshot holds the tracker health of an instance: one verdict
+// for each torrent that has tracker health. A stored snapshot never changes.
+// A refresh, a delete, or a tracker edit stores a new one, so readers use it
+// with no copy. A nil snapshot means that the instance has no tracker health
+// yet: it gives no label and a count of 0.
+type TrackerHealthSnapshot struct {
+	byHash map[string]TrackerHealth
+	counts map[TrackerHealth]int
+}
+
+// NewTrackerHealthSnapshot builds a snapshot from one verdict per torrent hash.
+// The snapshot keeps the map, so the caller must not change it after the call.
+func NewTrackerHealthSnapshot(byHash map[string]TrackerHealth) *TrackerHealthSnapshot {
+	counts := make(map[TrackerHealth]int, 3)
+	for _, health := range byHash {
+		counts[health]++
+	}
+	return &TrackerHealthSnapshot{byHash: byHash, counts: counts}
+}
+
+// Health returns the verdict for one torrent, or "" when it has no label.
+func (s *TrackerHealthSnapshot) Health(hash string) TrackerHealth {
+	if s == nil {
+		return ""
+	}
+	return s.byHash[hash]
+}
+
+// Count returns the number of torrents with the verdict.
+func (s *TrackerHealthSnapshot) Count(health TrackerHealth) int {
+	if s == nil {
+		return 0
+	}
+	return s.counts[health]
+}
+
+// writeCounts sets the sidebar status count of each verdict.
+func (s *TrackerHealthSnapshot) writeCounts(status map[string]int) {
+	for _, health := range []TrackerHealth{TrackerHealthUnregistered, TrackerHealthDown, TrackerHealthError} {
+		status[string(health)] = s.Count(health)
+	}
 }
 
 // ValidatedTrackerMapping holds the current tracker-to-hash relationships used
@@ -372,7 +401,7 @@ type SyncManager struct {
 
 	// Background tracker health cache - refreshed periodically per instance
 	trackerHealthMu      sync.RWMutex
-	trackerHealthCache   map[int]*TrackerHealthCounts
+	trackerHealthCache   map[int]*TrackerHealthSnapshot
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
 	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
 	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
@@ -449,7 +478,7 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		syncDebounceMinJitter:     10 * time.Millisecond,
 		fileFetchSem:              make(map[int]chan struct{}),
 		fileFetchMaxConcurrent:    16,
-		trackerHealthCache:        make(map[int]*TrackerHealthCounts),
+		trackerHealthCache:        make(map[int]*TrackerHealthSnapshot),
 		trackerHealthCancel:       make(map[int]context.CancelFunc),
 		trackerHealthKick:         make(map[int]chan struct{}),
 		trackerHealthRefresh:      60 * time.Second,
@@ -712,31 +741,20 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 // applyTrackerHealthRefreshResult stores the health of a hydrated pass and the
 // tracker mapping from MainData. It reports whether either one changed.
 func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents []qbt.Torrent, mainData *qbt.MainData, started time.Time, fetchedByHash bool) bool {
-	counts := &TrackerHealthCounts{
-		UnregisteredSet: make(map[string]struct{}),
-		TrackerDownSet:  make(map[string]struct{}),
-		TrackerErrorSet: make(map[string]struct{}),
-		UpdatedAt:       time.Now(),
-	}
+	now := time.Now()
+	byHash := make(map[string]TrackerHealth)
 	for i := range torrents {
-		// Health counts are mutually exclusive.
-		switch sm.determineTrackerHealth(&torrents[i]) {
-		case TrackerHealthUnregistered:
-			counts.Unregistered++
-			counts.UnregisteredSet[torrents[i].Hash] = struct{}{}
-		case TrackerHealthDown:
-			counts.TrackerDown++
-			counts.TrackerDownSet[torrents[i].Hash] = struct{}{}
-		case TrackerHealthError:
-			counts.TrackerError++
-			counts.TrackerErrorSet[torrents[i].Hash] = struct{}{}
+		if health := trackerHealthOf(&torrents[i], now); health != "" {
+			byHash[torrents[i].Hash] = health
 		}
 	}
+	snapshot := NewTrackerHealthSnapshot(byHash)
 	mapping := sm.trackerMappingFromMainData(torrents, mainData)
 
 	sm.trackerHealthMu.Lock()
-	healthChanged := !sameTrackerHealth(sm.trackerHealthCache[instanceID], counts)
-	sm.trackerHealthCache[instanceID] = counts
+	previous := sm.trackerHealthCache[instanceID]
+	healthChanged := previous == nil || !maps.Equal(previous.byHash, byHash)
+	sm.trackerHealthCache[instanceID] = snapshot
 	sm.trackerHealthMu.Unlock()
 
 	// Queue icon fetches for discovered tracker domains. We do this here (in the
@@ -762,9 +780,9 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents 
 	}
 	log.WithLevel(level).
 		Int("instanceID", instanceID).
-		Int("unregistered", counts.Unregistered).
-		Int("trackerDown", counts.TrackerDown).
-		Int("trackerError", counts.TrackerError).
+		Int("unregistered", snapshot.Count(TrackerHealthUnregistered)).
+		Int("trackerDown", snapshot.Count(TrackerHealthDown)).
+		Int("trackerError", snapshot.Count(TrackerHealthError)).
 		Int("trackerDomains", domainCount).
 		Int("totalTorrents", len(torrents)).
 		Bool("changed", healthChanged || mappingChanged).
@@ -774,13 +792,6 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents 
 	return healthChanged || mappingChanged
 }
 
-func sameTrackerHealth(a, b *TrackerHealthCounts) bool {
-	return a != nil && b != nil &&
-		maps.Equal(a.UnregisteredSet, b.UnregisteredSet) &&
-		maps.Equal(a.TrackerDownSet, b.TrackerDownSet) &&
-		maps.Equal(a.TrackerErrorSet, b.TrackerErrorSet)
-}
-
 // notifyTrackerHealthUpdated wakes stream subscribers after tracker health cache writes.
 func (sm *SyncManager) notifyTrackerHealthUpdated(instanceID int) {
 	if sink := sm.getSyncEventSink(); sink != nil {
@@ -788,57 +799,22 @@ func (sm *SyncManager) notifyTrackerHealthUpdated(instanceID int) {
 	}
 }
 
-// GetTrackerHealthCounts returns a copy of the cached tracker health counts for an instance.
-// Returns nil if no cached counts are available.
-// The returned copy is safe to use without synchronization.
-func (sm *SyncManager) GetTrackerHealthCounts(instanceID int) *TrackerHealthCounts {
+// GetTrackerHealthSnapshot returns the stored tracker health of an instance,
+// or nil when no pass has stored one yet. The snapshot never changes, so the
+// caller can read it without a lock.
+func (sm *SyncManager) GetTrackerHealthSnapshot(instanceID int) *TrackerHealthSnapshot {
 	sm.trackerHealthMu.RLock()
 	defer sm.trackerHealthMu.RUnlock()
-
-	cached := sm.trackerHealthCache[instanceID]
-	if cached == nil {
-		return nil
-	}
-
-	// Return a copy to prevent data races with RemoveHashesFromTrackerHealthCache
-	unregisteredSet := make(map[string]struct{}, len(cached.UnregisteredSet))
-	for k := range cached.UnregisteredSet {
-		unregisteredSet[k] = struct{}{}
-	}
-	trackerDownSet := make(map[string]struct{}, len(cached.TrackerDownSet))
-	for k := range cached.TrackerDownSet {
-		trackerDownSet[k] = struct{}{}
-	}
-	trackerErrorSet := make(map[string]struct{}, len(cached.TrackerErrorSet))
-	for k := range cached.TrackerErrorSet {
-		trackerErrorSet[k] = struct{}{}
-	}
-
-	return &TrackerHealthCounts{
-		Unregistered:    cached.Unregistered,
-		TrackerDown:     cached.TrackerDown,
-		TrackerError:    cached.TrackerError,
-		UnregisteredSet: unregisteredSet,
-		TrackerDownSet:  trackerDownSet,
-		TrackerErrorSet: trackerErrorSet,
-		UpdatedAt:       cached.UpdatedAt,
-	}
+	return sm.trackerHealthCache[instanceID]
 }
 
-// RemoveHashesFromTrackerHealthCache removes the given hashes from the tracker health cache.
-// It publishes a tracker-health update only when cached counts actually changed.
-// Call it when torrents are deleted or tracker edits may have changed health
-// state so sidebar counts and health-filtered streams are refreshed immediately.
-func (sm *SyncManager) RemoveHashesFromTrackerHealthCache(instanceID int, hashes []string) {
-	if sm.removeHashesFromTrackerHealthCache(instanceID, hashes) {
-		sm.notifyTrackerHealthUpdated(instanceID)
-	}
-}
-
-func (sm *SyncManager) removeHashesFromTrackerHealthCache(instanceID int, hashes []string) bool {
+// clearTrackerHealthAndRefetch runs after a delete or a tracker edit. It has
+// two jobs: it removes the verdicts of the hashes at once, so the labels and
+// the sidebar counts drop before the next pass, and it marks the hashes as
+// edited, so the next pass fetches their trackers again. It publishes a
+// tracker-health update only when a verdict was removed.
+func (sm *SyncManager) clearTrackerHealthAndRefetch(instanceID int, hashes []string) {
 	sm.trackerHealthMu.Lock()
-	defer sm.trackerHealthMu.Unlock()
-
 	for _, cache := range []*trackerDetails{sm.trackerHealthFlagged[instanceID], sm.automationTrackerDetails[instanceID]} {
 		if cache == nil {
 			continue
@@ -851,36 +827,22 @@ func (sm *SyncManager) removeHashesFromTrackerHealthCache(instanceID int, hashes
 		}
 	}
 
-	counts := sm.trackerHealthCache[instanceID]
-	if counts == nil {
-		return false
+	snapshot := sm.trackerHealthCache[instanceID]
+	changed := snapshot != nil && slices.ContainsFunc(hashes, func(hash string) bool { return snapshot.byHash[hash] != "" })
+	if changed {
+		// The copy holds only the torrents with tracker health. The stored
+		// snapshot stays as it is for the readers that hold it.
+		byHash := maps.Clone(snapshot.byHash)
+		for _, hash := range hashes {
+			delete(byHash, hash)
+		}
+		sm.trackerHealthCache[instanceID] = NewTrackerHealthSnapshot(byHash)
 	}
+	sm.trackerHealthMu.Unlock()
 
-	changed := false
-	for _, hash := range hashes {
-		if _, exists := counts.UnregisteredSet[hash]; exists {
-			delete(counts.UnregisteredSet, hash)
-			changed = true
-			if counts.Unregistered > 0 {
-				counts.Unregistered--
-			}
-		}
-		if _, exists := counts.TrackerDownSet[hash]; exists {
-			delete(counts.TrackerDownSet, hash)
-			changed = true
-			if counts.TrackerDown > 0 {
-				counts.TrackerDown--
-			}
-		}
-		if _, exists := counts.TrackerErrorSet[hash]; exists {
-			delete(counts.TrackerErrorSet, hash)
-			changed = true
-			if counts.TrackerError > 0 {
-				counts.TrackerError--
-			}
-		}
+	if changed {
+		sm.notifyTrackerHealthUpdated(instanceID)
 	}
-	return changed
 }
 
 // getValidatedTrackerMapping returns a deep copy of the validated tracker mapping for an instance.
@@ -1372,9 +1334,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// The state sort and the tracker-health filters read the health that the
 	// background pass stores. A request never fetches tracker details.
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
-	var cachedHealth *TrackerHealthCounts
+	var cachedHealth *TrackerHealthSnapshot
 	if trackerHealthSupported {
-		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
+		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	// Get MainData for tracker filtering (if needed)
@@ -1635,11 +1597,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i := range paginatedTorrents {
-			view := TorrentView{Torrent: &paginatedTorrents[i]}
-			if health := sm.resolveTrackerHealth(&paginatedTorrents[i], cachedHealth); health != "" {
-				view.TrackerHealth = health
+			paginatedViews[i] = TorrentView{
+				Torrent:       &paginatedTorrents[i],
+				TrackerHealth: cachedHealth.Health(paginatedTorrents[i].Hash),
 			}
-			paginatedViews[i] = view
 		}
 	}
 
@@ -1731,31 +1692,15 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, nil
 	}
 
-	// Get cached tracker health counts for this instance
-	var cachedHealth *TrackerHealthCounts
+	var cachedHealth *TrackerHealthSnapshot
 	if trackerHealthSupportedByClient(client) {
-		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
+		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
-		torrent := &torrents[i]
-		view := &TorrentView{Torrent: torrent}
-		// First try to determine health from enriched tracker data
-		if health := sm.determineTrackerHealth(torrent); health != "" {
-			view.TrackerHealth = health
-		} else if cachedHealth != nil {
-			// Fall back to cached hash sets if torrent wasn't enriched
-			if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
-				view.TrackerHealth = TrackerHealthUnregistered
-			} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
-				view.TrackerHealth = TrackerHealthDown
-			} else if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
-				view.TrackerHealth = TrackerHealthError
-			}
-		}
 		views[i] = CrossInstanceTorrentView{
-			TorrentView:  view,
+			TorrentView:  &TorrentView{Torrent: &torrents[i], TrackerHealth: cachedHealth.Health(torrents[i].Hash)},
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -2212,7 +2157,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
+			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
 				for _, hash := range canonicalHashes {
@@ -2228,7 +2173,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		// Invalidate caches for deleted torrents
 		if err == nil {
 			folders.Queue()
-			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
+			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
 				for _, hash := range canonicalHashes {
@@ -3132,146 +3077,6 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 		statusFiltersRequireTrackerData(filters.ExcludeStatus)
 }
 
-func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
-	if torrent == nil || len(torrent.Trackers) == 0 {
-		return false
-	}
-
-	var hasWorking bool
-	var hasUnregistered bool
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusOK:
-			hasWorking = true
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
-			if TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasUnregistered = true
-			}
-		default:
-			// Anything else says nothing about registration either way.
-		}
-	}
-
-	if !hasUnregistered || hasWorking {
-		return false
-	}
-
-	// A freshly added torrent can report "unregistered" before the tracker has
-	// acknowledged it, so ignore the first hour. Checked last because reading
-	// the clock costs more than scanning the trackers, and this runs once per
-	// torrent for the whole library.
-	if torrent.AddedOn > 0 && time.Since(time.Unix(torrent.AddedOn, 0)) < time.Hour {
-		return false
-	}
-
-	return true
-}
-
-func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
-	if torrent == nil {
-		return false
-	}
-	var hasWorking bool
-	var hasDown bool
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
-			hasWorking = true
-		case qbt.TrackerStatusUnreachable:
-			hasDown = true
-		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
-			if TrackerMessageMatchesDown(tracker.Message) {
-				hasDown = true
-			}
-		default:
-			// Other statuses (e.g. not contacted yet) neither confirm nor deny a failure.
-			continue
-		}
-	}
-
-	return hasDown && !hasWorking
-}
-
-func (sm *SyncManager) torrentHasTrackerError(torrent *qbt.Torrent) bool {
-	if torrent == nil {
-		return false
-	}
-
-	if sm.torrentIsUnregistered(torrent) || sm.torrentTrackerIsDown(torrent) {
-		return false
-	}
-
-	var erroredTrackers int
-
-	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
-			continue
-		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError, qbt.TrackerStatusUnreachable:
-			erroredTrackers++
-		case qbt.TrackerStatusNotContacted, qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
-			return false
-		default:
-			// Any non-disabled tracker that is not in an error state means the torrent
-			// does not belong in the "all trackers errored" bucket.
-			return false
-		}
-	}
-
-	return erroredTrackers > 0
-}
-
-func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealth {
-	// Without tracker data every health check below is false by construction,
-	// and most torrents reach here unhydrated.
-	if torrent == nil || len(torrent.Trackers) == 0 {
-		return ""
-	}
-	if sm.torrentIsUnregistered(torrent) {
-		return TrackerHealthUnregistered
-	}
-
-	if sm.torrentTrackerIsDown(torrent) {
-		return TrackerHealthDown
-	}
-
-	if sm.torrentHasTrackerError(torrent) {
-		return TrackerHealthError
-	}
-
-	return ""
-}
-
-// resolveTrackerHealth returns live tracker health first, then falls back to
-// cached hash sets for cache-only torrent rows.
-func (sm *SyncManager) resolveTrackerHealth(torrent *qbt.Torrent, cachedHealth *TrackerHealthCounts) TrackerHealth {
-	if health := sm.determineTrackerHealth(torrent); health != "" {
-		return health
-	}
-	if torrent == nil || cachedHealth == nil || torrent.Hash == "" {
-		return ""
-	}
-	if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
-		return TrackerHealthUnregistered
-	}
-	if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
-		return TrackerHealthDown
-	}
-	if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
-		return TrackerHealthError
-	}
-	return ""
-}
-
 func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap, nil
@@ -3507,25 +3312,13 @@ func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL st
 // into status keys once. A library has thousands of torrents and about fifteen
 // states, so that is one string map increment per torrent instead of eight.
 type statusCounter struct {
-	byState      map[qbt.TorrentState]int
-	completed    int
-	unregistered int
-	trackerDown  int
-	trackerError int
+	byState   map[qbt.TorrentState]int
+	completed int
 }
 
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
 func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counter *statusCounter) {
 	counter.byState[torrent.State]++
-
-	switch sm.determineTrackerHealth(torrent) {
-	case TrackerHealthUnregistered:
-		counter.unregistered++
-	case TrackerHealthDown:
-		counter.trackerDown++
-	case TrackerHealthError:
-		counter.trackerError++
-	}
 
 	if torrent.Progress == 1 {
 		counter.completed++
@@ -3561,9 +3354,6 @@ func (c *statusCounter) expandInto(counts map[string]int) {
 	}
 
 	counts["completed"] += c.completed
-	counts["unregistered"] += c.unregistered
-	counts["tracker_down"] += c.trackerDown
-	counts["tracker_error"] += c.trackerError
 }
 
 // countableStatusesForState inverts torrentStateCategories so counting a
@@ -3624,12 +3414,10 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 		// The tracker-health cache refreshes on its own schedule, so its three
 		// status keys are layered on at read time instead of frozen at store time.
 		if trackerHealthSupported {
-			if cached := sm.GetTrackerHealthCounts(client.instanceID); cached != nil {
+			if snapshot := sm.GetTrackerHealthSnapshot(client.instanceID); snapshot != nil {
 				withHealth := *counts
 				withHealth.Status = maps.Clone(counts.Status)
-				withHealth.Status["unregistered"] = cached.Unregistered
-				withHealth.Status["tracker_down"] = cached.TrackerDown
-				withHealth.Status["tracker_error"] = cached.TrackerError
+				snapshot.writeCounts(withHealth.Status)
 				counts = &withHealth
 			}
 		}
@@ -3900,10 +3688,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	// Use cached tracker health counts for unregistered/tracker_down
 	// These are refreshed in the background to avoid blocking API requests
 	if client != nil && trackerHealthSupported {
-		if cached := sm.GetTrackerHealthCounts(client.instanceID); cached != nil {
-			counts.Status["unregistered"] = cached.Unregistered
-			counts.Status["tracker_down"] = cached.TrackerDown
-			counts.Status["tracker_error"] = cached.TrackerError
+		if snapshot := sm.GetTrackerHealthSnapshot(client.instanceID); snapshot != nil {
+			snapshot.writeCounts(counts.Status)
 		}
 	}
 
@@ -4700,7 +4486,7 @@ func torrentHasAnyTag(tags string, wanted map[string]struct{}) bool {
 }
 
 // applyManualFilters applies all filters manually when library filtering is insufficient.
-// Callers hydrate tracker data beforehand when status filters depend on tracker health.
+// With no tracker health snapshot, the tracker health statuses match no torrent.
 func (sm *SyncManager) applyManualFilters(
 	client *Client,
 	torrents []qbt.Torrent,
@@ -4712,9 +4498,8 @@ func (sm *SyncManager) applyManualFilters(
 	return sm.applyManualFiltersWithTrackerHealth(client, torrents, filters, mainData, categories, useSubcategories, nil)
 }
 
-// applyManualFiltersWithTrackerHealth applies manual filters and lets
-// health-status filters match cached tracker-health sets when torrents were not
-// hydrated with tracker data.
+// applyManualFiltersWithTrackerHealth applies manual filters. The tracker
+// health statuses match the verdicts in cachedHealth.
 func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	client *Client,
 	torrents []qbt.Torrent,
@@ -4722,7 +4507,7 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	mainData *qbt.MainData,
 	categories map[string]qbt.Category,
 	useSubcategories bool,
-	cachedHealth *TrackerHealthCounts,
+	cachedHealth *TrackerHealthSnapshot,
 ) []qbt.Torrent {
 	var matched []int
 
@@ -5299,14 +5084,10 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 // matchTorrentStatusWithTrackerHealth uses cached tracker-health data only for
 // tracker-health statuses; all qBittorrent state filters keep their normal
 // state-based matching.
-func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthCounts) bool {
-	switch strings.ToLower(status) {
-	case "unregistered":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthUnregistered
-	case "tracker_down":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthDown
-	case "tracker_error":
-		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthError
+func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthSnapshot) bool {
+	switch health := TrackerHealth(strings.ToLower(status)); health {
+	case TrackerHealthUnregistered, TrackerHealthDown, TrackerHealthError:
+		return cachedHealth.Health(torrent.Hash) == health
 	}
 
 	// Handle special cases first
@@ -6393,7 +6174,7 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 	// Optimistically remove from tracker health cache - if the edit fixed the issue,
 	// the torrent should no longer be counted as unregistered/tracker_down.
 	// If the new tracker is also broken, the background refresh will re-add it.
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, []string{hash})
+	sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
 
 	// Force a sync so cached tracker lists reflect the change immediately
 	sm.syncAfterModification(instanceID, client, "edit_tracker")
@@ -6434,7 +6215,7 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 	}
 
 	// Optimistically remove from tracker health cache - adding trackers might fix issues
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, []string{hash})
+	sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
 
 	sm.syncAfterModification(instanceID, client, "add_trackers")
 
@@ -6472,7 +6253,7 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 	}
 
 	// Optimistically remove from tracker health cache - removing broken trackers might fix issues
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, []string{hash})
+	sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
 
 	sm.syncAfterModification(instanceID, client, "remove_trackers")
 
@@ -6502,8 +6283,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 	// Edit trackers for each torrent
 	for _, hash := range hashes {
 		if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
 			lastErr = err
 			continue
 		}
@@ -6515,6 +6295,10 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 			return fmt.Errorf("failed to edit trackers: %w", lastErr)
 		}
 		return errors.New("failed to edit trackers")
+	}
+	if failed := len(hashes) - len(updatedHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(updatedHashes)).Int("failed", failed).
+			Msg("Failed to edit trackers for some torrents")
 	}
 
 	client.invalidateTrackerCache(updatedHashes...)
@@ -6531,7 +6315,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 	}
 
 	// Optimistically remove from tracker health cache for updated hashes
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, updatedHashes)
+	sm.clearTrackerHealthAndRefetch(instanceID, updatedHashes)
 
 	// Trigger a sync so future read operations see the updated tracker list
 	sm.syncAfterModification(instanceID, client, "bulk_edit_trackers")
@@ -6557,8 +6341,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 	// Add trackers to each torrent
 	for _, hash := range hashes {
 		if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
 			lastErr = err
 			continue
 		}
@@ -6570,6 +6353,10 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 			return fmt.Errorf("failed to add trackers: %w", lastErr)
 		}
 		return errors.New("failed to add trackers")
+	}
+	if failed := len(hashes) - len(successfulHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(successfulHashes)).Int("failed", failed).
+			Msg("Failed to add trackers to some torrents")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)
@@ -6584,7 +6371,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 	}
 
 	// Optimistically remove from tracker health cache - the new trackers may be working
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, successfulHashes)
+	sm.clearTrackerHealthAndRefetch(instanceID, successfulHashes)
 
 	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
@@ -6609,8 +6396,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 	// Remove trackers from each torrent
 	for _, hash := range hashes {
 		if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
-			// Log error but continue with other torrents
-			log.Error().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
+			log.Debug().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
 			lastErr = err
 			continue
 		}
@@ -6622,6 +6408,10 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 			return fmt.Errorf("failed to remove trackers: %w", lastErr)
 		}
 		return errors.New("failed to remove trackers")
+	}
+	if failed := len(hashes) - len(successfulHashes); failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("updated", len(successfulHashes)).Int("failed", failed).
+			Msg("Failed to remove trackers from some torrents")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)
@@ -6636,7 +6426,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 	}
 
 	// Optimistically remove from tracker health cache - status may change after removal
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, successfulHashes)
+	sm.clearTrackerHealthAndRefetch(instanceID, successfulHashes)
 
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
