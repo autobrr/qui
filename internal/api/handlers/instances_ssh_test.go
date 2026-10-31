@@ -24,8 +24,11 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -66,6 +69,8 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
 	t.Cleanup(sshPool.Close)
 	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
+	// With no saved route, the route check changes no answer of these tests.
+	handler.SetCrossSeedRoutes(crossseedroute.NewService(models.NewCrossSeedRouteStore(db), store, clientPool, fsops.NewPool(store, local.NewBackend())))
 
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)

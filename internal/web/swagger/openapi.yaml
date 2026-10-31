@@ -1143,6 +1143,23 @@ paths:
       responses:
         '200':
           description: Instance updated
+        '400':
+          description: |
+            Invalid instance ID or request body, link settings that the instance
+            cannot use, or a change that breaks a cross-seed route. A route
+            breaks when its Source instance turns off hardlink and reflink mode,
+            removes all base folders, leaves local mode, or adds a base folder
+            that nests with a mapped one, or when its Cross-seed instance becomes
+            a remote instance or turns on Local Filesystem Access while a row
+            changes the path. The message names the other instance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to update the instance or to check its cross-seed routes
     delete:
       tags:
         - Instances
@@ -1242,13 +1259,13 @@ paths:
         '204':
           description: Credentials stored
         '400':
-          description: Invalid instance ID, request body, endpoint or key
+          description: Invalid instance ID, request body, endpoint or key, or a change that makes the Cross-seed instance of a cross-seed route a remote instance. qui refuses the change before it checks for a running orphan scan deletion.
         '404':
           description: Instance not found
         '409':
           description: An orphan scan deletion is running on the instance
         '500':
-          description: Failed to store SSH credentials, or to check for a running orphan scan deletion
+          description: Failed to store SSH credentials, to check the cross-seed routes, or to check for a running orphan scan deletion
     delete:
       tags:
         - Instances
@@ -1320,7 +1337,7 @@ paths:
         '204':
           description: Host key pinned
         '400':
-          description: Invalid instance ID, request body or host key, or no SSH credentials configured
+          description: Invalid instance ID, request body or host key, no SSH credentials configured, or a pin that makes the Cross-seed instance of a cross-seed route a remote instance. qui refuses the pin before it dials the host.
         '404':
           description: Instance not found
         '409':
@@ -1328,7 +1345,7 @@ paths:
         '502':
           description: The host could not be reached or the SSH handshake failed
         '500':
-          description: Failed to load the instance, read the stored credentials, or store the pin
+          description: Failed to load the instance, check the cross-seed routes, read the stored credentials, or store the pin
 
   /api/instances/{instanceID}/ssh-host-key/replace:
     post:

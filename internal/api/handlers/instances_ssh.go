@@ -88,13 +88,22 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
 		return
 	}
-	if instance.UseHardlinks || instance.UseReflinks {
-		withoutPin := *instance
-		withoutPin.SSHHostKeyEncrypted = ""
-		if models.SSHEndpointChanged(instance, req.Host, req.Port) && !models.FilesystemCapabilitiesOf(&withoutPin).Write {
-			RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before changing its SSH host or port")
-			return
-		}
+	// Mirror SetSSHCredentials. Only the presence of the key matters to the
+	// access mode, and SetSSHCredentials refuses an empty key.
+	after := *instance
+	after.SSHHost, after.SSHPort, after.SSHUsername, after.SSHKeyEncrypted = req.Host, req.Port, req.Username, "set"
+	endpointChanged := models.SSHEndpointChanged(instance, req.Host, req.Port)
+	if endpointChanged {
+		after.SSHHostKeyEncrypted = ""
+	}
+	if (instance.UseHardlinks || instance.UseReflinks) && endpointChanged && !models.FilesystemCapabilitiesOf(&after).Write {
+		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before changing its SSH host or port")
+		return
+	}
+	// Removing the credentials keeps the pin, so new credentials for the same
+	// endpoint can make the instance remote with no host key confirm.
+	if h.refuseRouteBreak(w, r, instance, &after) {
+		return
 	}
 
 	err = h.changeSSH(r.Context(), instanceID, func() error {
@@ -281,6 +290,13 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	case !pinned && replace:
 		RespondError(w, http.StatusConflict, models.ErrSSHHostKeyNotPinned.Error())
+		return
+	}
+
+	// A pin can make the instance remote. Refuse before the dial.
+	pinned := *instance
+	pinned.SSHHostKeyEncrypted = "set"
+	if h.refuseRouteBreak(w, r, instance, &pinned) {
 		return
 	}
 
