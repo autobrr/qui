@@ -50,7 +50,8 @@ type Service struct {
 	backends  *fsops.Pool
 	// saveMu holds the rule check and the write of a save together, so two
 	// saves at the same time cannot store a route of two hops. A row drop
-	// holds it too, so that it cannot write back rows that a save replaced.
+	// and a route clear hold it too, so that a row drop cannot write back rows
+	// that a save replaced or a route that a clear removed.
 	saveMu sync.Mutex
 }
 
@@ -235,58 +236,61 @@ func (s *Service) CheckInstanceChange(ctx context.Context, before, after *models
 		return err
 	}
 	for _, route := range routes {
-		var rule func(*models.Instance) error
+		var rules func(*models.Instance) []string
 		switch after.ID {
 		case route.SourceInstanceID:
 			crossSeed, err := s.instances.Get(ctx, route.CrossSeedInstanceID)
 			if err != nil {
 				return err
 			}
-			rule = func(source *models.Instance) error { return sourceChangeRule(route, crossSeed.Name, source) }
+			rules = func(source *models.Instance) []string { return sourceChangeBreaks(route, crossSeed.Name, source) }
 		case route.CrossSeedInstanceID:
 			source, err := s.instances.Get(ctx, route.SourceInstanceID)
 			if err != nil {
 				return err
 			}
-			rule = func(crossSeed *models.Instance) error { return crossSeedChangeRule(route, source.Name, crossSeed) }
+			rules = func(crossSeed *models.Instance) []string { return crossSeedChangeBreaks(route, source.Name, crossSeed) }
 		default:
 			continue
 		}
-		if err := rule(after); err != nil {
-			if was := rule(before); was == nil || was.Error() != err.Error() {
-				return err
+		was := rules(before)
+		for _, msg := range rules(after) {
+			if !slices.Contains(was, msg) {
+				return &RuleError{Message: msg}
 			}
 		}
 	}
 	return nil
 }
 
-// sourceChangeRule checks the rules of route that a change to its Source
-// instance can break. A Source instance is in local mode, so its keys use the
-// host dialect.
-func sourceChangeRule(route *models.CrossSeedRoute, crossSeedName string, source *models.Instance) error {
+// sourceChangeBreaks returns a message for each rule of route that source
+// breaks, of the rules that a change to its Source instance can break. A
+// Source instance is in local mode, so its keys use the host dialect.
+func sourceChangeBreaks(route *models.CrossSeedRoute, crossSeedName string, source *models.Instance) []string {
 	keys := BaseDirKeys(fsops.HostPaths, source.HardlinkBaseDir)
-	switch {
-	case !source.UseHardlinks && !source.UseReflinks || len(keys) == 0:
-		return broken("This instance routes its cross-seeds to %s. Clear the route before you turn off hardlink and reflink mode or remove all base folders.", crossSeedName)
-	case models.FilesystemAccessMode(source) != models.FilesystemModeLocal:
-		return broken("This instance routes its cross-seeds to %s. Clear the route before you turn off Local Filesystem Access.", crossSeedName)
+	var breaks []string
+	if !source.UseHardlinks && !source.UseReflinks || len(keys) == 0 {
+		breaks = append(breaks, fmt.Sprintf("This instance routes its cross-seeds to %s. Clear the route before you turn off hardlink and reflink mode or remove all base folders.", crossSeedName))
+	}
+	if models.FilesystemAccessMode(source) != models.FilesystemModeLocal {
+		breaks = append(breaks, fmt.Sprintf("This instance routes its cross-seeds to %s. Clear the route before you turn off Local Filesystem Access.", crossSeedName))
 	}
 	if err := checkMappedPaths(rowsFor(route.Rows, keys), false); err != nil {
-		return broken("This instance routes its cross-seeds to %s, and %s. Clear the route before you add this base folder.", crossSeedName, err.Error())
+		breaks = append(breaks, fmt.Sprintf("This instance routes its cross-seeds to %s, and %s. Clear the route before you add this base folder.", crossSeedName, err.Error()))
 	}
-	return nil
+	return breaks
 }
 
-// crossSeedChangeRule checks the rules of route that a change to its
-// Cross-seed instance can break.
-func crossSeedChangeRule(route *models.CrossSeedRoute, sourceName string, crossSeed *models.Instance) error {
+// crossSeedChangeBreaks returns a message for each rule of route that
+// crossSeed breaks, of the rules that a change to its Cross-seed instance can
+// break.
+func crossSeedChangeBreaks(route *models.CrossSeedRoute, sourceName string, crossSeed *models.Instance) []string {
 	switch models.FilesystemAccessMode(crossSeed) {
 	case models.FilesystemModeRemote:
-		return broken("%s routes its cross-seeds to this instance, so this instance cannot be a remote instance. Clear the route of %s first.", sourceName, sourceName)
+		return []string{fmt.Sprintf("%s routes its cross-seeds to this instance, so this instance cannot be a remote instance. Clear the route of %s first.", sourceName, sourceName)}
 	case models.FilesystemModeLocal:
 		if row, moved := movedRow(route.Rows); moved {
-			return broken("%s routes its cross-seeds to this instance and maps %s to %s. Clear the route of %s before you turn on Local Filesystem Access.", sourceName, row.BaseDir, row.MappedPath, sourceName)
+			return []string{fmt.Sprintf("%s routes its cross-seeds to this instance and maps %s to %s. Clear the route of %s before you turn on Local Filesystem Access.", sourceName, row.BaseDir, row.MappedPath, sourceName)}
 		}
 	case models.FilesystemModeNone:
 	}
@@ -308,13 +312,26 @@ func rowsFor(stored []models.CrossSeedRouteRow, keys []string) []models.CrossSee
 	return rows
 }
 
-// DropRemovedBaseDirs drops the rows of the base folders that source no
-// longer has from its route.
-func (s *Service) DropRemovedBaseDirs(ctx context.Context, source *models.Instance) error {
+// Delete clears the route of the Source instance. It holds saveMu, so that a
+// row drop cannot write the route back.
+func (s *Service) Delete(ctx context.Context, sourceInstanceID int) error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
-	route, err := s.Get(ctx, source.ID)
+	return s.CrossSeedRouteStore.Delete(ctx, sourceInstanceID)
+}
+
+// DropRemovedBaseDirs drops the rows of the base folders that the Source
+// instance no longer has from its route. It reads the instance under saveMu,
+// so that an older update cannot drop a row that a newer update added back.
+func (s *Service) DropRemovedBaseDirs(ctx context.Context, sourceInstanceID int) error {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	route, err := s.Get(ctx, sourceInstanceID)
 	if err != nil || route == nil {
+		return err
+	}
+	source, err := s.instances.Get(ctx, sourceInstanceID)
+	if err != nil {
 		return err
 	}
 	keys := BaseDirKeys(fsops.HostPaths, source.HardlinkBaseDir)

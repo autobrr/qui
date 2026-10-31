@@ -904,7 +904,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	if h.routes != nil {
 		// The instance is saved, so a failed drop leaves an unused row that
 		// the next update drops.
-		if err := h.routes.DropRemovedBaseDirs(r.Context(), instance); err != nil {
+		if err := h.routes.DropRemovedBaseDirs(r.Context(), instanceID); err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to drop the cross-seed route rows of removed base folders")
 		}
 	}

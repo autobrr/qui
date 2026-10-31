@@ -517,6 +517,19 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off Local Filesystem Access",
 		},
 		{
+			// The route already breaks the link-mode rule, and the change
+			// breaks another one.
+			name: "source with link mode off leaves local mode",
+			setup: func(f *routeFixture) *models.Instance {
+				source := f.withSSH(f.instance("library", f.qbt, models.FilesystemModeLocal), true)
+				crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
+				require.NoError(t, f.routes.Upsert(t.Context(), &models.CrossSeedRoute{SourceInstanceID: source.ID, CrossSeedInstanceID: crossSeed.ID}))
+				return source
+			},
+			change: update(map[string]any{"hasLocalFilesystemAccess": false}),
+			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off Local Filesystem Access",
+		},
+		{
 			name: "source adds a base folder that nests with a mapped one",
 			setup: func(f *routeFixture) *models.Instance {
 				source := f.source("library", models.FilesystemModeLocal, library)
