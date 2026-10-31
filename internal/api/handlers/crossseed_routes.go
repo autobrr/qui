@@ -18,7 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// crossSeedRouteTimeout bounds the Cross-seed instance's availability check.
+// crossSeedRouteTimeout bounds the reads of the Cross-seed instance in one request.
 const crossSeedRouteTimeout = 15 * time.Second
 
 type crossSeedRouteRequest struct {
@@ -28,8 +28,16 @@ type crossSeedRouteRequest struct {
 
 type crossSeedRouteResponse struct {
 	*models.CrossSeedRoute
+	Rows []crossSeedRouteRowResponse `json:"rows"`
 	// BrokenRule is the route rule that the saved route breaks, empty when it passes.
 	BrokenRule string `json:"brokenRule,omitempty"`
+}
+
+type crossSeedRouteRowResponse struct {
+	models.CrossSeedRouteRow
+	// RoutedTorrents is the number of the Cross-seed instance's torrents under
+	// the row, null when the Cross-seed instance is unavailable.
+	RoutedTorrents *int `json:"routedTorrents"`
 }
 
 // ListCrossSeedRoutes returns every route, so a client sees which instances route to which.
@@ -71,6 +79,20 @@ func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		response.BrokenRule = ruleErr.Message
+	}
+
+	counts, err := h.routes.CountRouted(ctx, h.torrents, route)
+	if err != nil && !errors.Is(err, crossseedroute.ErrUnavailable) {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to count routed torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to count routed torrents")
+		return
+	}
+	response.Rows = make([]crossSeedRouteRowResponse, len(route.Rows))
+	for i, row := range route.Rows {
+		response.Rows[i].CrossSeedRouteRow = row
+		if counts != nil {
+			response.Rows[i].RoutedTorrents = &counts[i]
+		}
 	}
 	RespondJSON(w, http.StatusOK, response)
 }

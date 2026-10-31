@@ -5198,7 +5198,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Get the cross-seed route of a Source instance
-      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes.
+      description: Returns the saved route of a Source instance, or null when it has none. brokenRule names the route rule that the saved route no longer passes. Each row gives routedTorrents, the number of the Cross-seed instance's torrents under it, or null when the Cross-seed instance is unavailable.
       responses:
         '200':
           description: The saved route with its rule status, or null
@@ -8527,7 +8527,22 @@ components:
       allOf:
         - $ref: '#/components/schemas/CrossSeedRoute'
         - type: object
+          required:
+            - rows
           properties:
+            rows:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedRouteRow'
+                  - type: object
+                    required:
+                      - routedTorrents
+                    properties:
+                      routedTorrents:
+                        type: integer
+                        nullable: true
+                        description: The number of the Cross-seed instance's torrents under the row. Null when the Cross-seed instance is unavailable.
             brokenRule:
               type: string
               description: The route rule that the saved route breaks. Absent when the route passes every rule.
