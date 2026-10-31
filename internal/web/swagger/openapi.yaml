@@ -8456,15 +8456,23 @@ components:
       properties:
         instance_id:
           type: integer
+          description: The instance that holds the matched torrent.
         instance_name:
           type: string
         success:
           type: boolean
         status:
           type: string
+          description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule.
         message:
           type: string
           nullable: true
+        cross_seed_instance_id:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. Not set when the add is not routed.
+        cross_seed_instance_name:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedRunResult:
       type: object
@@ -8489,6 +8497,12 @@ components:
         matchedTorrentName:
           type: string
           nullable: true
+        crossSeedInstanceId:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. Not set when the add is not routed.
+        crossSeedInstanceName:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedRun:
       type: object
@@ -9397,6 +9411,12 @@ components:
         processedAt:
           type: string
           format: date-time
+        crossSeedInstanceId:
+          type: integer
+          description: The Cross-seed instance that a routed add goes to. Not set when the add is not routed.
+        crossSeedInstanceName:
+          type: string
+          description: The name of the Cross-seed instance that a routed add goes to. Not set when the add is not routed.
 
     CrossSeedSearchRun:
       type: object

@@ -207,7 +207,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -285,7 +285,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -369,7 +369,7 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 	// AddTorrent wiring, which is captured before alignment runs: savepath pins to the matched
 	// FOLDER (not the raw single-file ContentPath), autoTMM is forced off, and the layout is Original.
 	withAdder(service)
-	service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil)
+	service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 
 	require.NotNil(t, sync.addedOptions)
 	require.Equal(t, "false", sync.addedOptions["autoTMM"])
@@ -446,7 +446,7 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -526,7 +526,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 

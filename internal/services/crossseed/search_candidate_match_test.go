@@ -2056,7 +2056,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 		&CrossSeedRequest{SkipRecheck: true},
 		service.releaseCache.Parse("Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"),
 		nil,
-		nil,
+		nil, nil,
 	)
 
 	require.Equal(t, "skipped_recheck", result.Status)

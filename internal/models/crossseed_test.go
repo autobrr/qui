@@ -188,6 +188,9 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 		Status:       models.CrossSeedSearchResultStatusAdded,
 		Message:      "added via Indexer",
 		ProcessedAt:  now,
+		// A routed add names the Cross-seed instance that received it.
+		CrossSeedInstanceID:   7,
+		CrossSeedInstanceName: "Seeds",
 	}}
 
 	require.NoError(t, store.UpdateSearchRun(ctx, run))
@@ -195,6 +198,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, updated.Results, 1)
 	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, updated.Results[0].Status)
+	assert.Equal(t, 7, updated.Results[0].CrossSeedInstanceID)
+	assert.Equal(t, "Seeds", updated.Results[0].CrossSeedInstanceName)
 
 	data, err := json.Marshal(updated.Results[0])
 	require.NoError(t, err)
