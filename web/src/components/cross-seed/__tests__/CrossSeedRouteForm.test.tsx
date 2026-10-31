@@ -392,3 +392,91 @@ describe("CrossSeedRouteForm Test route", () => {
     expect(screen.getByText("seedbox: offline")).toBeTruthy()
   })
 })
+
+describe("CrossSeedRouteForm confirm", () => {
+  const otherCrossSeed = makeInstance(3, "seedbox2", { useHardlinks: false, hardlinkBaseDir: "" })
+
+  // A saved route to seedbox: 3 routed torrents under /data/a, 4 under /data/b.
+  function serveSaved(routedA: number | null = 3) {
+    mocks.instances.instances = [source, crossSeed, otherCrossSeed]
+    const writes: string[] = []
+    serve({
+      routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }, { baseDir: "/data/b", mappedPath: "/mnt/b" }] }],
+      read: {
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: routedA }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }],
+      },
+    })
+    server.use(
+      http.put("*/api/cross-seed/routes/1", () => {
+        writes.push("save")
+        return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+      }),
+      http.delete("*/api/cross-seed/routes/1", () => {
+        writes.push("clear")
+        return new HttpResponse(null, { status: 204 })
+      })
+    )
+    renderForm(source)
+    return writes
+  }
+
+  const confirmButton = () => screen.findByRole("button", { name: "routeConfirm.confirm" })
+
+  it("asks before a row edit, with the routed torrents under the edited row", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|3")).toBeTruthy()
+    expect(screen.getByText("routeConfirm.orphanScan|library|seedbox")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "routeConfirm.cancel" }))
+    expect(writes).toEqual([])
+
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("asks before a change of Cross-seed instance, with the routed torrents under all rows", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    await waitFor(() => expect(optionNames()).toContain("seedbox2"))
+    fireEvent.change(picker(), { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|7")).toBeTruthy()
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("says the count is unknown when a row has no count", async () => {
+    serveSaved(null)
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
+  })
+
+  it("saves with no confirm when no saved row changes", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(writes).toEqual(["save"]))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+  })
+
+  it("asks before a route clear and says the Cross-seed instance keeps the routed torrents", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|7")).toBeTruthy()
+    expect(screen.getByText("routeConfirm.clear|library|seedbox")).toBeTruthy()
+    expect(writes).toEqual([])
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["clear"]))
+  })
+})

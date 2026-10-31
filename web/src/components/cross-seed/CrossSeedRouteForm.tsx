@@ -5,6 +5,7 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { countRoutedTorrents, RouteProtectionConfirmDialog } from "@/components/cross-seed/RouteProtectionConfirm"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -87,6 +88,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
   const { data: savedRoute, isLoading: isLoadingRoute } = useCrossSeedRoute(instance, saved !== undefined)
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
+  // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
+  const [confirm, setConfirm] = useState<{ clear: boolean; baseDirs?: string[] } | null>(null)
 
   const sourceNames = routes
     .filter(route => route.crossSeedInstanceId === instance.id)
@@ -156,8 +159,18 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
-  const handleSave = () => saveRoute.mutate()
-  const handleClear = () => clearRoute.mutate()
+  const handleSave = () => {
+    if (!saved) return saveRoute.mutate()
+    if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
+    const changed = savedRoute.rows
+      // rows is built from savedRoute.rows, in the same order.
+      .filter((row, i) => rows[i].mappedPath !== row.mappedPath)
+      .map(row => row.baseDir)
+    if (changed.length === 0) return saveRoute.mutate()
+    setConfirm({ clear: false, baseDirs: changed })
+  }
+  const handleClear = () => setConfirm({ clear: true })
+  const confirmRows = savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
 
   const edit = (next: { crossSeedInstanceId?: number; baseDir?: string; mappedPath?: string }) => {
     testRoute.reset()
@@ -278,6 +291,16 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
           </Button>
         )}
       </div>
+
+      <RouteProtectionConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        onConfirm={() => (confirm?.clear ? clearRoute : saveRoute).mutate()}
+        sourceName={instance.name}
+        crossSeedName={savedCrossSeed?.name ?? ""}
+        routedTorrents={confirmRows && countRoutedTorrents(confirmRows)}
+        clear={confirm?.clear}
+      />
     </div>
   )
 }
