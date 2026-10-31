@@ -14,11 +14,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
-	"unsafe"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/bencode"
@@ -30,19 +28,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
-
-// setServiceField injects unexported crossseed.Service test hooks that cannot be
-// provided through crossseed.NewService's concrete production dependencies.
-func setServiceField[T any](t *testing.T, svc *crossseed.Service, name string, value T) {
-	t.Helper()
-
-	field := reflect.ValueOf(svc).Elem().FieldByName(name)
-	require.True(t, field.IsValid(), "missing field %q", name)
-
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
-}
 
 type seasonPackHandlerInstanceStore struct {
 	instances map[int]*models.Instance
@@ -239,17 +227,17 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	instanceStore := &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
 	svc := &crossseed.Service{}
 	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
-	setServiceField(t, svc, "instanceStore", instanceStore)
-	setServiceField(t, svc, "syncManager", syncManager)
-	setServiceField(t, svc, "adder", crossseed.NewAdder(syncManager, nil, nil, nil, nil))
-	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
-	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+	testutil.SetUnexportedField(t, svc, "instanceStore", instanceStore)
+	testutil.SetUnexportedField(t, svc, "syncManager", syncManager)
+	testutil.SetUnexportedField(t, svc, "adder", crossseed.NewAdder(syncManager, nil, nil, nil, nil))
+	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	testutil.SetUnexportedField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return &models.CrossSeedAutomationSettings{
 			SeasonPackEnabled:           true,
 			SeasonPackCoverageThreshold: 1,
 		}, nil
 	})
-	setServiceField(t, svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	testutil.SetUnexportedField(t, svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 		return &fsops.TreeCreateResult{}, nil
 	})
 
@@ -276,10 +264,10 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
 	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
 	svc := &crossseed.Service{}
-	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
-	setServiceField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
-	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
-	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+	testutil.SetUnexportedField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
+	testutil.SetUnexportedField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
+	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	testutil.SetUnexportedField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return &models.CrossSeedAutomationSettings{}, nil
 	})
 
@@ -302,10 +290,10 @@ func TestManualMatchApplyFailsWhenSettingsReadFails(t *testing.T) {
 	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
 	syncManager := &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}}
 	svc := &crossseed.Service{}
-	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
-	setServiceField(t, svc, "syncManager", syncManager)
-	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
-	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+	testutil.SetUnexportedField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
+	testutil.SetUnexportedField(t, svc, "syncManager", syncManager)
+	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	testutil.SetUnexportedField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return nil, errors.New("settings unavailable")
 	})
 

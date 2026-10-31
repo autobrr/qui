@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
 func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
@@ -124,12 +125,6 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 
 // Note: Intercept logic is now handled by chi routes, not by dynamic checking
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
 func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	t.Helper()
 
@@ -138,7 +133,7 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 
 	payload := []byte(`{"rid":1,"full_update":false}`)
 
-	handler.proxy.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	handler.proxy.Transport = testutil.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		resp := &http.Response{
 			StatusCode:    http.StatusOK,
 			ContentLength: int64(len(payload)),
@@ -253,7 +248,7 @@ func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	require.NotNil(t, rt.baseSelector, "expected RetryTransport selector to be configured")
 
 	var selectedCalled atomic.Bool
-	selected := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	selected := testutil.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		selectedCalled.Store(true)
 		return &http.Response{
 			StatusCode: http.StatusOK,

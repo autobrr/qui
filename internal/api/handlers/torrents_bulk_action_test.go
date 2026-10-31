@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -275,7 +276,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 		instanceIDs[name] = instance.ID
 		clients[instance.ID] = newStaleCachedClient(t, srv.URL, shared)
 	}
-	setUnexportedField(t, clientPool, "clients", clients)
+	testutil.SetUnexportedField(t, clientPool, "clients", clients)
 
 	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
@@ -325,7 +326,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 
 	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
-	setUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
 		{Name: "Plain", Hash: "aaa", AddedOn: 2},
 		{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
 	})})
