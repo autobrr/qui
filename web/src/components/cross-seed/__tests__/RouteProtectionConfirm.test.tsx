@@ -37,7 +37,8 @@ function DeleteHarness({ instanceId, enabled = true }: { instanceId: number; ena
 }
 
 function renderNotice(instanceId: number, seed?: (queryClient: QueryClient) => void) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The same 5-second staleTime as App.tsx, so a fresh cached read must not hide a change.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
   server.use(http.get("*/api/instances", () => HttpResponse.json(instances.instances)))
   seed?.(queryClient)
   const view = render(

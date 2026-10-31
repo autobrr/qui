@@ -88,6 +88,7 @@ export function RouteProtectionConfirmDialog({
 export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
   // Each dialog reads both lists again: another tab can have saved a route to the
   // instance, also from a Source instance that this tab does not know yet.
+  // Each read here sets staleTime 0, because App.tsx keeps a read fresh for 5 seconds.
   const instanceList = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), enabled, staleTime: 0 })
   const instances = instanceList.data
   const list = useCrossSeedRoutes(enabled, 0)
@@ -101,6 +102,7 @@ export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
       queryKey: crossSeedRouteKey(source),
       queryFn: () => api.getCrossSeedRoute(source.id),
       enabled,
+      staleTime: 0,
     })),
   })
   // A refetch keeps the old cached data, so a failed one also leaves the routes unknown.
