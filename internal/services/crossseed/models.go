@@ -589,6 +589,7 @@ type SeasonPackApplyResponse struct {
 	Reason          string  `json:"reason,omitempty"`
 	Message         string  `json:"message,omitempty"`
 	InstanceID      int     `json:"instanceId,omitempty"`
+	AddedInstanceID int     `json:"addedInstanceId,omitzero"`
 	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
 	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
 	Coverage        float64 `json:"coverage,omitempty"`
