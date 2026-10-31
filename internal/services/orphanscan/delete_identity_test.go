@@ -416,6 +416,48 @@ func TestExecuteDeletion_UnreadableTorrentFileStopsTheRunBeforeAnyDelete(t *test
 	require.Contains(t, run.ErrorMessage, "Fix access to that path or remove the torrent, then run a new scan.")
 }
 
+// deniedIdentityStatBackend reports one path through Stat, but without its
+// identity, as Windows does for a file whose ACL denies reading its attributes.
+type deniedIdentityStatBackend struct {
+	fsops.Backend
+	path string
+}
+
+func (b deniedIdentityStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Stat(ctx, p)
+	if err == nil && p == b.path {
+		info.FileIDErr = &fs.PathError{Op: "open", Path: p, Err: fs.ErrPermission}
+	}
+	return info, err
+}
+
+// A torrent file that qui can look up but whose identity it may not read could
+// be a listed file under another path, so the run stops before it deletes
+// anything. Only a denied look up is skipped.
+// regression: #3596
+func TestExecuteDeletion_TorrentFileWithoutReadableIdentityStopsTheRunBeforeAnyDelete(t *testing.T) {
+	var orphan, opaque string
+	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+		return deniedIdentityStatBackend{Backend: b, path: opaque}
+	}}
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-denied-identity-late", opts, func(defaultSavePath string) {
+		orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
+		writeFile(t, orphan)
+		opaque = filepath.Join(filepath.Dir(defaultSavePath), "opaque", "movie.mkv")
+		writeFile(t, opaque)
+	})
+
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: filepath.Dir(opaque)}, "movie.mkv")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	require.FileExists(t, orphan)
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", run.Status)
+	require.Contains(t, run.ErrorMessage, "could not check which files torrents use")
+	require.Contains(t, run.ErrorMessage, opaque)
+}
+
 // noTargetIdentityBackend reports one path without its identity.
 type noTargetIdentityBackend struct {
 	fsops.Backend
