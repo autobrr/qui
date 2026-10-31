@@ -167,6 +167,19 @@ describe("CrossSeedDeleteNotice", () => {
     expect(deleteButton().disabled).toBe(false)
   })
 
+  it("reads the route list again for each dialog, also when the cached list is fresh", async () => {
+    // Another browser can have saved a route to the instance after the last list read.
+    server.use(
+      http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
+      http.get("*/api/cross-seed/routes/1", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 2 }] }))
+    )
+    const { deleteButton } = renderNotice(3, queryClient => queryClient.setQueryData(crossSeedRoutesKey, []))
+    expect(deleteButton().disabled).toBe(true)
+
+    await screen.findByText("2 routed torrents on seedbox use files in the affected base folders of library-a.")
+    expect(deleteButton().disabled).toBe(false)
+  })
+
   it("keeps Delete off and shows no old count while a cached route read refetches", async () => {
     let answerRead: (() => void) | undefined
     server.use(

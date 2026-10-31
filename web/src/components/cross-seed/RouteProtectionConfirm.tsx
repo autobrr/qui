@@ -88,7 +88,8 @@ export function RouteProtectionConfirmDialog({
  */
 export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
   const { instances } = useInstances()
-  const list = useCrossSeedRoutes(enabled)
+  // Each dialog reads the list again: another tab can have saved a route to the instance.
+  const list = useCrossSeedRoutes(enabled, 0)
   const crossSeedName = instances?.find(instance => instance.id === instanceId)?.name ?? ""
   const sources = (list.data ?? [])
     .filter(route => route.crossSeedInstanceId === instanceId)

@@ -11,12 +11,12 @@ import { useQuery } from "@tanstack/react-query"
 export const crossSeedRoutesKey = ["cross-seed", "routes"] as const
 
 /** Every saved route, so a view knows which instances route to which (ADR 0035). */
-export function useCrossSeedRoutes(enabled = true) {
+export function useCrossSeedRoutes(enabled = true, staleTime = 60_000) {
   return useQuery({
     queryKey: crossSeedRoutesKey,
     queryFn: () => api.listCrossSeedRoutes(),
     enabled,
-    staleTime: 60_000,
+    staleTime,
   })
 }
 
