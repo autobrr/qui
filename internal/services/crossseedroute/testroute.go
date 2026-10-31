@@ -119,7 +119,7 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 		if !errors.Is(err, ErrUnavailable) {
 			return nil, err
 		}
-		unavailable.Unavailable = crossSeedUnavailable(err).Error()
+		unavailable.Unavailable = CrossSeedUnavailable(err).Error()
 		return unavailable, nil
 	}
 
