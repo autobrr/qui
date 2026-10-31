@@ -96,12 +96,6 @@ function chip(label: string) {
 }
 
 describe("SeasonPacksTab season pack runs", () => {
-  it("requests every run that qui keeps", async () => {
-    mocks.listRuns.mockResolvedValue([])
-    renderTab()
-    await waitFor(() => expect(mocks.listRuns).toHaveBeenCalledWith({ limit: 400 }))
-  })
-
   it("shows only applied runs by default, with a count on each chip", async () => {
     mocks.listRuns.mockResolvedValue([
       makeRun(1, "applied"),
@@ -114,6 +108,7 @@ describe("SeasonPacksTab season pack runs", () => {
     await openRunsPanel()
 
     await screen.findByText("Pack.applied.1")
+    expect(mocks.listRuns).toHaveBeenCalledWith({ limit: 400 })
     expect(screen.queryByText("Pack.failed.2")).toBeNull()
     expect(screen.queryByText("Pack.skipped.4")).toBeNull()
     expect(screen.queryByText("Pack.ready_no_threshold.5")).toBeNull()
@@ -137,6 +132,24 @@ describe("SeasonPacksTab season pack runs", () => {
 
     fireEvent.click(chip("ready"))
     await screen.findByText("Pack.ready_no_threshold.5")
+  })
+
+  it("keeps the chip choice after a remount", async () => {
+    mocks.listRuns.mockResolvedValue([makeRun(1, "applied"), makeRun(2, "failed")])
+    const first = renderTab()
+    await openRunsPanel()
+    await screen.findByText("Pack.applied.1")
+    fireEvent.click(chip("applied"))
+    fireEvent.click(chip("failed"))
+    await screen.findByText("Pack.failed.2")
+    first.unmount()
+
+    renderTab()
+    await openRunsPanel()
+    await screen.findByText("Pack.failed.2")
+    expect(chip("failed").getAttribute("aria-pressed")).toBe("true")
+    expect(chip("applied").getAttribute("aria-pressed")).toBe("false")
+    expect(screen.queryByText("Pack.applied.1")).toBeNull()
   })
 
   it("offers a link for each hidden status with runs when no run matches", async () => {

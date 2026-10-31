@@ -120,8 +120,12 @@ func TestListSeasonPackRuns_LimitRange(t *testing.T) {
 	handler := &CrossSeedHandler{seasonPackRunStore: store}
 
 	ctx := t.Context()
-	for range 25 {
-		_, err := store.Create(ctx, &models.SeasonPackRun{TorrentName: "Pack.S01.720p", Phase: "check", Status: "skipped"})
+	for range 12 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{TorrentName: "Pack.S01.720p", Phase: "apply", Status: "applied"})
+		require.NoError(t, err)
+	}
+	for range 250 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{TorrentName: "Pack.S02.720p", Phase: "apply", Status: "failed"})
 		require.NoError(t, err)
 	}
 
@@ -129,7 +133,7 @@ func TestListSeasonPackRuns_LimitRange(t *testing.T) {
 		path    string
 		wantLen int
 	}{
-		{path: "/api/cross-seed/season-pack/runs?limit=400", wantLen: 25},
+		{path: "/api/cross-seed/season-pack/runs?limit=400", wantLen: 212},
 		{path: "/api/cross-seed/season-pack/runs?limit=401", wantLen: 20},
 	}
 
