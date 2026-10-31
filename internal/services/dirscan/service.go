@@ -170,17 +170,12 @@ func NewService(
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
 	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
-	var torrentFiles torrentFilesReader
-	if syncManager != nil {
-		torrentFiles = syncManagerTorrentFiles{syncManager}
-	}
-
 	return &Service{
 		cfg:                       cfg,
 		store:                     store,
 		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
-		torrentFiles:              torrentFiles,
+		torrentFiles:              syncManagerTorrentFiles{syncManager},
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
@@ -931,13 +926,11 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	// This is best-effort; if it fails, scanning continues without seeding skips,
 	// and files marked already seeding by an earlier run keep that status.
 	fileIDIndex := &seedingIndex{}
-	if s.torrentFiles != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
-			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else {
-			fileIDIndex = index
-			scanner.SetFileIDIndex(index)
-		}
+	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+	} else {
+		fileIDIndex = index
+		scanner.SetFileIDIndex(index)
 	}
 
 	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)
