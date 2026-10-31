@@ -199,7 +199,7 @@ Before each routed add, qui makes sure that the Cross-seed instance sees the lin
 
 If the Cross-seed instance uses an NFS mount and this check fails often, lower the folder cache time of the mount. NFS can keep a folder listing for up to 60 seconds. The `acdirmax` mount option sets this time.
 
-Before the add, qui also skips a torrent that the Source instance or the Cross-seed instance already has. qui applies the [blocklist](./overview.md#blocklist) of the Cross-seed instance to a routed add. The blocklist of the Source instance does not apply.
+Before the add, qui also skips a torrent that the Source instance or the Cross-seed instance already has. qui applies the [blocklist](./overview.md#blocklist) of the Cross-seed instance to a routed add. A [manual assembly](./overview.md#manual-match) from selected episodes ignores the blocklist, as it does without a route. The blocklist of the Source instance does not apply.
 
 ### Files of routed cross-seeds
 
