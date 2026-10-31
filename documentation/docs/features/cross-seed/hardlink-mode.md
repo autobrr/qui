@@ -210,7 +210,7 @@ The route protects these files on the Source instance:
 - [Orphan scan](../orphan-scan.md) on the Source instance keeps the files that routed torrents use, also pending files that the Cross-seed instance downloaded.
 - [Hardlink scope](../automations.md#hardlink-detection) on the Source instance counts routed torrents as "Only other torrents".
 
-Before a change removes this protection, qui asks you to confirm, and shows the number of routed torrents. Such changes are a route change, a route clear, a removed base directory, an edited row, and a deleted Cross-seed instance.
+Before a change removes this protection, qui asks you to confirm, and shows the number of routed torrents. Such changes are a route change, a route clear, a removed base directory, and an edited row. The delete dialog of a Cross-seed instance shows the same count for each Source instance that routes to it, and says that the Source instance adds cross-seeds to itself again after the delete.
 
 ### When an instance is unavailable
 
