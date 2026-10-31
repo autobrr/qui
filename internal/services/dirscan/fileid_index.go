@@ -25,9 +25,9 @@ import (
 type seedingIndex struct {
 	byKey map[fsops.FileKey]string
 	// complete is set when qBittorrent answered with the file list of every
-	// completed torrent it does not report as missing files, and qui read
-	// every file of those torrents except the skipped ones that are not on
-	// disk, so a file missing from byKey is known not to seed.
+	// completed torrent and qui read every file of those torrents except the
+	// skipped ones that are not on disk, so a file missing from byKey is known
+	// not to seed.
 	complete bool
 	// incompleteReason names the first thing that left the index incomplete,
 	// so a user can find why already seeding files keep their status.
@@ -147,10 +147,7 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 
 	for i := range torrents {
 		t := torrents[i].Torrent
-		// qBittorrent does not seed a torrent whose files it reports missing,
-		// so its files are not already seeding and cannot leave the index
-		// incomplete.
-		if t.Hash == "" || t.Progress < 1.0 || t.SavePath == "" || t.State == qbt.TorrentStateMissingFiles {
+		if t.Hash == "" || t.Progress < 1.0 || t.SavePath == "" {
 			continue
 		}
 		hashes = append(hashes, t.Hash)
