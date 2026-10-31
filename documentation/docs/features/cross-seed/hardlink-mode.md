@@ -154,7 +154,7 @@ When the Source instance has a route, qui adds no cross-seed to it from a search
 
 ### Requirements for a route
 
-- The Source instance uses hardlink or reflink mode and has at least one base directory. A routed add never uses regular mode, and it ignores the **Fallback to regular mode** setting. If a link fails, the add fails.
+- The Source instance uses hardlink or reflink mode and has at least one base directory. A routed add never uses regular mode, and it ignores the **Fallback to regular mode on error** setting. If a link fails, the add fails.
 - The Source instance has [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Link mode alone does not need it, but a route does.
 - The Cross-seed instance is online and runs qBittorrent 5.0 or later. It needs no Local Filesystem Access.
 - The qBittorrent of the Cross-seed instance can read and write the folders that the route maps. It reads the linked files there, and it downloads files that the matched torrent does not have (pending files) into the same folders.
@@ -232,7 +232,7 @@ Some users moved cross-seeds with two automations: an [Export to Instance](../au
 
 ### Swap the roles of two instances
 
-A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps those files. Move or delete the old routed torrents before you clear the route.
+A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps their reflinked files and their pending files. A hardlinked file stays kept while a torrent on the Source instance uses the same file. Move or delete the old routed torrents before you clear the route.
 
 ## Reflink Mode (Alternative)
 
