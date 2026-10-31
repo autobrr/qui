@@ -172,7 +172,7 @@ When the Source instance has a route, qui adds no cross-seed to it from a search
 3. In the **Cross-seed instance** field of `qbit-arr`, select `qbit-cross`.
 4. In the row for `/data/cross-seed`, type `/mnt/data/cross-seed`. That is the path where `qbit-cross` sees the folder.
 5. Click **Test route**. Each row must show that the Cross-seed instance sees it.
-6. Save the route.
+6. Click **Save route**.
 
 qui builds the link tree on the disk of the Source instance, with the link settings of the Source instance. qui then adds the torrent to the Cross-seed instance with the mapped path. The `by-instance` preset uses the name of the Cross-seed instance. The category, the tags, the recheck, the resume, and the External Program run on the Cross-seed instance.
 
@@ -232,7 +232,7 @@ Some users moved cross-seeds with two automations: an [Export to Instance](../au
 
 ### Swap the roles of two instances
 
-A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must clear the route first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps those files. Move or delete the old routed torrents before you clear the route.
+A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps those files. Move or delete the old routed torrents before you clear the route.
 
 ## Reflink Mode (Alternative)
 
