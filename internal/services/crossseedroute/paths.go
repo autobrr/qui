@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -44,7 +46,7 @@ func ToCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, baseDir, 
 // a Source instance path with the Source instance's dialect d. It also returns
 // the index of the row that matched, or -1 when p is under no row.
 func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p string) (string, int) {
-	reported := pathcmp.NormalizePath(p)
+	reported := crossSeedPath(p)
 	if reported == "" {
 		return "", -1
 	}
@@ -53,7 +55,7 @@ func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p strin
 		if target == "" {
 			target = row.BaseDir
 		}
-		rest, ok := under(pathcmp.NormalizePath(target), reported)
+		rest, ok := under(crossSeedPath(target), reported)
 		if !ok {
 			continue
 		}
@@ -65,7 +67,23 @@ func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p strin
 	return "", -1
 }
 
-// under returns the part of p after dir, both from pathcmp.NormalizePath. The
+// crossSeedPath returns p from pathcmp.NormalizePath in NFC, the form of the
+// base folder keys, so that a decomposed name matches its composed form. An
+// ASCII path is already NFC, and the check of norm allocates.
+func crossSeedPath(p string) string {
+	p = pathcmp.NormalizePath(p)
+	for i := range len(p) {
+		if p[i] >= utf8.RuneSelf {
+			if utf8.ValidString(p) && !norm.NFC.IsNormalString(p) {
+				return norm.NFC.String(p)
+			}
+			break
+		}
+	}
+	return p
+}
+
+// under returns the part of p after dir, both from crossSeedPath. The
 // Cross-seed instance has no dialect, so only a drive-letter dir ignores case.
 func under(dir, p string) (string, bool) {
 	equal := func(a, b string) bool { return a == b }

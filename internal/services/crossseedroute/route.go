@@ -456,7 +456,7 @@ func splitBaseDirs(configured string) []string {
 // crossSeedKey compares paths in the Cross-seed instance's form, which has no
 // dialect: either separator, case kept except on a drive-letter path.
 func crossSeedKey(p string) string {
-	p = pathcmp.NormalizePath(p)
+	p = crossSeedPath(p)
 	if pathcmp.IsWindowsDriveAbs(p) {
 		return strings.ToLower(p)
 	}
