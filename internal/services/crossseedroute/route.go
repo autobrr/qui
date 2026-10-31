@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -46,6 +48,9 @@ type Service struct {
 	instances instanceGetter
 	clients   *qbittorrent.ClientPool
 	backends  *fsops.Pool
+	// saveMu holds the rule check and the write of a save together, so two
+	// saves at the same time cannot store a route of two hops.
+	saveMu sync.Mutex
 }
 
 func NewService(store *models.CrossSeedRouteStore, instances instanceGetter, clients *qbittorrent.ClientPool, backends *fsops.Pool) *Service {
@@ -64,7 +69,13 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	if !instance.IsActive {
 		return fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, qbittorrent.ErrInstanceDisabled)
 	}
-	client, err := s.clients.GetClient(ctx, instanceID)
+	// The pool logs a new client in on a detached context, so give the login
+	// only what is left of ctx.
+	loginTimeout := 60 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		loginTimeout = time.Until(deadline)
+	}
+	client, err := s.clients.GetClientWithTimeout(ctx, instanceID, loginTimeout)
 	if err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, err)
 	}
@@ -92,6 +103,8 @@ func (s *Service) Check(ctx context.Context, route *models.CrossSeedRoute) error
 // Save stores route after the route rules pass, with each base folder key
 // cleaned.
 func (s *Service) Save(ctx context.Context, route *models.CrossSeedRoute) (*models.CrossSeedRoute, error) {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
 	rows, err := s.check(ctx, route)
 	if err != nil {
 		return nil, err

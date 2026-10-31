@@ -86,6 +86,10 @@ func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if req.CrossSeedInstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "crossSeedInstanceId must be a positive integer")
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), crossSeedRouteTimeout)
 	defer cancel()

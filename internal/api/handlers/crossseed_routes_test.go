@@ -4,7 +4,9 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -351,6 +353,10 @@ func TestCrossSeedRouteUnknownInstance(t *testing.T) {
 	}
 	rec := f.do(http.MethodPut, source.ID, crossSeedRouteRequest{CrossSeedInstanceID: 999})
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+
+	// A save with no Cross-seed instance is a bad request, not an unknown instance.
+	rec = f.do(http.MethodPut, source.ID, crossSeedRouteRequest{})
+	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
 func TestCrossSeedRouteDeletedWithEitherInstance(t *testing.T) {
@@ -393,4 +399,22 @@ func TestCrossSeedRouteAvailabilityChecksVersionOnlyForListing(t *testing.T) {
 
 	require.NoError(t, f.routes.CheckAvailable(t.Context(), instance.ID, false))
 	require.ErrorIs(t, f.routes.CheckAvailable(t.Context(), instance.ID, true), crossseedroute.ErrUnavailable)
+}
+
+// regression: #3651
+func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
+	f := newRouteFixture(t)
+	// The server sees the client go away only after it reads the login body.
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(stalled.Close)
+	instance := f.instance("seeds", stalled.URL, models.FilesystemModeNone)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	require.ErrorIs(t, f.routes.CheckAvailable(ctx, instance.ID, false), crossseedroute.ErrUnavailable)
+	assert.Less(t, time.Since(start), 30*time.Second, "the login must stop at the deadline of ctx, not after the 60-second pool default")
 }
