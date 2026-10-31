@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
-import { crossSeedRoutesKey, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
+import { crossSeedRouteKey, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { CrossSeedRouteStatus } from "@/types"
@@ -97,7 +97,7 @@ export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
     .filter(instance => instance !== undefined)
   const reads = useQueries({
     queries: sources.map(source => ({
-      queryKey: [...crossSeedRoutesKey, source.id, source.hardlinkBaseDir],
+      queryKey: crossSeedRouteKey(source),
       queryFn: () => api.getCrossSeedRoute(source.id),
       enabled,
     })),

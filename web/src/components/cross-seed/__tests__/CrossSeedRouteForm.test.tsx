@@ -478,6 +478,36 @@ describe("CrossSeedRouteForm confirm", () => {
     expect(writes).toEqual([])
   })
 
+  it("counts the routed torrents of the route read at Save, not of the older form read", async () => {
+    serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    const fresh = { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 9 }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }] }
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(fresh)))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|9")).toBeTruthy()
+  })
+
+  it("saves a new route when another tab cleared the route and an old route read is still cached", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    const writes: string[] = []
+    server.use(http.put("*/api/cross-seed/routes/1", () => {
+      writes.push("save")
+      return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+    }))
+    renderForm(source, true, queryClient => {
+      queryClient.setQueryData([...crossSeedRoutesKey, 1, source.hardlinkBaseDir], { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/old", routedTorrents: 3 }] })
+    })
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    expect(screen.queryByDisplayValue("/mnt/old")).toBeNull()
+    fireEvent.change(picker(), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(writes).toEqual(["save"]))
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
   it("saves nothing and says so when the check of Save cannot read the route", async () => {
     const writes = serveSaved()
     fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })

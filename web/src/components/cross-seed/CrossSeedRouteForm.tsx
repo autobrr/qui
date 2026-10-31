@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { crossSeedRoutesKey, useCrossSeedRoute, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
+import { crossSeedRouteKey, crossSeedRoutesKey, useCrossSeedRoute, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
@@ -92,7 +92,11 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { instances = [] } = useInstances()
   const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
-  const { data: savedRoute, isLoading: isLoadingRoute, isFetching: isFetchingRoute, isError: routeReadFailed } = useCrossSeedRoute(instance, saved !== undefined)
+  const routeQuery = useCrossSeedRoute(instance, saved !== undefined)
+  // A turned-off read keeps its old cached data, so a route that another tab cleared is ignored here.
+  const savedRoute = saved ? routeQuery.data : undefined
+  const { isLoading: isLoadingRoute, isFetching: isFetchingRoute } = routeQuery
+  const routeReadFailed = saved !== undefined && routeQuery.isError
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
   // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
   const [checking, setChecking] = useState(false)
@@ -172,7 +176,11 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     setChecking(true)
     void api.getCrossSeedRoute(instance.id)
       .then(current => {
-        if (sameRoute(current, savedRoute ?? null)) return decideSave()
+        if (sameRoute(current, savedRoute ?? null)) {
+          // The dialog counts the routed torrents of this read, not of the older form read.
+          queryClient.setQueryData(crossSeedRouteKey(instance), current)
+          return decideSave()
+        }
         toast.error(t("routeConfirm.routeChanged", { source: instance.name }))
         return onRouteChanged()
       })

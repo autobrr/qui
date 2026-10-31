@@ -20,6 +20,10 @@ export function useCrossSeedRoutes(enabled = true, staleTime = 60_000) {
   })
 }
 
+export function crossSeedRouteKey(instance: Pick<Instance, "id" | "hardlinkBaseDir">) {
+  return [...crossSeedRoutesKey, instance.id, instance.hardlinkBaseDir]
+}
+
 /**
  * The route read of a Source instance: its rows with the routed torrent counts
  * and the rule status, or null when it has no route. The key holds the saved
@@ -27,7 +31,7 @@ export function useCrossSeedRoutes(enabled = true, staleTime = 60_000) {
  */
 export function useCrossSeedRoute(instance: Pick<Instance, "id" | "hardlinkBaseDir">, enabled = true) {
   return useQuery({
-    queryKey: [...crossSeedRoutesKey, instance.id, instance.hardlinkBaseDir],
+    queryKey: crossSeedRouteKey(instance),
     queryFn: () => api.getCrossSeedRoute(instance.id),
     enabled,
   })
