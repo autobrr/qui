@@ -286,7 +286,7 @@ If `/check` returns `200 OK`, send the torrent to `/api/cross-seed/season-pack/a
 | POST   | `/api/cross-seed/season-pack/apply`   | Assemble and add the pack  |
 | GET    | `/api/cross-seed/season-pack/runs`    | List recent activity       |
 
-The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 200). qui stores the most recent 200 season-pack runs and prunes older rows when it records new check or apply activity.
+The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 400). qui keeps the newest 200 applied runs. Runs with another status share a second limit of 200. qui deletes older runs when it records a new run.
 
 `/check` returns `404 Not Found` for expected skips, such as below-threshold coverage, disabled season packs, non-season-pack releases, or missing eligible instances. `/apply` returns `500 Internal Server Error` if qui cannot apply the pack. Reasons include skipped recheck-required packs, layout mismatches, torrent add failures, or operational errors while qui reads qBittorrent state.
 
@@ -330,7 +330,7 @@ If `instanceIds` is omitted or contains multiple instances:
 
 ## Activity
 
-Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+Each check request, apply request, and automatic assembly attempt records a season-pack run. qui keeps the newest 200 applied runs, and the newest 200 runs with another status. Recent runs appear in **Cross-Seed > Season packs**. The list shows only applied runs by default. To show other runs, turn on the **Ready**, **Skipped**, or **Failed** chip. Each chip shows the number of runs with that status. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
 
 You can also query recent runs directly:
 
@@ -348,7 +348,7 @@ Start with autobrr:
 
 Then check qui:
 
-- Open **Cross-Seed > Season packs** and locate the row for the torrent name.
+- Open **Cross-Seed > Season packs**, turn on all status chips, and find the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
 - If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 

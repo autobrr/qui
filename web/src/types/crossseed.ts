@@ -452,7 +452,7 @@ export interface SeasonPackRun {
   id: number
   torrentName: string
   phase: "check" | "apply" | "resume"
-  status: "ready" | "skipped" | "applied" | "failed"
+  status: "ready" | "ready_no_threshold" | "skipped" | "applied" | "failed"
   reason: string
   message: string
   instanceId?: number
