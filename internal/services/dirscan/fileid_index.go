@@ -90,9 +90,9 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}
 	// The sync manager leaves out a torrent whose file list it could not
-	// fetch, and keys the map by the lowercased hash.
+	// fetch.
 	for _, hash := range hashes {
-		if _, ok := filesByHash[strings.ToLower(strings.TrimSpace(hash))]; !ok {
+		if _, ok := filesByHash[canonicalizeHash(hash)]; !ok {
 			index.complete = false
 			break
 		}
@@ -118,6 +118,12 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 	}
 
 	return index, nil
+}
+
+// canonicalizeHash matches SyncManager's internal hash normalization, which
+// keys the file lists of GetTorrentFilesBatch.
+func canonicalizeHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
 }
 
 func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorrentView) (hashes []string, savePaths map[string]string) {
