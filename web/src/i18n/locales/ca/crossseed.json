@@ -655,7 +655,7 @@
       "typeToAddTags": "Escriu per afegir etiquetes",
       "tagsLoadError": "No s'han pogut carregar les etiquetes de qBittorrent. Igualment pots escriure valors personalitzats.",
       "regularModeTitle": "El mode normal està activat per a aquesta instància",
-      "regularModeHelp": "Selecciona <hardlink>hardlink</hardlink> o <reflink>reflink</reflink> a Cross-Seed > Regles > Mode hardlink / reflink per evitar aquest risc. Primer activa «Accés al sistema de fitxers local» a la configuració de la instància.",
+      "regularModeHelp": "Selecciona <hardlink>hardlink</hardlink> o <reflink>reflink</reflink> a Cross-Seed > Després de la injecció > Mode hardlink / reflink per evitar aquest risc. Primer activa «Accés al sistema de fitxers local» a la configuració de la instància.",
       "regularModeAcknowledge": "Entenc els riscos de fer servir el mode normal amb directoris multimèdia",
       "cancel": "Cancel·la",
       "addButton": "Afegeix el directori",
