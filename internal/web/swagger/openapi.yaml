@@ -5286,6 +5286,55 @@ paths:
         '500':
           description: Failed to clear the cross-seed route
 
+  /api/cross-seed/routes/{instanceId}/test:
+    parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Source instance ID
+    post:
+      tags:
+        - Cross-Seed
+      summary: Test cross-seed route rows before a save
+      description: |
+        Tests the rows of a route that is not saved yet. For each base folder of the Source instance, qui creates the base folder if it is missing, as cross-seed link mode does, and keeps it, writes a marker folder with a qui-prefixed name in it, and asks the Cross-seed instance's qBittorrent to list the mapped folder. qui always removes the marker.
+        Each row reports one result: sees (the listing holds the marker), seesFolderNotMarker, cannotSeeFolder (qBittorrent refuses to list the folder), or cannotWrite (qui cannot write to the folder on the Source instance).
+        When the Cross-seed instance is unavailable (offline, turned off in qui, or older than qBittorrent 5.0), crossSeedUnavailable holds the reason and rows is empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - crossSeedInstanceId
+              properties:
+                crossSeedInstanceId:
+                  type: integer
+                rows:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CrossSeedRouteRow'
+      responses:
+        '200':
+          description: The result for each base folder, or the reason that the Cross-seed instance is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedRouteTestResult'
+        '400':
+          description: Invalid request, the Source instance has no Local Filesystem Access or is a remote instance, a row is not a base folder, or a mapped path is not absolute
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or Cross-seed instance not found
+        '500':
+          description: Failed to test the cross-seed route
+
   /api/cross-seed/season-pack/check:
     post:
       tags:
@@ -8563,6 +8612,40 @@ components:
             brokenRule:
               type: string
               description: The route rule that the saved route breaks. Absent when the route passes every rule.
+
+    CrossSeedRouteTestResult:
+      type: object
+      required:
+        - rows
+      properties:
+        crossSeedUnavailable:
+          type: string
+          description: Why the Cross-seed instance is unavailable. Absent when qui could test the rows.
+        rows:
+          type: array
+          items:
+            type: object
+            required:
+              - baseDir
+              - listedPath
+              - result
+            properties:
+              baseDir:
+                type: string
+                description: A base folder of the Source instance
+              listedPath:
+                type: string
+                description: The folder that qui listed on the Cross-seed instance
+              result:
+                type: string
+                enum:
+                  - sees
+                  - seesFolderNotMarker
+                  - cannotSeeFolder
+                  - cannotWrite
+              error:
+                type: string
+                description: Why qui cannot write to the folder. Set only with cannotWrite.
 
     InstanceCrossSeedCompletionSettings:
       type: object
