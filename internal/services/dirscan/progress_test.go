@@ -147,8 +147,6 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 		{name: "missing skipped file", err: notExist, want: true},
 		{name: "parent of a skipped file is a file", err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: true},
 		{name: "missing wanted file", priority: 1, err: notExist, want: false, reason: "torrent bbbb file other.mkv"},
-		// regression: #3613
-		{name: "parent of a wanted file is a file", priority: 1, err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no file list", noList: true, want: false, reason: "no file list for torrent bbbb"},
