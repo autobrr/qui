@@ -33,6 +33,7 @@ const (
 	deleteDispositionSkippedIgnored
 	deleteDispositionSkippedNotEmpty
 	deleteDispositionSkippedNotDirectory
+	deleteDispositionSkippedDirInUseThroughAlias
 )
 
 // withinScanRoot checks that target is an absolute path strictly below scanRoot.
@@ -378,8 +379,9 @@ func safeDeleteDirectory(ctx context.Context, target string, protected *protecte
 // empty now, or is no longer a directory, is reported as skipped rather than
 // failed: a file inside it that the run kept is the usual reason, and nothing
 // went wrong. Remove still refuses a non-empty directory, so the check before it
-// only decides how the outcome is reported.
-func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) (deleteDisposition, error) {
+// only decides how the outcome is reported. A directory a torrent reaches under
+// another path stays, since a torrent that has not written yet leaves it empty.
+func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, protected *protectedPaths, backend fsops.Backend) (deleteDisposition, error) {
 	if err := withinScanRoot(backend.Paths(), scanRoot, target); err != nil {
 		return 0, err
 	}
@@ -393,6 +395,13 @@ func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fs
 	}
 	if !info.IsDir {
 		return deleteDispositionSkippedNotDirectory, nil
+	}
+	reached, err := protected.inUse.reaches(info)
+	if err != nil {
+		return 0, err
+	}
+	if reached {
+		return deleteDispositionSkippedDirInUseThroughAlias, nil
 	}
 
 	entries, err := backend.ReadDir(ctx, target)

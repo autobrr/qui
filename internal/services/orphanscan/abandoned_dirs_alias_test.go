@@ -5,9 +5,11 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"syscall"
 	"testing"
@@ -19,6 +21,8 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
+
+const dirAliasStatus = "skipped: a torrent now uses this directory through another path"
 
 // Each row reaches an empty folder under the scan root only through a symlink,
 // so comparing paths lists it. The folder holding it can never be emptied, so
@@ -140,6 +144,190 @@ func TestExecuteScan_UnreadableTorrentFolderListsNoFolder(t *testing.T) {
 	require.FileExists(t, junk)
 }
 
+// A torrent added since the scan reaches a listed empty folder through a
+// symlink, so the delete keeps it and says why. Its parent now holds it, and
+// leftover is reached by nothing and goes.
+// regression: #3652
+func TestExecuteDeletion_KeepsEmptyFolderATorrentReachesThroughAnAliasSinceTheScan(t *testing.T) {
+	var pack, movie, leftover string
+	f := newOrphanOnlyFixture(t, "orphanscan-delete-dir-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
+		pack = filepath.Join(defaultSavePath, "Pack")
+		movie = filepath.Join(pack, "Movie")
+		leftover = filepath.Join(defaultSavePath, "leftover")
+		require.NoError(t, os.MkdirAll(movie, 0o750))
+		require.NoError(t, os.MkdirAll(leftover, 0o750))
+	})
+	require.ElementsMatch(t, []string{pack, movie, leftover}, f.previewedDirs(t), "the preview holds only folders")
+
+	alias := filepath.Join(filepath.Dir(f.defaultSavePath), "alias")
+	symlinkOrSkip(t, movie, alias)
+	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: alias}, "x.mkv")
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+	require.DirExists(t, movie)
+	require.NoDirExists(t, leftover)
+	statuses := fileStatuses(t, f.store, f.runID)
+	require.Equal(t, dirAliasStatus, statuses[movie])
+	require.Equal(t, "skipped: directory still holds something this run did not delete", statuses[pack])
+	require.Equal(t, "deleted: ", statuses[leftover])
+}
+
+// lateDirIdentityBackend reports the folder at *path without its identity,
+// once the test sets path.
+type lateDirIdentityBackend struct {
+	fsops.Backend
+	path *string
+}
+
+func (b lateDirIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Lstat(ctx, p)
+	if err == nil && p == *b.path {
+		info.FileIDErr = errors.New("identity denied")
+	}
+	return info, err
+}
+
+// The delete reads each torrent folder before it deletes anything. One it
+// cannot read for any reason but a missing or denied lookup could be a listed
+// folder, so the run stops. A listed folder whose own identity is unreadable
+// fails alone. A missing or denied torrent folder protects nothing.
+// regression: #3652
+func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// late runs after the scan, with opaque the folder to deny identity to.
+		late func(t *testing.T, f *orphanOnlyFixture, opaque *string, broken *string, base string)
+		// wantFailedRun is a run error, or "" when the run completes.
+		wantFailedRun string
+		// wantMovie is movie's status, or "" when it is deleted.
+		wantMovie string
+	}{
+		{"torrent folder read fails", func(t *testing.T, f *orphanOnlyFixture, _ *string, broken *string, base string) {
+			*broken = filepath.Join(base, "late", "Sub")
+			require.NoError(t, os.MkdirAll(*broken, 0o750))
+			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: filepath.Dir(*broken)}, "Sub/x.mkv")
+		}, "could not check which files torrents use", ""},
+		{"listed folder identity unreadable", func(t *testing.T, f *orphanOnlyFixture, opaque *string, _ *string, _ string) {
+			*opaque = filepath.Join(f.defaultSavePath, "Movie")
+		}, "", "failed: file identity"},
+		{"torrent folder missing or denied", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
+			if runtime.GOOS == "windows" {
+				t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
+			}
+			if os.Geteuid() == 0 {
+				t.Skip("root bypasses permission checks")
+			}
+			locked := filepath.Join(base, "locked")
+			require.NoError(t, os.MkdirAll(filepath.Join(locked, "inner"), 0o750))
+			require.NoError(t, os.Chmod(locked, 0o000))
+			t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
+			late := []qbt.Torrent{
+				{Hash: "owned", SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
+				{Hash: "denied", SavePath: filepath.Join(locked, "inner"), State: qbt.TorrentStatePausedUp},
+				{Hash: "missing", SavePath: filepath.Join(base, "never"), State: qbt.TorrentStatePausedUp},
+			}
+			stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return late, nil }
+			stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+				return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv"), "denied": torrentFiles("Sub/x.mkv"), "missing": torrentFiles("Sub/x.mkv")}, nil
+			}
+		}, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var movie, leftover, opaque, broken string
+			opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+				return lateDirIdentityBackend{Backend: lateEIOStatBackend{Backend: b, path: &broken}, path: &opaque}
+			}}
+			f := newOrphanOnlyFixture(t, "orphanscan-delete-dir-identity", opts, func(defaultSavePath string) {
+				movie = filepath.Join(defaultSavePath, "Movie")
+				leftover = filepath.Join(defaultSavePath, "leftover")
+				require.NoError(t, os.MkdirAll(movie, 0o750))
+				require.NoError(t, os.MkdirAll(leftover, 0o750))
+			})
+			require.ElementsMatch(t, []string{movie, leftover}, f.previewedDirs(t))
+
+			tc.late(t, f, &opaque, &broken, filepath.Dir(f.defaultSavePath))
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			if tc.wantFailedRun != "" {
+				require.Equal(t, "failed", run.Status)
+				require.Contains(t, run.ErrorMessage, tc.wantFailedRun)
+				require.Contains(t, run.ErrorMessage, broken)
+				require.DirExists(t, movie)
+				require.DirExists(t, leftover)
+				return
+			}
+			require.Equal(t, "completed", run.Status, "run error: %s", run.ErrorMessage)
+			require.NoDirExists(t, leftover)
+			if tc.wantMovie == "" {
+				require.NoDirExists(t, movie)
+				return
+			}
+			require.DirExists(t, movie)
+			require.Contains(t, fileStatuses(t, f.store, f.runID)[movie], tc.wantMovie)
+		})
+	}
+}
+
+// A run reads the torrent files only when it lists a file, and the torrent
+// folders only when it lists a folder, so one it cannot read of the other kind
+// does not stop it.
+// regression: #3652
+func TestExecuteDeletion_ReadsOnlyTheTorrentPathsOfWhatItLists(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// listed makes what the scan lists, below defaultSavePath.
+		listed func(t *testing.T, defaultSavePath string) string
+		// unreadable is the torrent path, below the late save path, whose Stat fails.
+		unreadable string
+	}{
+		{"files only, a torrent folder unreadable", func(t *testing.T, defaultSavePath string) string {
+			junk := filepath.Join(defaultSavePath, "junk.mkv")
+			writeFile(t, junk)
+			return junk
+		}, "Sub"},
+		{"folders only, a torrent file unreadable", func(t *testing.T, defaultSavePath string) string {
+			leftover := filepath.Join(defaultSavePath, "leftover")
+			require.NoError(t, os.MkdirAll(leftover, 0o750))
+			return leftover
+		}, filepath.Join("Sub", "x.mkv")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var listed, broken string
+			opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
+				return lateEIOStatBackend{Backend: b, path: &broken}
+			}}
+			f := newOrphanOnlyFixture(t, "orphanscan-delete-reads-listed-half", opts, func(defaultSavePath string) {
+				listed = tc.listed(t, defaultSavePath)
+			})
+			require.Equal(t, map[string]string{listed: "pending: "}, fileStatuses(t, f.store, f.runID))
+
+			late := filepath.Join(filepath.Dir(f.defaultSavePath), "late")
+			writeFile(t, filepath.Join(late, "Sub", "x.mkv"))
+			broken = filepath.Join(late, tc.unreadable)
+			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "Sub/x.mkv")
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+			run, err := f.store.GetRun(t.Context(), f.runID)
+			require.NoError(t, err)
+			require.Equal(t, "completed", run.Status, "run error: %s", run.ErrorMessage)
+			require.NoFileExists(t, listed)
+		})
+	}
+}
+
+// lateEIOStatBackend fails Stat of *path with an I/O error, once the test sets
+// path.
+type lateEIOStatBackend struct {
+	fsops.Backend
+	path *string
+}
+
+func (b lateEIOStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	return eioStatBackend{Backend: b.Backend, path: *b.path}.Stat(ctx, p)
+}
+
 // enableAbandonedDirs turns on Delete Abandoned Directories for the fixture's
 // instance.
 func (f *modeFixture) enableAbandonedDirs(t *testing.T) {
@@ -164,7 +352,7 @@ func findBatches(server *sshtest.Server) int {
 }
 
 // The exec tier reads folder identities over SSH, so a folder a torrent
-// reaches through a symlink is kept there too.
+// reaches through a symlink is kept there too, before and after the scan.
 // regression: #3652
 func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
@@ -188,6 +376,19 @@ func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias
 	require.NotContains(t, statuses, sftpPath(movie))
 	require.NotContains(t, statuses, sftpPath(filepath.Dir(movie)))
 	require.Greater(t, findBatches(server), before, "the scan reads folder identities in a find batch")
+	require.NoError(t, f.svc.CancelRun(t.Context(), run.ID))
+
+	// Listed by a scan no torrent reached it in, then reached before the delete.
+	addTorrentAfterScan(f.svc, sftpPath(root), qbt.Torrent{SavePath: sftpPath(filepath.Join(t.TempDir(), "elsewhere"))}, "x.mkv")
+	run = f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.Contains(t, fileStatuses(t, f.store, run.ID), sftpPath(movie), "the scan lists it")
+	addTorrentAfterScan(f.svc, sftpPath(root), qbt.Torrent{SavePath: sftpPath(alias)}, "x.mkv")
+	f.svc.executeDeletion(t.Context(), 1, run.ID)
+
+	require.DirExists(t, movie)
+	require.NoDirExists(t, leftover)
+	require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, run.ID)[sftpPath(movie)])
 }
 
 // The sftp tier reads no identity, so it lists folders by spelling, as before.

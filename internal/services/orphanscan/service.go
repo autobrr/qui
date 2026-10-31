@@ -1507,13 +1507,21 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// The map protects by path. A torrent added since the scan can reach a
-	// listed file through another path, so the files are also compared by
-	// identity, as the scan compared them. Abandoned directories need no
-	// identities, since they go only when empty.
-	if len(fileEntries) > 0 {
-		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, fileMapResult.torrentPaths)
+	// listed file or folder through another path, so both are also compared by
+	// identity, as the scan compared them. An empty folder holds no file to
+	// compare, so its identity is compared with the folders along each torrent
+	// path. Each half is read only when the run lists something it protects.
+	if len(fileEntries) > 0 || len(dirEntries) > 0 {
+		var paths []string
+		if len(fileEntries) > 0 {
+			paths = fileMapResult.torrentPaths
+		}
+		if len(dirEntries) > 0 {
+			paths = slices.Concat(paths, torrentDirs(d, fileMapResult.torrentPaths))
+		}
+		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, paths)
 		if err != nil {
-			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent file")
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent path")
 			switch {
 			// A redial reaches the instance's current row, so a moved
 			// endpoint is the likelier story than a dropped link.
@@ -1649,7 +1657,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteEmptyDir(ctx, scanRoot, dir.FilePath, deleteBackend)
+		disp, err := safeDeleteEmptyDir(ctx, scanRoot, dir.FilePath, protected, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, dir.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", dir.FilePath).Msg("orphanscan: failed to delete abandoned directory")
@@ -1663,6 +1671,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory no longer exists")
 		case deleteDispositionSkippedNotDirectory:
 			s.updateFileStatus(ctx, dir.ID, "skipped", "path is no longer a directory")
+		case deleteDispositionSkippedDirInUseThroughAlias:
+			s.updateFileStatus(ctx, dir.ID, "skipped", "a torrent now uses this directory through another path")
 		case deleteDispositionSkippedNotEmpty:
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory still holds something this run did not delete")
 		case deleteDispositionDeleted:
