@@ -988,8 +988,8 @@ export function TorrentCardsMobile({
       const vRows = instance.getVirtualItems();
       const lastItem = vRows.at(-1);
 
-      // Only report the end when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive reports during rapid scrolling
+      // Report the end only after the scroll pauses. The desktop table reports
+      // during the scroll (useTorrentTableVirtualization); a phone showed no stop.
       const shouldCheckLoadMore = !sync || !instance.isScrolling
       // A scroll position past the last row belongs to the previous list: the
       // window shrank before the Layout scrolled back to the top.

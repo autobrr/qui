@@ -75,19 +75,18 @@ export function useTorrentTableVirtualization({
       if (!row) return `loading-${index}`
       return row.id
     }, [rows]),
-    // Optimized onChange handler following TanStack Virtual best practices
-    onChange: (instance, sync) => {
+    // Report the end during the scroll too. A report only after the scroll
+    // pauses lets a steady scroll reach the last loaded row and stop there.
+    // The phone cards keep that pause check (TorrentCardsMobile).
+    onChange: (instance) => {
       const vRows = instance.getVirtualItems();
       const lastItem = vRows.at(-1);
 
-      // Only report the end when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive reports during rapid scrolling
-      const shouldCheckLoadMore = !sync || !instance.isScrolling
       // A scroll position past the last row belongs to the previous list: the
       // window shrank before the Layout scrolled back to the top.
       const scrolledPastRows = (instance.scrollOffset ?? 0) > instance.getTotalSize()
 
-      if (shouldCheckLoadMore && !scrolledPastRows && lastItem && lastItem.index >= safeLoadedRows - 50 && hasMoreRows) {
+      if (!scrolledPastRows && lastItem && lastItem.index >= safeLoadedRows - 50 && hasMoreRows) {
         reportNearEnd();
       }
     },
