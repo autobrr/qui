@@ -1043,6 +1043,8 @@ func (app *Application) runServer() {
 		// Deferred so it also runs when Shutdown returns an error. Stop
 		// ignores snapshots a request still hands in.
 		defer folderCleanup.Stop()
+		// Keep pooled clients usable until in-flight HTTP requests finish.
+		defer clientPool.Close()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
 		}

@@ -25,7 +25,7 @@ Windows has no exec that keeps the process. The first `serve` process becomes a 
 - When the child exits with any other code, the supervisor exits with that code.
 - The supervisor ignores Ctrl+C and the console close event. The child shares the console and handles them.
 
-The supervisor starts with `serve`, not on the first Restart. The graceful shutdown stops only the HTTP server and the partial pool. Automations, reannounce, scans, backups, and the sync loops stop only when the process exits. A process that became the supervisor on its first Restart would keep them running next to its child. Two copies would then act on qBittorrent and write to the database. The cost is a second, idle `qui.exe` in Task Manager.
+The supervisor starts with `serve`, not on the first Restart. The graceful shutdown drains the HTTP server, closes the qBittorrent and SSH client pools, and stops the partial pool and folder cleanup worker. Automations, reannounce, scans, backups, and the remaining sync loops stop only when the process exits. A process that became the supervisor on its first Restart would keep them running next to its child. Two copies would then act on qBittorrent and write to the database. The cost is a second, idle `qui.exe` in Task Manager.
 
 ## Evidence
 

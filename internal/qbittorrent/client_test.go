@@ -23,9 +23,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type peerSyncTestTransport func(*http.Request) (*http.Response, error)
+type testHTTPTransport func(*http.Request) (*http.Response, error)
 
-func (f peerSyncTestTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+func (f testHTTPTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
@@ -33,7 +33,7 @@ func (f peerSyncTestTransport) RoundTrip(r *http.Request) (*http.Response, error
 // bubble can advance its clock while a request waits. A request whose context
 // ends fails with the context error, as it does over a real connection.
 func serveInProcess(c *qbt.Client, handler http.Handler) *qbt.Client {
-	transport := peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
+	transport := testHTTPTransport(func(req *http.Request) (*http.Response, error) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if err := req.Context().Err(); err != nil {
@@ -53,7 +53,7 @@ func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 		const activeHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		const idleHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		qbtClient := qbt.NewClient(qbt.Config{Host: "http://example.invalid"}).WithHTTPClient(&http.Client{
-			Transport: peerSyncTestTransport(func(r *http.Request) (*http.Response, error) {
+			Transport: testHTTPTransport(func(r *http.Request) (*http.Response, error) {
 				require.Equal(t, "/api/v2/sync/torrentPeers", r.URL.Path)
 				body := `{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1","dl_speed":10}}}`
 				if r.URL.Query().Get("rid") == "1" {
@@ -117,7 +117,7 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
@@ -439,7 +439,7 @@ func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 
 	require.Error(t, err)
 	require.Nil(t, client)
@@ -475,7 +475,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 50*time.Millisecond, 60*time.Second)
+	client, err := NewClientWithTimeout(t.Context(), 1, srv.URL, "user", "pass", "", nil, nil, true, 50*time.Millisecond, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
@@ -507,7 +507,7 @@ func TestNewClientWithTimeoutTransportIndependentOfLoginBudget(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 3*time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, 3*time.Second, 60*time.Second)
 
 	require.NoError(t, err)
 	require.Equal(t, 60*time.Second, client.GetHTTPClient().Timeout, "transport timeout must come from the pool, not the creation budget")
@@ -949,7 +949,7 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+			client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 			require.NoError(t, err)
 
 			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
@@ -992,7 +992,7 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 	require.NoError(t, err, "a transient capability failure must not block client creation")
 	require.Empty(t, client.GetWebAPIVersion())
 	require.False(t, client.trackerManager().SupportsIncludeTrackers())

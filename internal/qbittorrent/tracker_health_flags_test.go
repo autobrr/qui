@@ -118,7 +118,7 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), 1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.True(t, client.announceFlagsSupported())
