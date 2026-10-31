@@ -288,6 +288,7 @@ describe("CrossSeedRouteForm rows", () => {
 
     fireEvent.change(await screen.findByLabelText("/data/a"), { target: { value: "/mnt/new" } })
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+    fireEvent.click(await screen.findByRole("button", { name: "routeConfirm.confirm" }))
     await waitFor(() => expect(reads).toBe(2))
 
     expect(screen.getByLabelText<HTMLInputElement>("/data/a").value).toBe("/mnt/new")
@@ -462,6 +463,32 @@ describe("CrossSeedRouteForm confirm", () => {
   it("saves with no confirm when no saved row changes", async () => {
     const writes = serveSaved()
     await screen.findByDisplayValue("/mnt/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(writes).toEqual(["save"]))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+  })
+
+  it("saves with no confirm when the user maps a base folder added after the save", async () => {
+    const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/new" })
+    mocks.instances.instances = [instance, crossSeed]
+    const writes: string[] = []
+    serve({
+      routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }],
+      read: {
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }, { baseDir: "/data/new", mappedPath: "", routedTorrents: 0 }],
+      },
+    })
+    server.use(http.put("*/api/cross-seed/routes/1", () => {
+      writes.push("save")
+      return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+    }))
+    renderForm(instance)
+
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.change(screen.getByLabelText("/data/new"), { target: { value: "/mnt/new" } })
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
 
     await waitFor(() => expect(writes).toEqual(["save"]))

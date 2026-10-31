@@ -60,7 +60,7 @@ export function HardlinkModeSettings({
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
   const { data: routes } = useCrossSeedRoutes()
-  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null } | null>(null)
+  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null | undefined } | null>(null)
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -117,7 +117,7 @@ export function HardlinkModeSettings({
     setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
   }
 
-  const handleSave = async (instance: Instance) => {
+  const handleSave = (instance: Instance) => {
     const form = getForm(instance)
 
     // Validate before saving
@@ -144,15 +144,13 @@ export function HardlinkModeSettings({
       const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
       const removed = route.rows.filter(row => !kept.includes(baseDirKey(row.baseDir)))
       if (removed.length) {
-        let routedTorrents: number | null = null
-        try {
-          const read = await api.getCrossSeedRoute(instance.id)
-          routedTorrents = countRoutedTorrents(read?.rows.filter(row => removed.some(r => r.baseDir === row.baseDir)) ?? [])
-        } catch {
-          // The count stays unknown.
-        }
+        // The dialog opens at once and fills in the count, so a second click cannot open it twice.
         const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
-        setPendingSave({ instance, crossSeedName, routedTorrents })
+        setPendingSave({ instance, crossSeedName, routedTorrents: undefined })
+        void api.getCrossSeedRoute(instance.id)
+          .then(read => countRoutedTorrents(read?.rows.filter(row => removed.some(r => r.baseDir === row.baseDir)) ?? []))
+          .catch(() => null)
+          .then(routedTorrents => setPendingSave(prev => prev?.instance.id === instance.id ? { ...prev, routedTorrents } : prev))
         return
       }
     }
@@ -374,7 +372,7 @@ export function HardlinkModeSettings({
                       {isDirty && (
                         <Button
                           size="sm"
-                          onClick={() => void handleSave(instance)}
+                          onClick={() => handleSave(instance)}
                           disabled={isUpdating}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -398,7 +396,7 @@ export function HardlinkModeSettings({
         onOpenChange={(open) => !open && setPendingSave(null)}
         sourceName={pendingSave?.instance.name ?? ""}
         crossSeedName={pendingSave?.crossSeedName ?? ""}
-        routedTorrents={pendingSave?.routedTorrents ?? null}
+        routedTorrents={pendingSave?.routedTorrents}
         onConfirm={() => {
           if (pendingSave) saveInstance(pendingSave.instance)
           setPendingSave(null)

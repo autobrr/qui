@@ -8,6 +8,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle
@@ -67,7 +68,9 @@ export function RouteProtectionConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{t("routeConfirm.title")}</AlertDialogTitle>
         </AlertDialogHeader>
-        <RouteProtectionNotice {...notice} />
+        <AlertDialogDescription asChild>
+          <div><RouteProtectionNotice {...notice} /></div>
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("routeConfirm.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm}>{t("routeConfirm.confirm")}</AlertDialogAction>

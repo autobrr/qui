@@ -38,7 +38,7 @@ describe("InstanceCard", () => {
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
         sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: null }],
-      })),
+      }))
     )
     const instance = { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true } as InstanceResponse
     render(

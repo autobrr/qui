@@ -49,6 +49,12 @@ describe("RouteProtectionConfirmDialog", () => {
     expect(text).not.toContain("Move or delete those torrents")
   })
 
+  it("gives the notice as the dialog description, for screen readers", () => {
+    renderDialog()
+    const describedBy = screen.getByRole("alertdialog").getAttribute("aria-describedby")
+    expect(document.getElementById(describedBy ?? "")?.textContent).toContain("3 routed torrents on seedbox")
+  })
+
   it("says the count is unknown when the Cross-seed instance is unavailable", () => {
     const text = renderDialog({ routedTorrents: null })
     expect(text).toContain("seedbox is unavailable, so the number of routed torrents in the affected base folders of library-a is unknown.")
@@ -75,7 +81,7 @@ describe("CrossSeedDeleteNotice", () => {
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({
         sourceInstanceId: 2, crossSeedInstanceId: 3,
         rows: [{ baseDir: "/data/b", mappedPath: "", routedTorrents: 5 }],
-      })),
+      }))
     )
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
