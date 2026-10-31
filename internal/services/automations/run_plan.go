@@ -7,6 +7,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -168,7 +169,26 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
 	plan.move = s.planMoves(ctx, in, moveTriggers)
+	var waitingExports []pendingExportToInstance
+	plan.exports, waitingExports = exportsAfterMoves(plan.exports, plan.move.rules)
+	if len(waitingExports) > 0 {
+		log.Debug().Int("instanceID", in.instanceID).Int("count", len(waitingExports)).
+			Msg("automations: exports wait for a later run, their torrents are moving")
+	}
 	return plan
+}
+
+// exportsAfterMoves holds back exports whose .CurrentSavePath is about to change: qBittorrent reports the old path until a move ends.
+func exportsAfterMoves(exports []pendingExportToInstance, moved map[string]ruleRef) (ready, waiting []pendingExportToInstance) {
+	for _, exec := range exports {
+		_, movesNow := moved[exec.hash]
+		if (movesNow || exec.torrent.State == qbt.TorrentStateMoving) && exec.failureReason == "" && strings.Contains(exec.action.SavePath, "CurrentSavePath") {
+			waiting = append(waiting, exec)
+			continue
+		}
+		ready = append(ready, exec)
+	}
+	return ready, waiting
 }
 
 // planSpeedAndState adds the torrent to the speed limits whose current limit differs, and to
@@ -234,7 +254,7 @@ func (s *Service) planExport(ctx context.Context, hash string, torrent qbt.Torre
 	if action.SavePath == "" {
 		return export
 	}
-	resolved, ok := renderPathTemplate(action.SavePath, torrent, state, evalCtx)
+	resolved, ok := renderExportSavePath(action.SavePath, torrent, state, evalCtx)
 	if !ok {
 		log.Warn().
 			Str("hash", hash).
