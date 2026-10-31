@@ -1031,3 +1031,25 @@ func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 		})
 	}
 }
+
+func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	var runs []any
+	service.crossSeedInvoker = func(ctx context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+		runs = append(runs, ctx.Value(failedRouteDirsKey{}))
+		return &CrossSeedResponse{Success: true}, nil
+	}
+
+	_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ==", InstanceIDs: []int{1}})
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	// A webhook that tries several sources passes this ctx to each try, so
+	// each try must see the same memory of failed route folders.
+	require.NotNil(t, runs[0], "the webhook does not start a route run")
+}

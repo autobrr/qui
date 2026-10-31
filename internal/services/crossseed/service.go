@@ -4754,6 +4754,8 @@ func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackAppl
 
 // AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
 func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
+	// One webhook is one Trigger run, also when it tries several sources.
+	ctx = withRouteRun(ctx)
 	startedAt := time.Now().UTC()
 	if req == nil {
 		return nil, fmt.Errorf("%w: request is required", ErrInvalidRequest)
