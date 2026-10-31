@@ -93,8 +93,11 @@ type stubTorrentFiles struct {
 	unsynced bool
 }
 
-func (f stubTorrentFiles) HasSynced(context.Context, int) bool {
-	return !f.unsynced
+func (f stubTorrentFiles) SeedingReady(context.Context, int) error {
+	if f.unsynced {
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	return nil
 }
 
 func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {

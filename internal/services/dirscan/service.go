@@ -71,7 +71,7 @@ type Service struct {
 	store          *models.DirScanStore
 	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
-	torrentFiles   torrentFilesReader // nil without qBittorrent
+	torrentFiles   torrentFilesReader
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
@@ -135,9 +135,18 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 // SyncManager.
 type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
 
-func (f syncManagerTorrentFiles) HasSynced(ctx context.Context, instanceID int) bool {
+// SeedingReady asks for a sync when the instance has none yet, because a
+// failed first sync is not retried until something else asks for one.
+func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID int) error {
 	client, err := f.GetClient(ctx, instanceID)
-	return err == nil && !client.GetLastSyncUpdate().IsZero()
+	if err != nil {
+		return fmt.Errorf("get client: %w", err)
+	}
+	if client.GetLastSyncUpdate().IsZero() {
+		f.HintMainDataRefresh(instanceID, "dir scan seeding index")
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	return nil
 }
 
 // NewService creates a new directory scanner service.

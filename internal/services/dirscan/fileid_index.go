@@ -59,8 +59,9 @@ func (idx *seedingIndex) knowsNotSeeding(id hardlink.FileID) bool {
 type torrentFilesReader interface {
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	// HasSynced reports whether the instance's cache synced at least once.
-	HasSynced(ctx context.Context, instanceID int) bool
+	// SeedingReady reports why the cache cannot answer yet, for example
+	// because the instance has not synced since qui started.
+	SeedingReady(ctx context.Context, instanceID int) error
 }
 
 func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
@@ -68,8 +69,8 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend 
 	// Before the first sync the cache holds no torrents, which reads the same
 	// as an instance that seeds nothing. Check before the read, so a sync that
 	// lands in between cannot pass an empty read as complete.
-	if !s.torrentFiles.HasSynced(ctx, instanceID) {
-		return nil, errors.New("instance not ready: waiting for first sync")
+	if err := s.torrentFiles.SeedingReady(ctx, instanceID); err != nil {
+		return nil, err
 	}
 	torrents, err := s.torrentFiles.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
