@@ -537,11 +537,13 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 		name   string
 		remote bool
 		fold   bool
+		twin   bool
 		rel    string
 	}{
 		{name: "local, link is the save path", rel: "linked"},
 		{name: "local, save path below a link", rel: "linked/sub"},
 		{name: "local, peer spells the scan root in another case", fold: true, rel: "linked"},
+		{name: "local, scan root differs from the link only in case", twin: true, rel: "linked"},
 		{name: "exec tier, link is the save path", remote: true, rel: "linked"},
 		{name: "exec tier, save path below a link", remote: true, rel: "linked/sub"},
 	} {
@@ -567,6 +569,28 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 				save = func(p string) string { return strings.Replace(p, root, folded, 1) }
 			}
 			movie := linkedPeerFixture(t, f, save, tc.rel)
+			if tc.twin {
+				// On a filesystem that keeps case, the real folder LINKED is a
+				// scan root of its own, and the link linked is another folder.
+				twin := filepath.Join(filepath.Dir(f.orphan), "LINKED")
+				writeFile(t, filepath.Join(twin, "keep.mkv"))
+				sync := stubSync(f.svc)
+				torrents, files := sync.getAllTorrents, sync.getTorrentFilesBatch
+				sync.getAllTorrents = func(ctx context.Context, id int) ([]qbt.Torrent, error) {
+					list, err := torrents(ctx, id)
+					if id == 1 {
+						list = append(list, qbt.Torrent{Hash: "twin", SavePath: twin, State: qbt.TorrentStatePausedUp})
+					}
+					return list, err
+				}
+				sync.getTorrentFilesBatch = func(ctx context.Context, id int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+					m, err := files(ctx, id, hashes)
+					if id == 1 && slices.Contains(hashes, "twin") {
+						m["twin"] = qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}
+					}
+					return m, err
+				}
+			}
 
 			run := f.scan(t, "manual")
 			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
