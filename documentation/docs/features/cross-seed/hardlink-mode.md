@@ -224,6 +224,8 @@ A Cross-seed instance is unavailable when it is offline or turned off in qui. Th
 
 To end this, enable the Cross-seed instance or clear the route.
 
+If the qBittorrent of the Cross-seed instance is older than 5.0, routed adds, Test route, and the start of a Library Scan also stop with "Cross-seed instance unavailable". Upgrade it to 5.0 or later, or clear the route.
+
 An add to a Cross-seed instance also looks for the torrent on each of its Source instances. If a Source instance is offline, adds to the Cross-seed instance fail and name the Source instance. To end this, enable the Source instance or clear its route. qui skips a Source instance that is turned off in qui.
 
 ### Move from the export and delete automations
