@@ -2189,7 +2189,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated reannounce activity
 	if reannouncedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": reannouncedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": reannouncedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2245,7 +2245,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated auto management activity
 	if autoManagedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": autoManagedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2398,7 +2398,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Only record if there were actual changes
 		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 				"added":   addCounts,
 				"removed": removeCounts,
 			})
@@ -2464,7 +2464,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			categoryCounts[move.category]++
 		}
 
-		detailsJSON, _ := json.Marshal(map[string]any{
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 			"categories": categoryCounts,
 		})
 		activity := &models.AutomationActivity{
@@ -2530,7 +2530,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	if successCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"paths": successfulMovesByPath}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
