@@ -86,7 +86,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { instances = [] } = useInstances()
   const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
-  const { data: savedRoute, isLoading: isLoadingRoute, isError: routeReadFailed } = useCrossSeedRoute(instance, saved !== undefined)
+  const { data: savedRoute, isLoading: isLoadingRoute, isFetching: isFetchingRoute, isError: routeReadFailed } = useCrossSeedRoute(instance, saved !== undefined)
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
   // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
   const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never } | { clear: false; baseDirs?: string[] } | null>(null)
@@ -184,7 +184,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
 
   const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
   // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
-  const routeRead = routesRead && (saved === undefined || savedRoute !== undefined)
+  // A refetch keeps the old cached rows, so a save or a clear waits for it too.
+  const routeRead = routesRead && !isFetchingRoute && (saved === undefined || savedRoute !== undefined)
   const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
   const picker = (
@@ -287,7 +288,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
           {t("routeForm.saveRoute")}
         </Button>
         {saved && (
-          <Button size="sm" variant="destructive" onClick={handleClear} disabled={busy}>
+          <Button size="sm" variant="destructive" onClick={handleClear} disabled={busy || isFetchingRoute}>
             {clearRoute.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {t("routeForm.clearRoute")}
           </Button>

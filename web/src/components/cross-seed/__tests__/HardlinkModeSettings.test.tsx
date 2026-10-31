@@ -139,7 +139,7 @@ describe("HardlinkModeSettings", () => {
       }
     })
 
-    it("asks before a save that removes a base folder added after the route save", async () => {
+    it.each(["/data/new", "/data//new"])("asks before a save that removes a base folder added after the route save (%s)", async (added) => {
       // The route read gives the newer base folder an empty row, and the orphan scan protects the torrents under it.
       mocks.translation.t = ((key: string, options?: { count?: number }) => options?.count === undefined ? key : `${key}:${options.count}`) as typeof mocks.translation.t
       mocks.getCrossSeedRoute.mockResolvedValue({
@@ -152,7 +152,7 @@ describe("HardlinkModeSettings", () => {
         ],
       })
       try {
-        mocks.instances.instances = [{ ...source, hardlinkBaseDir: "/data/links, /data/more/, /data/new" }, seedbox]
+        mocks.instances.instances = [{ ...source, hardlinkBaseDir: `/data/links, /data/more/, ${added}` }, seedbox]
         mocks.routes.data = [{
           sourceInstanceId: 1,
           crossSeedInstanceId: 2,

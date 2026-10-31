@@ -32,11 +32,11 @@ function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
 }
 
-// ponytail: trims, drops a trailing separator, and applies NFC as the server
-// keys do. An unclean path such as "/data//links" reads as removed and opens
-// one confirm too many.
+// ponytail: trims, joins repeated separators after the first character (a UNC
+// prefix stays), drops a trailing separator, and applies NFC as the server keys
+// do. A path with "." or ".." segments reads as removed and opens one confirm too many.
 function baseDirKey(dir: string): string {
-  return dir.trim().normalize("NFC").replace(/(?<=.)[\\/]+$/, "")
+  return dir.trim().normalize("NFC").replace(/(?<=.)([\\/])[\\/]+/g, "$1").replace(/(?<=.)[\\/]+$/, "")
 }
 
 /** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */

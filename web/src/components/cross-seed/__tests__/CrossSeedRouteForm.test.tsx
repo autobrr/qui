@@ -90,8 +90,9 @@ function serve({ routes = [] as CrossSeedRoute[], read = null as CrossSeedRouteS
   )
 }
 
-function renderForm(instance: Instance, canWriteLocally = instance.capabilities.write && instance.filesystemMode === "local") {
+function renderForm(instance: Instance, canWriteLocally = instance.capabilities.write && instance.filesystemMode === "local", seed?: (queryClient: QueryClient) => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  seed?.(queryClient)
   const view = render(
     <QueryClientProvider client={queryClient}>
       <CrossSeedRouteForm instance={instance} localWrite={canWriteLocally} />
@@ -498,6 +499,27 @@ describe("CrossSeedRouteForm confirm", () => {
     expect(writes).toEqual([])
     fireEvent.click(await confirmButton())
     await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("keeps Save and Clear off while a cached route read refetches", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    let answerRead: (() => void) | undefined
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => new Promise<Response>(resolve => {
+      answerRead = () => resolve(HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/new", routedTorrents: 1 }] }))
+    })))
+    renderForm(source, undefined, queryClient => {
+      queryClient.setQueryData([...crossSeedRoutesKey, 1, source.hardlinkBaseDir], { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 1 }] })
+    })
+    const button = (name: string) => screen.getByRole<HTMLButtonElement>("button", { name })
+
+    await waitFor(() => expect(answerRead).toBeDefined())
+    expect(button("routeForm.saveRoute").disabled).toBe(true)
+    expect(button("routeForm.clearRoute").disabled).toBe(true)
+    answerRead?.()
+    await screen.findByDisplayValue("/mnt/new")
+    await waitFor(() => expect(button("routeForm.saveRoute").disabled).toBe(false))
+    expect(button("routeForm.clearRoute").disabled).toBe(false)
   })
 
   it("lets a route clear go on with an unknown count when the route read fails", async () => {
