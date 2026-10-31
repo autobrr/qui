@@ -673,5 +673,33 @@
   "routeStatus": {
     "unavailable": "辅种实例不可用",
     "cannotSeeData": "辅种实例无法看到数据"
+  },
+  "routeForm": {
+    "crossSeedInstance": "辅种实例",
+    "crossSeedInstanceDescription": "qui 在此实例上找到的辅种只会添加到辅种实例。此实例永远不会收到它们。qui 会在此实例的基础目录中以硬链接或引用链接方式创建文件。",
+    "noCrossSeedInstance": "无辅种实例",
+    "receivesCrossSeeds": "此实例是 {{names}} 的辅种实例，因此不能把自己的辅种发送到辅种实例。",
+    "needsLinkMode": "辅种实例需要硬链接或引用链接模式。请先选择一种并保存。",
+    "brokenRule": "此路由不再符合路由规则：{{reason}}",
+    "mappedPaths": "辅种实例上的路径",
+    "mappedPathsDescription": "为每个基础目录输入辅种实例看到它的路径。如果两个实例使用相同路径，请将该行留空。",
+    "samePathPlaceholder": "相同路径",
+    "overlap": "{{first}} 和 {{second}} 在辅种实例上指向同一文件夹或嵌套文件夹。",
+    "testRoute": "测试路由",
+    "saveRoute": "保存路由",
+    "clearRoute": "清除路由",
+    "saved": "路由已保存",
+    "cleared": "路由已清除",
+    "saveFailed": "保存路由失败",
+    "clearFailed": "清除路由失败",
+    "testFailed": "测试路由失败",
+    "testResultRow": "{{baseDir}} → {{listedPath}}：{{result}}",
+    "testResult": {
+      "sees": "辅种实例可以看到它",
+      "seesFolderNotMarker": "辅种实例能看到文件夹，但看不到标记",
+      "cannotSeeFolder": "辅种实例看不到该文件夹",
+      "cannotWrite": "qui 无法写入此实例上的文件夹"
+    },
+    "markerHint": "网络挂载（NFS）最多可能在 60 秒内显示旧的文件夹列表。请等待一分钟后再测试。"
   }
 }

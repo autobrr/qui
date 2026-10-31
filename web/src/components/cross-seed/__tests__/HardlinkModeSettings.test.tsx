@@ -11,6 +11,7 @@ import type { FilesystemCapabilities, Instance } from "@/types"
 const mocks = vi.hoisted(() => ({
   instances: { instances: [] as unknown[], updateInstance: vi.fn(), isUpdating: false },
   toastError: vi.fn(),
+  routeFormProps: [] as { localWrite: boolean }[],
   translation: { t: (key: string) => key },
 }))
 
@@ -24,6 +25,12 @@ vi.mock("@/components/ui/field-help", () => ({
 }))
 vi.mock("@/components/cross-seed/PooledCompletionSetting", () => ({ PooledCompletionSetting: () => null }))
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
+vi.mock("@/components/cross-seed/CrossSeedRouteForm", () => ({
+  CrossSeedRouteForm: (props: { localWrite: boolean }) => {
+    mocks.routeFormProps.push(props)
+    return null
+  },
+}))
 
 import { HardlinkModeSettings } from "../HardlinkModeSettings"
 
@@ -75,6 +82,8 @@ describe("HardlinkModeSettings", () => {
     expect(screen.getByRole("radio", { name: "rules.hardlink" }).hasAttribute("disabled")).toBe(!canWrite)
     expect(screen.getByRole("radio", { name: "rules.reflink" }).hasAttribute("disabled")).toBe(!canReflink)
     expect(screen.queryByText("rules.noLocalAccess") === null).toBe(canWrite)
+    // The route form gets the same Write plus local mode check as reflink mode.
+    expect(mocks.routeFormProps.at(-1)?.localWrite).toBe(canReflink)
 
     fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/links2" } })
     fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))

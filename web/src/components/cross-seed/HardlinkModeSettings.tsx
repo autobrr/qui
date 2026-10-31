@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CrossSeedRouteForm } from "@/components/cross-seed/CrossSeedRouteForm"
 import { PooledCompletionSetting } from "@/components/cross-seed/PooledCompletionSetting"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
@@ -345,6 +346,8 @@ export function HardlinkModeSettings({
                           {t("rules.saveChanges")}
                         </Button>
                       )}
+
+                      <CrossSeedRouteForm instance={instance} localWrite={canEnableReflink} />
                     </div>
                   </AccordionContent>
                 </AccordionItem>

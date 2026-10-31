@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Cross-seed instance unavailable",
     "cannotSeeData": "Cross-seed instance cannot see the data"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Cross-seed instance",
+    "crossSeedInstanceDescription": "Cross-seeds that qui finds on this instance go to the Cross-seed instance only. This instance never gets them. qui hardlinks or reflinks the files into the base folders of this instance.",
+    "noCrossSeedInstance": "No Cross-seed instance",
+    "receivesCrossSeeds": "This instance is the Cross-seed instance of {{names}}, so it cannot send its own cross-seeds to a Cross-seed instance.",
+    "needsLinkMode": "A Cross-seed instance needs hardlink or reflink mode. Select one and save it first.",
+    "brokenRule": "This route no longer passes the route rules: {{reason}}",
+    "mappedPaths": "Paths on the Cross-seed instance",
+    "mappedPathsDescription": "For each base folder, type the path where the Cross-seed instance sees it. Leave a row empty when both instances use the same path.",
+    "samePathPlaceholder": "Same path",
+    "overlap": "{{first}} and {{second}} map to the same folder or to nested folders on the Cross-seed instance.",
+    "testRoute": "Test route",
+    "saveRoute": "Save route",
+    "clearRoute": "Clear route",
+    "saved": "Route saved",
+    "cleared": "Route cleared",
+    "saveFailed": "Failed to save the route",
+    "clearFailed": "Failed to clear the route",
+    "testFailed": "Failed to test the route",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "the Cross-seed instance sees it",
+      "seesFolderNotMarker": "the Cross-seed instance sees the folder but not the marker",
+      "cannotSeeFolder": "the Cross-seed instance cannot see the folder",
+      "cannotWrite": "qui cannot write to the folder on this instance"
+    },
+    "markerHint": "A network mount (NFS) can show an old folder listing for up to 60 seconds. Wait a minute, then test again."
   }
 }

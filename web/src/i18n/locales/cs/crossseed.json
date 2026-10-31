@@ -696,5 +696,33 @@
   "routeStatus": {
     "unavailable": "Instance pro křížové sdílení není dostupná",
     "cannotSeeData": "Instance pro křížové sdílení nevidí data"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Instance pro křížové sdílení",
+    "crossSeedInstanceDescription": "Křížová sdílení, která qui najde na této instanci, jdou pouze do instance pro křížové sdílení. Tato instance je nikdy nedostane. qui soubory vytvoří jako hardlinky nebo reflinky v základních adresářích této instance.",
+    "noCrossSeedInstance": "Žádná instance pro křížové sdílení",
+    "receivesCrossSeeds": "Tato instance je instancí pro křížové sdílení pro {{names}}, takže nemůže posílat svá vlastní křížová sdílení do instance pro křížové sdílení.",
+    "needsLinkMode": "Instance pro křížové sdílení vyžaduje režim hardlink nebo reflink. Nejprve jeden vyberte a uložte.",
+    "brokenRule": "Tato trasa už nesplňuje pravidla tras: {{reason}}",
+    "mappedPaths": "Cesty na instanci pro křížové sdílení",
+    "mappedPathsDescription": "U každého základního adresáře zadejte cestu, kde ho vidí instance pro křížové sdílení. Řádek nechte prázdný, když obě instance používají stejnou cestu.",
+    "samePathPlaceholder": "Stejná cesta",
+    "overlap": "{{first}} a {{second}} vedou na instanci pro křížové sdílení do stejné složky nebo do vnořených složek.",
+    "testRoute": "Otestovat trasu",
+    "saveRoute": "Uložit trasu",
+    "clearRoute": "Zrušit trasu",
+    "saved": "Trasa uložena",
+    "cleared": "Trasa zrušena",
+    "saveFailed": "Trasu se nepodařilo uložit",
+    "clearFailed": "Trasu se nepodařilo zrušit",
+    "testFailed": "Trasu se nepodařilo otestovat",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "instance pro křížové sdílení ji vidí",
+      "seesFolderNotMarker": "instance pro křížové sdílení vidí složku, ale ne značku",
+      "cannotSeeFolder": "instance pro křížové sdílení složku nevidí",
+      "cannotWrite": "qui nemůže zapisovat do složky na této instanci"
+    },
+    "markerHint": "Síťové připojení (NFS) může až 60 sekund zobrazovat starý výpis složky. Počkejte minutu a otestujte znovu."
   }
 }

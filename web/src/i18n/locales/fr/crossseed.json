@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Instance de cross-seed indisponible",
     "cannotSeeData": "L'instance de cross-seed ne voit pas les données"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Instance de cross-seed",
+    "crossSeedInstanceDescription": "Les cross-seeds que qui trouve sur cette instance vont uniquement à l'instance de cross-seed. Cette instance ne les reçoit jamais. qui crée les fichiers en liens physiques ou en reflinks dans les répertoires de base de cette instance.",
+    "noCrossSeedInstance": "Aucune instance de cross-seed",
+    "receivesCrossSeeds": "Cette instance est l'instance de cross-seed de {{names}}, elle ne peut donc pas envoyer ses propres cross-seeds à une instance de cross-seed.",
+    "needsLinkMode": "Une instance de cross-seed nécessite le mode lien physique ou reflink. Sélectionnez-en un et enregistrez-le d'abord.",
+    "brokenRule": "Cette route ne respecte plus les règles de route : {{reason}}",
+    "mappedPaths": "Chemins sur l'instance de cross-seed",
+    "mappedPathsDescription": "Pour chaque répertoire de base, saisissez le chemin où l'instance de cross-seed le voit. Laissez une ligne vide quand les deux instances utilisent le même chemin.",
+    "samePathPlaceholder": "Même chemin",
+    "overlap": "{{first}} et {{second}} pointent vers le même dossier ou vers des dossiers imbriqués sur l'instance de cross-seed.",
+    "testRoute": "Tester la route",
+    "saveRoute": "Enregistrer la route",
+    "clearRoute": "Supprimer la route",
+    "saved": "Route enregistrée",
+    "cleared": "Route supprimée",
+    "saveFailed": "Échec de l'enregistrement de la route",
+    "clearFailed": "Échec de la suppression de la route",
+    "testFailed": "Échec du test de la route",
+    "testResultRow": "{{baseDir}} → {{listedPath}} : {{result}}",
+    "testResult": {
+      "sees": "l'instance de cross-seed le voit",
+      "seesFolderNotMarker": "l'instance de cross-seed voit le dossier mais pas le marqueur",
+      "cannotSeeFolder": "l'instance de cross-seed ne voit pas le dossier",
+      "cannotWrite": "qui ne peut pas écrire dans le dossier sur cette instance"
+    },
+    "markerHint": "Un montage réseau (NFS) peut afficher une ancienne liste de dossier pendant 60 secondes au maximum. Attendez une minute, puis testez à nouveau."
   }
 }

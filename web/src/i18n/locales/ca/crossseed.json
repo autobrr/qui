@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Instància de cross-seed no disponible",
     "cannotSeeData": "La instància de cross-seed no veu les dades"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Instància de cross-seed",
+    "crossSeedInstanceDescription": "Els cross-seeds que qui troba en aquesta instància van només a la instància de cross-seed. Aquesta instància no els rep mai. qui fa hardlinks o reflinks dels fitxers als directoris base d'aquesta instància.",
+    "noCrossSeedInstance": "Cap instància de cross-seed",
+    "receivesCrossSeeds": "Aquesta instància és la instància de cross-seed de {{names}}, de manera que no pot enviar els seus propis cross-seeds a una instància de cross-seed.",
+    "needsLinkMode": "Una instància de cross-seed necessita el mode hardlink o reflink. Selecciona'n un i desa'l primer.",
+    "brokenRule": "Aquesta ruta ja no compleix les regles de ruta: {{reason}}",
+    "mappedPaths": "Camins a la instància de cross-seed",
+    "mappedPathsDescription": "Per a cada directori base, escriu el camí on la instància de cross-seed el veu. Deixa una fila buida quan les dues instàncies fan servir el mateix camí.",
+    "samePathPlaceholder": "Mateix camí",
+    "overlap": "{{first}} i {{second}} apunten a la mateixa carpeta o a carpetes niades a la instància de cross-seed.",
+    "testRoute": "Prova la ruta",
+    "saveRoute": "Desa la ruta",
+    "clearRoute": "Esborra la ruta",
+    "saved": "Ruta desada",
+    "cleared": "Ruta esborrada",
+    "saveFailed": "No s'ha pogut desar la ruta",
+    "clearFailed": "No s'ha pogut esborrar la ruta",
+    "testFailed": "No s'ha pogut provar la ruta",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "la instància de cross-seed la veu",
+      "seesFolderNotMarker": "la instància de cross-seed veu la carpeta però no el marcador",
+      "cannotSeeFolder": "la instància de cross-seed no veu la carpeta",
+      "cannotWrite": "qui no pot escriure a la carpeta d'aquesta instància"
+    },
+    "markerHint": "Un muntatge de xarxa (NFS) pot mostrar una llista de carpetes antiga fins a 60 segons. Espera un minut i torna a provar."
   }
 }

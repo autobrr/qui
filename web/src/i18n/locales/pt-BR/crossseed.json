@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Instância de cross-seed indisponível",
     "cannotSeeData": "A instância de cross-seed não vê os dados"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Instância de cross-seed",
+    "crossSeedInstanceDescription": "Os cross-seeds que o qui encontra nesta instância vão somente para a instância de cross-seed. Esta instância nunca os recebe. O qui cria os arquivos como hardlinks ou reflinks nos diretórios base desta instância.",
+    "noCrossSeedInstance": "Nenhuma instância de cross-seed",
+    "receivesCrossSeeds": "Esta instância é a instância de cross-seed de {{names}}, então não pode enviar seus próprios cross-seeds para uma instância de cross-seed.",
+    "needsLinkMode": "Uma instância de cross-seed precisa do modo hardlink ou reflink. Selecione um e salve-o primeiro.",
+    "brokenRule": "Esta rota não atende mais às regras de rota: {{reason}}",
+    "mappedPaths": "Caminhos na instância de cross-seed",
+    "mappedPathsDescription": "Para cada diretório base, digite o caminho onde a instância de cross-seed o vê. Deixe uma linha vazia quando as duas instâncias usam o mesmo caminho.",
+    "samePathPlaceholder": "Mesmo caminho",
+    "overlap": "{{first}} e {{second}} apontam para a mesma pasta ou para pastas aninhadas na instância de cross-seed.",
+    "testRoute": "Testar rota",
+    "saveRoute": "Salvar rota",
+    "clearRoute": "Limpar rota",
+    "saved": "Rota salva",
+    "cleared": "Rota limpa",
+    "saveFailed": "Falha ao salvar a rota",
+    "clearFailed": "Falha ao limpar a rota",
+    "testFailed": "Falha ao testar a rota",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "a instância de cross-seed o vê",
+      "seesFolderNotMarker": "a instância de cross-seed vê a pasta, mas não o marcador",
+      "cannotSeeFolder": "a instância de cross-seed não vê a pasta",
+      "cannotWrite": "o qui não consegue gravar na pasta desta instância"
+    },
+    "markerHint": "Uma montagem de rede (NFS) pode mostrar uma listagem de pasta antiga por até 60 segundos. Aguarde um minuto e teste novamente."
   }
 }

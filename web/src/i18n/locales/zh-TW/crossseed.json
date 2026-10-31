@@ -673,5 +673,33 @@
   "routeStatus": {
     "unavailable": "輔種實例無法使用",
     "cannotSeeData": "輔種實例無法看到資料"
+  },
+  "routeForm": {
+    "crossSeedInstance": "輔種實例",
+    "crossSeedInstanceDescription": "qui 在此實例上找到的輔種只會新增到輔種實例。此實例永遠不會收到它們。qui 會在此實例的基礎目錄中以硬連結或引用連結方式建立檔案。",
+    "noCrossSeedInstance": "無輔種實例",
+    "receivesCrossSeeds": "此實例是 {{names}} 的輔種實例，因此不能把自己的輔種傳送到輔種實例。",
+    "needsLinkMode": "輔種實例需要硬連結或引用連結模式。請先選擇一種並儲存。",
+    "brokenRule": "此路由不再符合路由規則：{{reason}}",
+    "mappedPaths": "輔種實例上的路徑",
+    "mappedPathsDescription": "為每個基礎目錄輸入輔種實例看到它的路徑。如果兩個實例使用相同路徑，請將該列留空。",
+    "samePathPlaceholder": "相同路徑",
+    "overlap": "{{first}} 和 {{second}} 在輔種實例上指向同一資料夾或巢狀資料夾。",
+    "testRoute": "測試路由",
+    "saveRoute": "儲存路由",
+    "clearRoute": "清除路由",
+    "saved": "路由已儲存",
+    "cleared": "路由已清除",
+    "saveFailed": "儲存路由失敗",
+    "clearFailed": "清除路由失敗",
+    "testFailed": "測試路由失敗",
+    "testResultRow": "{{baseDir}} → {{listedPath}}：{{result}}",
+    "testResult": {
+      "sees": "輔種實例可以看到它",
+      "seesFolderNotMarker": "輔種實例能看到資料夾，但看不到標記",
+      "cannotSeeFolder": "輔種實例看不到該資料夾",
+      "cannotWrite": "qui 無法寫入此實例上的資料夾"
+    },
+    "markerHint": "網路掛載（NFS）最多可能在 60 秒內顯示舊的資料夾清單。請等待一分鐘後再測試。"
   }
 }

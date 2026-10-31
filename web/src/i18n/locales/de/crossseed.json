@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Cross-Seed-Instanz nicht verfügbar",
     "cannotSeeData": "Cross-Seed-Instanz sieht die Daten nicht"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Cross-Seed-Instanz",
+    "crossSeedInstanceDescription": "Cross-Seeds, die qui auf dieser Instanz findet, gehen nur an die Cross-Seed-Instanz. Diese Instanz erhält sie nie. qui legt die Dateien als Hardlinks oder Reflinks in den Basisverzeichnissen dieser Instanz an.",
+    "noCrossSeedInstance": "Keine Cross-Seed-Instanz",
+    "receivesCrossSeeds": "Diese Instanz ist die Cross-Seed-Instanz von {{names}} und kann deshalb ihre eigenen Cross-Seeds nicht an eine Cross-Seed-Instanz senden.",
+    "needsLinkMode": "Eine Cross-Seed-Instanz benötigt den Hardlink- oder Reflink-Modus. Wähle zuerst einen aus und speichere ihn.",
+    "brokenRule": "Diese Route erfüllt die Routenregeln nicht mehr: {{reason}}",
+    "mappedPaths": "Pfade auf der Cross-Seed-Instanz",
+    "mappedPathsDescription": "Gib für jedes Basisverzeichnis den Pfad ein, unter dem die Cross-Seed-Instanz es sieht. Lass eine Zeile leer, wenn beide Instanzen denselben Pfad verwenden.",
+    "samePathPlaceholder": "Gleicher Pfad",
+    "overlap": "{{first}} und {{second}} zeigen auf der Cross-Seed-Instanz auf denselben Ordner oder auf verschachtelte Ordner.",
+    "testRoute": "Route testen",
+    "saveRoute": "Route speichern",
+    "clearRoute": "Route entfernen",
+    "saved": "Route gespeichert",
+    "cleared": "Route entfernt",
+    "saveFailed": "Route konnte nicht gespeichert werden",
+    "clearFailed": "Route konnte nicht entfernt werden",
+    "testFailed": "Route konnte nicht getestet werden",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "die Cross-Seed-Instanz sieht ihn",
+      "seesFolderNotMarker": "die Cross-Seed-Instanz sieht den Ordner, aber nicht die Markierung",
+      "cannotSeeFolder": "die Cross-Seed-Instanz sieht den Ordner nicht",
+      "cannotWrite": "qui kann nicht in den Ordner auf dieser Instanz schreiben"
+    },
+    "markerHint": "Ein Netzwerk-Mount (NFS) kann bis zu 60 Sekunden lang eine alte Ordnerliste zeigen. Warte eine Minute und teste dann erneut."
   }
 }

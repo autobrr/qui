@@ -683,5 +683,33 @@
   "routeStatus": {
     "unavailable": "Istanza di cross-seed non disponibile",
     "cannotSeeData": "L'istanza di cross-seed non vede i dati"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Istanza di cross-seed",
+    "crossSeedInstanceDescription": "I cross-seed che qui trova su questa istanza vanno solo all'istanza di cross-seed. Questa istanza non li riceve mai. qui crea i file come hardlink o reflink nelle directory di base di questa istanza.",
+    "noCrossSeedInstance": "Nessuna istanza di cross-seed",
+    "receivesCrossSeeds": "Questa istanza è l'istanza di cross-seed di {{names}}, quindi non può inviare i propri cross-seed a un'istanza di cross-seed.",
+    "needsLinkMode": "Un'istanza di cross-seed richiede la modalità hardlink o reflink. Selezionane una e salvala prima.",
+    "brokenRule": "Questa route non rispetta più le regole delle route: {{reason}}",
+    "mappedPaths": "Percorsi sull'istanza di cross-seed",
+    "mappedPathsDescription": "Per ogni directory di base, scrivi il percorso in cui l'istanza di cross-seed la vede. Lascia una riga vuota quando le due istanze usano lo stesso percorso.",
+    "samePathPlaceholder": "Stesso percorso",
+    "overlap": "{{first}} e {{second}} puntano alla stessa cartella o a cartelle annidate sull'istanza di cross-seed.",
+    "testRoute": "Testa la route",
+    "saveRoute": "Salva la route",
+    "clearRoute": "Rimuovi la route",
+    "saved": "Route salvata",
+    "cleared": "Route rimossa",
+    "saveFailed": "Impossibile salvare la route",
+    "clearFailed": "Impossibile rimuovere la route",
+    "testFailed": "Impossibile testare la route",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "l'istanza di cross-seed la vede",
+      "seesFolderNotMarker": "l'istanza di cross-seed vede la cartella ma non il marcatore",
+      "cannotSeeFolder": "l'istanza di cross-seed non vede la cartella",
+      "cannotWrite": "qui non può scrivere nella cartella su questa istanza"
+    },
+    "markerHint": "Un mount di rete (NFS) può mostrare un elenco di cartelle vecchio fino a 60 secondi. Attendi un minuto, poi testa di nuovo."
   }
 }
