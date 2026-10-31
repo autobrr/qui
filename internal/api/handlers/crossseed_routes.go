@@ -133,6 +133,43 @@ func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Req
 	RespondJSON(w, http.StatusOK, saved)
 }
 
+// TestCrossSeedRoute tests the rows of a route that is not saved yet: for each
+// base folder, it reports whether the Cross-seed instance sees a marker that
+// qui writes there.
+func (h *CrossSeedHandler) TestCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
+	instanceID, ok := h.routeInstance(w, r)
+	if !ok {
+		return
+	}
+	var req crossSeedRouteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.CrossSeedInstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "crossSeedInstanceId must be a positive integer")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), crossSeedRouteTimeout)
+	defer cancel()
+	result, err := h.routes.Test(ctx, &models.CrossSeedRoute{SourceInstanceID: instanceID, CrossSeedInstanceID: req.CrossSeedInstanceID, Rows: req.Rows})
+	if err != nil {
+		ruleErr, isRuleErr := errors.AsType[*crossseedroute.RuleError](err)
+		switch {
+		case isRuleErr:
+			RespondError(w, http.StatusBadRequest, ruleErr.Message)
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+		default:
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to test cross-seed route")
+			RespondError(w, http.StatusInternalServerError, "Failed to test cross-seed route")
+		}
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
 // ClearCrossSeedRoute removes the route of a Source instance.
 func (h *CrossSeedHandler) ClearCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
 	instanceID, ok := h.routeInstance(w, r)

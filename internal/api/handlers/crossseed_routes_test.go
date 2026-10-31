@@ -53,7 +53,10 @@ func newRouteFixture(t *testing.T) *routeFixture {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
-	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPool(instances, local.NewBackend()))
+	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPoolWithRemote(instances, local.NewBackend(), func(*models.Instance) fsops.Backend {
+		// The route test refuses a remote instance before it uses the backend.
+		return nil
+	}))
 	torrents := &fakeRouteTorrents{torrents: map[int][]qbt.Torrent{}, files: map[string]qbt.TorrentFiles{}}
 	handler := &CrossSeedHandler{instanceStore: instances, routes: routes, torrents: torrents}
 	router := chi.NewRouter()
@@ -62,6 +65,7 @@ func newRouteFixture(t *testing.T) *routeFixture {
 		r.Get("/{instanceID}", handler.GetCrossSeedRoute)
 		r.Put("/{instanceID}", handler.SaveCrossSeedRoute)
 		r.Delete("/{instanceID}", handler.ClearCrossSeedRoute)
+		r.Post("/{instanceID}/test", handler.TestCrossSeedRoute)
 	})
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instances))
 	t.Cleanup(sshPool.Close)

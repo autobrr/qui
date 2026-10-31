@@ -575,6 +575,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 			r.Get("/{instanceID}", h.GetCrossSeedRoute)
 			r.Put("/{instanceID}", h.SaveCrossSeedRoute)
 			r.Delete("/{instanceID}", h.ClearCrossSeedRoute)
+			r.Post("/{instanceID}/test", h.TestCrossSeedRoute)
 		})
 		r.Route("/season-pack", func(r chi.Router) {
 			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.SeasonPackCheck)
