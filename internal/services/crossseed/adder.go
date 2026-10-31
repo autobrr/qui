@@ -100,6 +100,9 @@ type AddFacts struct {
 	// SeasonPackRun is the season pack history row that Settle writes when the
 	// linked-file check blocks the resume.
 	SeasonPackRun *models.SeasonPackRun
+	// Demote is set by a hardlink season pack. Settle calls it to turn the
+	// linked files that fail the linked-file check into pending files.
+	Demote demoteFunc
 
 	// The settings of the Trigger.
 	SkipRecheck    bool
@@ -380,6 +383,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			RecoverMissingFiles: req.Facts.RecoverMissingFiles,
 			Threshold:           req.Facts.SeasonPackLinked * seasonPackResumeSlack,
 			SeasonPackRun:       req.Facts.SeasonPackRun,
+			Demote:              req.Facts.Demote,
 		}
 		if v.gate == GateBudget {
 			added.Budget = a.resumeBudget(ctx)
