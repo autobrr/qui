@@ -194,6 +194,7 @@ describe("CrossSeedRouteForm rows", () => {
     { name: "nested folders", a: "/mnt/data", b: "/mnt/data/b" },
     { name: "an empty row inside a mapped row", a: "/data", b: "" },
     { name: "drive letters in another case", a: "D:\\Data", b: "d:/data" },
+    { name: "folders that nest after .. is resolved", a: "/mnt/x/../data", b: "/mnt/data/b" },
   ])("refuses two rows that map to $name", async ({ a, b }) => {
     mocks.instances.instances = [source, crossSeed]
     serve()
@@ -207,6 +208,71 @@ describe("CrossSeedRouteForm rows", () => {
     expect(screen.getByText("routeForm.overlap|/data/a|/data/b")).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.testRoute" }).disabled).toBe(true)
+  })
+
+  it("resolves .. before it compares two rows", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    renderForm(source)
+
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    fireEvent.change(picker(), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("/data/a"), { target: { value: "/mnt/a" } })
+    fireEvent.change(screen.getByLabelText("/data/b"), { target: { value: "/mnt/a/../b" } })
+
+    expect(screen.queryByText("routeForm.overlap|/data/a|/data/b")).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(false)
+  })
+
+  it("shows one row for two spellings of one base folder", async () => {
+    const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/a/, /data/b" })
+    mocks.instances.instances = [instance, crossSeed]
+    serve()
+    renderForm(instance)
+
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    fireEvent.change(picker(), { target: { value: "2" } })
+
+    expect(screen.getAllByRole("textbox")).toEqual([screen.getByLabelText("/data/a"), screen.getByLabelText("/data/b")])
+  })
+
+  it("does not save while it could not read the route list", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    server.use(http.get("*/api/cross-seed/routes", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    renderForm(source)
+
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    fireEvent.change(picker(), { target: { value: "2" } })
+
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.testRoute" }).disabled).toBe(true)
+  })
+
+  it("keeps the saved paths and Save off until the route reads refresh", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    const before: CrossSeedRouteStatus = { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: null }, { baseDir: "/data/b", mappedPath: "", routedTorrents: null }] }
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: before.rows }] })
+    let reads = 0
+    let release = () => {}
+    const refreshed = new Promise<void>(resolve => { release = resolve })
+    server.use(
+      http.get("*/api/cross-seed/routes/:id", async () => {
+        reads++
+        if (reads > 1) await refreshed
+        return HttpResponse.json(before)
+      }),
+      http.put("*/api/cross-seed/routes/1", () => HttpResponse.json(before))
+    )
+    renderForm(source)
+
+    fireEvent.change(await screen.findByLabelText("/data/a"), { target: { value: "/mnt/new" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+    await waitFor(() => expect(reads).toBe(2))
+
+    expect(screen.getByLabelText<HTMLInputElement>("/data/a").value).toBe("/mnt/new")
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
+    release()
   })
 
   it("shows a saved route, a new base folder as an empty row, and the broken rule", async () => {

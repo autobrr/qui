@@ -30,16 +30,33 @@ const testResultKeys: Record<CrossSeedRouteTestRowResult, string> = {
   cannotWrite: "crossseed:routeForm.testResult.cannotWrite",
 }
 
-// The card keeps the base folders in one comma-separated field.
-function splitBaseDirs(configured: string): string[] {
-  return [...new Set(configured.split(",").map(dir => dir.trim()).filter(Boolean))]
+// The Cross-seed instance's form of a path, as the route rules compare it
+// (pathcmp.NormalizePath): either separator, "." and ".." resolved, case
+// ignored on a drive-letter path.
+function crossSeedKey(path: string): string {
+  const slashed = path.replace(/\\/g, "/")
+  const root = slashed.startsWith("//") ? "//" : slashed.startsWith("/") ? "/" : ""
+  const drive = /^[a-zA-Z]:/.test(slashed)
+  const parts: string[] = []
+  for (const part of slashed.split("/")) {
+    if (part === "..") {
+      if (parts.length > (drive ? 1 : 0)) parts.pop()
+    } else if (part !== "." && part !== "") {
+      parts.push(part)
+    }
+  }
+  const key = root + parts.join("/")
+  return drive ? key.toLowerCase() : key
 }
 
-// The Cross-seed instance's form of a path, as the route rules compare it:
-// either separator, case ignored on a drive-letter path.
-function crossSeedKey(path: string): string {
-  const key = path.replace(/\\/g, "/")
-  return /^[a-zA-Z]:/.test(key) ? key.toLowerCase() : key
+// The card keeps the base folders in one comma-separated field. Two spellings
+// of one folder, such as /data/a and /data/a/, are one base folder.
+function splitBaseDirs(configured: string): string[] {
+  const dirs = new Map<string, string>()
+  for (const dir of configured.split(",").map(dir => dir.trim()).filter(Boolean)) {
+    if (!dirs.has(crossSeedKey(dir))) dirs.set(crossSeedKey(dir), dir)
+  }
+  return [...dirs.values()]
 }
 
 function nested(parent: string, child: string): boolean {
@@ -65,7 +82,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
   const { instances = [] } = useInstances()
-  const { data: routes = [] } = useCrossSeedRoutes()
+  const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
   const { data: savedRoute, isLoading: isLoadingRoute } = useCrossSeedRoute(instance, saved !== undefined)
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
@@ -115,16 +132,18 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     mutationFn: () => api.testCrossSeedRoute(instance.id, { crossSeedInstanceId: crossSeedInstanceId!, rows }),
     onError: (error) => toast.error(t("routeForm.testFailed"), { description: error.message }),
   })
-  const onRouteChanged = () => {
+  // The mutation stays pending until the route reads refresh, so the form never
+  // shows the old route with Save on.
+  const onRouteChanged = async () => {
+    await queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
     setDraft(null)
     testRoute.reset()
-    void queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
   }
   const saveRoute = useMutation({
     mutationFn: () => api.saveCrossSeedRoute(instance.id, { crossSeedInstanceId: crossSeedInstanceId!, rows }),
     onSuccess: () => {
       toast.success(t("routeForm.saved"), { description: instance.name })
-      onRouteChanged()
+      return onRouteChanged()
     },
     onError: (error) => toast.error(t("routeForm.saveFailed"), { description: error.message }),
   })
@@ -132,7 +151,7 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     mutationFn: () => api.clearCrossSeedRoute(instance.id),
     onSuccess: () => {
       toast.success(t("routeForm.cleared"), { description: instance.name })
-      onRouteChanged()
+      return onRouteChanged()
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
@@ -148,8 +167,8 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   }
 
   const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
-  // Until the saved route is read, the rows have empty paths, and a save would erase the route.
-  const routeRead = saved === undefined || savedRoute !== undefined
+  // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
+  const routeRead = routesRead && (saved === undefined || savedRoute !== undefined)
   const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
   const picker = (
