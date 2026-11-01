@@ -721,9 +721,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
-		},
 	},
 	{
 		name:          "title rescue at an exact size",
