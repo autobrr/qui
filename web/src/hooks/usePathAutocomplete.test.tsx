@@ -4,6 +4,7 @@
  */
 
 import { act, cleanup, renderHook } from "@testing-library/react"
+import type { KeyboardEvent } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { usePathAutocomplete } from "./usePathAutocomplete"
@@ -21,7 +22,9 @@ vi.mock("./useDirectoryContent", () => {
   }
   const results = new Map<string, { data: string[] }>()
   return {
-    useDirectoryContent: (_id: number, path: string, options: { mode?: string }) => {
+    useDirectoryContent: (_id: number, path: string, options: { mode?: string; enabled?: boolean }) => {
+      // A disabled query has no data, as in React Query.
+      if (options.enabled === false) return { data: undefined }
       const key = `${options.mode ?? "dirs"}:${path}`
       if (path) requestedPaths.push(path)
       let result = results.get(key)
@@ -190,5 +193,51 @@ describe("usePathAutocomplete Windows paths", () => {
     act(() => result.current.handleSelect("C:\\data\\album.flac"))
     expect(onSelect).toHaveBeenLastCalledWith("C:\\data\\album.flac")
     expect(result.current.showSuggestions).toBe(false)
+  })
+})
+
+function press(result: { current: ReturnType<typeof usePathAutocomplete> }, key: string) {
+  act(() => result.current.handleKeyDown({ key, preventDefault: vi.fn() } as unknown as KeyboardEvent<HTMLInputElement>))
+}
+
+describe("usePathAutocomplete keyboard navigation", () => {
+  afterEach(() => {
+    cleanup()
+    document.body.replaceChildren()
+    requestedPaths.length = 0
+  })
+
+  // regression: #3204
+  it.each([false, true])("arrow keys move and wrap the highlight with includeFiles %s", (includeFiles) => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles }))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/al"))
+    expect(result.current.highlightedIndex).toBe(0)
+
+    press(result, "ArrowDown")
+    expect(result.current.highlightedIndex).toBe(1)
+
+    press(result, "ArrowUp")
+    press(result, "ArrowUp")
+    expect(result.current.highlightedIndex).toBe(result.current.suggestions.length - 1)
+
+    press(result, "ArrowDown")
+    press(result, "ArrowDown")
+    expect(result.current.highlightedIndex).toBe(1)
+    press(result, "Enter")
+    expect(onSelect).toHaveBeenCalledWith("/data/alps/")
+  })
+
+  // regression: #3204
+  it("typing new input resets the highlight to the first suggestion", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/"))
+    press(result, "ArrowDown")
+    expect(result.current.highlightedIndex).toBe(1)
+
+    act(() => result.current.handleInputChange("/data/al"))
+    expect(result.current.highlightedIndex).toBe(0)
   })
 })

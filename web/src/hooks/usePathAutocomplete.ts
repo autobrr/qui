@@ -10,6 +10,9 @@ import { endsWithSeparator, lastSeparatorIndex, pathSeparator } from "@/lib/path
 import { useDirectoryContent } from "./useDirectoryContent";
 
 const MAX_SUGGESTIONS = 100;
+// Stable fallback for a query without data. An inline `= []` is a new array each
+// render, which resets the highlight after every arrow key.
+const NO_ENTRIES: string[] = [];
 
 type UsePathAutocompleteOptions = {
   /** Also list files; a selected file closes the dropdown instead of descending into it. */
@@ -53,10 +56,10 @@ export function usePathAutocomplete(
   );
 
   const enabled = Boolean(deferredInput?.trim());
-  const { data: directoryEntries = [] } = useDirectoryContent(instanceId, parentPath, { enabled });
+  const { data: directoryEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, { enabled });
   // Second query instead of mode=all with metadata: it works on qBittorrent 5.0
   // and returns full paths, while withMetadata needs 5.2 and returns basenames.
-  const { data: fileEntries = [] } = useDirectoryContent(instanceId, parentPath, {
+  const { data: fileEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, {
     enabled: includeFiles && enabled,
     mode: "files",
   });
