@@ -12,7 +12,7 @@ To change the signing key, we ship one bridge release. The bridge release embeds
 The old key stays a secret after the change, because installs that did not update still trust it. Two repository settings limit what a person with write access can do with it:
 
 - Immutable releases are on. GitHub locks the files and the tag of a release when it is published. The release stays a draft until the Release workflow publishes it, so a failed run can still be retagged before that.
-- The ruleset "Release tags: admins only" covers all tags. Only an admin can create, move, or delete a tag, so a person with write access cannot add a release with a higher version.
+- The ruleset "Release tags: admins only" covers all tags. Only an admin can create, move, or delete a tag, so a person with write access cannot add a release with a higher version. The release workflow builds only `v*` tags, but the rule covers all tags, because Self-update also takes a release that a person makes by hand on a tag without a `v`.
 
 `release.preflight.fail_on_error` in the GoReleaser files stops a re-run of a published tag before the build, because the upload to an immutable release fails at the end anyway.
 
