@@ -165,7 +165,7 @@ jobs:
 
       # Installed qui updates only to published releases that are not
       # prereleases, and it checks each one with the cert that it embeds. So
-      # sign with the key for the cert of the latest such release. The two
+      # sign with the key for the cert of the highest such release. The two
       # secrets are interchangeable: during a key change, one holds the old
       # key and the other the new key. One of them must also match the cert
       # of this release, or the release after it could not be signed.
@@ -178,8 +178,9 @@ jobs:
           RELEASE_SIGNING_PRIVATE_KEY_NEXT: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_NEXT }}
         run: |
           set -o pipefail
+          # The updater picks the highest version, and gh lists by creation date.
           previous_tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName \
-            --jq "[.[] | select(.tagName != \"$GITHUB_REF_NAME\")][0].tagName")"
+            --jq ".[].tagName | select(. != \"$GITHUB_REF_NAME\")" | sort -V | tail -n 1)"
           if [[ -z $previous_tag ]]; then
             echo "::error::No earlier published release found"
             exit 1
