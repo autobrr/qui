@@ -764,7 +764,8 @@
       "fewerIndexers": "尝试选择更少的索引器进行搜索",
       "useRss": "使用 RSS 自动化功能进行持续辅种",
       "checkIndexers": "检查索引器页面以查看哪些被限流"
-    }
+    },
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。"
   },
   "columnFilter": {
     "filterColumn": "筛选 {{column}}",
@@ -1575,6 +1576,7 @@
     "tags": "标签",
     "newTagPlaceholder": "输入标签后按 Enter",
     "savePath": "保存路径（实际目标位置）",
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。",
     "cancel": "取消",
     "apply": "添加辅种",
     "applying": "正在添加...",

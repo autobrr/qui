@@ -1526,7 +1526,8 @@
       "fewerIndexers": "Prova de cercar amb menys indexadors seleccionats",
       "useRss": "Fes servir l'automatització d'RSS per al cross-seeding continu",
       "checkIndexers": "Mira la pàgina d'indexadors per veure quins tenen límit de freqüència"
-    }
+    },
+    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}."
   },
   "manualCrossSeed": {
     "title": "Coincidència manual de cross-seed",
@@ -1549,6 +1550,7 @@
     "tags": "Etiquetes",
     "newTagPlaceholder": "Afegeix una etiqueta i prem Retorn",
     "savePath": "Camí de desada (destinació efectiva)",
+    "routedTo": "El cross-seed va a la instància de cross-seed {{instance}}.",
     "cancel": "Cancel·la",
     "apply": "Afegeix el cross-seed",
     "applying": "S'està afegint...",

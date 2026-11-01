@@ -40,11 +40,12 @@
     "enableSwitch": "RSS 자동화 활성화",
     "intervalLabel": "RSS 실행 간격(분)",
     "intervalTooltip": "자동화는 실행할 때마다 활성화된 모든 Torznab 인덱서의 전체 피드를 처리합니다. 인덱서에 과부하를 주지 않도록 최소 간격은 {{min}}분입니다.",
-    "targetInstances": "대상 인스턴스",
+    "instancesToSearch": "검색할 인스턴스",
+    "instancesToSearchHelp": "RSS 자동화는 이 인스턴스의 토렌트에서 일치 항목을 찾습니다. 인스턴스에 Cross-seed 인스턴스가 있으면 qui는 그 인스턴스에서 찾은 cross-seed를 해당 Cross-seed 인스턴스에 추가합니다.",
     "selectInstances": "qBittorrent 인스턴스 선택",
     "noActiveInstances": "사용 가능한 활성 인스턴스 없음",
     "noInstancesAvailable": "사용 가능한 인스턴스가 없습니다.",
-    "pickInstance": "cross-seed를 받을 인스턴스를 하나 이상 선택하세요.",
+    "pickInstance": "검색할 인스턴스를 하나 이상 선택하세요.",
     "instancesSelected": "인스턴스 {{count}}개 선택됨.",
     "targetIndexers": "대상 인덱서",
     "allEnabledIndexers": "활성화된 모든 인덱서(전체는 비워 두기)",
@@ -55,13 +56,13 @@
     "includeCategories": "카테고리 포함",
     "allCategories": "모든 카테고리(전체는 비워 두기)",
     "typeToAddCategories": "입력하여 카테고리 추가",
-    "selectInstancesToLoadCategories": "카테고리를 불러오려면 대상 인스턴스를 선택하세요",
+    "selectInstancesToLoadCategories": "카테고리를 불러오려면 검색할 인스턴스를 선택하세요",
     "allCategoriesIncluded": "모든 카테고리가 포함됩니다.",
     "selectedCategoriesMatched": "선택한 카테고리 {{count}}개만 일치됩니다.",
     "includeTags": "태그 포함",
     "allTags": "모든 태그(전체는 비워 두기)",
     "typeToAddTags": "입력하여 태그 추가",
-    "selectInstancesToLoadTags": "태그를 불러오려면 대상 인스턴스를 선택하세요",
+    "selectInstancesToLoadTags": "태그를 불러오려면 검색할 인스턴스를 선택하세요",
     "allTagsIncluded": "모든 태그가 포함됩니다.",
     "selectedTagsMatched": "선택한 태그 {{count}}개만 일치됩니다.",
     "excludeCategories": "카테고리 제외",
@@ -419,9 +420,9 @@
     "baseDirRequired": "기본 디렉터리를 먼저 설정해야 합니다.",
     "unknownError": "알 수 없는 오류",
     "noIndexersConfigured": "구성된 Torznab 인덱서 없음",
-    "pickInstanceBeforeRunning": "RSS 자동화를 실행하기 전에 cross-seed를 받을 인스턴스를 하나 이상 선택하세요.",
+    "pickInstanceBeforeRunning": "RSS 자동화를 실행하기 전에 검색할 인스턴스를 하나 이상 선택하세요.",
     "enableAutomationAfterIndexers": "Torznab 인덱서를 구성한 후에만 RSS 자동화를 활성화하세요.",
-    "saveSettingsFirst": "실행하기 전에 업데이트된 대상 인스턴스를 적용하려면 RSS 자동화 설정을 저장하세요.",
+    "saveSettingsFirst": "실행하기 전에 업데이트된 검색할 인스턴스를 적용하려면 RSS 자동화 설정을 저장하세요.",
     "selectInstanceToRun": "실행할 인스턴스를 선택하세요",
     "seededSearchNeedsGazelle": "시드 중인 토렌트 검색에는 Gazelle이 필요합니다",
     "enableGazelleDescription": "Torznab을 비활성화한 채 실행하기 전에 Gazelle 일치(OPS/RED)를 활성화하세요.",
@@ -664,5 +665,13 @@
       "cancel": "취소",
       "delete": "삭제"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "{{source}}에서 찾음, {{crossSeed}}에 추가됨",
+    "foundOnRoutedTo": "{{source}}에서 찾음, {{crossSeed}}(으)로 전달됨"
+  },
+  "routeStatus": {
+    "unavailable": "Cross-seed 인스턴스를 사용할 수 없음",
+    "cannotSeeData": "Cross-seed 인스턴스가 데이터를 볼 수 없음"
   }
 }

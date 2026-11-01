@@ -35,6 +35,9 @@ export interface CrossSeedInstanceResult {
   success: boolean
   status: string
   message?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
   matchedTorrent?: {
     hash: string
     name: string
@@ -205,6 +208,9 @@ export interface CrossSeedRunResult {
   message?: string
   matchedTorrentHash?: string
   matchedTorrentName?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
 
 export interface CrossSeedRun {
@@ -408,6 +414,9 @@ export interface CrossSeedSearchResult {
   status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
+  /** The Cross-seed instance that a routed add goes to. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
 
 export interface CrossSeedSearchRun {
@@ -456,9 +465,18 @@ export interface SeasonPackRun {
   reason: string
   message: string
   instanceId?: number
+  /** The instance that gets the add: the Cross-seed instance of a routed apply, or instanceId. */
+  addedInstanceId?: number
   matchedEpisodes: number
   totalEpisodes: number
   coverage: number
   linkMode?: string
   createdAt: string
+}
+
+/** A saved route from a Source instance to its Cross-seed instance. */
+export interface CrossSeedRoute {
+  sourceInstanceId: number
+  crossSeedInstanceId: number
+  rows: { baseDir: string; mappedPath: string }[]
 }

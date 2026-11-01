@@ -823,7 +823,8 @@
       "fewerIndexers": "Tente pesquisar com menos indexadores selecionados",
       "useRss": "Use a automação RSS para cross-seeding contínuo",
       "checkIndexers": "Verifique a página de indexadores para ver quais estão limitados"
-    }
+    },
+    "routedTo": "Os cross-seeds vão para a instância de cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrar {{column}}",
@@ -1653,6 +1654,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Adicione uma tag e pressione Enter",
     "savePath": "Caminho de salvamento (destino efetivo)",
+    "routedTo": "O cross-seed vai para a instância de cross-seed {{instance}}.",
     "cancel": "Cancelar",
     "apply": "Adicionar cross-seed",
     "applying": "Adicionando...",

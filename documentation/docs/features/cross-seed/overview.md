@@ -49,10 +49,10 @@ qui provides several ways to find cross-seed opportunities:
 
 ### RSS Automation
 
-qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the target instances and indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
+qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the instances to search, the indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
 
 - **Run interval**: How often qui polls the feeds (minimum 30 minutes)
-- **Target instances**: The qBittorrent instances that receive cross-seeds
+- **Instances to search**: The qBittorrent instances whose torrents qui searches for matches. qui adds each cross-seed to the instance that holds the match. If that instance has a Cross-seed instance, qui adds the cross-seed to the Cross-seed instance.
 - **Target indexers**: Limit to specific indexers, or use all enabled ones
 
 RSS automation processes the full feed from each selected target indexer on each run. If you select no target indexers, qui uses all enabled indexers.

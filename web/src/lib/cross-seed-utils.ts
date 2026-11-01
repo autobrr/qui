@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api"
 import type { FilesystemCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
+import type { TFunction } from "i18next"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
@@ -16,6 +17,16 @@ export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/
  * Empty and non-numeric input becomes 0.
  */
 export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
+
+// Labels for the two statuses of a routed add (ADR 0035). Other statuses keep their current display.
+export const crossSeedRouteStatusKeys: Partial<Record<string, string>> = {
+  crossseed_instance_unavailable: "crossseed:routeStatus.unavailable",
+  crossseed_instance_cannot_see_data: "crossseed:routeStatus.cannotSeeData",
+}
+
+// Names the instance that held the match and the Cross-seed instance of a routed result (ADR 0035).
+export const crossSeedRouteText = (t: TFunction, source: string, crossSeed: string, added: boolean): string =>
+  t(added ? "crossseed:route.foundOnAddedTo" : "crossseed:route.foundOnRoutedTo", { source, crossSeed })
 
 // Omit an untouched secret: the backend shows an undecryptable key as "", and sending that "" back deletes it.
 export const changedSecret = (value: string, saved: string | undefined): string | undefined =>

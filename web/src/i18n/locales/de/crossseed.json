@@ -40,11 +40,12 @@
     "enableSwitch": "RSS-Automatisierung aktivieren",
     "intervalLabel": "RSS-Lauf-Intervall (Minuten)",
     "intervalTooltip": "Die Automatisierung verarbeitet bei jedem Lauf den gesamten Feed jedes aktivierten Torznab-Indexers. Das Mindestintervall beträgt {{min}} Minuten, um die Indexer nicht zu überlasten.",
-    "targetInstances": "Ziel-Instanzen",
+    "instancesToSearch": "Zu durchsuchende Instanzen",
+    "instancesToSearchHelp": "Die RSS-Automatisierung durchsucht die Torrents dieser Instanzen nach Treffern. Wenn eine Instanz eine Cross-Seed-Instanz hat, fügt qui die dort gefundenen Cross-Seeds dieser Cross-Seed-Instanz hinzu.",
     "selectInstances": "qBittorrent-Instanzen auswählen",
     "noActiveInstances": "Keine aktiven Instanzen verfügbar",
     "noInstancesAvailable": "Keine Instanzen verfügbar.",
-    "pickInstance": "Wähle mindestens eine Instanz aus, die Cross-Seeds erhalten soll.",
+    "pickInstance": "Wähle mindestens eine zu durchsuchende Instanz aus.",
     "instancesSelected": "{{count}} Instanz(en) ausgewählt.",
     "targetIndexers": "Ziel-Indexer",
     "allEnabledIndexers": "Alle aktivierten Indexer (leer lassen für alle)",
@@ -55,13 +56,13 @@
     "includeCategories": "Kategorien einschließen",
     "allCategories": "Alle Kategorien (leer lassen für alle)",
     "typeToAddCategories": "Tippen, um Kategorien hinzuzufügen",
-    "selectInstancesToLoadCategories": "Wähle Ziel-Instanzen aus, um Kategorien zu laden",
+    "selectInstancesToLoadCategories": "Wähle zu durchsuchende Instanzen aus, um Kategorien zu laden",
     "allCategoriesIncluded": "Alle Kategorien werden einbezogen.",
     "selectedCategoriesMatched": "Nur {{count}} ausgewählte Kategorie(n) wird/werden abgeglichen.",
     "includeTags": "Tags einschließen",
     "allTags": "Alle Tags (leer lassen für alle)",
     "typeToAddTags": "Tippen, um Tags hinzuzufügen",
-    "selectInstancesToLoadTags": "Wähle Ziel-Instanzen aus, um Tags zu laden",
+    "selectInstancesToLoadTags": "Wähle zu durchsuchende Instanzen aus, um Tags zu laden",
     "allTagsIncluded": "Alle Tags werden einbezogen.",
     "selectedTagsMatched": "Nur {{count}} ausgewählte(r) Tag(s) wird/werden abgeglichen.",
     "excludeCategories": "Kategorien ausschließen",
@@ -425,9 +426,9 @@
     "baseDirRequired": "Das Basisverzeichnis muss zuerst festgelegt werden.",
     "unknownError": "Unbekannter Fehler",
     "noIndexersConfigured": "Keine Torznab-Indexer konfiguriert",
-    "pickInstanceBeforeRunning": "Wähle mindestens eine Instanz aus, die Cross-Seeds erhalten soll, bevor du die RSS-Automatisierung startest.",
+    "pickInstanceBeforeRunning": "Wähle mindestens eine zu durchsuchende Instanz aus, bevor du die RSS-Automatisierung startest.",
     "enableAutomationAfterIndexers": "Aktiviere die RSS-Automatisierung erst, nachdem du Torznab-Indexer konfiguriert hast.",
-    "saveSettingsFirst": "Speichere die RSS-Automatisierungseinstellungen, um die aktualisierten Ziel-Instanzen vor dem Lauf anzuwenden.",
+    "saveSettingsFirst": "Speichere die RSS-Automatisierungseinstellungen, um die aktualisierten zu durchsuchenden Instanzen vor dem Lauf anzuwenden.",
     "selectInstanceToRun": "Wähle eine Instanz aus, gegen die ausgeführt werden soll",
     "seededSearchNeedsGazelle": "Die Suche in geseedeten Torrents benötigt Gazelle",
     "enableGazelleDescription": "Aktiviere den Gazelle-Abgleich (OPS/RED), bevor du mit deaktiviertem Torznab startest.",
@@ -674,5 +675,13 @@
       "cancel": "Abbrechen",
       "delete": "Löschen"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Gefunden auf {{source}}, hinzugefügt zu {{crossSeed}}",
+    "foundOnRoutedTo": "Gefunden auf {{source}}, weitergeleitet an {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Cross-Seed-Instanz nicht verfügbar",
+    "cannotSeeData": "Cross-Seed-Instanz sieht die Daten nicht"
   }
 }
