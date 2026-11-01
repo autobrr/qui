@@ -30,12 +30,12 @@ if (globalThis.localStorage == null) {
   globalThis.localStorage = Object.create(Storage.prototype) as Storage
 }
 
-// Global MSW lifecycle for the vitest suite. `onUnhandledRequest: "error"`
+// Global MSW lifecycle for the vitest suite. `onUnhandledFrame: "error"`
 // makes any un-stubbed request fail loudly so missing handlers surface as test
 // failures instead of silent network calls. Hooks are imported explicitly
 // because vitest runs with `globals: false`.
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" })
+  server.listen({ onUnhandledFrame: "error" })
 })
 
 afterEach(() => {
