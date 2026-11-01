@@ -206,3 +206,8 @@ export function joinPath(basePath: string, relativePath: string): string {
   const normalizedRelative = separator === "\\" ? relativePath.replace(/\//g, "\\") : relativePath
   return `${cleanBase}${separator}${normalizedRelative}`
 }
+
+/** Breaks a release name after dots, dashes, and underscores, not inside a word. */
+export function breakableName(name: string): string {
+  return name.replace(/([._-])/g, "$1\u200B")
+}

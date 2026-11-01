@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -14,13 +15,12 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { formatBytes } from "@/lib/utils"
 import type { AutomationActivity, AutomationActivityRunItem } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Copy, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 const PAGE_SIZE = 200
 
@@ -185,17 +185,7 @@ export function AutomationActivityRunDialog({
                     <td className="p-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs">{item.hash?.substring(0, 7)}</span>
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => {
-                            copyTextToClipboard(item.hash)
-                            toast.success(t("preferences.activityRunDialog.hashCopied"))
-                          }}
-                          title={t("preferences.activityRunDialog.copyHash")}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </button>
+                        <CopyButton value={item.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                       </div>
                     </td>
                     <td className="p-2 text-xs text-muted-foreground">

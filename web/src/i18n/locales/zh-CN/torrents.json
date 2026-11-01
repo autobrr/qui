@@ -1020,7 +1020,6 @@
     "closePanel": "关闭详情面板",
     "unknownError": "未知错误",
     "toast": {
-      "copied": "{{type}} 已复制到剪贴板",
       "copyFailed": "复制到剪贴板失败",
       "peersAdded": "节点添加成功",
       "peersFailed": "添加节点失败：{{error}}",
@@ -1067,20 +1066,14 @@
       "loadedSummary_other": "在所有实例中找到 {{count}} 个匹配种子",
       "deleteMatches": "删除匹配项（{{count}}）",
       "deleteThisTorrent": "删除此种子",
-      "checkingMoreInstances": "正在检查更多实例...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "完全相同的种子（相同 info hash）",
-      "savePathMatch": "保存路径",
-      "savePathDescription": "相同的保存目录和文件名",
-      "selectTorrent": "选择 {{name}}"
+      "selectTorrent": "选择 {{name}}",
+      "openTorrent": "打开 {{name}}"
     },
     "sections": {
       "generalInformation": "常规信息",
       "transferStatistics": "传输统计",
-      "speed": "速度",
       "queueManagement": "队列管理",
       "timeInformation": "时间信息",
-      "timestamps": "时间戳",
       "activeTrackers": "活跃 Tracker",
       "connectedPeers": "已连接节点",
       "fileContents": "文件内容"
@@ -1107,22 +1100,17 @@
       "added": "添加时间",
       "completed": "完成时间",
       "created": "创建时间",
-      "leechers": "下载者",
-      "peerProgress": "节点进度",
-      "connection": "连接：",
-      "flags": "标志："
+      "leechers": "下载者"
     },
     "counts": {
       "trackers_other": "{{count}} 个 Tracker",
       "connectedPeers_other": "已连接 {{count}} 个节点",
-      "httpSources_other": "{{count}} 个来源",
       "selectedFiles": "已选 {{selected}}/{{total}}",
       "files_other": "{{count}} 个文件"
     },
     "values": {
       "normal": "正常",
       "queued": "排队中（{{state}}）",
-      "seeder": "做种者",
       "unknownClient": "未知客户端"
     },
     "actions": {
@@ -1131,14 +1119,12 @@
       "selectAll": "全部",
       "selectNone": "无"
     },
-    "peer": {
-      "flagLabel": "标志 {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "未找到文件"
     },
     "selectAll": "全选",
-    "deselectAll": "取消全选"
+    "deselectAll": "取消全选",
+    "trackerMessageHidden": "隐身模式下已隐藏 Tracker 消息"
   },
   "generalTab": {
     "name": "名称：",
@@ -1295,11 +1281,7 @@
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",
-    "loadFailed": "无法检查交叉做种匹配。请重新加载后重试。",
-    "toast": {
-      "savePathCopied": "保存路径已复制",
-      "copyFailed": "复制失败"
-    }
+    "loadFailed": "无法检查交叉做种匹配。请重新加载后重试。"
   },
   "addTorrentDialog": {
     "title": "添加新种子",

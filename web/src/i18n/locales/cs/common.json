@@ -101,17 +101,19 @@
     "cancel": "Zrušit",
     "close": "Zavřít",
     "create": "Vytvořit",
-    "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat"
+    "select": "Vybrat",
+    "copyValue": "Kopírovat {{label}}"
   },
   "placeholders": {
     "search": "Hledat...",
     "selectItems": "Vybrat položky..."
   },
   "feedback": {
-    "noResultsFound": "Žádné výsledky."
+    "noResultsFound": "Žádné výsledky.",
+    "copied": "{{label}} byl zkopírován do schránky",
+    "copyFailed": "Nepodařilo se zkopírovat do schránky"
   },
   "errors": {
     "unknown": "Neznámá chyba",
@@ -252,5 +254,8 @@
     "yearly": "{{price}} / rok",
     "monthly": "{{price}} / měsíc",
     "notLicense": "Prémiové motivy jsou samostatný jednorázový nákup."
+  },
+  "labels": {
+    "path": "Cesta"
   }
 }

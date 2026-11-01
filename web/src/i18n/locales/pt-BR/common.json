@@ -101,17 +101,19 @@
     "cancel": "Cancelar",
     "close": "Fechar",
     "create": "Criar",
-    "copyPath": "Copiar caminho",
     "scrollToTop": "Rolar para o topo",
     "search": "Buscar",
-    "select": "Selecionar"
+    "select": "Selecionar",
+    "copyValue": "Copiar {{label}}"
   },
   "placeholders": {
     "search": "Buscar...",
     "selectItems": "Selecionar itens..."
   },
   "feedback": {
-    "noResultsFound": "Nenhum resultado encontrado."
+    "noResultsFound": "Nenhum resultado encontrado.",
+    "copied": "{{label}} copiado para a área de transferência",
+    "copyFailed": "Falha ao copiar para a área de transferência"
   },
   "errors": {
     "unknown": "Erro desconhecido",
@@ -245,5 +247,8 @@
     "yearly": "{{price}} / ano",
     "monthly": "{{price}} / mês",
     "notLicense": "Os temas premium são uma compra única à parte."
+  },
+  "labels": {
+    "path": "Caminho"
   }
 }

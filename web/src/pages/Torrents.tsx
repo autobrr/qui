@@ -16,12 +16,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useInstances } from "@/hooks/useInstances"
 import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useMobileDetailsHistory } from "@/hooks/useMobileDetailsHistory"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
+import { useSwipeToClose } from "@/hooks/useSwipeToClose"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
@@ -30,7 +32,7 @@ import { selectionScope } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
@@ -111,10 +113,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
 
-  // Hash currently reflected in the URL, so the Back handler only closes a
-  // sheet whose history entry it owns.
-  const urlTorrentRef = useRef<string | undefined>(undefined)
-
   const getTorrentInstanceId = useCallback((torrent: Torrent | null | undefined) => {
     if (!torrent) {
       return instanceId
@@ -129,20 +127,28 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instanceId])
   const selectedTorrentInstanceId = getTorrentInstanceId(selectedTorrent)
 
+  const hideMobileDetails = useCallback(() => {
+    setSelectedTorrent(null)
+    setInitialDetailsTab(undefined)
+  }, [])
+  const { open: openMobileDetails, close: closeMobileDetails } = useMobileDetailsHistory({
+    enabled: isMobile,
+    urlHash: search.torrent,
+    shownHash: selectedTorrent?.hash,
+    onClosed: hideMobileDetails,
+  })
+
   // Push a history entry for the sheet so mobile Back closes it instead of
   // leaving the page. The unified view also records the owning instance, since
   // the same hash can exist on several instances.
   const pushMobileDetailsEntry = useCallback((torrent: Torrent, initialTab?: string) => {
-    navigate({
-      to: ".",
-      search: (prev) => ({
-        ...prev,
-        torrent: torrent.hash,
-        tab: initialTab,
-        instance: isAllInstances ? getTorrentInstanceId(torrent) : undefined,
-      }),
-    })
-  }, [getTorrentInstanceId, isAllInstances, navigate])
+    openMobileDetails((prev) => ({
+      ...prev,
+      torrent: torrent.hash,
+      tab: initialTab,
+      instance: isAllInstances ? getTorrentInstanceId(torrent) : undefined,
+    }))
+  }, [getTorrentInstanceId, isAllInstances, openMobileDetails])
 
   // Handle deep link to a specific torrent (from cross-seed navigation)
   useEffect(() => {
@@ -330,17 +336,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
   }, [getTorrentInstanceId])
 
-  // Close the details view: drop the URL params in place so Back does not
-  // reopen the mobile sheet
-  const closeMobileDetails = useCallback(() => {
-    setSelectedTorrent(null)
-    setInitialDetailsTab(undefined)
-    if (urlTorrentRef.current) {
-      urlTorrentRef.current = undefined
-      onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
-    }
-  }, [onSearchChange, search])
-
   const handleTorrentSelect = useCallback((torrent: Torrent | null, initialTab?: string) => {
     // Toggle selection: if the same torrent is clicked without a tab override, deselect it
     if (torrent && isSameTorrent(selectedTorrent, torrent) && !initialTab) {
@@ -354,19 +349,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [closeMobileDetails, isMobile, isSameTorrent, pushMobileDetailsEntry, selectedTorrent])
 
-  // Track the URL hash on mobile; when Back removes it, close the sheet
-  useEffect(() => {
-    if (!isMobile) return
-    if (search.torrent) {
-      urlTorrentRef.current = search.torrent
-      return
-    }
-    if (selectedTorrent && urlTorrentRef.current === selectedTorrent.hash) {
-      urlTorrentRef.current = undefined
-      setSelectedTorrent(null)
-      setInitialDetailsTab(undefined)
-    }
-  }, [isMobile, search.torrent, selectedTorrent])
+  const swipeToClose = useSwipeToClose(closeMobileDetails)
 
   // Clear selected torrent and mark data as potentially stale when instance changes
   // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
@@ -670,8 +653,10 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         >
           <SheetContent
             side="right"
-            className="w-full p-0 gap-0"
+            // The content takes focus on open, before its controls load: no ring on it
+            className="w-full p-0 gap-0 outline-none ease-out data-[state=open]:duration-200 data-[state=closed]:duration-150"
             hideClose
+            {...swipeToClose}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>
@@ -684,6 +669,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 torrent={selectedTorrent}
                 initialTab={initialDetailsTab}
                 onInitialTabConsumed={handleInitialTabConsumed}
+                layout="mobile"
                 onClose={closeMobileDetails}
                 onNavigateToTorrent={handleNavigateToTorrent}
               />

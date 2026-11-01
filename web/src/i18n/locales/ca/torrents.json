@@ -732,11 +732,7 @@
       }
     },
     "noMatches": "No s'ha trobat cap torrent coincident a les altres instàncies",
-    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou.",
-    "toast": {
-      "savePathCopied": "S'ha copiat el camí de desada",
-      "copyFailed": "No s'ha pogut copiar"
-    }
+    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou."
   },
   "filterSidebar": {
     "views": {
@@ -1022,7 +1018,6 @@
     "closePanel": "Tanca el plafó de detalls",
     "unknownError": "Error desconegut",
     "toast": {
-      "copied": "S'ha copiat {{type}} al porta-retalls",
       "copyFailed": "No s'ha pogut copiar al porta-retalls",
       "peersAdded": "S'han afegit els parells correctament",
       "peersFailed": "No s'han pogut afegir els parells: {{error}}",
@@ -1074,20 +1069,14 @@
       "loadedSummary_other": "S'han trobat {{count}} torrents coincidents a totes les instàncies",
       "deleteMatches": "Elimina les coincidències ({{count}})",
       "deleteThisTorrent": "Elimina aquest torrent",
-      "checkingMoreInstances": "S'estan comprovant més instàncies...",
-      "infoHashMatch": "Info hash",
-      "infoHashDescription": "Exactament el mateix torrent (mateix info hash)",
-      "savePathMatch": "Camí de desada",
-      "savePathDescription": "Mateix directori de desada i mateix nom de fitxer",
-      "selectTorrent": "Selecciona {{name}}"
+      "selectTorrent": "Selecciona {{name}}",
+      "openTorrent": "Obre {{name}}"
     },
     "sections": {
       "generalInformation": "Informació general",
       "transferStatistics": "Estadístiques de transferència",
-      "speed": "Velocitat",
       "queueManagement": "Gestió de la cua",
       "timeInformation": "Informació de temps",
-      "timestamps": "Marques de temps",
       "activeTrackers": "Trackers actius",
       "connectedPeers": "Parells connectats",
       "fileContents": "Contingut dels fitxers"
@@ -1114,18 +1103,13 @@
       "added": "Afegit",
       "completed": "Completat",
       "created": "Creat",
-      "leechers": "Sangoneres",
-      "peerProgress": "Progrés del parell",
-      "connection": "Connexió:",
-      "flags": "Indicadors:"
+      "leechers": "Sangoneres"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "connectedPeers_one": "{{count}} parell connectat",
       "connectedPeers_other": "{{count}} parells connectats",
-      "httpSources_one": "{{count}} font",
-      "httpSources_other": "{{count}} fonts",
       "selectedFiles": "{{selected}} de {{total}} seleccionats",
       "files_one": "{{count}} fitxer",
       "files_other": "{{count}} fitxers"
@@ -1133,7 +1117,6 @@
     "values": {
       "normal": "Normal",
       "queued": "{{state}} a la cua",
-      "seeder": "Llavor",
       "unknownClient": "Client desconegut"
     },
     "actions": {
@@ -1142,14 +1125,12 @@
       "selectAll": "Tots",
       "selectNone": "Cap"
     },
-    "peer": {
-      "flagLabel": "Indicador {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "No s'ha trobat cap fitxer"
     },
     "selectAll": "Selecciona-ho tot",
-    "deselectAll": "Desselecciona-ho tot"
+    "deselectAll": "Desselecciona-ho tot",
+    "trackerMessageHidden": "Missatge del tracker ocult en mode incògnit"
   },
   "generalTab": {
     "name": "Nom:",

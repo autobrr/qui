@@ -1206,7 +1206,6 @@
     "closePanel": "Закрити панель деталей",
     "unknownError": "Невідома помилка",
     "toast": {
-      "copied": "{{type}} скопійовано в буфер обміну",
       "copyFailed": "Не вдалося скопіювати в буфер обміну",
       "peersAdded": "Піри успішно додано",
       "peersFailed": "Не вдалося додати піри: {{error}}",
@@ -1264,24 +1263,18 @@
       "loadedSummary_other": "{{count}} відповідні торенти знайдено в усіх екземплярах",
       "deleteMatches": "Видалити збіги ({{count}})",
       "deleteThisTorrent": "Видалити цей торент",
-      "checkingMoreInstances": "Перевірка інших випадків...",
-      "infoHashMatch": "Інфохеш",
-      "infoHashDescription": "Точно той самий торент (той самий інфохеш)",
-      "savePathMatch": "Шлях збереження",
-      "savePathDescription": "Той самий каталог збереження та ім’я файлу",
       "selectTorrent": "Виберіть {{name}}",
       "loadingSummary_few": "{{count}} відповідні торенти знайдено, перевірка інших випадків...",
       "loadingSummary_many": "{{count}} відповідні торентів знайдено, перевірка інших випадків...",
       "loadedSummary_few": "{{count}} відповідні торенти знайдено в усіх екземплярах",
-      "loadedSummary_many": "{{count}} відповідні торентів знайдено в усіх екземплярах"
+      "loadedSummary_many": "{{count}} відповідні торентів знайдено в усіх екземплярах",
+      "openTorrent": "Відкрити {{name}}"
     },
     "sections": {
       "generalInformation": "Загальна інформація",
       "transferStatistics": "Статистика трансферів",
-      "speed": "Швидкість",
       "queueManagement": "Управління чергами",
       "timeInformation": "Інформація про час",
-      "timestamps": "Мітки часу",
       "activeTrackers": "Активні трекери",
       "connectedPeers": "Підключені піри",
       "fileContents": "Вміст файлу"
@@ -1308,18 +1301,13 @@
       "added": "Додано",
       "completed": "Виконано",
       "created": "Створено",
-      "leechers": "Лічі",
-      "peerProgress": "Прогрес піра",
-      "connection": "Підключення:",
-      "flags": "Прапори:"
+      "leechers": "Лічі"
     },
     "counts": {
       "trackers_one": "{{count}} трекер",
       "trackers_other": "{{count}} трекерів",
       "connectedPeers_one": "{{count}} пір підключено",
       "connectedPeers_other": "{{count}} пірів підключено",
-      "httpSources_one": "{{count}} джерело",
-      "httpSources_other": "{{count}} джерел",
       "selectedFiles": "Вибрано {{selected}} з {{total}}",
       "files_one": "{{count}} файл",
       "files_other": "{{count}} файлів",
@@ -1327,15 +1315,12 @@
       "trackers_many": "{{count}} трекерів",
       "connectedPeers_few": "{{count}} піри підключено",
       "connectedPeers_many": "{{count}} пірів підключено",
-      "httpSources_few": "{{count}} джерела",
-      "httpSources_many": "{{count}} джерел",
       "files_few": "{{count}} файли",
       "files_many": "{{count}} файлів"
     },
     "values": {
       "normal": "Звичайний",
       "queued": "У черзі {{state}}",
-      "seeder": "Сідер",
       "unknownClient": "Невідомий клієнт"
     },
     "actions": {
@@ -1344,14 +1329,12 @@
       "selectAll": "Усі",
       "selectNone": "Жодного"
     },
-    "peer": {
-      "flagLabel": "Прапор {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Файли не знайдено"
     },
     "selectAll": "Виберіть усі",
-    "deselectAll": "Зняти вибір із усіх"
+    "deselectAll": "Зняти вибір із усіх",
+    "trackerMessageHidden": "Повідомлення трекера приховано в режимі інкогніто"
   },
   "generalTab": {
     "name": "Ім'я:",
@@ -1508,10 +1491,6 @@
     },
     "noMatches": "В інших екземплярах відповідних торентів не знайдено",
     "loadFailed": "Не вдалося перевірити збіги cross-seed. Перезавантажте сторінку, щоб спробувати ще раз.",
-    "toast": {
-      "savePathCopied": "Шлях збереження скопійовано",
-      "copyFailed": "Не вдалося скопіювати"
-    },
     "matchCount_few": "{{count}} збіги",
     "matchCount_many": "{{count}} збігів"
   },

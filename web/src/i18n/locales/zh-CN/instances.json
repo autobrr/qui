@@ -505,7 +505,6 @@
       "dryRun": "模拟运行",
       "removed": "已移除",
       "executed": "已执行",
-      "copyHash": "复制哈希",
       "original": "原始：{{domain}}",
       "programLabel": "程序：{{name}}",
       "ruleLabel": "规则：{{name}}",
@@ -648,8 +647,7 @@
         "exportedTorrents": "已导出 {{count}} 个种子到 CSV",
         "exportFailed": "导出预览失败",
         "deletedActivityEntries": "已删除 {{count}} 条活动记录",
-        "deleteActivityFailed": "删除活动失败",
-        "hashCopied": "哈希已复制"
+        "deleteActivityFailed": "删除活动失败"
       },
       "exported": "已导出"
     },
@@ -744,7 +742,6 @@
       "deletedSeparator": "、",
       "partialFailure": "部分失败 - 请查看近期扫描",
       "partialFailureExpand": "部分失败 - 展开查看详情",
-      "copiedToClipboard": "已复制到剪贴板",
       "noScansYet": "尚未运行扫描。点击\"立即扫描\"查找孤立项目。",
       "statusClean": "清洁",
       "statusPartial": "部分扫描",
@@ -764,7 +761,9 @@
         "scanStartFailed": "启动扫描失败",
         "scanCanceled": "扫描已取消",
         "cancelFailed": "取消失败"
-      }
+      },
+      "errorMessage": "错误信息",
+      "scanPaths": "扫描路径"
     },
     "orphanScanPreview": {
       "title": "孤立项目预览",
@@ -908,8 +907,6 @@
       "ratio": "分享率",
       "added": "添加时间",
       "original": "原始：{{domain}}",
-      "hashCopied": "哈希已复制",
-      "copyHash": "复制哈希",
       "loading": "加载中...",
       "notAvailable": "运行详情不可用（仅存于内存中）。",
       "failedToLoad": "加载运行详情失败。",
@@ -973,8 +970,6 @@
       "tryDifferentSearch": "尝试不同的搜索词或清除筛选器。",
       "eventsWillAppear": "检测到停滞的种子时，事件将显示在此处。",
       "enableMonitoring": "启用监控以开始跟踪停滞的种子。",
-      "hashCopied": "哈希已复制",
-      "copyHash": "复制哈希",
       "outcomes": {
         "succeeded": "成功",
         "failed": "失败",

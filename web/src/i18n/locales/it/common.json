@@ -101,17 +101,19 @@
     "cancel": "Annulla",
     "close": "Chiudi",
     "create": "Crea",
-    "copyPath": "Copia percorso",
     "scrollToTop": "Scorri in alto",
     "search": "Cerca",
-    "select": "Seleziona"
+    "select": "Seleziona",
+    "copyValue": "Copia {{label}}"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Seleziona elementi..."
   },
   "feedback": {
-    "noResultsFound": "Nessun risultato trovato."
+    "noResultsFound": "Nessun risultato trovato.",
+    "copied": "{{label}} copiato negli appunti",
+    "copyFailed": "Impossibile copiare negli appunti"
   },
   "errors": {
     "unknown": "Errore sconosciuto",
@@ -245,5 +247,8 @@
     "yearly": "{{price}} / anno",
     "monthly": "{{price}} / mese",
     "notLicense": "I temi premium sono un acquisto unico separato."
+  },
+  "labels": {
+    "path": "Percorso"
   }
 }

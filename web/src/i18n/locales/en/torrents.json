@@ -1082,7 +1082,6 @@
     "closePanel": "Close details panel",
     "unknownError": "Unknown error",
     "toast": {
-      "copied": "{{type}} copied to clipboard",
       "copyFailed": "Failed to copy to clipboard",
       "peersAdded": "Peers added successfully",
       "peersFailed": "Failed to add peers: {{error}}",
@@ -1134,20 +1133,14 @@
       "loadedSummary_other": "{{count}} matching torrents found across all instances",
       "deleteMatches": "Delete Matches ({{count}})",
       "deleteThisTorrent": "Delete This Torrent",
-      "checkingMoreInstances": "Checking more instances...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Exact same torrent (same info hash)",
-      "savePathMatch": "Save Path",
-      "savePathDescription": "Same save directory and filename",
-      "selectTorrent": "Select {{name}}"
+      "selectTorrent": "Select {{name}}",
+      "openTorrent": "Open {{name}}"
     },
     "sections": {
       "generalInformation": "General Information",
       "transferStatistics": "Transfer Statistics",
-      "speed": "Speed",
       "queueManagement": "Queue Management",
       "timeInformation": "Time Information",
-      "timestamps": "Timestamps",
       "activeTrackers": "Active Trackers",
       "connectedPeers": "Connected Peers",
       "fileContents": "File Contents"
@@ -1174,18 +1167,13 @@
       "added": "Added",
       "completed": "Completed",
       "created": "Created",
-      "leechers": "Leechers",
-      "peerProgress": "Peer Progress",
-      "connection": "Connection:",
-      "flags": "Flags:"
+      "leechers": "Leechers"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "connectedPeers_one": "{{count}} peer connected",
       "connectedPeers_other": "{{count}} peers connected",
-      "httpSources_one": "{{count}} source",
-      "httpSources_other": "{{count}} sources",
       "selectedFiles": "{{selected}} of {{total}} selected",
       "files_one": "{{count}} file",
       "files_other": "{{count}} files"
@@ -1193,7 +1181,6 @@
     "values": {
       "normal": "Normal",
       "queued": "Queued {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Unknown client"
     },
     "actions": {
@@ -1202,14 +1189,12 @@
       "selectAll": "All",
       "selectNone": "None"
     },
-    "peer": {
-      "flagLabel": "Flag {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "No files found"
     },
     "selectAll": "Select All",
-    "deselectAll": "Deselect All"
+    "deselectAll": "Deselect All",
+    "trackerMessageHidden": "Tracker message hidden in incognito mode"
   },
   "generalTab": {
     "name": "Name:",
@@ -1369,11 +1354,7 @@
       }
     },
     "noMatches": "No matching torrents found on other instances",
-    "loadFailed": "Could not check for cross-seed matches. Reload to try again.",
-    "toast": {
-      "savePathCopied": "Save path copied",
-      "copyFailed": "Failed to copy"
-    }
+    "loadFailed": "Could not check for cross-seed matches. Reload to try again."
   },
   "addTorrentDialog": {
     "title": "Add New Torrent",

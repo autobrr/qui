@@ -1082,7 +1082,6 @@
     "closePanel": "Detailbereich schließen",
     "unknownError": "Unbekannter Fehler",
     "toast": {
-      "copied": "{{type}} in die Zwischenablage kopiert",
       "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
       "peersAdded": "Peers erfolgreich hinzugefügt",
       "peersFailed": "Hinzufügen der Peers fehlgeschlagen: {{error}}",
@@ -1134,20 +1133,14 @@
       "loadedSummary_other": "{{count}} passende Torrents über alle Instanzen gefunden",
       "deleteMatches": "Treffer löschen ({{count}})",
       "deleteThisTorrent": "Diesen Torrent löschen",
-      "checkingMoreInstances": "Weitere Instanzen werden geprüft...",
-      "infoHashMatch": "Info-Hash",
-      "infoHashDescription": "Exakt derselbe Torrent (gleicher Info-Hash)",
-      "savePathMatch": "Speicherpfad",
-      "savePathDescription": "Gleiches Speicherverzeichnis und gleicher Dateiname",
-      "selectTorrent": "{{name}} auswählen"
+      "selectTorrent": "{{name}} auswählen",
+      "openTorrent": "{{name}} öffnen"
     },
     "sections": {
       "generalInformation": "Allgemeine Informationen",
       "transferStatistics": "Übertragungsstatistiken",
-      "speed": "Geschwindigkeit",
       "queueManagement": "Warteschlangenverwaltung",
       "timeInformation": "Zeitinformationen",
-      "timestamps": "Zeitstempel",
       "activeTrackers": "Aktive Tracker",
       "connectedPeers": "Verbundene Peers",
       "fileContents": "Dateiinhalt"
@@ -1174,18 +1167,13 @@
       "added": "Hinzugefügt",
       "completed": "Abgeschlossen",
       "created": "Erstellt",
-      "leechers": "Leechers",
-      "peerProgress": "Peer-Fortschritt",
-      "connection": "Verbindung:",
-      "flags": "Flags:"
+      "leechers": "Leechers"
     },
     "counts": {
       "trackers_one": "{{count}} Tracker",
       "trackers_other": "{{count}} Tracker",
       "connectedPeers_one": "{{count}} Peer verbunden",
       "connectedPeers_other": "{{count}} Peers verbunden",
-      "httpSources_one": "{{count}} Quelle",
-      "httpSources_other": "{{count}} Quellen",
       "selectedFiles": "{{selected}} von {{total}} ausgewählt",
       "files_one": "{{count}} Datei",
       "files_other": "{{count}} Dateien"
@@ -1193,7 +1181,6 @@
     "values": {
       "normal": "Normal",
       "queued": "In Warteschlange {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Unbekannter Client"
     },
     "actions": {
@@ -1202,14 +1189,12 @@
       "selectAll": "Alle",
       "selectNone": "Keine"
     },
-    "peer": {
-      "flagLabel": "Flag {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Keine Dateien gefunden"
     },
     "selectAll": "Alle auswählen",
-    "deselectAll": "Auswahl aufheben"
+    "deselectAll": "Auswahl aufheben",
+    "trackerMessageHidden": "Tracker-Nachricht im Incognito-Modus ausgeblendet"
   },
   "generalTab": {
     "name": "Name:",
@@ -1369,11 +1354,7 @@
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
-    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden.",
-    "toast": {
-      "savePathCopied": "Speicherpfad kopiert",
-      "copyFailed": "Kopieren fehlgeschlagen"
-    }
+    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden."
   },
   "addTorrentDialog": {
     "title": "Neuen Torrent hinzufügen",

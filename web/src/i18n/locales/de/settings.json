@@ -102,7 +102,6 @@
       "proxyUrl": "Proxy-URL",
       "showProxyUrl": "Proxy-URL anzeigen",
       "hideProxyUrl": "Proxy-URL ausblenden",
-      "copyProxyUrl": "Proxy-URL kopieren",
       "done": "Fertig"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "Client-API-Key erfolgreich gelöscht",
       "deleteFailed": "Client-API-Key konnte nicht gelöscht werden: {{error}}",
       "clientNameRequired": "Client-Name ist erforderlich",
-      "selectInstance": "Bitte wähle eine qBittorrent-Instanz aus",
-      "proxyCopied": "Proxy-URL in die Zwischenablage kopiert",
-      "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+      "selectInstance": "Bitte wähle eine qBittorrent-Instanz aus"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "Dein neuer API-Key",
       "warning": "Speichere diesen Key jetzt. Du kannst ihn später nicht erneut einsehen.",
-      "done": "Fertig"
+      "done": "Fertig",
+      "apiKey": "API-Key"
     },
     "deleteDialog": {
       "title": "API-Key löschen?",
@@ -158,9 +156,7 @@
       "created": "API-Key erfolgreich erstellt",
       "createFailed": "API-Key konnte nicht erstellt werden",
       "deleted": "API-Key erfolgreich gelöscht",
-      "deleteFailed": "API-Key konnte nicht gelöscht werden",
-      "copied": "API-Key in die Zwischenablage kopiert",
-      "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+      "deleteFailed": "API-Key konnte nicht gelöscht werden"
     }
   },
   "externalPrograms": {
@@ -1107,11 +1103,6 @@
       "bind": "Bind-Adresse",
       "configDir": "Konfigurationsverzeichnis",
       "dataDir": "Datenverzeichnis"
-    },
-    "copyTitle": "{{label}} kopieren",
-    "toasts": {
-      "copied": "{{label}} in die Zwischenablage kopiert",
-      "copyFailed": "{{label}} konnte nicht kopiert werden"
     }
   }
 }

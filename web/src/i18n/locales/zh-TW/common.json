@@ -101,17 +101,19 @@
     "cancel": "取消",
     "close": "關閉",
     "create": "建立",
-    "copyPath": "複製路徑",
     "scrollToTop": "回到頂部",
     "search": "搜尋",
-    "select": "選擇"
+    "select": "選擇",
+    "copyValue": "複製 {{label}}"
   },
   "placeholders": {
     "search": "搜尋...",
     "selectItems": "選擇項目..."
   },
   "feedback": {
-    "noResultsFound": "未找到結果。"
+    "noResultsFound": "未找到結果。",
+    "copied": "{{label}} 已複製到剪貼簿",
+    "copyFailed": "複製到剪貼簿失敗"
   },
   "errors": {
     "unknown": "未知錯誤",
@@ -238,5 +240,8 @@
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
     "notLicense": "進階主題是單獨的一次性購買。"
+  },
+  "labels": {
+    "path": "路徑"
   }
 }

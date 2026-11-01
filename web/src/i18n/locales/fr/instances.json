@@ -499,7 +499,6 @@
       "dryRun": "Simulation (Dry run)",
       "removed": "Supprimé",
       "executed": "Exécuté",
-      "copyHash": "Copier le hash",
       "original": "Original : {{domain}}",
       "programLabel": "Programme : {{name}}",
       "ruleLabel": "Règle : {{name}}",
@@ -660,8 +659,7 @@
         "exportedTorrents": "{{count}} torrents exportés au format CSV",
         "exportFailed": "Échec de l'exportation de l'aperçu",
         "deletedActivityEntries": "{{count}} entrées d'activité supprimées",
-        "deleteActivityFailed": "Échec de la suppression de l'activité",
-        "hashCopied": "Hash copié"
+        "deleteActivityFailed": "Échec de la suppression de l'activité"
       },
       "exported": "Exporté"
     },
@@ -761,7 +759,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Échec partiel - vérifier les analyses récentes",
       "partialFailureExpand": "Échec partiel - développer pour plus de détails",
-      "copiedToClipboard": "Copié dans le presse-papiers",
       "noScansYet": "Aucune analyse lancée. Cliquez sur 'Analyser maintenant' pour trouver les orphelins.",
       "statusClean": "Nettoyer",
       "statusPartial": "Analyse partielle",
@@ -781,7 +778,9 @@
         "scanStartFailed": "Échec du démarrage de l'analyse",
         "scanCanceled": "Analyse annulée",
         "cancelFailed": "Échec de l'annulation"
-      }
+      },
+      "errorMessage": "Message d'erreur",
+      "scanPaths": "Chemins d’analyse"
     },
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
@@ -930,8 +929,6 @@
       "ratio": "Ratio",
       "added": "Ajouté",
       "original": "Original : {{domain}}",
-      "hashCopied": "Hash copié",
-      "copyHash": "Copier le hash",
       "loading": "Chargement...",
       "notAvailable": "Détails d'exécution non disponibles (en mémoire uniquement).",
       "failedToLoad": "Échec du chargement des détails d'exécution.",
@@ -995,8 +992,6 @@
       "tryDifferentSearch": "Essayez un autre terme de recherche ou effacez le filtre.",
       "eventsWillAppear": "Les événements apparaîtront ici lorsque des torrents bloqués seront détectés.",
       "enableMonitoring": "Activez la surveillance pour commencer le suivi des torrents bloqués.",
-      "hashCopied": "Hash copié",
-      "copyHash": "Copier le hash",
       "outcomes": {
         "succeeded": "Réussi",
         "failed": "Échoué",
