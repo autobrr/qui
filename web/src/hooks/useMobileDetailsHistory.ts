@@ -49,19 +49,9 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
   const navigate = useNavigate()
   // The hash of the entry the view owns, so Back closes only that view
   const ownedHash = useRef<string | undefined>(undefined)
-  // The hash that a close leaves while it goes back over the pushed entries
-  const closing = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     if (!enabled) return
-    if (urlHash && closing.current && urlHash !== closing.current) {
-      // The close went back to a view that a link opened: close it in place
-      closing.current = undefined
-      ownedHash.current = undefined
-      onClosed()
-      void navigate({ to: ".", search: withoutDetails, replace: true })
-      return
-    }
     if (urlHash) {
       // Right after a close that replaces the URL, the URL holds the old hash
       // until the replace lands. Recording it then makes the next open of the
@@ -69,12 +59,17 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
       if (shownHash === urlHash) ownedHash.current = urlHash
       return
     }
-    closing.current = undefined
     if (shownHash && ownedHash.current === shownHash) {
       ownedHash.current = undefined
       onClosed()
     }
-  }, [enabled, urlHash, shownHash, onClosed, navigate])
+  }, [enabled, urlHash, shownHash, onClosed])
+
+  const closeInPlace = useCallback(() => {
+    ownedHash.current = undefined
+    onClosed()
+    void navigate({ to: ".", search: withoutDetails, replace: true })
+  }, [navigate, onClosed])
 
   const open = useCallback((hash: string, search: SearchUpdate) => {
     const index = currentIndex(router)
@@ -84,19 +79,24 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
   }, [navigate, router, urlHash])
 
   const close = useCallback(() => {
-    const depth = readDepth(currentIndex(router), urlHash)
-    if (depth > 0 && ownedHash.current) {
-      // The effect above closes the view when the URL loses the hash
-      closing.current = urlHash
-      router.history.go(-depth)
+    if (!ownedHash.current) {
+      onClosed()
       return
     }
-    onClosed()
-    if (ownedHash.current) {
-      ownedHash.current = undefined
-      void navigate({ to: ".", search: withoutDetails, replace: true })
+    // The desktop layout has no entry per open
+    const depth = enabled ? readDepth(currentIndex(router), urlHash) : 0
+    if (depth === 0) {
+      closeInPlace()
+      return
     }
-  }, [navigate, onClosed, router, urlHash])
+    // The effect above closes the view when the URL loses the hash. A view
+    // that a link opened keeps its hash: close it in place.
+    const unsubscribe = router.history.subscribe(({ location }) => {
+      unsubscribe()
+      if (new URLSearchParams(location.search).has("torrent")) closeInPlace()
+    })
+    router.history.go(-depth)
+  }, [closeInPlace, enabled, onClosed, router, urlHash])
 
   return { open, close }
 }

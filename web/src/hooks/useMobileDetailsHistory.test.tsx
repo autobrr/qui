@@ -22,7 +22,8 @@ function Page() {
     if (search.torrent) setShown(search.torrent)
   }, [search.torrent])
   const onClosed = useCallback(() => setShown(null), [])
-  const details = useMobileDetailsHistory({ enabled: true, urlHash: search.torrent, shownHash: shown, onClosed })
+  const [mobile, setMobile] = useState(true)
+  const details = useMobileDetailsHistory({ enabled: mobile, urlHash: search.torrent, shownHash: shown, onClosed })
   const open = (hash: string) => {
     setShown(hash)
     details.open(hash, prev => ({ ...prev, torrent: hash }))
@@ -34,6 +35,7 @@ function Page() {
       {/* A match of the shown torrent */}
       <button onClick={() => open("b")}>open match</button>
       <button onClick={details.close}>close</button>
+      <button onClick={() => setMobile(false)}>resize to desktop</button>
     </>
   )
 }
@@ -212,5 +214,43 @@ describe("useMobileDetailsHistory", () => {
 
     await click("close")
     leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("closes a view that a link opened when a close goes back to it from the same torrent", async () => {
+    const rig = mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    await click("open")
+    expect(shown()).toBe("a")
+
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("shows the next open after a close that went back to a view that a link opened", async () => {
+    mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    await click("open")
+    await click("close")
+
+    await click("open match")
+    expect(shown()).toBe("b")
+  })
+
+  // regression: #3703
+  it("closes in place on the desktop layout after a resize", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await click("resize to desktop")
+
+    await click("close")
+    expect(shown()).toBe("list")
+    expect(rig.history.location.search).toBe("")
+    // No step back in the history: the desktop has no entry per open
+    expect(rig.history.location.state.__TSR_index).toBe(2)
   })
 })
