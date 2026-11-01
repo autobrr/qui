@@ -23,7 +23,7 @@ Extra labels with a role in triage:
 | `anime` | The report is about anime, and a non-anime release would not hit the same fault. An issue created from the discussion gets the label too. |
 | `rls` | The fault is in a value that autobrr/rls parses from a release name, even when qui can work around it. rls belongs to autobrr, so the report is not `external-bug`. An issue created from the discussion gets the label too. |
 
-The workflow cannot read the rls source, so decide `rls` from the qui code: the wrong field comes from the rls parse result, and qui does not change that field. The label goes on a `bug` and on an `enhancement`, for example a request that needs rls to detect a new tag or content type.
+The workflow cannot read the rls source, so decide `rls` from the qui code: the wrong value comes from the rls parse result, also when qui changes that value later. Do not add `rls` when qui logic makes the wrong value. The label goes on a `bug` and on an `enhancement`, for example a request that needs rls to detect a new tag or content type.
 
 Area labels (`cross-seed`, `web`, `backend`, and more) are extra. Add the ones that fit.
 
