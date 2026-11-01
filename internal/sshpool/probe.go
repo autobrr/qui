@@ -167,13 +167,16 @@ func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.
 	noAnswer := tier == ""
 	if noAnswer {
 		log.Debug().Int("instanceID", row.ID).Msg("sshpool: exec probe got no answer")
-		// The sftp client answered the hardlink question regardless, so that
-		// is written with the tier the row keeps.
-		tier = row.SSHTier
 	}
 
+	// The sftp client answered the hardlink question before the exec probe
+	// ran, so a probe with no answer still writes the flag, with an empty
+	// tier that keeps whatever the row holds by then. The write gets a
+	// deadline of its own: the probe's ctx is spent on this path.
 	if tier != row.SSHTier || row.SSHHardlink == nil || *row.SSHHardlink != hardlink {
-		if err := p.dialer.creds.SetSSHProbe(ctx, row, tier, hardlink); err != nil {
+		writeCtx, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), p.dialer.timeout)
+		defer cancelWrite()
+		if err := p.dialer.creds.SetSSHProbe(writeCtx, row, tier, hardlink); err != nil {
 			log.Warn().Int("instanceID", row.ID).Err(err).Msg("sshpool: failed to store the ssh probe")
 		} else {
 			log.Debug().Int("instanceID", row.ID).Str("tier", string(tier)).Bool("hardlink", hardlink).Msg("sshpool: ssh probe stored")

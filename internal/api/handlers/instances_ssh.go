@@ -337,12 +337,15 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		}
 		// The pin wrote sftp. A probe that got no answer leaves it there, and
 		// the next connect probes again. The probe write matches the row it
-		// dialed with, so it reads the row as the pin left it.
+		// dialed with, so it takes the snapshot Confirm used plus the pin as
+		// stored: credentials rotated meanwhile fail the match, as they should.
 		if capabilities != nil {
 			if pinned, err := h.instanceStore.Get(r.Context(), instance.ID); err != nil {
 				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to reload the instance after pinning the host key")
 			} else {
-				h.storeSSHTier(r.Context(), pinned, capabilities)
+				probed := *instance
+				probed.SSHHostKeyEncrypted = pinned.SSHHostKeyEncrypted
+				h.storeSSHTier(r.Context(), &probed, capabilities)
 			}
 		}
 		// A refusal memoised against the old pin ends here; the next dial

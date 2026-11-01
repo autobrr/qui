@@ -306,13 +306,15 @@ func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, que
 }
 
 // SetSSHProbe records what a probe of the host found: the tier, and whether
-// the server advertises hardlink@openssh.com. probed is the row the probe
-// dialed with; a row whose endpoint, key or pin changed since keeps the reset
-// those changes wrote, and the next probe answers for the new settings.
+// the server advertises hardlink@openssh.com. An empty tier is a probe whose
+// exec half got no answer: the stored tier stays, only the flag is written.
+// probed is the row the probe dialed with; a row whose endpoint, key or pin
+// changed since keeps the reset those changes wrote, and the next probe
+// answers for the new settings.
 func (s *InstanceStore) SetSSHProbe(ctx context.Context, probed *Instance, tier SSHTier, hardlink bool) error {
 	query := `
 		UPDATE instances
-		SET ssh_tier = ?, ssh_hardlink = ?
+		SET ssh_tier = COALESCE(NULLIF(?, ''), ssh_tier), ssh_hardlink = ?
 		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_key_encrypted = ? AND ssh_host_key_encrypted = ?
 	`
 	err := s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, string(tier), hardlink, probed.ID, probed.SSHHost, probed.SSHPort, probed.SSHKeyEncrypted, probed.SSHHostKeyEncrypted)

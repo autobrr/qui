@@ -575,5 +575,13 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: a stale probe must not restore the tier", name)
 		assert.Nil(t, got.SSHHardlink, "%s: a stale probe must not restore the flag", name)
+
+		// A probe whose exec half got no answer writes the flag only.
+		require.NoError(t, store.SetSSHProbe(ctx, got, "", false), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: an empty tier keeps the stored tier", name)
+		require.NotNil(t, got.SSHHardlink, name)
+		assert.False(t, *got.SSHHardlink, name)
 	}
 }
