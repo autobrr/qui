@@ -506,6 +506,21 @@
       "invalidInfohash": "Infohash deve ter 40 ou 64 caracteres hexadecimais"
     }
   },
+  "routeConfirm": {
+    "title": "Parar de proteger os arquivos roteados?",
+    "counting": "Contando os torrents roteados…",
+    "count_one": "{{count}} torrent roteado em {{crossSeed}} usa arquivos nas pastas base afetadas de {{source}}.",
+    "count_other": "{{count}} torrents roteados em {{crossSeed}} usam arquivos nas pastas base afetadas de {{source}}.",
+    "countUnknown": "{{crossSeed}} está indisponível, então o número de torrents roteados nas pastas base afetadas de {{source}} é desconhecido.",
+    "orphanScan": "A verificação de órfãos de {{source}} deixa de proteger os arquivos desses torrents.",
+    "clear": "{{crossSeed}} mantém os torrents roteados, e os arquivos deles ficam nas pastas base de {{source}}. Mova ou exclua esses torrents antes de limpar a rota.",
+    "deleteSource": "Após esta exclusão, {{source}} volta a adicionar cross-seeds a si mesma.",
+    "routesUnknown": "O qui não conseguiu ler as rotas de cross-seed, então não pode indicar as instâncias de origem que perdem a proteção após esta exclusão.",
+    "routeReadFailed": "O qui não conseguiu ler a rota de cross-seed de {{source}}, então não salvou a alteração.",
+    "routeChanged": "A rota de cross-seed de {{source}} mudou em outra aba, então o qui não salvou o formulário. Confira a rota e salve de novo.",
+    "confirm": "Continuar",
+    "cancel": "Cancelar"
+  },
   "dirScan": {
     "title": "Scanner de Diretório",
     "description": "Varra diretórios locais em busca de downloads completos e faça cross-seed automaticamente.",

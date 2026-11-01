@@ -506,6 +506,21 @@
       "invalidInfohash": "L'infohash ha de tenir 40 o 64 caràcters hexadecimals"
     }
   },
+  "routeConfirm": {
+    "title": "Deixar de protegir els fitxers encaminats?",
+    "counting": "S'estan comptant els torrents encaminats…",
+    "count_one": "{{count}} torrent encaminat a {{crossSeed}} fa servir fitxers de les carpetes base afectades de {{source}}.",
+    "count_other": "{{count}} torrents encaminats a {{crossSeed}} fan servir fitxers de les carpetes base afectades de {{source}}.",
+    "countUnknown": "{{crossSeed}} no està disponible, per tant el nombre de torrents encaminats a les carpetes base afectades de {{source}} és desconegut.",
+    "orphanScan": "L'escaneig d'orfes de {{source}} deixa de protegir els fitxers d'aquests torrents.",
+    "clear": "{{crossSeed}} conserva els torrents encaminats, i els seus fitxers es queden a les carpetes base de {{source}}. Moveu o suprimiu aquests torrents abans d'esborrar la ruta.",
+    "deleteSource": "Després d'aquesta supressió, {{source}} torna a afegir els cross-seeds a si mateixa.",
+    "routesUnknown": "qui no ha pogut llegir les rutes de cross-seed, així que no pot indicar quines instàncies d'origen perden la protecció després d'aquesta eliminació.",
+    "routeReadFailed": "qui no ha pogut llegir la ruta de cross-seed de {{source}}, així que no ha desat el canvi.",
+    "routeChanged": "La ruta de cross-seed de {{source}} ha canviat en una altra pestanya, per tant qui no ha desat el formulari. Reviseu la ruta i torneu a desar.",
+    "confirm": "Continua",
+    "cancel": "Cancel·la"
+  },
   "dirScan": {
     "title": "Explorador de directoris",
     "description": "Explora directoris locals a la recerca de baixades completades i en fa cross-seed automàticament.",

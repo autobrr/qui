@@ -11,13 +11,17 @@ import { useQuery } from "@tanstack/react-query"
 export const crossSeedRoutesKey = ["cross-seed", "routes"] as const
 
 /** Every saved route, so a view knows which instances route to which (ADR 0035). */
-export function useCrossSeedRoutes(enabled = true) {
+export function useCrossSeedRoutes(enabled = true, staleTime = 60_000) {
   return useQuery({
     queryKey: crossSeedRoutesKey,
     queryFn: () => api.listCrossSeedRoutes(),
     enabled,
-    staleTime: 60_000,
+    staleTime,
   })
+}
+
+export function crossSeedRouteKey(instance: Pick<Instance, "id" | "hardlinkBaseDir">) {
+  return [...crossSeedRoutesKey, instance.id, instance.hardlinkBaseDir]
 }
 
 /**
@@ -27,7 +31,7 @@ export function useCrossSeedRoutes(enabled = true) {
  */
 export function useCrossSeedRoute(instance: Pick<Instance, "id" | "hardlinkBaseDir">, enabled = true) {
   return useQuery({
-    queryKey: [...crossSeedRoutesKey, instance.id, instance.hardlinkBaseDir],
+    queryKey: crossSeedRouteKey(instance),
     queryFn: () => api.getCrossSeedRoute(instance.id),
     enabled,
   })

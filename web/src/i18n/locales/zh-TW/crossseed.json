@@ -497,6 +497,20 @@
       "invalidInfohash": "Infohash 必須為 40 或 64 個十六進位制字元"
     }
   },
+  "routeConfirm": {
+    "title": "停止保護已路由的檔案？",
+    "counting": "正在統計已路由的種子…",
+    "count_other": "{{crossSeed}} 上有 {{count}} 個已路由的種子使用 {{source}} 受影響基礎資料夾中的檔案。",
+    "countUnknown": "{{crossSeed}} 無法使用，因此 {{source}} 受影響基礎資料夾中已路由種子的數量未知。",
+    "orphanScan": "{{source}} 的孤立檔案掃描將不再保護這些種子的檔案。",
+    "clear": "{{crossSeed}} 會保留已路由的種子，其檔案仍留在 {{source}} 的基礎資料夾中。清除路由前，請先移動或刪除這些種子。",
+    "deleteSource": "刪除後，{{source}} 會再次把交叉做種加入自身。",
+    "routesUnknown": "qui 無法讀取輔種路由，因此無法列出此次刪除後失去保護的來源實例。",
+    "routeReadFailed": "qui 無法讀取 {{source}} 的輔種路由，因此未儲存此變更。",
+    "routeChanged": "{{source}} 的交叉做種路由已在另一個分頁中變更，因此 qui 未儲存此表單。請檢查路由後再次儲存。",
+    "confirm": "繼續",
+    "cancel": "取消"
+  },
   "dirScan": {
     "title": "目錄掃描器",
     "description": "掃描本機目錄中的已完成下載並自動輔種。",

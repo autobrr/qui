@@ -506,6 +506,21 @@
       "invalidInfohash": "L'infohash deve avere 40 o 64 caratteri esadecimali"
     }
   },
+  "routeConfirm": {
+    "title": "Smettere di proteggere i file instradati?",
+    "counting": "Conteggio dei torrent instradati…",
+    "count_one": "{{count}} torrent instradato su {{crossSeed}} usa file nelle cartelle base interessate di {{source}}.",
+    "count_other": "{{count}} torrent instradati su {{crossSeed}} usano file nelle cartelle base interessate di {{source}}.",
+    "countUnknown": "{{crossSeed}} non è disponibile, quindi il numero di torrent instradati nelle cartelle base interessate di {{source}} è sconosciuto.",
+    "orphanScan": "La scansione degli orfani di {{source}} smette di proteggere i file di questi torrent.",
+    "clear": "{{crossSeed}} mantiene i torrent instradati, e i loro file restano nelle cartelle base di {{source}}. Sposta o elimina questi torrent prima di cancellare il percorso.",
+    "deleteSource": "Dopo questa eliminazione, {{source}} aggiunge di nuovo i cross-seed a se stessa.",
+    "routesUnknown": "qui non è riuscito a leggere le route di cross-seed, quindi non può indicare le istanze di origine che perdono la protezione dopo questa eliminazione.",
+    "routeReadFailed": "qui non è riuscito a leggere la route di cross-seed di {{source}}, quindi non ha salvato la modifica.",
+    "routeChanged": "Il percorso di cross-seed di {{source}} è cambiato in un'altra scheda, quindi qui non ha salvato il modulo. Controlla il percorso, poi salva di nuovo.",
+    "confirm": "Continua",
+    "cancel": "Annulla"
+  },
   "dirScan": {
     "title": "Scanner di directory",
     "description": "Analizza le directory locali per individuare i download completati e sottoporli automaticamente a cross-seed.",

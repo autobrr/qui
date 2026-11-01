@@ -5,18 +5,19 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { countRoutedTorrents, RouteProtectionConfirmDialog } from "@/components/cross-seed/RouteProtectionConfirm"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { crossSeedRoutesKey, useCrossSeedRoute, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
+import { crossSeedRouteKey, crossSeedRoutesKey, useCrossSeedRoute, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { CrossSeedRouteRow, CrossSeedRouteTestRowResult, Instance } from "@/types"
+import type { CrossSeedRouteRow, CrossSeedRouteStatus, CrossSeedRouteTestRowResult, Instance } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { useId, useState } from "react"
@@ -60,6 +61,12 @@ function splitBaseDirs(configured: string): string[] {
   return [...dirs.values()]
 }
 
+// The routed torrent counts can change between two reads, so they are left out.
+function sameRoute(a: CrossSeedRouteStatus | null, b: CrossSeedRouteStatus | null): boolean {
+  const key = (route: CrossSeedRouteStatus | null) => JSON.stringify(route && [route.crossSeedInstanceId, route.rows.map(row => [row.baseDir, row.mappedPath])])
+  return key(a) === key(b)
+}
+
 function nested(parent: string, child: string): boolean {
   return parent === child || child.startsWith(parent.replace(/\/$/, "") + "/")
 }
@@ -85,8 +92,15 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { instances = [] } = useInstances()
   const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
-  const { data: savedRoute, isLoading: isLoadingRoute } = useCrossSeedRoute(instance, saved !== undefined)
+  const routeQuery = useCrossSeedRoute(instance, saved !== undefined)
+  // A turned-off read keeps its old cached data, so a route that another tab cleared is ignored here.
+  const savedRoute = saved ? routeQuery.data : undefined
+  const { isLoading: isLoadingRoute, isFetching: isFetchingRoute } = routeQuery
+  const routeReadFailed = saved !== undefined && routeQuery.isError
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
+  // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
+  const [checking, setChecking] = useState(false)
+  const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never; countUnknown?: boolean } | { clear: false; baseDirs?: string[]; countUnknown?: never } | null>(null)
 
   const sourceNames = routes
     .filter(route => route.crossSeedInstanceId === instance.id)
@@ -156,8 +170,48 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
-  const handleSave = () => saveRoute.mutate()
-  const handleClear = () => clearRoute.mutate()
+  // Save and Clear read the route again first: another tab can have saved, changed,
+  // or cleared it. A changed route reloads the form and writes nothing.
+  const readRouteFirst = (unchanged: (current: CrossSeedRouteStatus | null) => boolean, next: () => void, readFailed: (error: Error) => void) => {
+    setChecking(true)
+    void api.getCrossSeedRoute(instance.id)
+      .then(current => {
+        if (unchanged(current)) {
+          // The dialog counts the routed torrents of this read, not of the older form read.
+          queryClient.setQueryData(crossSeedRouteKey(instance), current)
+          return next()
+        }
+        toast.error(t("routeConfirm.routeChanged", { source: instance.name }))
+        return onRouteChanged()
+      })
+      .catch(readFailed)
+      .finally(() => setChecking(false))
+  }
+  const handleSave = () => readRouteFirst(
+    current => sameRoute(current, savedRoute ?? null),
+    decideSave,
+    error => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message })
+  )
+  const decideSave = () => {
+    if (!saved) return saveRoute.mutate()
+    if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
+    // The read also gives a base folder added after the save an empty row, and the orphan scan protects the torrents under it.
+    const changed = savedRoute.rows
+      // rows is built from savedRoute.rows, in the same order.
+      .filter((row, i) => rows[i].mappedPath !== row.mappedPath)
+      .map(row => row.baseDir)
+    if (changed.length === 0) return saveRoute.mutate()
+    setConfirm({ clear: false, baseDirs: changed })
+  }
+  // A clear deletes the whole route, so only the Cross-seed instance that the dialog names must match.
+  // A failed read makes the count unknown, and the clear can go on.
+  const handleClear = () => readRouteFirst(
+    current => current !== null && current.crossSeedInstanceId === saved?.crossSeedInstanceId,
+    () => setConfirm({ clear: true }),
+    () => setConfirm({ clear: true, countUnknown: true })
+  )
+  // A null read means another tab cleared the route, so no routed torrent loses protection.
+  const confirmRows = savedRoute === null ? [] : savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
 
   const edit = (next: { crossSeedInstanceId?: number; baseDir?: string; mappedPath?: string }) => {
     testRoute.reset()
@@ -167,9 +221,11 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     }))
   }
 
-  const busy = testRoute.isPending || saveRoute.isPending || clearRoute.isPending
+  const busy = checking || testRoute.isPending || saveRoute.isPending || clearRoute.isPending
   // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
-  const routeRead = routesRead && (saved === undefined || savedRoute !== undefined)
+  // A refetch keeps the old cached rows, so a save or a clear waits for it too,
+  // and a failed refetch keeps Save off: another tab can have changed the route.
+  const routeRead = routesRead && !isFetchingRoute && !routeReadFailed && (saved === undefined || savedRoute !== undefined)
   const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
   const picker = (
@@ -272,12 +328,23 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
           {t("routeForm.saveRoute")}
         </Button>
         {saved && (
-          <Button size="sm" variant="destructive" onClick={handleClear} disabled={busy}>
+          <Button size="sm" variant="destructive" onClick={handleClear} disabled={busy || isFetchingRoute}>
             {clearRoute.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {t("routeForm.clearRoute")}
           </Button>
         )}
       </div>
+
+      <RouteProtectionConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        onConfirm={() => (confirm?.clear ? clearRoute : saveRoute).mutate()}
+        sourceName={instance.name}
+        crossSeedName={savedCrossSeed?.name ?? ""}
+        // A failed read makes the count unknown, also over an older cached read.
+        routedTorrents={routeReadFailed || confirm?.countUnknown ? null : confirmRows && countRoutedTorrents(confirmRows)}
+        clear={confirm?.clear}
+      />
     </div>
   )
 }

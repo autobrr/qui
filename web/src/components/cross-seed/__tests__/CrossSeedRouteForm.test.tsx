@@ -4,13 +4,15 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ChangeEvent, ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 
 import i18n from "@/i18n"
 import { server } from "@/test/msw/server"
+import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import type { CrossSeedRoute, CrossSeedRouteStatus, CrossSeedRouteTestResult, FilesystemCapabilities, Instance } from "@/types"
 
 const mocks = vi.hoisted(() => ({
@@ -89,13 +91,15 @@ function serve({ routes = [] as CrossSeedRoute[], read = null as CrossSeedRouteS
   )
 }
 
-function renderForm(instance: Instance, canWriteLocally = instance.capabilities.write && instance.filesystemMode === "local") {
+function renderForm(instance: Instance, canWriteLocally = instance.capabilities.write && instance.filesystemMode === "local", seed?: (queryClient: QueryClient) => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  seed?.(queryClient)
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <CrossSeedRouteForm instance={instance} localWrite={canWriteLocally} />
     </QueryClientProvider>
   )
+  return { ...view, queryClient }
 }
 
 const picker = () => screen.getByLabelText<HTMLSelectElement>("picker")
@@ -279,7 +283,8 @@ describe("CrossSeedRouteForm rows", () => {
     server.use(
       http.get("*/api/cross-seed/routes/:id", async () => {
         reads++
-        if (reads > 1) await refreshed
+        // The first read loads the form, the second is the check of Save, the third is the refresh.
+        if (reads > 2) await refreshed
         return HttpResponse.json(before)
       }),
       http.put("*/api/cross-seed/routes/1", () => HttpResponse.json(before))
@@ -288,7 +293,8 @@ describe("CrossSeedRouteForm rows", () => {
 
     fireEvent.change(await screen.findByLabelText("/data/a"), { target: { value: "/mnt/new" } })
     fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
-    await waitFor(() => expect(reads).toBe(2))
+    fireEvent.click(await screen.findByRole("button", { name: "routeConfirm.confirm" }))
+    await waitFor(() => expect(reads).toBe(3))
 
     expect(screen.getByLabelText<HTMLInputElement>("/data/a").value).toBe("/mnt/new")
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true)
@@ -390,5 +396,267 @@ describe("CrossSeedRouteForm Test route", () => {
 
     expect(await screen.findAllByText("routeStatus.unavailable")).toHaveLength(1)
     expect(screen.getByText("seedbox: offline")).toBeTruthy()
+  })
+})
+
+describe("CrossSeedRouteForm confirm", () => {
+  const otherCrossSeed = makeInstance(3, "seedbox2", { useHardlinks: false, hardlinkBaseDir: "" })
+
+  // A saved route to seedbox: 3 routed torrents under /data/a, 4 under /data/b.
+  function serveSaved(routedA: number | null = 3) {
+    mocks.instances.instances = [source, crossSeed, otherCrossSeed]
+    const writes: string[] = []
+    serve({
+      routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }, { baseDir: "/data/b", mappedPath: "/mnt/b" }] }],
+      read: {
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: routedA }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }],
+      },
+    })
+    server.use(
+      http.put("*/api/cross-seed/routes/1", () => {
+        writes.push("save")
+        return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+      }),
+      http.delete("*/api/cross-seed/routes/1", () => {
+        writes.push("clear")
+        return new HttpResponse(null, { status: 204 })
+      })
+    )
+    renderForm(source)
+    return writes
+  }
+
+  const confirmButton = () => screen.findByRole("button", { name: "routeConfirm.confirm" })
+
+  it("asks before a row edit, with the routed torrents under the edited row", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|3")).toBeTruthy()
+    expect(screen.getByText("routeConfirm.orphanScan|library|seedbox")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "routeConfirm.cancel" }))
+    expect(writes).toEqual([])
+
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("saves nothing and reloads the form when another tab changed the route", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    const changed = { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/other", routedTorrents: 3 }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }] }
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(changed)))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByDisplayValue("/mnt/other")).toBeTruthy()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library")
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
+  })
+
+  it("saves nothing when another tab saved a route that the form does not know", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    const writes: string[] = []
+    server.use(
+      http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }] })),
+      http.put("*/api/cross-seed/routes/1", () => {
+        writes.push("save")
+        return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+      })
+    )
+    renderForm(source)
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    fireEvent.change(picker(), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(writes).toEqual([])
+  })
+
+  it("counts the routed torrents of the route read at Save, not of the older form read", async () => {
+    serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    const fresh = { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 9 }, { baseDir: "/data/b", mappedPath: "/mnt/b", routedTorrents: 4 }] }
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(fresh)))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|9")).toBeTruthy()
+  })
+
+  it("saves a new route when another tab cleared the route and an old route read is still cached", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve()
+    const writes: string[] = []
+    server.use(http.put("*/api/cross-seed/routes/1", () => {
+      writes.push("save")
+      return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+    }))
+    renderForm(source, true, queryClient => {
+      queryClient.setQueryData([...crossSeedRoutesKey, 1, source.hardlinkBaseDir], { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/old", routedTorrents: 3 }] })
+    })
+    await waitFor(() => expect(optionNames()).toEqual(["seedbox"]))
+    expect(screen.queryByDisplayValue("/mnt/old")).toBeNull()
+    fireEvent.change(picker(), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(writes).toEqual(["save"]))
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("saves nothing and says so when the check of Save cannot read the route", async () => {
+    const writes = serveSaved()
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeReadFailed|library", expect.anything()))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
+  })
+
+  it("asks before a change of Cross-seed instance, with the routed torrents under all rows", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    await waitFor(() => expect(optionNames()).toContain("seedbox2"))
+    fireEvent.change(picker(), { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|7")).toBeTruthy()
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("says the count is unknown when a row has no count", async () => {
+    serveSaved(null)
+    fireEvent.change(await screen.findByDisplayValue("/mnt/a"), { target: { value: "/mnt/x" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
+  })
+
+  it("saves with no confirm when no saved row changes", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    await waitFor(() => expect(writes).toEqual(["save"]))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+  })
+
+  it("asks first when the user maps a base folder added after the save", async () => {
+    // The route read gives the new base folder an empty row, and the orphan scan protects the torrents under it.
+    const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/new" })
+    mocks.instances.instances = [instance, crossSeed]
+    const writes: string[] = []
+    serve({
+      routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }],
+      read: {
+        sourceInstanceId: 1,
+        crossSeedInstanceId: 2,
+        rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 3 }, { baseDir: "/data/new", mappedPath: "", routedTorrents: 2 }],
+      },
+    })
+    server.use(http.put("*/api/cross-seed/routes/1", () => {
+      writes.push("save")
+      return HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] })
+    }))
+    renderForm(instance)
+
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.change(screen.getByLabelText("/data/new"), { target: { value: "/mnt/new" } })
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.saveRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|2")).toBeTruthy()
+    expect(writes).toEqual([])
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["save"]))
+  })
+
+  it("keeps Save and Clear off while a cached route read refetches", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    let answerRead: (() => void) | undefined
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => new Promise<Response>(resolve => {
+      answerRead = () => resolve(HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/new", routedTorrents: 1 }] }))
+    })))
+    renderForm(source, undefined, queryClient => {
+      queryClient.setQueryData([...crossSeedRoutesKey, 1, source.hardlinkBaseDir], { sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 1 }] })
+    })
+    const button = (name: string) => screen.getByRole<HTMLButtonElement>("button", { name })
+
+    await waitFor(() => expect(answerRead).toBeDefined())
+    expect(button("routeForm.saveRoute").disabled).toBe(true)
+    expect(button("routeForm.clearRoute").disabled).toBe(true)
+    answerRead?.()
+    await screen.findByDisplayValue("/mnt/new")
+    await waitFor(() => expect(button("routeForm.saveRoute").disabled).toBe(false))
+    expect(button("routeForm.clearRoute").disabled).toBe(false)
+  })
+
+  it("lets a route clear go on with an unknown count when the route read fails", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    renderForm(source)
+    await screen.findByLabelText("/data/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
+    expect((await confirmButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("opens no clear dialog and reloads the form when the route read finds the route gone", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
+    renderForm(source)
+    await screen.findByLabelText("/data/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+  })
+
+  it("keeps Save off and says the count is unknown when a later route read fails", async () => {
+    mocks.instances.instances = [source, crossSeed]
+    serve({ routes: [{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }] }] })
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json(null)))
+    const { queryClient } = renderForm(source)
+    await screen.findByLabelText("/data/a")
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    await act(() => queryClient.refetchQueries({ queryKey: [...crossSeedRoutesKey, 1] }))
+    // The cached rows can be old: another tab can have changed the route.
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.countUnknown|library|seedbox")).toBeTruthy()
+  })
+
+  it("opens no clear dialog and reloads the form when another tab moved the route to another Cross-seed instance", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a", routedTorrents: 1 }] })))
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("routeConfirm.routeChanged|library"))
+    expect(screen.queryByText("routeConfirm.title")).toBeNull()
+    expect(writes).toEqual([])
+  })
+
+  it("asks before a route clear and says the Cross-seed instance keeps the routed torrents", async () => {
+    const writes = serveSaved()
+    await screen.findByDisplayValue("/mnt/a")
+    fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
+
+    expect(await screen.findByText("routeConfirm.count|library|seedbox|7")).toBeTruthy()
+    expect(screen.getByText("routeConfirm.clear|library|seedbox")).toBeTruthy()
+    expect(writes).toEqual([])
+    fireEvent.click(await confirmButton())
+    await waitFor(() => expect(writes).toEqual(["clear"]))
   })
 })
