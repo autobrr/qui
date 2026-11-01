@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
 import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
@@ -17,10 +18,10 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
+import { cn, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
+import { ChevronDown, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -452,17 +453,7 @@ export function ReannounceOverview({
                                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                           <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                             <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                            <button
-                                              type="button"
-                                              className="hover:text-foreground transition-colors"
-                                              onClick={() => {
-                                                copyTextToClipboard(event.hash)
-                                                toast.success(t("preferences.reannounceOverview.hashCopied"))
-                                              }}
-                                              title={t("preferences.reannounceOverview.copyHash")}
-                                            >
-                                              <Copy className="h-3 w-3" />
-                                            </button>
+                                            <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                                           </div>
                                           <span className="text-muted-foreground/40">·</span>
                                           <span>{formatISOTimestamp(event.timestamp)}</span>

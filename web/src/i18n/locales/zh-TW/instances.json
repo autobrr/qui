@@ -505,7 +505,6 @@
       "dryRun": "模擬執行",
       "removed": "已移除",
       "executed": "已執行",
-      "copyHash": "複製雜湊",
       "original": "原始：{{domain}}",
       "programLabel": "程式：{{name}}",
       "ruleLabel": "規則：{{name}}",
@@ -648,8 +647,7 @@
         "exportedTorrents": "已匯出 {{count}} 個種子到 CSV",
         "exportFailed": "匯出預覽失敗",
         "deletedActivityEntries": "已刪除 {{count}} 條活動記錄",
-        "deleteActivityFailed": "刪除活動失敗",
-        "hashCopied": "雜湊已複製"
+        "deleteActivityFailed": "刪除活動失敗"
       },
       "exported": "已匯出"
     },
@@ -744,7 +742,6 @@
       "deletedSeparator": "、",
       "partialFailure": "部分失敗 - 請檢視近期掃描",
       "partialFailureExpand": "部分失敗 - 展開檢視詳情",
-      "copiedToClipboard": "已複製到剪貼簿",
       "noScansYet": "尚未執行掃描。點選\"立即掃描\"查詢孤立項目。",
       "statusClean": "清潔",
       "statusPartial": "部分掃描",
@@ -764,7 +761,9 @@
         "scanStartFailed": "啟動掃描失敗",
         "scanCanceled": "掃描已取消",
         "cancelFailed": "取消失敗"
-      }
+      },
+      "errorMessage": "錯誤訊息",
+      "scanPaths": "掃描路徑"
     },
     "orphanScanPreview": {
       "title": "孤立項目預覽",
@@ -908,8 +907,6 @@
       "ratio": "分享率",
       "added": "新增時間",
       "original": "原始：{{domain}}",
-      "hashCopied": "雜湊已複製",
-      "copyHash": "複製雜湊",
       "loading": "載入中...",
       "notAvailable": "執行詳情不可用（僅存於記憶體中）。",
       "failedToLoad": "載入執行詳情失敗。",
@@ -973,8 +970,6 @@
       "tryDifferentSearch": "嘗試不同的搜尋詞或清除篩選器。",
       "eventsWillAppear": "檢測到停滯的種子時，事件將顯示在此處。",
       "enableMonitoring": "啟用監控以開始追蹤停滯的種子。",
-      "hashCopied": "雜湊已複製",
-      "copyHash": "複製雜湊",
       "outcomes": {
         "succeeded": "成功",
         "failed": "失敗",

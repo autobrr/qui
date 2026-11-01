@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
   AlertDialog,
@@ -81,7 +82,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
+import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
@@ -1297,18 +1298,7 @@ export function WorkflowsOverview() {
                                       {event.hash && (
                                         <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                           <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                          <button
-                                            type="button"
-                                            className="hover:text-foreground transition-colors"
-                                            onClick={(clickEvent) => {
-                                              clickEvent.stopPropagation()
-                                              copyTextToClipboard(event.hash)
-                                              toast.success(t("preferences.workflowsOverview.toast.hashCopied"))
-                                            }}
-                                            title={t("preferences.workflowsOverview.copyHash")}
-                                          >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
+                                          <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                                         </div>
                                       )}
                                       {event.trackerDomain && (() => {

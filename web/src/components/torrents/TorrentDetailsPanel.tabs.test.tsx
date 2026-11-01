@@ -4,10 +4,11 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, render, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { SortedPeer, Torrent, TorrentFile, TorrentProperties, TorrentTracker, WebSeed } from "@/types"
+import "@/i18n"
 import { makeTorrent } from "@/test/mockTorrent"
 import { TorrentDetailsPanel } from "./TorrentDetailsPanel"
 
@@ -51,7 +52,8 @@ vi.mock("@/hooks/useTorrentDetailTab", () => ({
   },
 }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => mocks.capabilities }))
-vi.mock("@/lib/cross-seed-utils", () => ({
+vi.mock("@/lib/cross-seed-utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/cross-seed-utils")>(),
   useLocalCrossSeedMatches: () => mocks.matches,
   isHardlinkManaged: () => false,
 }))
@@ -86,7 +88,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderPanel(props: { initialTab: string; layout?: "horizontal" | "vertical" }) {
+function renderPanel(props: { initialTab: string; layout: "horizontal" | "mobile"; onNavigateToTorrent?: (instanceId: number, hash: string) => void }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -101,8 +103,8 @@ describe("TorrentDetailsPanel tabs", () => {
     expect((await findByTestId("general")).textContent).toBe("0.5 37/91")
   })
 
-  it("shows the merged properties in the inline General layout", async () => {
-    const { findByText } = renderPanel({ initialTab: "general" })
+  it("shows the merged properties in the mobile General layout", async () => {
+    const { findByText } = renderPanel({ initialTab: "general", layout: "mobile" })
     expect((await findByText("37")).textContent).toBe("37 / 91")
     expect((await findByText("12")).textContent).toBe("12 / 48")
   })
@@ -166,10 +168,62 @@ describe("TorrentDetailsPanel cross-seed tab", () => {
       isLoadingMatches: false,
       allInstances: [],
     } as unknown as typeof mocks.matches
-    const { findByText, queryByText } = renderPanel({ initialTab: "crossseed" })
+    const { findByText, queryByText } = renderPanel({ initialTab: "crossseed", layout: "mobile" })
 
     expect(await findByText(/crossSeedTable\.loadFailed|Could not check for cross-seed matches/)).toBeTruthy()
     expect(queryByText("Kept.Match.2024.1080p.WEB-GRP")).toBeNull()
+    mocks.matches = kept
+  })
+})
+
+describe("TorrentDetailsPanel mobile layout", () => {
+  it("shows five sections in the bar and no HTTP Sources section", async () => {
+    const { findAllByRole } = renderPanel({ initialTab: "general", layout: "mobile" })
+    const tabs = (await findAllByRole("tab")).map(tab => tab.textContent)
+    expect(tabs).toEqual(["General", "Trackers", "Peers", "Content", "Cross-Seed"])
+  })
+
+  it("opens Trackers when the last section was HTTP Sources", async () => {
+    const { findByRole } = renderPanel({ initialTab: "webseeds", layout: "mobile" })
+    expect((await findByRole("tab", { selected: true })).textContent).toBe("Trackers")
+  })
+
+  it("shows the web seeds in Trackers only when the torrent has some", async () => {
+    const { findByText, unmount } = renderPanel({ initialTab: "trackers", layout: "mobile" })
+    expect(await findByText("https://example.invalid/a")).toBeTruthy()
+    unmount()
+
+    const kept = mocks.tabs.webseeds
+    mocks.tabs.webseeds = { data: [], isLoading: false, error: null }
+    const { findByText: findAgain, queryByText } = renderPanel({ initialTab: "trackers", layout: "mobile" })
+    expect(await findAgain("tracker.example.invalid")).toBeTruthy()
+    expect(queryByText("https://example.invalid/a")).toBeNull()
+    expect(queryByText(/HTTP source/)).toBeNull()
+    mocks.tabs.webseeds = kept
+  })
+
+  it("selects a cross-seed match on a tap, and opens it only from its open button", async () => {
+    const kept = mocks.matches
+    mocks.matches = {
+      matchingTorrents: [{ ...makeTorrent({ hash: "b", name: "Other.Match.2024.1080p.WEB-GRP" }), instanceId: 2, instanceName: "Second", matchType: "release" }],
+      isLoadingMatches: false,
+      allInstances: [],
+    } as unknown as typeof mocks.matches
+    const onNavigateToTorrent = vi.fn()
+    const { findByRole, getByRole, getByText, queryByText } = renderPanel({ initialTab: "crossseed", layout: "mobile", onNavigateToTorrent })
+
+    const deleteMatches = await findByRole("button", { name: "Delete Matches (0)" })
+    expect(deleteMatches.hasAttribute("disabled")).toBe(true)
+    expect(queryByText("Delete This Torrent")).toBeNull()
+
+    fireEvent.click(getByText(/Other\.\u200BMatch/))
+    expect(getByRole("checkbox").getAttribute("aria-checked")).toBe("true")
+    expect(deleteMatches.hasAttribute("disabled")).toBe(false)
+    expect(onNavigateToTorrent).not.toHaveBeenCalled()
+
+    fireEvent.click(getByRole("button", { name: "Open Other.Match.2024.1080p.WEB-GRP" }))
+    expect(onNavigateToTorrent).toHaveBeenCalledWith(2, "b")
+    expect(getByRole("checkbox").getAttribute("aria-checked")).toBe("true")
     mocks.matches = kept
   })
 })

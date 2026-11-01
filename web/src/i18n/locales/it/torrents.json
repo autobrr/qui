@@ -1082,7 +1082,6 @@
     "closePanel": "Chiudi il pannello dei dettagli",
     "unknownError": "Errore sconosciuto",
     "toast": {
-      "copied": "{{type}} copiato negli appunti",
       "copyFailed": "Impossibile copiare negli appunti",
       "peersAdded": "Peer aggiunti con successo",
       "peersFailed": "Impossibile aggiungere i peer: {{error}}",
@@ -1134,20 +1133,14 @@
       "loadedSummary_other": "{{count}} torrent corrispondenti trovati in tutte le istanze",
       "deleteMatches": "Elimina corrispondenze ({{count}})",
       "deleteThisTorrent": "Elimina questo torrent",
-      "checkingMoreInstances": "Verifica di altre istanze in corso...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Torrent esattamente identico (stesso info hash)",
-      "savePathMatch": "Percorso di salvataggio",
-      "savePathDescription": "Stessa directory di salvataggio e nome file",
-      "selectTorrent": "Seleziona {{name}}"
+      "selectTorrent": "Seleziona {{name}}",
+      "openTorrent": "Apri {{name}}"
     },
     "sections": {
       "generalInformation": "Informazioni generali",
       "transferStatistics": "Statistiche di trasferimento",
-      "speed": "Velocità",
       "queueManagement": "Gestione coda",
       "timeInformation": "Informazioni temporali",
-      "timestamps": "Marche temporali",
       "activeTrackers": "Tracker attivi",
       "connectedPeers": "Peer connessi",
       "fileContents": "Contenuto dei file"
@@ -1174,18 +1167,13 @@
       "added": "Aggiunto",
       "completed": "Completato",
       "created": "Creato",
-      "leechers": "Leecher",
-      "peerProgress": "Avanzamento peer",
-      "connection": "Connessione:",
-      "flags": "Flag:"
+      "leechers": "Leecher"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} tracker",
       "connectedPeers_one": "{{count}} peer connesso",
       "connectedPeers_other": "{{count}} peer connessi",
-      "httpSources_one": "{{count}} sorgente",
-      "httpSources_other": "{{count}} sorgenti",
       "selectedFiles": "{{selected}} di {{total}} selezionati",
       "files_one": "{{count}} file",
       "files_other": "{{count}} file"
@@ -1193,7 +1181,6 @@
     "values": {
       "normal": "Normale",
       "queued": "In coda {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Client sconosciuto"
     },
     "actions": {
@@ -1202,14 +1189,12 @@
       "selectAll": "Tutti",
       "selectNone": "Nessuno"
     },
-    "peer": {
-      "flagLabel": "Flag {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Nessun file trovato"
     },
     "selectAll": "Seleziona tutto",
-    "deselectAll": "Deseleziona tutto"
+    "deselectAll": "Deseleziona tutto",
+    "trackerMessageHidden": "Messaggio del tracker nascosto in modalità incognito"
   },
   "generalTab": {
     "name": "Nome:",
@@ -1369,11 +1354,7 @@
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
-    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare.",
-    "toast": {
-      "savePathCopied": "Percorso di salvataggio copiato",
-      "copyFailed": "Copia non riuscita"
-    }
+    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare."
   },
   "addTorrentDialog": {
     "title": "Aggiungi nuovo torrent",

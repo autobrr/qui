@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Copy, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
+import { CopyButton } from "@/components/ui/copy-button"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import type { RestartOverlay as RestartOverlayState } from "@/hooks/useSelfUpdate"
-import { copyTextToClipboard } from "@/lib/utils"
 import type { SelfUpdateResult } from "@/types"
 
 const ROLLBACK_DOCS_URL = "https://getqui.com/docs/getting-started/installation#roll-back-an-update"
@@ -36,16 +35,6 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
   }
   const done = state === "notApplied" || state === "installed"
 
-  const copyRollback = async (command: string) => {
-    const label = t("application.update.overlay.rollbackLabel")
-    try {
-      await copyTextToClipboard(command)
-      toast.success(t("application.toasts.copied", { label }))
-    } catch {
-      toast.error(t("application.toasts.copyFailed", { label: label.toLowerCase() }))
-    }
-  }
-
   // A modal with no close path: it traps focus, so the keyboard cannot reach
   // a Settings tab whose switch would unmount the poll.
   return (
@@ -65,15 +54,7 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
               <p className="text-sm text-muted-foreground">{t("application.update.overlay.rollbackIntro")}</p>
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 p-2">
                 <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs">{update.rollbackCommand}</code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => void copyRollback(update.rollbackCommand)}
-                  title={t("application.copyTitle", { label: t("application.update.overlay.rollbackLabel") })}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
+                <CopyButton value={update.rollbackCommand} label={t("application.update.overlay.rollbackLabel")} className="h-7 w-7" />
               </div>
               <a className="text-sm underline" href={ROLLBACK_DOCS_URL} target="_blank" rel="noopener noreferrer">
                 {t("application.update.overlay.rollbackDocs")}

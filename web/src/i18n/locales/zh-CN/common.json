@@ -101,17 +101,19 @@
     "cancel": "取消",
     "close": "关闭",
     "create": "创建",
-    "copyPath": "复制路径",
     "scrollToTop": "回到顶部",
     "search": "搜索",
-    "select": "选择"
+    "select": "选择",
+    "copyValue": "复制 {{label}}"
   },
   "placeholders": {
     "search": "搜索...",
     "selectItems": "选择项目..."
   },
   "feedback": {
-    "noResultsFound": "未找到结果。"
+    "noResultsFound": "未找到结果。",
+    "copied": "{{label}} 已复制到剪贴板",
+    "copyFailed": "复制到剪贴板失败"
   },
   "errors": {
     "unknown": "未知错误",
@@ -238,5 +240,8 @@
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
     "notLicense": "高级主题是单独的一次性购买。"
+  },
+  "labels": {
+    "path": "路径"
   }
 }

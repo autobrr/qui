@@ -102,7 +102,6 @@
       "proxyUrl": "프록시 URL",
       "showProxyUrl": "프록시 URL 표시",
       "hideProxyUrl": "프록시 URL 숨기기",
-      "copyProxyUrl": "프록시 URL 복사",
       "done": "완료"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "클라이언트 API 키가 삭제되었습니다",
       "deleteFailed": "클라이언트 API 키를 삭제하지 못했습니다: {{error}}",
       "clientNameRequired": "클라이언트 이름은 필수입니다",
-      "selectInstance": "qBittorrent 인스턴스를 선택해 주세요",
-      "proxyCopied": "프록시 URL이 클립보드에 복사되었습니다",
-      "copyFailed": "클립보드에 복사하지 못했습니다"
+      "selectInstance": "qBittorrent 인스턴스를 선택해 주세요"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "새 API 키",
       "warning": "지금 이 키를 저장하세요. 다시 볼 수 없습니다.",
-      "done": "완료"
+      "done": "완료",
+      "apiKey": "API 키"
     },
     "deleteDialog": {
       "title": "API 키를 삭제하시겠습니까?",
@@ -158,9 +156,7 @@
       "created": "API 키가 생성되었습니다",
       "createFailed": "API 키를 생성하지 못했습니다",
       "deleted": "API 키가 삭제되었습니다",
-      "deleteFailed": "API 키를 삭제하지 못했습니다",
-      "copied": "API 키가 클립보드에 복사되었습니다",
-      "copyFailed": "클립보드에 복사하지 못했습니다"
+      "deleteFailed": "API 키를 삭제하지 못했습니다"
     }
   },
   "externalPrograms": {
@@ -1104,11 +1100,6 @@
       "bind": "바인드 주소",
       "configDir": "구성 디렉터리",
       "dataDir": "데이터 디렉터리"
-    },
-    "copyTitle": "{{label}} 복사",
-    "toasts": {
-      "copied": "{{label}}이(가) 클립보드에 복사되었습니다",
-      "copyFailed": "{{label}}을(를) 복사하지 못했습니다"
     }
   }
 }

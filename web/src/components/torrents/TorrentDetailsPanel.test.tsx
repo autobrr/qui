@@ -6,7 +6,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { FilesystemCapabilities, Torrent } from "@/types"
+import type { FilesystemCapabilities } from "@/types"
+import { makeTorrent } from "@/test/mockTorrent"
 
 // Every mock returns a stable object: a fresh one per render loops the panel's effects.
 const mocks = vi.hoisted(() => {
@@ -39,7 +40,8 @@ vi.mock("@/hooks/usePersistedTabState", () => ({ usePersistedTabState: () => moc
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => mocks.empty }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => mocks.empty }))
 vi.mock("@/contexts/SyncStreamContext", () => ({ useSyncStream: () => mocks.stream }))
-vi.mock("@/lib/cross-seed-utils", () => ({
+vi.mock("@/lib/cross-seed-utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/cross-seed-utils")>(),
   isHardlinkManaged: () => false,
   useLocalCrossSeedMatches: () => mocks.matches,
 }))
@@ -67,7 +69,7 @@ afterEach(() => {
 })
 
 const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
-const torrent = { hash: "abc", name: "Show.S01", state: "uploading", progress: 1 } as Torrent
+const torrent = makeTorrent({ hash: "abc", name: "Show.S01", state: "uploading", progress: 1 })
 
 const cases = [
   { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, canReadContent: true },
@@ -85,7 +87,7 @@ describe("TorrentDetailsPanel content actions", () => {
     mocks.queries.instances = { ...mocks.empty, data: [{ id: 1, hasLocalFilesystemAccess, capabilities }] }
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <TorrentDetailsPanel instanceId={1} torrent={torrent} />
+        <TorrentDetailsPanel instanceId={1} torrent={torrent} layout="mobile" />
       </QueryClientProvider>
     )
 

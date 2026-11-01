@@ -542,7 +542,6 @@
       "dryRun": "Execució de prova",
       "removed": "Suprimit",
       "executed": "Executat",
-      "copyHash": "Copia el hash",
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regla: {{name}}",
@@ -701,8 +700,7 @@
         "exportedTorrents": "S'han exportat {{count}} torrents a CSV",
         "exportFailed": "No s'ha pogut exportar la previsualització",
         "deletedActivityEntries": "S'han eliminat {{count}} entrades d'activitat",
-        "deleteActivityFailed": "No s'ha pogut eliminar l'activitat",
-        "hashCopied": "S'ha copiat el hash"
+        "deleteActivityFailed": "No s'ha pogut eliminar l'activitat"
       },
       "exported": "Exportat",
       "tagActions_one": "{{count}} acció d'etiqueta",
@@ -1190,8 +1188,6 @@
       "tryDifferentSearch": "Prova un altre terme de cerca o neteja el filtre.",
       "eventsWillAppear": "Els esdeveniments apareixeran aquí quan es detectin torrents encallats.",
       "enableMonitoring": "Activa la vigilància per començar a fer el seguiment dels torrents encallats.",
-      "hashCopied": "S'ha copiat el hash",
-      "copyHash": "Copia el hash",
       "outcomes": {
         "succeeded": "Correcte",
         "failed": "Fallit",
@@ -1322,8 +1318,6 @@
       "ratio": "Ràtio",
       "added": "Afegit",
       "original": "Original: {{domain}}",
-      "hashCopied": "S'ha copiat el hash",
-      "copyHash": "Copia el hash",
       "loading": "S'està carregant...",
       "notAvailable": "Els detalls de l'execució no estan disponibles (només hi són a la memòria).",
       "failedToLoad": "No s'han pogut carregar els detalls de l'execució.",
@@ -1384,7 +1378,6 @@
       "deletedStats": "{{deleted}} eliminats · {{size}}",
       "partialFailure": "Error parcial: comprova les exploracions recents",
       "partialFailureExpand": "Error parcial: desplega'l per veure'n els detalls",
-      "copiedToClipboard": "S'ha copiat al porta-retalls",
       "noScansYet": "Encara no s'ha fet cap exploració. Fes clic a «Explora ara» per trobar els orfes.",
       "statusClean": "Net",
       "statusPartial": "Exploració parcial",
@@ -1415,7 +1408,9 @@
       "deletedFiles_other": "{{count}} fitxers",
       "deletedDirs_one": "{{count}} directori",
       "deletedDirs_other": "{{count}} directoris",
-      "deletedSeparator": ", "
+      "deletedSeparator": ", ",
+      "errorMessage": "Missatge d'error",
+      "scanPaths": "Camins d'exploració"
     },
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",

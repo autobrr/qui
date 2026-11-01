@@ -505,7 +505,6 @@
       "dryRun": "Dry run",
       "removed": "Removed",
       "executed": "Executed",
-      "copyHash": "Copy hash",
       "original": "Original: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Rule: {{name}}",
@@ -666,8 +665,7 @@
         "exportedTorrents": "Exported {{count}} torrents to CSV",
         "exportFailed": "Failed to export preview",
         "deletedActivityEntries": "Deleted {{count}} activity entries",
-        "deleteActivityFailed": "Failed to delete activity",
-        "hashCopied": "Hash copied"
+        "deleteActivityFailed": "Failed to delete activity"
       },
       "exported": "Exported"
     },
@@ -767,7 +765,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Partial failure - check recent scans",
       "partialFailureExpand": "Partial failure - expand for details",
-      "copiedToClipboard": "Copied to clipboard",
       "noScansYet": "No scans run yet. Click \"Scan Now\" to find orphans.",
       "statusClean": "Clean",
       "statusPartial": "Partial scan",
@@ -787,7 +784,9 @@
         "scanStartFailed": "Failed to start scan",
         "scanCanceled": "Scan canceled",
         "cancelFailed": "Failed to cancel"
-      }
+      },
+      "errorMessage": "Error message",
+      "scanPaths": "Scan paths"
     },
     "orphanScanPreview": {
       "title": "Orphan Preview",
@@ -936,8 +935,6 @@
       "ratio": "Ratio",
       "added": "Added",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash copied",
-      "copyHash": "Copy hash",
       "loading": "Loading...",
       "notAvailable": "Run details not available (in-memory only).",
       "failedToLoad": "Failed to load run details.",
@@ -1001,8 +998,6 @@
       "tryDifferentSearch": "Try a different search term or clear the filter.",
       "eventsWillAppear": "Events will appear here when stalled torrents are detected.",
       "enableMonitoring": "Enable monitoring to start tracking stalled torrents.",
-      "hashCopied": "Hash copied",
-      "copyHash": "Copy hash",
       "outcomes": {
         "succeeded": "Succeeded",
         "failed": "Failed",

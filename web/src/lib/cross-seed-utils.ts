@@ -93,6 +93,38 @@ export function getLocalMatchTypeInfo(
   }
 }
 
+export function getMatchTypeLabel(matchType: string, t: TFunction): { label: string; description: string } {
+  switch (matchType) {
+    case "content_path":
+      return {
+        label: t("crossSeedTable.matchTypes.contentPath.label"),
+        description: t("crossSeedTable.matchTypes.contentPath.description"),
+      }
+    case "name":
+      return {
+        label: t("crossSeedTable.matchTypes.name.label"),
+        description: t("crossSeedTable.matchTypes.name.description"),
+      }
+    case "release":
+      return {
+        label: t("crossSeedTable.matchTypes.release.label"),
+        description: t("crossSeedTable.matchTypes.release.description"),
+      }
+    case "hardlink":
+      return {
+        label: t("crossSeedTable.matchTypes.hardlink.label"),
+        description: t("crossSeedTable.matchTypes.hardlink.description"),
+      }
+    case "reflink":
+      return {
+        label: t("crossSeedTable.matchTypes.reflink.label"),
+        description: t("crossSeedTable.matchTypes.reflink.description"),
+      }
+    default:
+      return { label: matchType, description: matchType }
+  }
+}
+
 export function hasBreakableLocalMatches(
   matches: readonly Pick<LocalCrossSeedMatch, "matchType">[]
 ): boolean {

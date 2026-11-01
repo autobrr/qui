@@ -102,7 +102,6 @@
       "proxyUrl": "URL do Proxy",
       "showProxyUrl": "Mostrar URL do proxy",
       "hideProxyUrl": "Ocultar URL do proxy",
-      "copyProxyUrl": "Copiar URL do proxy",
       "done": "Concluído"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "Chave API de cliente excluída com sucesso",
       "deleteFailed": "Falha ao excluir chave API de cliente: {{error}}",
       "clientNameRequired": "O nome do cliente é obrigatório",
-      "selectInstance": "Selecione uma instância do qBittorrent",
-      "proxyCopied": "URL do proxy copiada para a área de transferência",
-      "copyFailed": "Falha ao copiar para a área de transferência"
+      "selectInstance": "Selecione uma instância do qBittorrent"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "Sua nova chave API",
       "warning": "Salve esta chave agora. Você não conseguirá vê-la novamente.",
-      "done": "Concluído"
+      "done": "Concluído",
+      "apiKey": "Chave API"
     },
     "deleteDialog": {
       "title": "Excluir Chave API?",
@@ -158,9 +156,7 @@
       "created": "Chave API criada com sucesso",
       "createFailed": "Falha ao criar chave API",
       "deleted": "Chave API excluída com sucesso",
-      "deleteFailed": "Falha ao excluir chave API",
-      "copied": "Chave API copiada para a área de transferência",
-      "copyFailed": "Falha ao copiar para a área de transferência"
+      "deleteFailed": "Falha ao excluir chave API"
     }
   },
   "externalPrograms": {
@@ -1107,11 +1103,6 @@
       "bind": "Endereço de Bind",
       "configDir": "Diretório de Configurações",
       "dataDir": "Diretório de Dados"
-    },
-    "copyTitle": "Copiar {{label}}",
-    "toasts": {
-      "copied": "{{label}} copiado para a área de transferência",
-      "copyFailed": "Falha ao copiar {{label}}"
     }
   }
 }
