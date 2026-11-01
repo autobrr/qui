@@ -1176,7 +1176,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             address={getPeerDisplayAddress(peer, incognitoMode)}
                             countryCode={peer.country_code}
                             country={peer.country}
-                            client={peer.client || matchPeerClient(peer.client, peer.peer_id_client).name || t("detailsPanel.values.unknownClient")}
+                            client={peer.client?.trim() || matchPeerClient(peer.client, peer.peer_id_client).name || t("detailsPanel.values.unknownClient")}
                             clientIcon={<PeerClientIcon client={peer.client} peerIdClient={peer.peer_id_client} />}
                             connection={peer.connection}
                             flags={peer.flags}

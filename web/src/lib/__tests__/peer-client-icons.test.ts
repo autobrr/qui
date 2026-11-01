@@ -18,6 +18,8 @@ describe("matchPeerClient", () => {
     { client: "porla/0.52.0 libtorrent/2.1.2.0", peerId: "-PO0k00-", icon: "porla", name: "porla", version: "0.52.0", letter: "p" },
     { client: "", peerId: "-qB5120-", icon: "qbittorrent", name: "qBittorrent", version: "", letter: "q" },
     { client: "Flud 1.10", peerId: "-FL1100-", icon: null, name: "Flud", version: "1.10", letter: "F" },
+    // The letter is a whole character, not half of an emoji.
+    { client: "\u{1F984}Torrent 1.0", peerId: "", icon: null, name: "\u{1F984}Torrent", version: "1.0", letter: "\u{1F984}" },
     // An unmatched text falls back to the peer ID for the icon, but keeps its own name.
     { client: "Unknown [-qB5120-]", peerId: "-qB5120-", icon: "qbittorrent", name: "Unknown [-qB5120-]", version: "", letter: "U" },
   ])("$client / $peerId", ({ client, peerId, icon, name, version, letter }) => {

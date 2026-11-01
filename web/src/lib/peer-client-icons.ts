@@ -48,7 +48,7 @@ export function matchPeerClient(client: string | undefined, peerIdClient: string
   const nameAndVersion = text.match(/^([^\s/]+)[\s/]+(\d[\w.-]*)/)
   const name = nameAndVersion ? nameAndVersion[1] : text || (rule?.name ?? "")
 
-  return { icon: rule?.icon ?? null, name, version: nameAndVersion?.[2] ?? "", letter: name.charAt(0) || "?" }
+  return { icon: rule?.icon ?? null, name, version: nameAndVersion?.[2] ?? "", letter: Array.from(name)[0] ?? "?" }
 }
 
 /** The full claim of the peer, for a tooltip: `Deluge/2.1.1 libtorrent/2.0.10 · -DE211s-`. */
