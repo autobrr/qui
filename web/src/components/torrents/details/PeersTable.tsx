@@ -89,7 +89,9 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 150,
     }),
-    columnHelper.accessor("client", {
+    // Sort by the shown name, so a peer that sends only a peer ID sorts with its client.
+    columnHelper.accessor((row) => matchPeerClient(row.client, row.peer_id_client).name, {
+      id: "client",
       header: t("peersTable.client"),
       cell: (info) => {
         const { client, peer_id_client: peerIdClient } = info.row.original
