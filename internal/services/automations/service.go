@@ -4980,6 +4980,18 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				ch <- activity
 			}
 
+			// removeFromTarget deletes a failed export from the target, keeping its files,
+			// so it does not block a re-export on the next run.
+			removeFromTarget := func(ctx context.Context, cause string) {
+				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).Str("cause", cause).
+						Msg("automations: failed to clean up torrent from target")
+					return
+				}
+				log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+					Msg("automations: cleaned up failed export torrent from target")
+			}
+
 			// 1. Export .torrent from source instance
 			torrentBytes, _, exportTracker, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
 			if exportTracker != "" {
@@ -5044,6 +5056,28 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				return
 			}
 
+			// qBittorrent does not hash-check a torrent that was added stopped.
+			// Ask it to recheck; it runs the torrent only for the check and stops it again.
+			if exec.action.Paused && !exec.action.SkipCheckingEnabled() {
+				err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), exec.action.TargetInstanceID, []string{exec.hash}, "recheck")
+
+				// The post-add retry detaches from ctx and can use up its deadline, so verify and clean up under a fresh one.
+				var verifyCancel context.CancelFunc
+				ctx, verifyCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+				defer verifyCancel()
+
+				if err != nil {
+					log.Error().Err(err).
+						Int("sourceInstanceID", sourceInstanceID).
+						Int("targetInstanceID", exec.action.TargetInstanceID).
+						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+						Msg("automations: recheck on target failed")
+					removeFromTarget(ctx, "recheck failed")
+					recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Recheck on target failed: "+err.Error()))
+					return
+				}
+			}
+
 			// 4. Post-add verification: confirm torrent is healthy on target
 			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
 				log.Error().
@@ -5068,15 +5102,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					return
 				}
 
-				// Clean up the failed torrent from target so it doesn't block re-export on next run
-				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
-					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
-						Msg("automations: failed to clean up torrent from target after verification failure")
-				} else {
-					log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
-						Msg("automations: cleaned up failed export torrent from target")
-				}
-
+				removeFromTarget(ctx, "verification failed")
 				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
 				return
 			}
@@ -5100,16 +5126,17 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	return ch
 }
 
+// exportVerifyMaxAttempts and exportVerifyPollInterval bound post-add verification. Tests shorten them.
+var (
+	exportVerifyMaxAttempts  = 10
+	exportVerifyPollInterval = 3 * time.Second
+)
+
 // verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
 // When skipChecking is false, a torrent still in a checking state after retries is treated as
 // success (the add worked, hash check is in progress).
 // Returns empty string on success, or a failure reason string.
 func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	const (
-		maxAttempts  = 10
-		pollInterval = 3 * time.Second
-	)
-
 	syncMgr, err := s.syncManager.GetQBittorrentSyncManager(ctx, targetInstanceID)
 	if err != nil {
 		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
@@ -5118,7 +5145,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 	var lastErr error
 	var lastStateChecking bool
 
-	for attempt := range maxAttempts {
+	for attempt := range exportVerifyMaxAttempts {
 		// Force a cache refresh so we see newly added torrents
 		if err := syncMgr.Sync(ctx); err != nil {
 			lastErr = err
@@ -5185,7 +5212,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		select {
 		case <-ctx.Done():
 			return "Verification cancelled: " + ctx.Err().Error()
-		case <-time.After(pollInterval):
+		case <-time.After(exportVerifyPollInterval):
 		}
 	}
 
@@ -5196,7 +5223,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 	if lastErr != nil {
 		return fmt.Sprintf("Verification failed: %v", lastErr)
 	}
-	return fmt.Sprintf("Verification timed out after %d attempts (%v)", maxAttempts, time.Duration(maxAttempts)*pollInterval)
+	return fmt.Sprintf("Verification timed out after %d attempts (%v)", exportVerifyMaxAttempts, time.Duration(exportVerifyMaxAttempts)*exportVerifyPollInterval)
 }
 
 func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
