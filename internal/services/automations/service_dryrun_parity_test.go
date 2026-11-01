@@ -6,16 +6,22 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -56,53 +62,124 @@ func (m parityCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()
 
-	maindata, err := json.Marshal(map[string]any{
-		"rid": 1, "full_update": true, "server_state": map[string]any{"free_space_on_disk": 1000}, "torrents": fixture.torrents,
-	})
+	torrents, err := json.Marshal(fixture.torrents)
 	require.NoError(t, err)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/auth/login":
-			_, _ = w.Write([]byte("Ok."))
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.10.0"))
-		case "/api/v2/sync/maindata":
-			_, _ = w.Write(maindata)
-		case "/api/v2/torrents/files":
-			files := fixture.files[r.URL.Query().Get("hash")]
-			if files == nil {
-				files = qbt.TorrentFiles{}
-			}
-			_ = json.NewEncoder(w).Encode(files)
-		case "/api/v2/torrents/pause":
-			// A live run pauses; a dry run never sends this.
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	stub := newStubQbt(t, string(torrents))
+	stub.files = make(map[string]string, len(fixture.files))
+	for hash, files := range fixture.files {
+		encoded, err := json.Marshal(files)
+		require.NoError(t, err)
+		stub.files[hash] = string(encoded)
+	}
+	stub.localFS = fixture.localFS
+	svc, _, instanceIDs := newStubService(t, parityCrossMatcher{sameContent: fixture.sameContent}, stub)
+	return svc, instanceIDs[0]
+}
+
+// stubWrite is one write request a stubQbt received.
+type stubWrite struct {
+	path string
+	form url.Values
+}
+
+// stubQbt is a stub qBittorrent that serves a fixed torrent list and records every write in arrival order.
+type stubQbt struct {
+	url string
+
+	mu       sync.Mutex
+	torrents string            // JSON object keyed by hash, as in sync/maindata
+	files    map[string]string // torrents/files answer by hash; other hashes get no files
+	writes   []stubWrite
+	localFS  bool // the instance has local filesystem access
+	// torrentsAfterAdd replaces torrents on torrents/add, so an export's verification finds the torrent.
+	torrentsAfterAdd string
+}
+
+func newStubQbt(t *testing.T, torrents string) *stubQbt {
+	t.Helper()
+
+	stub := &stubQbt{torrents: torrents}
+	server := httptest.NewServer(http.HandlerFunc(stub.serveHTTP))
 	t.Cleanup(server.Close)
+	stub.url = server.URL
+	return stub
+}
+
+func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/api/v2/auth/login":
+		_, _ = w.Write([]byte("Ok."))
+	case "/api/v2/app/webapiVersion":
+		_, _ = w.Write([]byte("2.10.0"))
+	case "/api/v2/sync/maindata":
+		s.mu.Lock()
+		torrents := s.torrents
+		s.mu.Unlock()
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + `}`))
+	case "/api/v2/torrents/files":
+		s.mu.Lock()
+		files, ok := s.files[r.URL.Query().Get("hash")]
+		s.mu.Unlock()
+		if !ok {
+			files = `[]`
+		}
+		_, _ = w.Write([]byte(files))
+	case "/api/v2/torrents/export":
+		_, _ = w.Write([]byte("d4:infod4:name6:paritye"))
+	default:
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			_ = r.ParseForm()
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/v2/")
+		s.mu.Lock()
+		s.writes = append(s.writes, stubWrite{path: path, form: r.Form})
+		if path == "torrents/add" && s.torrentsAfterAdd != "" {
+			s.torrents = s.torrentsAfterAdd
+		}
+		s.mu.Unlock()
+		_, _ = w.Write([]byte("Ok."))
+	}
+}
+
+// recordedWrites returns the writes received so far, in arrival order.
+func (s *stubQbt) recordedWrites() []stubWrite {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.writes)
+}
+
+// newStubService boots a Service with one instance per stub, in order, and returns the activity database.
+func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
+	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, t.Name())
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(t.Context(), "parity", server.URL, "", "", nil, nil, false, new(fixture.localFS))
-	require.NoError(t, err)
-	clearHardlinkIndex := func() {
-		globalHardlinkIndexCache.mu.Lock()
-		delete(globalHardlinkIndexCache.indices, instance.ID)
-		globalHardlinkIndexCache.mu.Unlock()
+	instanceIDs := make([]int, 0, len(stubs))
+	for i, stub := range stubs {
+		instance, err := instanceStore.Create(t.Context(), fmt.Sprintf("stub-%d", i), stub.url, "", "", nil, nil, false, new(stub.localFS))
+		require.NoError(t, err)
+		instanceIDs = append(instanceIDs, instance.ID)
+		clearHardlinkIndex := func() {
+			globalHardlinkIndexCache.mu.Lock()
+			delete(globalHardlinkIndexCache.indices, instance.ID)
+			globalHardlinkIndexCache.mu.Unlock()
+		}
+		clearHardlinkIndex()
+		t.Cleanup(clearHardlinkIndex)
 	}
-	clearHardlinkIndex()
-	t.Cleanup(clearHardlinkIndex)
 
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil,
-		parityCrossMatcher{sameContent: fixture.sameContent}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	return svc, instance.ID
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	return svc, db, instanceIDs
 }
 
 func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automation {
