@@ -89,6 +89,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-cli": "^1.167.45",
