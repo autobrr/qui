@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net"
 	"os"
@@ -1002,7 +1003,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		// which the paths above cannot see. The sftp tier reads no identity, so
 		// it lists by path, and it cannot delete.
 		if len(abandoned) > 0 && models.FilesystemCapabilitiesOf(instance).Identity {
-			reached, err := collectInUseIDs(ctx, backend, instance, reachedDirs(d, result))
+			reached, err := collectInUseIDs(ctx, backend, instance, reachedDirs(d, result, keys.fileDirs))
 			switch {
 			case ctx.Err() != nil:
 				s.markCanceled(ctx, instanceID, runID)
@@ -1512,14 +1513,19 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// compare, so its identity is compared with the folders along each torrent
 	// path. Each half is read only when the run lists something it protects.
 	if len(fileEntries) > 0 || len(dirEntries) > 0 {
-		var paths []string
+		var files []string
 		if len(fileEntries) > 0 {
-			paths = fileMapResult.torrentPaths
+			files = fileMapResult.torrentPaths
 		}
-		if len(dirEntries) > 0 {
-			paths = slices.Concat(paths, reachedDirs(d, fileMapResult))
+		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, files)
+		if err == nil && len(dirEntries) > 0 {
+			// The file reads above show which folders hold a file on disk,
+			// and those need no identity read.
+			var dirs *inUseIDs
+			if dirs, err = collectInUseIDs(ctx, deleteBackend, instance, reachedDirs(d, fileMapResult, inUse.fileDirs)); err == nil {
+				maps.Copy(inUse.keys, dirs.keys)
+			}
 		}
-		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, paths)
 		if err != nil {
 			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent path")
 			switch {

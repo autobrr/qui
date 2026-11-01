@@ -165,12 +165,18 @@ func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normC
 // A torrent can reach a folder under another spelling before it writes
 // anything, and an unwritten subfolder is reached only by its file's path, so
 // each level counts. saveRoots are the save paths of torrents with no file
-// list yet, which say where they will write.
-func torrentDirs(d fsops.PathDialect, files []string, saveRoots ...string) []string {
+// list yet, which say where they will write. A file whose folder is in
+// fileDirs is on disk, so that folder and those above it hold it and can never
+// be emptied: they need no identity read.
+func torrentDirs(d fsops.PathDialect, files []string, fileDirs map[string]struct{}, saveRoots ...string) []string {
 	seen := make(map[string]struct{})
 	var dirs []string
 	for _, file := range files {
-		dirs = addUpToRoot(d, d.Dir(file), seen, dirs)
+		dir := d.Dir(file)
+		if _, onDisk := fileDirs[dir]; onDisk {
+			continue
+		}
+		dirs = addUpToRoot(d, dir, seen, dirs)
 	}
 	for _, root := range saveRoots {
 		dirs = addUpToRoot(d, root, seen, dirs)
@@ -179,8 +185,8 @@ func torrentDirs(d fsops.PathDialect, files []string, saveRoots ...string) []str
 }
 
 // reachedDirs is torrentDirs for a file map result.
-func reachedDirs(d fsops.PathDialect, result *buildFileMapResult) []string {
-	return torrentDirs(d, result.torrentPaths, slices.Concat(result.metadataRoots, result.skippedRoots)...)
+func reachedDirs(d fsops.PathDialect, result *buildFileMapResult, fileDirs map[string]struct{}) []string {
+	return torrentDirs(d, result.torrentPaths, fileDirs, slices.Concat(result.metadataRoots, result.skippedRoots)...)
 }
 
 // addUpToRoot stops at the first folder already seen, so a shared prefix costs once.

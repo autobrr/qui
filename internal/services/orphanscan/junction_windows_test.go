@@ -119,7 +119,7 @@ func TestOrphanScan_WindowsJunctionKeepsEmptyFolderATorrentReaches(t *testing.T)
 	})
 
 	backend := newTestBackend()
-	reached, err := collectInUseIDs(t.Context(), backend, nil, torrentDirs(fsops.HostPaths, []string{filepath.Join(junction, "x.mkv")}))
+	reached, err := collectInUseIDs(t.Context(), backend, nil, torrentDirs(fsops.HostPaths, []string{filepath.Join(junction, "x.mkv")}, nil))
 	require.NoError(t, err)
 
 	listed := []OrphanFile{{Path: movie, IsAbandonedDir: true}, {Path: filepath.Dir(movie), IsAbandonedDir: true}, {Path: leftover, IsAbandonedDir: true}}

@@ -215,6 +215,9 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
+	// fileDirs are the folders that hold a torrent file found on disk, as
+	// reachedDirs takes them.
+	fileDirs map[string]struct{}
 }
 
 // collectInUseIDs reads the identity of each torrent file or folder through
@@ -233,7 +236,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			unique = append(unique, p)
 		}
 	}
-	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique))}
+	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique)), fileDirs: make(map[string]struct{})}
 	infos, errs := fsops.StatAll(ctx, backend, unique)
 	denied, firstDenied := 0, ""
 	for i := range unique {
@@ -255,6 +258,9 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		info := infos[i]
 		if !info.Mode.IsRegular() && !info.IsDir {
 			continue
+		}
+		if info.Mode.IsRegular() {
+			ids.fileDirs[backend.Paths().Dir(unique[i])] = struct{}{}
 		}
 		key, err := fileKey(info, instance)
 		if err != nil {
