@@ -59,7 +59,7 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), 1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	// Later requests skip the network, so a synctest bubble can advance its clock.

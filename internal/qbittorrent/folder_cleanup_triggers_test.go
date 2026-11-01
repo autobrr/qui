@@ -75,7 +75,7 @@ func newTriggerRig(t *testing.T) *triggerRig {
 	r.instanceID = instance.ID
 	r.instances = instanceStore
 
-	client, err := NewClientWithTimeout(instance.ID, r.stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), instance.ID, r.stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 

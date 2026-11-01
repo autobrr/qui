@@ -151,7 +151,7 @@ func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.
 		switch {
 		case err == nil && posix && gnu:
 			answer <- models.SSHTierExec
-		case err != nil && (ctx.Err() != nil || checkAlive(client) != nil):
+		case noAnswer(ctx, err) || err != nil && checkAlive(client) != nil:
 			answer <- ""
 		default:
 			answer <- models.SSHTierSFTP
