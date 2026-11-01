@@ -18,7 +18,7 @@ The old key stays a secret after the change, because installs that did not updat
 
 ## Consequences
 
-- A user who skips the bridge release gets a signature error from Self-update and must download the next version by hand one time. The release notes after the bridge release say so.
+- A user who skips the bridge release gets a signature error from Self-update and must download the next version by hand one time.
 - Docker images do not self-update, so a key change does not affect them.
 - A published release cannot be fixed. If its files are wrong, we ship the next patch version.
 - Immutable releases do not lock the releases that were published before the setting, and a person with write access can still delete a release. Delete the old key after the bridge release, and treat a leak of it as an incident.
