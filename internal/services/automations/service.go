@@ -4959,13 +4959,13 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					return
 				}
 
-				// The recheck retry detaches from ctx, so it can succeed after the export deadline.
-				// Verify and clean up under a fresh deadline rather than the expired one.
-				if ctx.Err() != nil {
-					var lateCancel context.CancelFunc
-					ctx, lateCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
-					defer lateCancel()
-				}
+				// The post-add lookup, readiness wait and recheck detach from ctx and can use
+				// most of the export deadline. Verify and clean up under a fresh deadline, so
+				// verification is not cut short and the cleanup delete never runs on an
+				// expired context.
+				var verifyCancel context.CancelFunc
+				ctx, verifyCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+				defer verifyCancel()
 			}
 
 			// 4. Post-add verification: confirm torrent is healthy on target
