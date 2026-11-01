@@ -10,11 +10,22 @@ type SearchUpdate = (prev: Record<string, unknown>) => Record<string, unknown>
 
 // The router rewrites history.state on a reload and drops extra keys, but it
 // keeps __TSR_index, so the count lives in session storage under that index.
-// ponytail: a count can outlive its entry when the user leaves with Back; it is
-// read only while the URL holds a torrent, and the next open overwrites it.
-// A deep link that lands on the same index later reads the old count.
+// ponytail: a count outlives its entry when Back leaves the page from a view
+// (a link from another page opened it). A link that later lands on that index
+// reads the old count. Bind counts to entries if this shows up.
+const DEPTH_PREFIX = "qui-details-depth:"
+
 function depthKey(index: number): string {
-  return `qui-details-depth:${index}`
+  return `${DEPTH_PREFIX}${index}`
+}
+
+// Back left the entries after this one: a later entry at their index must not
+// read their counts
+function dropCountsAfter(index: number) {
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const key = sessionStorage.key(i)
+    if (key?.startsWith(DEPTH_PREFIX) && Number(key.slice(DEPTH_PREFIX.length)) > index) sessionStorage.removeItem(key)
+  }
 }
 
 function currentIndex(router: AnyRouter): number {
@@ -41,6 +52,12 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
   const navigate = useNavigate()
   // The hash of the entry the view owns, so Back closes only that view
   const ownedHash = useRef<string | undefined>(undefined)
+  const hadUrlHash = useRef(false)
+
+  useEffect(() => {
+    if (hadUrlHash.current && !urlHash) dropCountsAfter(currentIndex(router))
+    hadUrlHash.current = Boolean(urlHash)
+  }, [urlHash, router])
 
   useEffect(() => {
     if (!enabled) return

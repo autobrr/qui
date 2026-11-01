@@ -160,4 +160,23 @@ describe("useMobileDetailsHistory", () => {
     expect(rig.history.location.pathname).toBe("/list2")
     expect(shown()).toBe("list")
   })
+
+  // regression: #3703
+  it("closes in place when a link to a torrent takes the index of a view that Back left", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    cleanup()
+
+    // A link from another page lands on the index that the closed view had
+    const linked = mount(["/other", "/list", "/list2?torrent=a"])
+    await settle()
+    expect(shown()).toBe("a")
+
+    await click("close")
+    expect(linked.history.location.pathname).toBe("/list2")
+    expect(linked.history.location.search).toBe("")
+    expect(shown()).toBe("list")
+  })
 })
