@@ -115,7 +115,8 @@ export function MobileCategoryTagsRow({ category, tags }: { category: string; ta
   const tagList = tags.split(",").map(tag => tag.trim()).filter(Boolean)
   if (!category && tagList.length === 0) return null
   return (
-    <div className="flex shrink-0 flex-wrap gap-1.5 border-b px-4 py-2.5">
+    // About three rows of badges: many tags must leave room for the section
+    <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5">
       {category && (
         <Badge variant="secondary" className="gap-1 text-xs">
           <Folder className="size-3" />{category}

@@ -38,8 +38,15 @@ function mount(entries: string[]) {
     component: Page,
     validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
   })
+  // A second list, as the list of another instance
+  const list2Route = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/list2",
+    component: Page,
+    validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
+  })
   const otherRoute = createRoute({ getParentRoute: () => rootRoute, path: "/other" })
-  const router = createRouter({ routeTree: rootRoute.addChildren([listRoute, otherRoute]), history })
+  const router = createRouter({ routeTree: rootRoute.addChildren([listRoute, list2Route, otherRoute]), history })
   render(<RouterProvider router={router} />)
   return { history }
 }
@@ -136,5 +143,21 @@ describe("useMobileDetailsHistory", () => {
 
     await back(rig)
     leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("starts a new count when it opens from a list entry that Back left a count on", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    // The list of another instance takes the history index of the closed view
+    await act(async () => rig.history.push("/list2"))
+    await settle()
+
+    await click("open")
+    await click("close")
+    expect(rig.history.location.pathname).toBe("/list2")
+    expect(shown()).toBe("list")
   })
 })

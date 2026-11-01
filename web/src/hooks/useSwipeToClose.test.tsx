@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { decideSwipe } from "./useSwipeToClose"
+import { decideSwipe, useSwipeToClose } from "./useSwipeToClose"
 
 const width = 400
 
@@ -41,5 +42,50 @@ describe("decideSwipe", () => {
   it("decides and releases a quick swipe in one step", () => {
     expect(decideSwipe("pending", { dx: 130, dy: 0, ms: 1000, width }, true)).toBe("close")
     expect(decideSwipe("pending", { dx: 4, dy: 0, ms: 20, width }, true)).toBe("ignore")
+  })
+})
+
+function View({ onClose }: { onClose: () => void }) {
+  return <div data-testid="view" {...useSwipeToClose(onClose)} />
+}
+
+const finger = (clientX: number, clientY = 0) => ({ clientX, clientY })
+
+// A view that follows a finger 100 px to the right
+function startSwipe() {
+  const onClose = vi.fn()
+  render(<View onClose={onClose} />)
+  const view = screen.getByTestId("view")
+  fireEvent.touchStart(view, { touches: [finger(0)] })
+  fireEvent.touchMove(view, { touches: [finger(100)] })
+  expect(view.style.transform).toBe("translateX(100px)")
+  return { view, onClose }
+}
+
+describe("useSwipeToClose", () => {
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+
+  // regression: #3703
+  it("returns the view to its place when the browser cancels the touch", () => {
+    vi.useFakeTimers()
+    const { view, onClose } = startSwipe()
+    fireEvent.touchCancel(view, { touches: [] })
+    vi.runAllTimers()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(view.style.transform).toBe("")
+  })
+
+  // regression: #3703
+  it("returns the view to its place when a second finger touches it", () => {
+    vi.useFakeTimers()
+    const { view, onClose } = startSwipe()
+    fireEvent.touchStart(view, { touches: [finger(100), finger(200)] })
+    fireEvent.touchEnd(view, { touches: [] })
+    vi.runAllTimers()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(view.style.transform).toBe("")
   })
 })

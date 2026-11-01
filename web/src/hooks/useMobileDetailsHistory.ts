@@ -12,6 +12,7 @@ type SearchUpdate = (prev: Record<string, unknown>) => Record<string, unknown>
 // keeps __TSR_index, so the count lives in session storage under that index.
 // ponytail: a count can outlive its entry when the user leaves with Back; it is
 // read only while the URL holds a torrent, and the next open overwrites it.
+// A deep link that lands on the same index later reads the old count.
 function depthKey(index: number): string {
   return `qui-details-depth:${index}`
 }
@@ -58,10 +59,11 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
 
   const open = useCallback((search: SearchUpdate) => {
     const index = currentIndex(router)
-    const depth = Number(sessionStorage.getItem(depthKey(index))) + 1
+    // A list entry starts a new count: Back can leave an old one on its index
+    const depth = (urlHash ? Number(sessionStorage.getItem(depthKey(index))) : 0) + 1
     sessionStorage.setItem(depthKey(index + 1), String(depth))
     void navigate({ to: ".", search })
-  }, [navigate, router])
+  }, [navigate, router, urlHash])
 
   const close = useCallback(() => {
     const key = depthKey(currentIndex(router))

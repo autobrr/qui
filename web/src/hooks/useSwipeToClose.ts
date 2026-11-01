@@ -52,6 +52,18 @@ function overlayOf(el: HTMLElement): HTMLElement | null {
   return prev instanceof HTMLElement && prev.dataset.slot === "sheet-overlay" ? prev : null
 }
 
+// Slides the view to its place ("") or out ("translateX(100%)"), and fades the
+// overlay with it
+function slide(el: HTMLElement, transform: string) {
+  el.style.transition = `transform ${SLIDE_MS}ms ease-out`
+  el.style.transform = transform
+  const overlay = overlayOf(el)
+  if (overlay) {
+    overlay.style.transition = `opacity ${SLIDE_MS}ms ease-out`
+    overlay.style.opacity = transform ? "0" : ""
+  }
+}
+
 /**
  * Touch handlers for a Sheet content that closes on a swipe from left to
  * right. The view follows the finger and the overlay brightens with it.
@@ -59,18 +71,29 @@ function overlayOf(el: HTMLElement): HTMLElement | null {
 export function useSwipeToClose(onClose: () => void) {
   const gesture = useRef<{ x: number; y: number; t: number; dx: number; dy: number; mode: SwipeMode } | null>(null)
 
+  // Stops the gesture, and returns the view if it follows the finger
+  const abandon = (el: HTMLElement) => {
+    const followed = gesture.current?.mode === "follow"
+    gesture.current = null
+    if (followed) slide(el, "")
+  }
+
   const onTouchStart = (e: TouchEvent<HTMLElement>) => {
+    if (e.touches.length > 1) {
+      abandon(e.currentTarget)
+      return
+    }
     const touch = e.touches[0]
     // React passes touches from a portal (a dialog, an open menu) up to the Sheet
     const inView = e.target instanceof Node && e.currentTarget.contains(e.target)
-    gesture.current = !inView || e.touches.length > 1 || scrollsSideways(e.target, e.currentTarget)? null: { x: touch.clientX, y: touch.clientY, t: performance.now(), dx: 0, dy: 0, mode: "pending" }
+    gesture.current = !inView || scrollsSideways(e.target, e.currentTarget)? null: { x: touch.clientX, y: touch.clientY, t: performance.now(), dx: 0, dy: 0, mode: "pending" }
   }
 
   const onTouchMove = (e: TouchEvent<HTMLElement>) => {
     const g = gesture.current
     if (!g) return
     if (e.touches.length > 1) {
-      g.mode = "ignore"
+      abandon(e.currentTarget)
       return
     }
     g.dx = e.touches[0].clientX - g.x
@@ -94,24 +117,21 @@ export function useSwipeToClose(onClose: () => void) {
     if (!g || g.mode !== "follow") return
     const el = e.currentTarget
     const result = decideSwipe(g.mode, { dx: g.dx, dy: g.dy, ms: performance.now() - g.t, width: el.clientWidth }, true)
-    const overlay = overlayOf(el)
-    el.style.transition = `transform ${SLIDE_MS}ms ease-out`
-    if (overlay) overlay.style.transition = `opacity ${SLIDE_MS}ms ease-out`
-    if (result === "close") {
-      el.style.transform = "translateX(100%)"
-      // Skip the exit animations of the Sheet and the overlay: the view would
-      // slide in from the left edge again, and the overlay fade a second time
-      el.style.animation = "none"
-      if (overlay) {
-        overlay.style.opacity = "0"
-        overlay.style.animation = "none"
-      }
-      setTimeout(onClose, SLIDE_MS)
-    } else {
-      el.style.transform = ""
-      if (overlay) overlay.style.opacity = ""
+    if (result !== "close") {
+      slide(el, "")
+      return
     }
+    slide(el, "translateX(100%)")
+    // Skip the exit animations of the Sheet and the overlay: the view would
+    // slide in from the left edge again, and the overlay fade a second time
+    el.style.animation = "none"
+    const overlay = overlayOf(el)
+    if (overlay) overlay.style.animation = "none"
+    setTimeout(onClose, SLIDE_MS)
   }
 
-  return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd }
+  // A cancel is no release: the view returns to its place
+  const onTouchCancel = (e: TouchEvent<HTMLElement>) => abandon(e.currentTarget)
+
+  return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel }
 }
