@@ -4159,6 +4159,36 @@ paths:
         '500':
           description: Failed to list tracker icons
 
+  /api/peer-client-icons/{name}:
+    get:
+      tags:
+        - Peer Client Icons
+      summary: Get a peer client icon
+      description: |
+        Serve the logo of one peer client from a fixed list. On the first request, the server downloads the logo from a URL pinned to an upstream commit, checks its SHA-256 hash, and keeps it in the data directory. The `trackerIconsFetchEnabled` setting also controls this download. A failed download is tried again after a wait of 30 minutes, doubled after each failure up to 24 hours.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Icon name from the list, for example `qbittorrent` or `rutorrent`
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+      responses:
+        '200':
+          description: The icon, with a sandbox Content-Security-Policy
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Unknown name, or no verified icon is available
+
   /api/torznab/search:
     post:
       tags:

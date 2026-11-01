@@ -110,7 +110,7 @@ QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=false  # Optional: recover errored/miss
 ## Tracker icons
 
 ```bash
-QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
+QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to stop tracker icon and peer client logo downloads (default: true)
 ```
 
 ## Updates

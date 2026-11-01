@@ -24,6 +24,7 @@ import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-ut
 import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
+import { matchPeerClient } from "@/lib/peer-client-icons"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
@@ -36,6 +37,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
+import { PeerClientIcon } from "./details/PeerClientIcon"
 import { MobileCategoryTagsRow, MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
@@ -1174,7 +1176,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             address={getPeerDisplayAddress(peer, incognitoMode)}
                             countryCode={peer.country_code}
                             country={peer.country}
-                            client={peer.client || t("detailsPanel.values.unknownClient")}
+                            client={peer.client || matchPeerClient(peer.client, peer.peer_id_client).label || t("detailsPanel.values.unknownClient")}
+                            clientIcon={<PeerClientIcon client={peer.client} peerIdClient={peer.peer_id_client} />}
                             connection={peer.connection}
                             flags={peer.flags}
                             progressPercent={progressPercent}
