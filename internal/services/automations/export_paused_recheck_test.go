@@ -29,7 +29,7 @@ import (
 // checks, then reports the torrent complete; nothing starts or resumes it.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
-	result := runPausedExport(t, pausedExportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
@@ -45,7 +45,7 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 // target, keeping its files, so it does not block the next export.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
-	result := runPausedExport(t, pausedExportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
@@ -59,7 +59,7 @@ func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 // torrent is removed from the target with its files kept.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
-	result := runPausedExport(t, pausedExportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
@@ -73,7 +73,7 @@ func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
 // success: the torrent stays on the target and nothing deletes it.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
-	result := runPausedExport(t, pausedExportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
 
 	require.Len(t, result.activities, 1)
 	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
@@ -85,22 +85,24 @@ func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
 
 // Only a paused add with skip checking off needs the recheck; every other
 // combination exports without asking the target to recheck.
-func TestExecuteExportToInstance_NoRecheckWhenNotNeeded(t *testing.T) {
+func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		paused       bool
 		skipChecking bool
+		wantRechecks int32
 	}{
-		{"paused, skip checking", true, true},
-		{"started, skip checking", false, true},
-		{"started, checking", false, false},
+		{"paused, checking", true, false, 1},
+		{"paused, skip checking", true, true, 0},
+		{"started, skip checking", false, true, 0},
+		{"started, checking", false, false, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result := runPausedExport(t, pausedExportCase{paused: tc.paused, skipChecking: tc.skipChecking, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
+			result := runExport(t, exportCase{paused: tc.paused, skipChecking: tc.skipChecking, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
 
 			require.Len(t, result.activities, 1)
 			require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
-			require.Equal(t, int32(0), result.rechecks.Load())
+			require.Equal(t, tc.wantRechecks, result.rechecks.Load())
 			require.Empty(t, result.deleteFiles)
 		})
 	}
@@ -119,14 +121,14 @@ const (
 	recheckKeepsChecking
 )
 
-type pausedExportCase struct {
+type exportCase struct {
 	paused        bool
 	skipChecking  bool
 	recheckStatus int
 	afterRecheck  recheckOutcome
 }
 
-type pausedExportResult struct {
+type exportResult struct {
 	activities         []*models.AutomationActivity
 	rechecks           atomic.Int32
 	ignoredRechecks    atomic.Int32
@@ -135,14 +137,14 @@ type pausedExportResult struct {
 	statesAfterRecheck []string
 }
 
-// runPausedExport exports one torrent with the given settings to a stub target.
+// runExport exports one torrent with the given settings to a stub target.
 // The target lists the torrent only from the second poll after the add, and it
-// ignores a recheck for a hash it does not list yet, as qBittorrent does. It
+// ignores a recheck for any other hash or one it does not list yet, as qBittorrent does. It
 // reports the torrent complete once listed, except for a paused add with skip
 // checking off, which stays stopped at progress 0 until a recheck is accepted
 // and then follows tc.afterRecheck. Start, resume and force start requests are
 // counted.
-func runPausedExport(t *testing.T, tc pausedExportCase) *pausedExportResult {
+func runExport(t *testing.T, tc exportCase) *exportResult {
 	t.Helper()
 	prevAttempts := exportVerifyMaxAttempts
 	prevInterval := exportVerifyPollInterval
@@ -157,7 +159,7 @@ func runPausedExport(t *testing.T, tc pausedExportCase) *pausedExportResult {
 	var mu sync.Mutex
 	var added, listed, rechecked bool
 	var postAddPolls, postRecheckPolls int
-	result := &pausedExportResult{}
+	result := &exportResult{}
 
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -186,21 +188,16 @@ func runPausedExport(t *testing.T, tc pausedExportCase) *pausedExportResult {
 		if !rechecked {
 			return "stoppedDL", "0"
 		}
+		// Verification polls right after the recheck and every 30ms; SyncManager's own
+		// post-action sync waits 200ms. So verification is the one that sees the stale poll.
 		poll := postRecheckPolls
 		postRecheckPolls++
 		state, progress := "stoppedDL", "0"
-		switch tc.afterRecheck {
-		case recheckFindsPayload:
-			switch poll {
-			case 0:
-			case 1:
-				state, progress = "checkingDL", "0.5"
-			default:
-				state, progress = "stoppedUP", "1"
-			}
-		case recheckFindsNoPayload:
-		case recheckKeepsChecking:
+		switch {
+		case tc.afterRecheck == recheckKeepsChecking, tc.afterRecheck == recheckFindsPayload && poll == 1:
 			state, progress = "checkingDL", "0.5"
+		case tc.afterRecheck == recheckFindsPayload && poll >= 2:
+			state, progress = "stoppedUP", "1"
 		}
 		result.statesAfterRecheck = append(result.statesAfterRecheck, state)
 		return state, progress
@@ -235,9 +232,10 @@ func runPausedExport(t *testing.T, tc pausedExportCase) *pausedExportResult {
 			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/torrents/recheck":
 			result.rechecks.Add(1)
+			_ = r.ParseForm()
 			mu.Lock()
 			switch {
-			case !listed:
+			case !listed || r.PostForm.Get("hashes") != hash:
 				result.ignoredRechecks.Add(1)
 			case tc.recheckStatus == http.StatusOK:
 				rechecked = true
@@ -292,6 +290,6 @@ func runPausedExport(t *testing.T, tc pausedExportCase) *pausedExportResult {
 	for activity := range ch {
 		result.activities = append(result.activities, activity)
 	}
-	target.Close()
+	target.Close() // waits for in-flight handlers, so the counters are final
 	return result
 }

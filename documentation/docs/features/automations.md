@@ -755,7 +755,7 @@ The action assumes the data already exists on the target (moved with rclone, Qui
 - **You cannot combine it with Delete.** The API rejects rules that enable both export and delete.
 - Duplicate detection: Before the export, qui looks for the torrent on the target instance and skips the export if found.
 - After the add, qui verifies that the torrent appeared and is healthy. If that check fails, qui removes the torrent from the target so the next run can retry the transfer.
-- With **Paused** on and **Skip checking** off, qui asks the target to check the files. The torrent runs only for that check and stops again. If the recheck request fails, or verification sees the check fail, qui removes the torrent and keeps its files. For a large torrent, Success means the check started, not that it passed, and a check that fails after that is not cleaned up.
+- With **Paused** on and **Skip checking** off, qui asks the target to check the files. The torrent runs only for that check and stops again. If the recheck request fails, or verification sees the check fail, qui removes the torrent and keeps its files. For a large torrent, Success means that the check started, not that it passed. If the check fails later, qui does not remove the torrent.
 - The other three combinations of Paused and Skip checking send no recheck.
 - qui does **not** export cross-seed group members. To export a group, chain the action with Category/Tag actions that use group expansion.
 - qui logs activity with the rule name, torrent details, target instance, and success or failure status.
