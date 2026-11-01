@@ -474,9 +474,31 @@ export interface SeasonPackRun {
   createdAt: string
 }
 
+/** One base folder of a Source instance and where its Cross-seed instance sees it. An empty mappedPath means the same path. */
+export interface CrossSeedRouteRow {
+  baseDir: string
+  mappedPath: string
+}
+
 /** A saved route from a Source instance to its Cross-seed instance. */
 export interface CrossSeedRoute {
   sourceInstanceId: number
   crossSeedInstanceId: number
-  rows: { baseDir: string; mappedPath: string }[]
+  rows: CrossSeedRouteRow[]
+}
+
+/** The route read of one Source instance: one row for each base folder, with the rule status. */
+export interface CrossSeedRouteStatus extends CrossSeedRoute {
+  /** routedTorrents is null when the Cross-seed instance is unavailable. */
+  rows: (CrossSeedRouteRow & { routedTorrents: number | null })[]
+  /** The route rule that the saved route breaks. Absent when it passes. */
+  brokenRule?: string
+}
+
+export type CrossSeedRouteTestRowResult = "sees" | "seesFolderNotMarker" | "cannotSeeFolder" | "cannotWrite"
+
+/** The Test route result: one entry for each base folder, or crossSeedUnavailable with no rows. */
+export interface CrossSeedRouteTestResult {
+  crossSeedUnavailable?: string
+  rows: { baseDir: string; listedPath: string; result: CrossSeedRouteTestRowResult; error?: string }[]
 }
