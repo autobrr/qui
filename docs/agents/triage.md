@@ -21,6 +21,9 @@ Extra labels with a role in triage:
 | `external-bug` | The bug is in another program. Closed as `wontfix`. |
 | `pending-close` | Triage found a likely duplicate. If nobody comments for 1 day, the daily sweep closes the discussion as a duplicate. Until then, it takes the place of the state label. |
 | `anime` | The report is about anime, and a non-anime release would not hit the same fault. An issue created from the discussion gets the label too. |
+| `rls` | The fault is in a value that autobrr/rls parses from a release name, even when qui can work around it. rls belongs to autobrr, so the report is not `external-bug`. An issue created from the discussion gets the label too. |
+
+The workflow cannot read the rls source, so decide `rls` from the qui code: the wrong field comes from the rls parse result, and qui does not change that field. The label goes on a `bug` and on an `enhancement`, for example a request that needs rls to detect a new tag or content type.
 
 Area labels (`cross-seed`, `web`, `backend`, and more) are extra. Add the ones that fit.
 
@@ -176,7 +179,7 @@ In the local session that reads the logs, prove the cause with a live run before
 
 Every confirmed `bug` becomes an issue, in `ready-for-agent` or in `ready-for-human`. The issue becomes the only open thread for the work:
 
-1. Run `create-issue <state> <title> <brief> [<label>...]`, where `<state>` is `ready-for-agent` or `ready-for-human`. If the discussion has `anime`, pass it as an extra label. The command labels the issue and prints the issue URL.
+1. Run `create-issue <state> <title> <brief> [<label>...]`, where `<state>` is `ready-for-agent` or `ready-for-human`. If the discussion has `anime` or `rls`, pass each one as an extra label. The command labels the issue and prints the issue URL.
 2. Post one comment: the disclaimer line, then `Tracked in <issue URL>.`
 3. Add the same state label to the discussion. Remove `needs-triage` and `needs-confirmation`.
 4. Run `close RESOLVED`.
