@@ -37,7 +37,7 @@
     "pkg/prowlarr/client.go": 3
   },
   "errchkjson": {
-    "internal/services/automations/service.go": 6
+    "internal/services/automations/service.go": 1
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
