@@ -132,40 +132,38 @@ MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
 
 mutation: mutation-go mutation-web
 
-# Both tools run in a temporary worktree of HEAD, so commit first. gremlins
-# copies the whole module once per worker, and the worktree has no
+# Each run gets its own worktree of HEAD under MUTATION_DIR, so commit first.
+# The worktree goes away when the run ends, also on Ctrl-C.
+MUTATION_WORKTREE = mkdir -p "$(abspath $(MUTATION_DIR))" && \
+	run=$$(mktemp -d "$(abspath $(MUTATION_DIR))/run.XXXXXX") && \
+	trap 'git -C "$(CURDIR)" worktree remove --force "$$run/wt" 2>/dev/null; rm -rf "$$run"' EXIT && \
+	trap 'exit 130' INT TERM && \
+	git worktree add --quiet --detach "$$run/wt" HEAD
+
+# gremlins copies the whole module once per worker, and the worktree has no
 # node_modules or build output. --diff matches files only when gremlins runs
 # on the module root, so the coverage run covers every package, and only the
-# changed lines are mutated.
+# changed lines are mutated. gremlins reads each diff hunk as one block of
+# added lines, so git must write the diff with no context lines.
 mutation-go:
-	@if git diff --quiet --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '*.go' ':!*_test.go'; then \
-			echo "No committed Go source changes against $(MUTATION_BASE)."; exit 0; fi; \
-		wt="$(MUTATION_DIR)/go"; \
-		git worktree remove --force "$$wt" 2>/dev/null || true; \
-		git worktree add --quiet --detach "$$wt" HEAD || exit 1; \
-		mkdir -p "$(MUTATION_DIR)/tmp"; \
-		(cd "$$wt" && GOFLAGS=-count=1 TMPDIR="$(MUTATION_DIR)/tmp" \
+	@git diff --quiet --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '*.go' ':!*_test.go'; \
+		case $$? in 0) echo "No committed Go source changes against $(MUTATION_BASE)."; exit 0;; 1) ;; *) exit 1;; esac; \
+		$(MUTATION_WORKTREE) || exit 1; \
+		mkdir "$$run/tmp"; \
+		cd "$$run/wt" && GOFLAGS=-count=1 TMPDIR="$$run/tmp" \
+			GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.context GIT_CONFIG_VALUE_0=0 \
 			go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash \
-			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .); \
-		status=$$?; \
-		git worktree remove --force "$$wt"; \
-		rm -rf "$(MUTATION_DIR)/tmp"; \
-		exit $$status
+			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .
 
 # Stryker changes the files in place, because a test imports a Go file from
-# outside web/. An interrupted run can leave them changed, so it also runs in
-# a worktree.
+# outside web/. The worktree keeps those changes out of the main checkout.
 mutation-web:
-	@files=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts' | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
+	@changed=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts') || exit 1; \
+		files=$$(printf '%s\n' "$$changed" | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
 		if [ -z "$$files" ]; then echo "No committed TypeScript source changes against $(MUTATION_BASE)."; exit 0; fi; \
-		wt="$(MUTATION_DIR)/web"; \
-		git worktree remove --force "$$wt" 2>/dev/null || true; \
-		git worktree add --quiet --detach "$$wt" HEAD || exit 1; \
-		(cd "$$wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
-			pnpm exec stryker run --mutate "$$files"); \
-		status=$$?; \
-		git worktree remove --force "$$wt"; \
-		exit $$status
+		$(MUTATION_WORKTREE) || exit 1; \
+		cd "$$run/wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
+			pnpm exec stryker run --mutate "$$files"
 
 # Format changed code only (fast, for iteration)
 fmt:
