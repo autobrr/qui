@@ -115,6 +115,8 @@ jobs:
     # The MSI needs wixl 0.105 or later for Environment. Ubuntu 24.04 ships 0.103.
     runs-on: ubuntu-26.04
     needs: [test, web]
+    # The release environment holds the signing key and allows develop and v* tags.
+    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
