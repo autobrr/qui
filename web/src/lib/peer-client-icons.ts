@@ -32,7 +32,8 @@ const MAX_CLIENT_LENGTH = 128
 
 export interface PeerClientMatch {
   icon: string | null
-  label: string
+  name: string
+  version: string
   letter: string
 }
 
@@ -42,12 +43,12 @@ export function matchPeerClient(client: string | undefined, peerIdClient: string
   const rule = (text ? RULES.find((r) => r.client.test(text)) : undefined) ??
     (peerIdClient ? RULES.find((r) => peerIdClient.startsWith(r.peerId)) : undefined)
 
-  // "Deluge/2.1.1 libtorrent/2.0.10" gives "Deluge 2.1.1": the reported name and its version.
+  // "Deluge/2.1.1 libtorrent/2.0.10" gives "Deluge" and "2.1.1": the reported name and its version.
   // Only a peer that sends no text gets the name of its peer ID rule.
   const nameAndVersion = text.match(/^([^\s/]+)[\s/]+(\d[\w.-]*)/)
-  const label = nameAndVersion ? `${nameAndVersion[1]} ${nameAndVersion[2]}` : text || (rule?.name ?? "")
+  const name = nameAndVersion ? nameAndVersion[1] : text || (rule?.name ?? "")
 
-  return { icon: rule?.icon ?? null, label, letter: label.charAt(0) || "?" }
+  return { icon: rule?.icon ?? null, name, version: nameAndVersion?.[2] ?? "", letter: name.charAt(0) || "?" }
 }
 
 /** The full claim of the peer, for a tooltip: `Deluge/2.1.1 libtorrent/2.0.10 · -DE211s-`. */

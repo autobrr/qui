@@ -93,11 +93,14 @@ export const PeersTable = memo(function PeersTable({
       header: t("peersTable.client"),
       cell: (info) => {
         const { client, peer_id_client: peerIdClient } = info.row.original
-        const { label } = matchPeerClient(client, peerIdClient)
+        const { name, version } = matchPeerClient(client, peerIdClient)
         return (
           <div className="flex max-w-[150px] items-center gap-1.5" title={peerClientTitle(client, peerIdClient)}>
             <PeerClientIcon client={client} peerIdClient={peerIdClient} />
-            <span className="truncate">{label || "-"}</span>
+            <span className="truncate">
+              <span className="font-medium">{name || "-"}</span>
+              {version && <span className="tabular-nums text-muted-foreground"> {version}</span>}
+            </span>
           </div>
         )
       },
