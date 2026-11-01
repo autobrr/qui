@@ -9143,7 +9143,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	// Same rule as skipIndividualEpisodes in dirscan/work_selection.go: an episode
 	// that cannot join a season pack search is dropped, never searched alone.
-	// Change both together.
+	// Dir Scan applies this name rule to an archived release. Change both together.
 	searchable := deduplicated
 	if state.opts.SkipIndividualEpisodes {
 		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t qbt.Torrent) bool {

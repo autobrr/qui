@@ -6,6 +6,8 @@ package dirscan
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
 var videoExtensions = map[string]struct{}{
@@ -58,8 +60,10 @@ func isAudioPath(path string) bool {
 	return ok
 }
 
+// isContentPath reports whether a file counts as content for the age cutoff.
+// Archive volumes count, so that an archived release can age out.
 func isContentPath(path string) bool {
-	return isVideoPath(path) || isAudioPath(path)
+	return isVideoPath(path) || isAudioPath(path) || crossseed.IsArchiveVolume(path)
 }
 
 func filterContentFiles(files []*ScannedFile) []*ScannedFile {

@@ -937,6 +937,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	}
 
 	scanner := NewScanner(backend)
+	scanner.rootMayBeRelease = backend.Paths().Clean(scanRoot) != backend.Paths().Clean(dir.Path)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips,
@@ -1829,6 +1830,10 @@ func sortedIndexerIDs(ids map[int]struct{}) []int {
 func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
 	parsedMeta := s.parser.Parse(searchee.Name)
 	arrLookupName = searchee.Name
+	// The only video file of an archived release is its sample.
+	if searchee.IsArchived {
+		return parsedMeta, arrLookupName
+	}
 
 	// Prefer the largest video file name for content detection (mirrors cross-seed's "largest file" heuristic).
 	contentFile := selectLargestVideoFile(searchee.Files)
@@ -1853,7 +1858,7 @@ func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetad
 
 func determineContentInfo(meta *SearcheeMetadata, searchee *Searchee) crossseed.ContentTypeInfo {
 	contentInfo := crossseed.DetermineContentType(meta.Release)
-	if !contentInfo.IsMusic || meta.Release == nil || !hasAnyVideoFile(searchee.Files) {
+	if !contentInfo.IsMusic || meta.Release == nil || searchee.IsArchived || !hasAnyVideoFile(searchee.Files) {
 		return contentInfo
 	}
 
