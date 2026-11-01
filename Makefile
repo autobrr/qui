@@ -132,14 +132,15 @@ MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
 
 mutation: mutation-go mutation-web
 
-# gremlins copies the whole module once per worker, so it runs in a clean
-# worktree of HEAD, without node_modules and build output. Commit first.
-# --diff matches files only when gremlins runs on the module root, so the
-# coverage run covers every package, and only the changed lines are mutated.
+# Both tools run in a temporary worktree of HEAD, so commit first. gremlins
+# copies the whole module once per worker, and the worktree has no
+# node_modules or build output. --diff matches files only when gremlins runs
+# on the module root, so the coverage run covers every package, and only the
+# changed lines are mutated.
 mutation-go:
 	@if git diff --quiet --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '*.go' ':!*_test.go'; then \
 			echo "No committed Go source changes against $(MUTATION_BASE)."; exit 0; fi; \
-		wt="$(MUTATION_DIR)/worktree"; \
+		wt="$(MUTATION_DIR)/go"; \
 		git worktree remove --force "$$wt" 2>/dev/null || true; \
 		git worktree add --quiet --detach "$$wt" HEAD || exit 1; \
 		mkdir -p "$(MUTATION_DIR)/tmp"; \
@@ -151,12 +152,20 @@ mutation-go:
 		rm -rf "$(MUTATION_DIR)/tmp"; \
 		exit $$status
 
-# Stryker mutates the files in place, because a test imports a Go file from
-# outside web/. It restores them at the end and on Ctrl-C.
+# Stryker changes the files in place, because a test imports a Go file from
+# outside web/. An interrupted run can leave them changed, so it also runs in
+# a worktree.
 mutation-web:
-	@files=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts' | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
-		if [ -z "$$files" ]; then echo "No TypeScript source changes against $(MUTATION_BASE)."; exit 0; fi; \
-		cd $(WEB_DIR) && pnpm exec stryker run --mutate "$$files"
+	@files=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts' | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
+		if [ -z "$$files" ]; then echo "No committed TypeScript source changes against $(MUTATION_BASE)."; exit 0; fi; \
+		wt="$(MUTATION_DIR)/web"; \
+		git worktree remove --force "$$wt" 2>/dev/null || true; \
+		git worktree add --quiet --detach "$$wt" HEAD || exit 1; \
+		(cd "$$wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
+			pnpm exec stryker run --mutate "$$files"); \
+		status=$$?; \
+		git worktree remove --force "$$wt"; \
+		exit $$status
 
 # Format changed code only (fast, for iteration)
 fmt:
