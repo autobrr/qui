@@ -24,8 +24,8 @@ type scanScope struct {
 	// PersistedRoots are the roots a previous run recorded; deletion is still
 	// bounded by them after the settings behind them change.
 	PersistedRoots []string
-	// TorrentPaths keeps each torrent file's path in the result, which only
-	// the delete needs, to read the files' identities.
+	// TorrentPaths keeps each torrent file's path in the result, so the run
+	// can read the identities of the files and the folders above them.
 	TorrentPaths bool
 }
 
@@ -39,6 +39,8 @@ func scopeFromSettings(settings *models.OrphanScanSettings) scanScope {
 		DefaultSavePath: settings.ScanDefaultSavePath,
 		CategoryPaths:   settings.ScanCategoryPaths,
 		AbandonedDirs:   settings.DeleteAbandonedDirs,
+		// A torrent can reach an empty folder through an alias (#3652).
+		TorrentPaths: settings.DeleteAbandonedDirs,
 	}
 }
 
