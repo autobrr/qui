@@ -9,24 +9,21 @@ import { useCallback, useEffect, useRef } from "react"
 type SearchUpdate = (prev: Record<string, unknown>) => Record<string, unknown>
 
 // The router rewrites history.state on a reload and drops extra keys, but it
-// keeps __TSR_index, so the count lives in session storage under that index.
-// ponytail: a count outlives its entry when Back leaves the page from a view
-// (a link from another page opened it). A link that later lands on that index
-// reads the old count. Bind counts to entries if this shows up.
-const DEPTH_PREFIX = "qui-details-depth:"
-
+// keeps __TSR_index, so the count lives in session storage under that index,
+// with the torrent of its entry. Back keeps the counts, so Forward still finds
+// them. A later entry at the same index reads a count only for its own torrent.
+// ponytail: a link to the same torrent that later lands on that index reads the
+// old count. Bind counts to history entries if this shows up.
 function depthKey(index: number): string {
-  return `${DEPTH_PREFIX}${index}`
+  return `qui-details-depth:${index}`
 }
 
-// Back left the entries after this one: a later entry at their index must not
-// read their counts
-function dropCountsAfter(index: number) {
-  for (let i = sessionStorage.length - 1; i >= 0; i--) {
-    const key = sessionStorage.key(i)
-    if (key?.startsWith(DEPTH_PREFIX) && Number(key.slice(DEPTH_PREFIX.length)) > index) sessionStorage.removeItem(key)
-  }
+function readDepth(index: number, hash: string | undefined): number {
+  const [depth, owner] = (sessionStorage.getItem(depthKey(index)) ?? "").split(":")
+  return hash && owner === hash ? Number(depth) : 0
 }
+
+const withoutDetails = (prev: Record<string, unknown>) => ({ ...prev, torrent: undefined, tab: undefined, instance: undefined })
 
 function currentIndex(router: AnyRouter): number {
   return router.history.location.state.__TSR_index
@@ -52,15 +49,19 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
   const navigate = useNavigate()
   // The hash of the entry the view owns, so Back closes only that view
   const ownedHash = useRef<string | undefined>(undefined)
-  const hadUrlHash = useRef(false)
-
-  useEffect(() => {
-    if (hadUrlHash.current && !urlHash) dropCountsAfter(currentIndex(router))
-    hadUrlHash.current = Boolean(urlHash)
-  }, [urlHash, router])
+  // The hash that a close leaves while it goes back over the pushed entries
+  const closing = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     if (!enabled) return
+    if (urlHash && closing.current && urlHash !== closing.current) {
+      // The close went back to a view that a link opened: close it in place
+      closing.current = undefined
+      ownedHash.current = undefined
+      onClosed()
+      void navigate({ to: ".", search: withoutDetails, replace: true })
+      return
+    }
     if (urlHash) {
       // Right after a close that replaces the URL, the URL holds the old hash
       // until the replace lands. Recording it then makes the next open of the
@@ -68,35 +69,34 @@ export function useMobileDetailsHistory({ enabled, urlHash, shownHash, onClosed 
       if (shownHash === urlHash) ownedHash.current = urlHash
       return
     }
+    closing.current = undefined
     if (shownHash && ownedHash.current === shownHash) {
       ownedHash.current = undefined
       onClosed()
     }
-  }, [enabled, urlHash, shownHash, onClosed])
+  }, [enabled, urlHash, shownHash, onClosed, navigate])
 
-  const open = useCallback((search: SearchUpdate) => {
+  const open = useCallback((hash: string, search: SearchUpdate) => {
     const index = currentIndex(router)
-    // A list entry starts a new count: Back can leave an old one on its index
-    const depth = (urlHash ? Number(sessionStorage.getItem(depthKey(index))) : 0) + 1
-    sessionStorage.setItem(depthKey(index + 1), String(depth))
+    const depth = readDepth(index, urlHash) + 1
+    sessionStorage.setItem(depthKey(index + 1), `${depth}:${hash}`)
     void navigate({ to: ".", search })
   }, [navigate, router, urlHash])
 
   const close = useCallback(() => {
-    const key = depthKey(currentIndex(router))
-    const depth = Number(sessionStorage.getItem(key))
-    sessionStorage.removeItem(key)
+    const depth = readDepth(currentIndex(router), urlHash)
     if (depth > 0 && ownedHash.current) {
-      // The Back handler above closes the view when the URL loses the hash
+      // The effect above closes the view when the URL loses the hash
+      closing.current = urlHash
       router.history.go(-depth)
       return
     }
     onClosed()
     if (ownedHash.current) {
       ownedHash.current = undefined
-      void navigate({ to: ".", search: (prev: Record<string, unknown>) => ({ ...prev, torrent: undefined, tab: undefined, instance: undefined }), replace: true })
+      void navigate({ to: ".", search: withoutDetails, replace: true })
     }
-  }, [navigate, onClosed, router])
+  }, [navigate, onClosed, router, urlHash])
 
   return { open, close }
 }

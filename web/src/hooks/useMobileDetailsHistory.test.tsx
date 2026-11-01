@@ -5,7 +5,7 @@
 
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider, useSearch } from "@tanstack/react-router"
 import { act, cleanup, render, screen } from "@testing-library/react"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { afterEach, describe, expect, it } from "vitest"
 
 import { useMobileDetailsHistory } from "./useMobileDetailsHistory"
@@ -15,15 +15,24 @@ import { useMobileDetailsHistory } from "./useMobileDetailsHistory"
 function Page() {
   const search = useSearch({ strict: false }) as { torrent?: string }
   const [shown, setShown] = useState<string | null>(search.torrent ?? null)
+  // A torrent that comes into the URL, as on Forward, opens the view too. The
+  // page fetches it first, so a close in the same render wins: this effect
+  // runs before the effects of the hook.
+  useEffect(() => {
+    if (search.torrent) setShown(search.torrent)
+  }, [search.torrent])
   const onClosed = useCallback(() => setShown(null), [])
   const details = useMobileDetailsHistory({ enabled: true, urlHash: search.torrent, shownHash: shown, onClosed })
+  const open = (hash: string) => {
+    setShown(hash)
+    details.open(hash, prev => ({ ...prev, torrent: hash }))
+  }
   return (
     <>
       <output>{shown ?? "list"}</output>
-      <button onClick={() => {
-        setShown("a")
-        details.open(prev => ({ ...prev, torrent: "a" }))
-      }}>open</button>
+      <button onClick={() => open("a")}>open</button>
+      {/* A match of the shown torrent */}
+      <button onClick={() => open("b")}>open match</button>
       <button onClick={details.close}>close</button>
     </>
   )
@@ -169,14 +178,39 @@ describe("useMobileDetailsHistory", () => {
     await back(rig)
     cleanup()
 
-    // A link from another page lands on the index that the closed view had
-    const linked = mount(["/other", "/list", "/list2?torrent=a"])
+    // A link from another page to another torrent lands on the index that the closed view had
+    const linked = mount(["/other", "/list", "/list2?torrent=b"])
     await settle()
-    expect(shown()).toBe("a")
+    expect(shown()).toBe("b")
 
     await click("close")
     expect(linked.history.location.pathname).toBe("/list2")
     expect(linked.history.location.search).toBe("")
     expect(shown()).toBe("list")
+  })
+
+  // regression: #3703
+  it("goes back over its entry on close after Back and Forward", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    await act(async () => rig.history.forward())
+    await settle()
+    expect(shown()).toBe("a")
+
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("closes a view that a link opened when a close goes back to it from a match", async () => {
+    const rig = mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    expect(shown()).toBe("b")
+
+    await click("close")
+    leavesInOneBack(rig)
   })
 })

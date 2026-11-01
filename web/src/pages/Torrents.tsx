@@ -142,7 +142,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   // leaving the page. The unified view also records the owning instance, since
   // the same hash can exist on several instances.
   const pushMobileDetailsEntry = useCallback((torrent: Torrent, initialTab?: string) => {
-    openMobileDetails((prev) => ({
+    openMobileDetails(torrent.hash, (prev) => ({
       ...prev,
       torrent: torrent.hash,
       tab: initialTab,
