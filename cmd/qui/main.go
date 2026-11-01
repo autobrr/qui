@@ -50,6 +50,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/sqlite3store"
@@ -577,6 +578,12 @@ func (app *Application) runServer() {
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
 
+	peerClientIconService, err := peerclienticons.NewService(cfg.GetDataDir(), buildinfo.UserAgent, peerclienticons.Icons)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to prepare peer client icon cache")
+	}
+	peerClientIconService.SetFetchEnabled(cfg.Config.TrackerIconsFetchEnabled)
+
 	// Ensure the custom themes directory exists so users have a place to drop
 	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
 	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
@@ -584,6 +591,7 @@ func (app *Application) runServer() {
 	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
+		peerClientIconService.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
@@ -935,6 +943,7 @@ func (app *Application) runServer() {
 		Restarter:                        restarter,
 		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
+		PeerClientIconService:            peerClientIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
 		CrossSeedService:                 crossSeedService,

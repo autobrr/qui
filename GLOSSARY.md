@@ -26,6 +26,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
+## Peers
+
+- **Peer client**: The BitTorrent program that a connected peer says it runs, for example Transmission or rTorrent. _Avoid_: client, torrent client.
+
 ## Tracker health
 
 - **Tracker health**: qui's verdict on the trackers of one torrent: healthy, unregistered, tracker down, or tracker error. _Avoid_: tracker status.
