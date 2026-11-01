@@ -27,6 +27,8 @@ github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbp
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
 github.com/autobrr/rls v0.10.0 h1:0coSaXgxpH5mwQQziHqAvxK3NjT2bna2c5a5Y9KqwxI=
 github.com/autobrr/rls v0.10.0/go.mod h1:Kg9MouMj3Kdg1ql0r8Hl4bcSyC1QidxiKiip5QWUlBc=
+github.com/autobrr/rls v0.10.1-0.20261101155923-3e966230a3c0 h1:JCcjr/TwFxA/SnBtlbN0TLkVIJTgAB2jlXvllG6F3OM=
+github.com/autobrr/rls v0.10.1-0.20261101155923-3e966230a3c0/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

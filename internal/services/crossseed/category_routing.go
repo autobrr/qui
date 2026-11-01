@@ -35,8 +35,8 @@ func sourceClass(release *rls.Release) string {
 		}
 	}
 
-	// normalizeSource yields values like "WEBDL", "BLURAY", "UHD.BLURAY", "HDTV".
-	// 2160p discs parse as "UHD.BluRay", so match BluRay as a substring.
+	// normalizeSource yields values like "WEBDL", "BLURAY", "HDTV". It drops the
+	// UHD prefix, so a UHD.WEB pack routes as WEB and a UHD.BluRay pack as BluRay.
 	source := normalizeSource(release.Source)
 	switch {
 	case isWebSource(source):
