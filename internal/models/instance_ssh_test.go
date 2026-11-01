@@ -556,7 +556,9 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 			return store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
 		},
 	} {
-		require.NoError(t, store.SetSSHProbe(ctx, instance.ID, SSHTierExec, true))
+		probed, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		require.NoError(t, store.SetSSHProbe(ctx, probed, SSHTierExec, true))
 		got, err := store.Get(ctx, instance.ID)
 		require.NoError(t, err)
 		require.NotNil(t, got.SSHHardlink, name)
@@ -565,5 +567,13 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, SSHTierSFTP, got.SSHTier, name)
 		assert.Nil(t, got.SSHHardlink, "%s: the hardlink flag is unknown again", name)
+
+		// A probe that dialed with the old settings answers for them, not for
+		// the row as it is now.
+		require.NoError(t, store.SetSSHProbe(ctx, probed, SSHTierExec, true), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: a stale probe must not restore the tier", name)
+		assert.Nil(t, got.SSHHardlink, "%s: a stale probe must not restore the flag", name)
 	}
 }

@@ -276,7 +276,9 @@ func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
 // SetSSHProbe keeps the fixture on the sftp tier, which these tests cover.
-func (sftpCreds) SetSSHProbe(context.Context, int, models.SSHTier, bool) error { return nil }
+func (sftpCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
+	return nil
+}
 
 // sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
 func sftpPath(p string) string {

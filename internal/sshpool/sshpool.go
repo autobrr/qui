@@ -36,7 +36,7 @@ type credentialSource interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
-	SetSSHProbe(ctx context.Context, instanceID int, tier models.SSHTier, hardlink bool) error
+	SetSSHProbe(ctx context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error
 }
 
 // Dialer opens SSH connections: one-shot ones for Test and Confirm, and the

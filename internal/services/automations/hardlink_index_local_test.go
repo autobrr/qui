@@ -238,8 +238,10 @@ func TestCrossScopeInstancesAreTrustedOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, store.SetSSHCredentials(t.Context(), remote.ID, "box.example.invalid", 22, "qui", sshtest.PrivateKey("")))
 	require.NoError(t, store.SetHostKeyPin(t.Context(), remote.ID, "box.example.invalid", 22, sshtest.HostKey()))
-	require.NoError(t, store.SetSSHProbe(t.Context(), remote.ID, models.SSHTierExec, true))
 	row, err := store.Get(t.Context(), remote.ID)
+	require.NoError(t, err)
+	require.NoError(t, store.SetSSHProbe(t.Context(), row, models.SSHTierExec, true))
+	row, err = store.Get(t.Context(), remote.ID)
 	require.NoError(t, err)
 	require.True(t, models.FilesystemCapabilitiesOf(row).Identity, "the fixture must be an exec-tier remote")
 

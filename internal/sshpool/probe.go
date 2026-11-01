@@ -164,17 +164,23 @@ func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.
 	case tier = <-answer:
 	case <-ctx.Done():
 	}
-	if tier == "" {
+	noAnswer := tier == ""
+	if noAnswer {
 		log.Debug().Int("instanceID", row.ID).Msg("sshpool: exec probe got no answer")
-		return models.SSHTierSFTP
+		// The sftp client answered the hardlink question regardless, so that
+		// is written with the tier the row keeps.
+		tier = row.SSHTier
 	}
 
 	if tier != row.SSHTier || row.SSHHardlink == nil || *row.SSHHardlink != hardlink {
-		if err := p.dialer.creds.SetSSHProbe(ctx, row.ID, tier, hardlink); err != nil {
-			log.Warn().Int("instanceID", row.ID).Err(err).Msg("sshpool: failed to store the ssh tier")
+		if err := p.dialer.creds.SetSSHProbe(ctx, row, tier, hardlink); err != nil {
+			log.Warn().Int("instanceID", row.ID).Err(err).Msg("sshpool: failed to store the ssh probe")
 		} else {
-			log.Debug().Int("instanceID", row.ID).Str("tier", string(tier)).Msg("sshpool: ssh tier changed")
+			log.Debug().Int("instanceID", row.ID).Str("tier", string(tier)).Bool("hardlink", hardlink).Msg("sshpool: ssh probe stored")
 		}
+	}
+	if noAnswer {
+		return models.SSHTierSFTP
 	}
 	return tier
 }

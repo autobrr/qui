@@ -62,8 +62,8 @@ func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 }
 
 // SetSSHProbe writes the row Get answers with, as the store writes the columns.
-func (f fakeCreds) SetSSHProbe(_ context.Context, id int, tier models.SSHTier, hardlink bool) error {
-	if f.inst == nil || f.inst.ID != id {
+func (f fakeCreds) SetSSHProbe(_ context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error {
+	if f.inst == nil || f.inst.ID != probed.ID {
 		return models.ErrInstanceNotFound
 	}
 	f.inst.SSHTier = tier

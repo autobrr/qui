@@ -231,7 +231,7 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		response.PinnedKeyType = report.PinnedKey.Type()
 	}
 	if report.Capabilities != nil {
-		h.storeSSHTier(r.Context(), instance.ID, report.Capabilities)
+		h.storeSSHTier(r.Context(), instance, report.Capabilities)
 		// A pooled connection keeps the tier its own probe found, and that
 		// probe may have got no answer while the row kept exec, so a fresh
 		// probe that matches the row says nothing about the connection. A
@@ -336,9 +336,14 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 			return err
 		}
 		// The pin wrote sftp. A probe that got no answer leaves it there, and
-		// the next connect probes again.
+		// the next connect probes again. The probe write matches the row it
+		// dialed with, so it reads the row as the pin left it.
 		if capabilities != nil {
-			h.storeSSHTier(r.Context(), instance.ID, capabilities)
+			if pinned, err := h.instanceStore.Get(r.Context(), instance.ID); err != nil {
+				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to reload the instance after pinning the host key")
+			} else {
+				h.storeSSHTier(r.Context(), pinned, capabilities)
+			}
 		}
 		// A refusal memoised against the old pin ends here; the next dial
 		// checks the host against the pin the user just confirmed.
@@ -375,9 +380,9 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 // storeSSHTier writes the tier and the hardlink flag a probe found. The probe
 // is the answer the user is shown, so a failed write is logged, not returned:
 // the next connect writes them again.
-func (h *InstancesHandler) storeSSHTier(ctx context.Context, instanceID int, capabilities *sshpool.Capabilities) {
-	if err := h.instanceStore.SetSSHProbe(ctx, instanceID, capabilities.Tier(), capabilities.Hardlink); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to store the SSH tier")
+func (h *InstancesHandler) storeSSHTier(ctx context.Context, probed *models.Instance, capabilities *sshpool.Capabilities) {
+	if err := h.instanceStore.SetSSHProbe(ctx, probed, capabilities.Tier(), capabilities.Hardlink); err != nil {
+		log.Warn().Err(err).Int("instanceID", probed.ID).Msg("Failed to store the SSH probe")
 	}
 }
 
