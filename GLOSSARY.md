@@ -85,6 +85,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Match evidence**: What a Match path knows about a pair beyond the two Read releases: sizes, file lists, Sonarr alternate titles, and the episode map. A Match path that lacks one gives the Match verdict less to work with. It does not change the rules. _Avoid_: Evidence (alone), context.
 - **Shared file**: One file on disk that two torrents read through the same folder entry, on one instance or on two. A delete with files of one torrent removes it for the other. _Avoid_: same content path (that is path text), content match.
 - **Generic HDR tag**: An `HDR` tag in a release name that does not say `HDR10`, `HDR10+`, or `HLG`. Cross-seed matching reads it as `HDR10`, so `DV HDR` matches `DV HDR10`. It stays distinct from `HDR10+` and `HLG`. Release fields and Season pack status keep the tag as written. _Avoid_: plain HDR.
+- **UHD source prefix**: A `UHD.` before a release source, as in `UHD.WEB` or `UHD.BluRay`. Cross-seed matching ignores it, so `UHD.WEB-DL` matches `WEB-DL`. Release fields and Season pack status keep it as written. _Avoid_: UHD source (it names no source of its own).
 - **Season pack run**: One record of a season pack check or apply. A check run is Ready, Ready (no threshold), or Skipped. An apply run is Applied, Failed, or Skipped. _Avoid_: season pack activity, attempt.
 
 ## Indexers

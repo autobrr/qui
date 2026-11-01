@@ -185,15 +185,17 @@ func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpus
 }
 
 const (
-	reasonNoAlternateTitles       = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
-	reasonNoEpisodeMap            = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
-	reasonNoTitleRescue           = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonDedupNoRelabel          = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
-	reasonDedupNoExactSize        = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
-	reasonRetitledSameSizes       = "The Batch matcher pairs a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
-	reasonDedupNoSizes            = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
-	reasonNumeralSameSize         = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
-	reasonOnlySearchComparesFiles = "Only search and apply compare files before deciding."
+	reasonNoAlternateTitles           = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoEpisodeMap                = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoTitleRescue               = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
+	reasonDedupNoRelabel              = "Missing input: sizes. Dedup compares without sizes, and the web source relabel needs both sizes."
+	reasonDedupNoExactSize            = "Missing input: sizes. Dedup compares without sizes, and the exact size relaxation needs both sizes."
+	reasonRetitledSameSizes           = "The Batch matcher pairs a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonDedupNoSizes                = "Dedup compares without sizes, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
+	reasonNumeralSameSize             = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
+	reasonOnlySearchComparesFiles     = "Only search and apply compare files before deciding."
+	reasonPrefilterRelabelNoTolerance = "The content prefilter has a size tolerance of 0, so the web source relabel needs equal sizes there. A plain WEBRip against a WEB-DL gets the same verdict."
+	reasonWebhookRelabelNotStrict     = "The webhook check accepts only a strict match when the sizes are not exact, and the web source relabel is not strict. A plain WEBRip against a WEB-DL gets the same verdict."
 )
 
 var corpusRows = []corpusRow{
@@ -641,6 +643,62 @@ var corpusRows = []corpusRow{
 			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoRelabel),
 		},
 	},
+	// The UHD rows give the source an NFO, so the exact-size fallback cannot
+	// hide a source mismatch.
+	{
+		// regression: #3286
+		name:          "UHD after a WEB tag against a plain WEB",
+		source:        "Kaiju.Squad.S02E05.2160p.WEB.UHD.H265-GRP",
+		candidate:     "Kaiju.Squad.S02E05.2160p.WEB.H265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Kaiju.Squad.S02E05.2160p.WEB.UHD.H265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #3286
+		name:          "UHD WEB-DL against a plain WEB-DL",
+		source:        "Harbor.Lights.2022.UHD.2160p.WEB-DL.DDP5.1.x265-GRP",
+		candidate:     "Harbor.Lights.2022.2160p.WEB-DL.DDP5.1.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.UHD.2160p.WEB-DL.DDP5.1.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #3286
+		name:          "UHD BluRay against a plain BluRay",
+		source:        "Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP",
+		candidate:     "Harbor.Lights.2022.2160p.BluRay.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #3286
+		name:          "UHD WEBRip from a 4K source against a WEB-DL",
+		source:        "Harbor.Lights.2022.UHD.WEBRip.1080p.DDP.5.1.Atmos.DoVi.HDR.x265-GRP",
+		candidate:     "Harbor.Lights.2022.1080p.WEB-DL.DDP.5.1.Atmos.DoVi.HDR.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.UHD.WEBRip.1080p.DDP.5.1.Atmos.DoVi.HDR.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathPrefilter: allowedDifference(corpusNoMatch, reasonPrefilterRelabelNoTolerance),
+			pathDedup:     allowedDifference(corpusNoMatch, reasonDedupNoRelabel),
+			pathWebhook:   allowedDifference(corpusNoMatch, reasonWebhookRelabelNotStrict),
+		},
+	},
+	{
+		name:          "UHD BluRay against a WEB-DL",
+		source:        "Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP",
+		candidate:     "Harbor.Lights.2022.2160p.WEB-DL.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
 	{
 		name:           "bracket batch BDRip against a BluRay season pack with a year",
 		source:         "[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]",
@@ -663,9 +721,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
-		},
 	},
 	{
 		name:          "title rescue at an exact size",
