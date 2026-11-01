@@ -127,7 +127,9 @@ func isGNU(out []byte) bool {
 }
 
 // probeTier asks a new pooled connection for the exec tier, and writes the
-// answer to the row when it differs, so the tier follows the key up and down.
+// answer to the row when it or the hardlink flag differs, so the tier follows
+// the key up and down. hardlink is what the connection's sftp client already
+// knows: whether the server advertises hardlink@openssh.com.
 // A probe that timed out, or a connection that stopped answering, is not an
 // answer: the row keeps its tier and this connection gets sftp. The probe
 // runs on its own deadline, because one caller giving up says nothing about
@@ -141,7 +143,7 @@ func isGNU(out []byte) bool {
 // entry's: a probe stuck in a session open would otherwise hold that slot
 // for the life of the connection, and the keepalive never closes a
 // connection with a slot in use.
-func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.Client) models.SSHTier {
+func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.Client, hardlink bool) models.SSHTier {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.dialer.timeout)
 	defer cancel()
 
@@ -162,17 +164,26 @@ func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.
 	case tier = <-answer:
 	case <-ctx.Done():
 	}
-	if tier == "" {
+	noAnswer := tier == ""
+	if noAnswer {
 		log.Debug().Int("instanceID", row.ID).Msg("sshpool: exec probe got no answer")
-		return models.SSHTierSFTP
 	}
 
-	if tier != row.SSHTier {
-		if err := p.dialer.creds.SetSSHTier(ctx, row.ID, tier); err != nil {
-			log.Warn().Int("instanceID", row.ID).Err(err).Msg("sshpool: failed to store the ssh tier")
+	// The sftp client answered the hardlink question before the exec probe
+	// ran, so a probe with no answer still writes the flag, with an empty
+	// tier that keeps whatever the row holds by then. The write gets a
+	// deadline of its own: the probe's ctx is spent on this path.
+	if tier != row.SSHTier || row.SSHHardlink == nil || *row.SSHHardlink != hardlink {
+		writeCtx, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), p.dialer.timeout)
+		defer cancelWrite()
+		if err := p.dialer.creds.SetSSHProbe(writeCtx, row, tier, hardlink); err != nil {
+			log.Warn().Int("instanceID", row.ID).Err(err).Msg("sshpool: failed to store the ssh probe")
 		} else {
-			log.Debug().Int("instanceID", row.ID).Str("tier", string(tier)).Msg("sshpool: ssh tier changed")
+			log.Debug().Int("instanceID", row.ID).Str("tier", string(tier)).Bool("hardlink", hardlink).Msg("sshpool: ssh probe stored")
 		}
+	}
+	if noAnswer {
+		return models.SSHTierSFTP
 	}
 	return tier
 }

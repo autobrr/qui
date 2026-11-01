@@ -160,6 +160,7 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 	withoutCredentials.SSHUsername = ""
 	withoutCredentials.SSHKeyEncrypted = ""
 	withoutCredentials.SSHTier = models.SSHTierSFTP
+	withoutCredentials.SSHHardlink = nil
 	if (instance.UseHardlinks || instance.UseReflinks) && !models.FilesystemCapabilitiesOf(&withoutCredentials).Write {
 		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before removing its SSH credentials")
 		return
@@ -230,7 +231,7 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		response.PinnedKeyType = report.PinnedKey.Type()
 	}
 	if report.Capabilities != nil {
-		h.storeSSHTier(r.Context(), instance.ID, report.Capabilities)
+		h.storeSSHTier(r.Context(), instance, report.Capabilities)
 		// A pooled connection keeps the tier its own probe found, and that
 		// probe may have got no answer while the row kept exec, so a fresh
 		// probe that matches the row says nothing about the connection. A
@@ -335,9 +336,17 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 			return err
 		}
 		// The pin wrote sftp. A probe that got no answer leaves it there, and
-		// the next connect probes again.
+		// the next connect probes again. The probe write matches the row it
+		// dialed with, so it takes the snapshot Confirm used plus the pin as
+		// stored: credentials rotated meanwhile fail the match, as they should.
 		if capabilities != nil {
-			h.storeSSHTier(r.Context(), instance.ID, capabilities)
+			if pinned, err := h.instanceStore.Get(r.Context(), instance.ID); err != nil {
+				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to reload the instance after pinning the host key")
+			} else {
+				probed := *instance
+				probed.SSHHostKeyEncrypted = pinned.SSHHostKeyEncrypted
+				h.storeSSHTier(r.Context(), &probed, capabilities)
+			}
 		}
 		// A refusal memoised against the old pin ends here; the next dial
 		// checks the host against the pin the user just confirmed.
@@ -371,12 +380,12 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// storeSSHTier writes the tier a probe found. The probe is the answer the user
-// is shown, so a failed write is logged, not returned: the next connect
-// writes the tier again.
-func (h *InstancesHandler) storeSSHTier(ctx context.Context, instanceID int, capabilities *sshpool.Capabilities) {
-	if err := h.instanceStore.SetSSHTier(ctx, instanceID, capabilities.Tier()); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to store the SSH tier")
+// storeSSHTier writes the tier and the hardlink flag a probe found. The probe
+// is the answer the user is shown, so a failed write is logged, not returned:
+// the next connect writes them again.
+func (h *InstancesHandler) storeSSHTier(ctx context.Context, probed *models.Instance, capabilities *sshpool.Capabilities) {
+	if err := h.instanceStore.SetSSHProbe(ctx, probed, capabilities.Tier(), capabilities.Hardlink); err != nil {
+		log.Warn().Err(err).Int("instanceID", probed.ID).Msg("Failed to store the SSH probe")
 	}
 }
 
