@@ -111,6 +111,45 @@ func TestExecuteScan_FolderWithoutIdentityIsNotListed(t *testing.T) {
 	}
 }
 
+// lockOrSkip makes link in the folder locked point to target, then denies
+// every lookup in locked.
+func lockOrSkip(t *testing.T, locked, target string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+	require.NoError(t, os.MkdirAll(locked, 0o750))
+	symlinkOrSkip(t, target, filepath.Join(locked, "alias"))
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
+}
+
+// A torrent folder qui may not look up could be an alias that qBittorrent can
+// follow to a listed folder, so the scan lists no folder and says why.
+// regression: #3652
+func TestExecuteScan_DeniedTorrentFolderListsNoFolder(t *testing.T) {
+	var locked string
+	opts := orphanOnlyOptions{beforeScan: func(svc *Service, ownedSavePath string) {
+		addTorrentAfterScan(svc, ownedSavePath, qbt.Torrent{SavePath: filepath.Join(locked, "alias")}, "x.mkv")
+	}}
+	f := newOrphanOnlyFixture(t, "orphanscan-scan-dir-denied", opts, func(defaultSavePath string) {
+		require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "leftover"), 0o750))
+		require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "Movie"), 0o750))
+		locked = filepath.Join(filepath.Dir(defaultSavePath), "locked")
+		lockOrSkip(t, locked, filepath.Join(defaultSavePath, "Movie"))
+	})
+
+	require.Empty(t, f.previewedDirs(t))
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.True(t, run.Partial, "run message: %s", run.ErrorMessage)
+	require.Contains(t, run.ErrorMessage, "No abandoned directories are listed")
+	require.Contains(t, run.ErrorMessage, "permission denied")
+}
+
 // A torrent folder whose identity cannot be read could be any listed folder,
 // so the scan lists no folder. Files are judged without it, so they are still
 // listed, and the run is partial, so it does not clean up by itself.
@@ -188,9 +227,11 @@ func (b lateDirIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.Lst
 }
 
 // The delete reads each torrent folder before it deletes anything. One it
-// cannot read for any reason but a missing or denied lookup could be a listed
-// folder, so the run stops. A listed folder whose own identity is unreadable
-// fails alone. A missing or denied torrent folder protects nothing.
+// cannot read for any reason but a missing lookup could be a listed folder, so
+// the run stops. A listed folder whose own identity is unreadable
+// fails alone. A missing torrent folder protects nothing. A denied one could
+// be an alias to a listed folder that qBittorrent can follow, so it stops the
+// run too.
 // regression: #3652
 func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 	for _, tc := range []struct {
@@ -210,27 +251,20 @@ func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 		{"listed folder identity unreadable", func(t *testing.T, f *orphanOnlyFixture, opaque *string, _ *string, _ string) {
 			*opaque = filepath.Join(f.defaultSavePath, "Movie")
 		}, "", "failed: file identity"},
-		{"torrent folder missing or denied", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
-			if runtime.GOOS == "windows" {
-				t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
-			}
-			if os.Geteuid() == 0 {
-				t.Skip("root bypasses permission checks")
-			}
-			locked := filepath.Join(base, "locked")
-			require.NoError(t, os.MkdirAll(filepath.Join(locked, "inner"), 0o750))
-			require.NoError(t, os.Chmod(locked, 0o000))
-			t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
+		{"torrent folder missing", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
 			late := []qbt.Torrent{
 				{Hash: "owned", SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
-				{Hash: "denied", SavePath: filepath.Join(locked, "inner"), State: qbt.TorrentStatePausedUp},
 				{Hash: "missing", SavePath: filepath.Join(base, "never"), State: qbt.TorrentStatePausedUp},
 			}
 			stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return late, nil }
 			stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv"), "denied": torrentFiles("Sub/x.mkv"), "missing": torrentFiles("Sub/x.mkv")}, nil
+				return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv"), "missing": torrentFiles("Sub/x.mkv")}, nil
 			}
 		}, "", ""},
+		{"torrent folder denied, an alias to a listed folder", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
+			lockOrSkip(t, filepath.Join(base, "locked"), filepath.Join(f.defaultSavePath, "Movie"))
+			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: filepath.Join(base, "locked", "alias")}, "x.mkv")
+		}, "permission denied", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var movie, leftover, opaque, broken string

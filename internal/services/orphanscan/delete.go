@@ -224,9 +224,11 @@ type inUseIDs struct {
 // backend, following links, as qBittorrent does. A path that is not on disk, or that
 // runs into a symlink loop, protects nothing, since qBittorrent cannot read it
 // either. A path qui may not look up is skipped, as the scan skips a denied
-// subtree. Any other failure is returned, a denied identity read included,
-// because a file the run cannot identify could be one of the targets.
-func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string) (*inUseIDs, error) {
+// subtree, unless failDenied is set. Any other failure is returned, a denied
+// identity read included, because a file the run cannot identify could be one
+// of the targets. Set failDenied for torrent folders: a denied one could be an
+// alias that qBittorrent can follow to a listed folder.
+func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string, failDenied bool) (*inUseIDs, error) {
 	// Cross-seeds share files, so the same path comes once per torrent.
 	seen := make(map[string]struct{}, len(paths))
 	unique := make([]string, 0, len(paths))
@@ -246,7 +248,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			}
 			// A backend that wraps both errors lost the link, which says
 			// nothing about the file's permissions.
-			if errors.Is(err, fs.ErrPermission) && !errors.Is(err, fsops.ErrConnectionLost) {
+			if !failDenied && errors.Is(err, fs.ErrPermission) && !errors.Is(err, fsops.ErrConnectionLost) {
 				if denied == 0 {
 					firstDenied = unique[i]
 				}
