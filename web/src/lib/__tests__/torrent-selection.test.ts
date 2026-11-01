@@ -6,9 +6,9 @@
 import { makeTorrent } from "@/test/mockTorrent"
 import type { Torrent, TorrentFilters } from "@/types"
 import {
+  buildActionTarget,
   EMPTY_SELECTION,
   getSelectionIdentity,
-  getSelectionTargets,
   headerCheckboxEvent,
   rememberTickedTorrents,
   selectAllButtonEvent,
@@ -16,6 +16,8 @@ import {
   selectionCount,
   selectionReducer,
   selectionScope,
+  type ActionTargetScope,
+  type ActionTarget,
   type TorrentSelectionEvent,
   type TorrentSelectionState
 } from "@/lib/torrent-selection"
@@ -179,13 +181,78 @@ describe("getSelectionIdentity", () => {
   })
 })
 
-describe("getSelectionTargets", () => {
-  it("targets the view's instance for a bare hash", () => {
-    expect(getSelectionTargets(["abc"], false, 5)).toEqual([{ instanceId: 5, hash: "abc" }])
-  })
+describe("buildActionTarget", () => {
+  const cross = (hash: string, instanceId: number) => ({ ...makeTorrent({ hash }), instanceId }) as Torrent
+  const [a, b, c, z] = ["a", "b", "c", "z"].map(hash => makeTorrent({ hash }))
+  const [s1, s2, d1, z2] = [cross("s", 1), cross("s", 2), cross("d", 1), cross("z", 2)]
+  const [t2] = [cross("t", 2)]
+  const total = 7500
+  const sidebar: TorrentFilters = { status: ["active"], excludeStatus: [], categories: [], excludeCategories: [], tags: [], excludeTags: [], trackers: [], excludeTrackers: [] }
+  const crossSeedExpr = "Hash == \"s\" || Hash == \"t\""
 
-  it("targets the instance in the key when the view spans instances", () => {
-    expect(getSelectionTargets(["9:abc", "0:def", "bad"], true, 5)).toEqual([{ instanceId: 9, hash: "abc" }])
+  const single: ActionTargetScope = { instanceId: 5, filters: sidebar, columnFilters: { expr: null, inBrowser: false }, search: "x", isCrossInstance: false }
+  const unified: ActionTargetScope = { instanceId: 0, instanceIds: [1, 2], filters: sidebar, columnFilters: { expr: null, inBrowser: false }, search: "x", isCrossInstance: true }
+  const crossSeed: ActionTargetScope = { instanceId: 1, filters: { ...sidebar, expr: crossSeedExpr }, columnFilters: { expr: "Ratio > 1", inBrowser: true }, search: "", isCrossInstance: true }
+  const mobile: ActionTargetScope = { instanceId: 5, filters: sidebar, columnFilters: null, search: "x", isCrossInstance: false }
+  const columnFilter: ActionTargetScope = { ...single, filters: { ...sidebar, expr: "Category == \"tv\"" }, columnFilters: { expr: "Size > 1", inBrowser: false } }
+
+  const ticks = (...keys: string[]) => run({ type: "tick", keys, checked: true })
+  const selectAll = (...excluded: string[]) => run({ type: "selectAll" }, { type: "tick", keys: excluded, checked: false })
+
+  it.each<[string, ActionTargetScope, TorrentSelectionState, { loaded: Torrent[]; ticked: Torrent[] }, ActionTarget]>([
+    ["single instance: ticks", single, ticks("a", "b"), { loaded: [a, b, c], ticked: [a, b] },
+      { kind: "ticks", hashes: ["a", "b"], count: 2, previewTorrents: [a, b] }],
+    ["single instance: a tick that is no longer loaded", single, ticks("a", "z"), { loaded: [a, b, c], ticked: [a, z] },
+      { kind: "ticks", hashes: ["a", "z"], count: 2, previewTorrents: [a, z] }],
+    ["single instance: Select all mode", single, selectAll(), { loaded: [a, b, c], ticked: [] },
+      { kind: "selectAll", selectAll: { filters: { ...sidebar, expr: "" }, search: "x", excludeHashes: [] }, count: 7500, previewTorrents: [a, b, c] }],
+    ["single instance: Select all mode with 2 Exclusions", single, selectAll("b", "z"), { loaded: [a, b, c], ticked: [] },
+      { kind: "selectAll", selectAll: { filters: { ...sidebar, expr: "" }, search: "x", excludeHashes: ["b", "z"] }, count: 7498, previewTorrents: [a, c] }],
+
+    ["Unified view: ticks name the instance of a shared hash", unified, ticks("1:s"), { loaded: [s1, s2, d1], ticked: [s1] },
+      { kind: "ticks", hashes: [], targets: [{ instanceId: 1, hash: "s" }], count: 1, previewTorrents: [s1] }],
+    ["Unified view: a tick that is no longer loaded", unified, ticks("1:s", "2:z"), { loaded: [s1, s2, d1], ticked: [s1, z2] },
+      { kind: "ticks", hashes: [], targets: [{ instanceId: 1, hash: "s" }, { instanceId: 2, hash: "z" }], count: 2, previewTorrents: [s1, z2] }],
+    ["Unified view: Select all mode", unified, selectAll(), { loaded: [s1, s2, d1], ticked: [] },
+      { kind: "selectAll", selectAll: { filters: { ...sidebar, expr: "" }, search: "x", instanceIds: [1, 2], excludeTargets: [] }, count: 7500, previewTorrents: [s1, s2, d1] }],
+    ["Unified view: Select all mode with 2 Exclusions", unified, selectAll("2:s", "1:z"), { loaded: [s1, s2, d1], ticked: [] },
+      {
+        kind: "selectAll",
+        selectAll: { filters: { ...sidebar, expr: "" }, search: "x", instanceIds: [1, 2], excludeTargets: [{ instanceId: 2, hash: "s" }, { instanceId: 1, hash: "z" }] },
+        count: 7498,
+        previewTorrents: [s1, d1],
+      }],
+
+    ["cross-seed filter mode: ticks", crossSeed, ticks("1:s", "2:t"), { loaded: [s1, t2], ticked: [s1, t2] },
+      { kind: "ticks", hashes: [], targets: [{ instanceId: 1, hash: "s" }, { instanceId: 2, hash: "t" }], count: 2, previewTorrents: [s1, t2] }],
+    ["cross-seed filter mode: a tick that is no longer loaded", crossSeed, ticks("2:z"), { loaded: [s1, t2], ticked: [z2] },
+      { kind: "ticks", hashes: [], targets: [{ instanceId: 2, hash: "z" }], count: 1, previewTorrents: [z2] }],
+    ["cross-seed filter mode: Select all mode counts the loaded rows that match", crossSeed, selectAll(), { loaded: [s1, t2], ticked: [] },
+      {
+        kind: "selectAll",
+        selectAll: { filters: { ...sidebar, expr: `(Ratio > 1) && (${crossSeedExpr})` }, search: "", excludeTargets: [] },
+        count: 2,
+        previewTorrents: [s1, t2],
+      }],
+    ["cross-seed filter mode: Select all mode with 2 Exclusions", crossSeed, selectAll("2:t", "3:u"), { loaded: [s1, t2], ticked: [] },
+      {
+        kind: "selectAll",
+        selectAll: { filters: { ...sidebar, expr: `(Ratio > 1) && (${crossSeedExpr})` }, search: "", excludeTargets: [{ instanceId: 2, hash: "t" }, { instanceId: 3, hash: "u" }] },
+        count: 1,
+        previewTorrents: [s1],
+      }],
+
+    ["mobile cards: Select all mode sends the Sidebar filters with no Column filters", mobile, selectAll("b"), { loaded: [a, b, c], ticked: [] },
+      { kind: "selectAll", selectAll: { filters: sidebar, search: "x", excludeHashes: ["b"] }, count: 7499, previewTorrents: [a, c] }],
+    ["desktop: Select all mode joins the Column filter to the filter expression", columnFilter, selectAll(), { loaded: [a], ticked: [] },
+      {
+        kind: "selectAll",
+        selectAll: { filters: { ...sidebar, expr: "(Size > 1) && (Category == \"tv\")" }, search: "x", excludeHashes: [] },
+        count: 7500,
+        previewTorrents: [a],
+      }],
+  ])("%s", (_name, scope, selection, rows, expected) => {
+    expect(buildActionTarget(selection, scope, { ...rows, totalCount: total })).toEqual(expected)
   })
 })
 

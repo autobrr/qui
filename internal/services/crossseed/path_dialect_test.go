@@ -317,9 +317,30 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	}
 	s := slashBackendService(instance, backend)
 
-	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "Movie", "tracker.example",
+	got := s.manualMatchEffectiveSavePath(t.Context(), instance, nil, "/data/torrents", "Movie", "tracker.example",
 		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
 	require.Equal(t, "/links/tracker.example", got)
+}
+
+// A routed Manual match shows where the Cross-seed instance sees the tree,
+// and the by-instance folder names the Cross-seed instance.
+func TestPathDialect_ManualMatchPreviewMapsTheRoute(t *testing.T) {
+	t.Parallel()
+
+	backend := newSlashBackend([]string{"/"}, "/data/torrents/Movie/movie.mkv")
+	instance := &models.Instance{
+		ID: 1, Name: "lib", HasLocalFilesystemAccess: true, UseHardlinks: true,
+		HardlinkBaseDir: "/links", HardlinkDirPreset: "by-instance",
+	}
+	s := slashBackendService(instance, backend)
+	route := &candidateRoute{
+		rows:      []models.CrossSeedRouteRow{{BaseDir: "/links", MappedPath: "/seeds-data"}},
+		crossSeed: &models.Instance{ID: 2, Name: "seeds"},
+	}
+
+	got := s.manualMatchEffectiveSavePath(t.Context(), instance, route, "/data/torrents", "Movie", "tracker.example",
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
+	require.Equal(t, "/seeds-data/seeds", got)
 }
 
 // Host Dir on Windows walks `\data\hl`, `\data`, `\` and never finds the

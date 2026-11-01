@@ -16,6 +16,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -59,6 +60,9 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 		}
 		if torrent.Progress < 1 {
 			return nil, fmt.Errorf("%w: manual match target %q is not complete", ErrTorrentNotComplete, torrent.Name)
+		}
+		if !isSettledSource(&torrent) {
+			return nil, ErrSourceNotSettled
 		}
 		return &FindCandidatesResponse{
 			SourceTorrent: &TorrentInfo{Name: req.TorrentName},
@@ -189,7 +193,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 			requestedTorrent = &torrent
 			continue
 		}
-		if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
+		if !s.canGiveFiles(&torrent) {
 			continue
 		}
 		entry := coarseEntry{torrent: torrent}
@@ -229,6 +233,15 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	filesByHash := s.batchLoadCandidateFiles(ctx, instanceID, shortlist)
 	trackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
+	linkMode := instance != nil && (instance.UseReflinks || instance.UseHardlinks)
+	// A route sends the apply to the Cross-seed instance (ADR 0035). Display
+	// only: the saved route maps without the rule check, and the apply
+	// reports a route that breaks a rule. A failed read shows the unmapped path.
+	var route *candidateRoute
+	if linkMode {
+		route, _, _ = s.savedRouteOf(ctx, instanceID)
+	}
+
 	// Effective destination varies only through the target save path (link-mode
 	// base-dir selection); cache per save path.
 	effectiveBySavePath := make(map[string]string)
@@ -236,12 +249,11 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if path, ok := effectiveBySavePath[torrent.SavePath]; ok {
 			return path
 		}
-		path := s.manualMatchEffectiveSavePath(ctx, instance, torrent.SavePath, meta.Name, trackerDomain, meta.Files)
+		path := s.manualMatchEffectiveSavePath(ctx, instance, route, torrent.SavePath, meta.Name, trackerDomain, meta.Files)
 		effectiveBySavePath[torrent.SavePath] = path
 		return path
 	}
 
-	linkMode := instance != nil && (instance.UseReflinks || instance.UseHardlinks)
 	proposals := make([]ManualMatchProposal, 0, proposalLimit+1)
 	for _, torrent := range shortlist {
 		hashKey := normalizeHash(torrent.Hash)
@@ -340,6 +352,7 @@ func overlapBytesBySize(sourceSizes map[int64]int, candidateFiles qbt.TorrentFil
 func (s *Service) manualMatchEffectiveSavePath(
 	ctx context.Context,
 	instance *models.Instance,
+	route *candidateRoute,
 	targetSavePath string,
 	torrentName, trackerDomain string,
 	sourceFiles qbt.TorrentFiles,
@@ -355,10 +368,16 @@ func (s *Service) manualMatchEffectiveSavePath(
 	for _, f := range sourceFiles {
 		treeFiles = append(treeFiles, hardlinktree.TorrentFile{Path: f.Name, Size: f.Size})
 	}
-	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name}
+	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name, route: route}
 	// The folder is not reserved here, so the apply can still fall back to
 	// the <name>--<shortHash> folder when another torrent takes the name first.
 	_, destDir := linkDestDir(d, s.linkPresetDir(ctx, d, instance, baseDir, candidate, trackerDomain, &CrossSeedRequest{}), torrentName, treeFiles)
+	if route != nil {
+		// A routed add goes to the Cross-seed instance, so show its path.
+		if mapped, ok := crossseedroute.ToCrossSeed(d, route.rows, baseDir, destDir); ok {
+			return mapped
+		}
+	}
 	return destDir
 }
 

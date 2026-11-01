@@ -56,15 +56,14 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
       "showShareLimitDialog", "showSpeedLimitDialog", "showLocationDialog", "showRenameTorrentDialog",
       "showRenameFileDialog", "showRenameFolderDialog", "showRecheckDialog", "showReannounceDialog", "showTmmDialog",
       "showLocationWarningDialog", "pendingTmmEnable", "deleteFiles", "isDeleteFilesLocked", "blockCrossSeeds",
-      "deleteCrossSeeds", "isPending", "isAllSelected", "hasCrossSeedTag", "isLoadingTags", "isLoadingCategories",
-      "allowSubcategories", "isCrossInstanceEndpoint",
+      "deleteCrossSeeds", "isPending", "hasCrossSeedTag", "isLoadingTags", "isLoadingCategories",
+      "allowSubcategories",
     ].map(k => [k, false])
   )
   return {
     instanceId: 1,
-    instanceIds: undefined,
-    contextHashes: ["h0"],
-    contextTorrents: [],
+    actionTarget: { kind: "ticks", hashes: ["h0"], count: 1, previewTorrents: [] },
+    renameHash: "h0",
     closeDeleteDialog: noop,
     setShowCommentDialog: noop, setShowTagsDialog: noop, setShowCategoryDialog: noop, setShowCreateCategoryDialog: noop,
     setShowShareLimitDialog: noop, setShowSpeedLimitDialog: noop, setShowLocationDialog: noop,
@@ -76,12 +75,9 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
     handleSetLocationWrapper: vi.fn(), handleRenameTorrentWrapper: vi.fn(), handleRenameFileWrapper: vi.fn(),
     handleRenameFolderWrapper: vi.fn(), handleRecheckWrapper: vi.fn(), handleReannounceWrapper: vi.fn(),
     handleTmmConfirmWrapper: vi.fn(), proceedToLocationDialog: vi.fn(),
-    selectAllFilters: undefined,
-    contextClientMeta: { clientHashes: [], totalSelected: 0, actionTargets: [], excludeTargets: undefined },
-    effectiveSelectionCount: 0, deleteDialogTotalSize: 0, deleteDialogFormattedSize: "0 B",
-    selectAllExcludeHashes: undefined, selectAllExcludedTargets: [],
+    deleteDialogTotalSize: 0, deleteDialogFormattedSize: "0 B",
     crossSeedWarning: { affectedTorrents: [], reset: vi.fn() } as unknown as TorrentTableDialogsProps["crossSeedWarning"],
-    availableTags: [], availableCategories: {}, capabilities: undefined, effectiveSearch: "",
+    availableTags: [], availableCategories: {}, capabilities: undefined,
     ...(falses as Record<string, boolean>),
     ...overrides,
   } as TorrentTableDialogsProps
@@ -117,8 +113,9 @@ describe("TorrentTableDialogs", () => {
     expect(vi.mocked(props.handleSetCommentWrapper)).toHaveBeenCalled()
   })
 
-  it("passes the select-all count (not the context length) when isAllSelected", () => {
-    const { getByTestId } = renderDialogs(makeProps({ showTmmDialog: true, isAllSelected: true, effectiveSelectionCount: 5, contextHashes: ["a"] }))
+  it("passes the select-all count (not the loaded length) in Select all mode", () => {
+    const actionTarget: TorrentTableDialogsProps["actionTarget"] = { kind: "selectAll", selectAll: { filters: {} as never, search: "" }, count: 5, previewTorrents: [] }
+    const { getByTestId } = renderDialogs(makeProps({ showTmmDialog: true, actionTarget }))
     expect(getByTestId("TmmConfirmDialog").getAttribute("data-count")).toBe("5")
   })
 

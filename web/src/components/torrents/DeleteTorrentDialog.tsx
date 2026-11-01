@@ -79,7 +79,7 @@ export function DeleteTorrentDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="!max-w-2xl">
+      <AlertDialogContent className="sm:max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>
             {isAllSelected ? t("deleteDialog.titleSelectAll", { count }) : t("deleteDialog.title", { count: displayCount })}
@@ -120,6 +120,7 @@ export function DeleteTorrentDialog({
         {crossSeedWarning && (
           <CrossSeedWarning
             affectedTorrents={crossSeedWarning.affectedTorrents}
+            uncheckedInstances={crossSeedWarning.uncheckedInstances}
             searchState={crossSeedWarning.searchState}
             hasWarning={crossSeedWarning.hasWarning}
             deleteFiles={deleteFiles}

@@ -118,6 +118,14 @@ export interface LocalCrossSeedMatch {
   matchType: "content_path" | "hardlink" | "reflink" | "name" | "release"
 }
 
+/** An instance with local filesystem access that the delete check did not read. */
+export interface UncheckedInstance {
+  instanceId: number
+  instanceName: string
+  /** offline: qui cannot read its torrents. disabled: it is turned off in qui. */
+  reason: "offline" | "disabled"
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string

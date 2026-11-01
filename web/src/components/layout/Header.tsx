@@ -586,15 +586,8 @@ export function Header({
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
                 instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
-                selectedHashes={selectionSummary.selectedHashes}
-                selectedTorrents={selectionSummary.selectedTorrents}
-                isAllSelected={selection.isAllSelected}
-                totalSelectionCount={selectionSummary.totalSelectionCount}
+                actionTarget={selectionSummary.actionTarget}
                 totalSelectionSize={selectionSummary.selectedTotalSize}
-                filters={selectionSummary.selectAllFilters}
-                search={routeSearch?.q}
-                excludeHashes={selectionSummary.excludeHashes}
-                excludeTargets={selectionSummary.excludeTargets}
                 onComplete={clearSelection}
               />
             </div>

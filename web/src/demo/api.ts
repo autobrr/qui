@@ -216,8 +216,9 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/instances/:instanceId/torrents/:hash/pieces", detail("pieces"))
   on("GET", "/instances/:instanceId/torrents/:hash/webseeds", () => json([]))
   on("GET", "/instances/:instanceId/torrents/:hash/disc-scans", () => json([]))
+  on("GET", "/cross-seed/routes", () => json([]))
   on("GET", "/cross-seed/torrents/:instanceId/:hash/local-matches", () => json([]))
-  on("POST", "/instances/:instanceId/torrents/delete-cross-seeds", () => json({ matches: [] }))
+  on("POST", "/instances/:instanceId/torrents/delete-cross-seeds", () => json({ matches: [], unchecked_instances: [] }))
 
   const upsertCategory: Handler = async ({ params, request }) => {
     const body = await bodyJSON<{ name?: string; savePath?: string }>(request)

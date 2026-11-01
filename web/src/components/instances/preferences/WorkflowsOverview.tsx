@@ -56,6 +56,7 @@ import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
+  getRuleTagActions,
   parseImportJSON,
   toDuplicateInput,
   toExportFormat,
@@ -80,7 +81,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
@@ -88,6 +89,7 @@ import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
+import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 /**
@@ -147,16 +149,6 @@ function formatShareLimit(value: number | undefined, isRatio: boolean): string |
 function formatSpeedLimitCompact(kiB: number): string {
   if (kiB === 0) return "∞"
   return String(kiB)
-}
-
-function getRuleTagActions(rule: Automation) {
-  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
-    return rule.conditions.tags
-  }
-  if (rule.conditions?.tag) {
-    return [rule.conditions.tag]
-  }
-  return []
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
@@ -346,6 +338,7 @@ export function WorkflowsOverview() {
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
+  const [runNowTarget, setRunNowTarget] = useState<RunWorkflowNowTarget | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{
     instanceId: number
     rule: Automation
@@ -649,10 +642,23 @@ export function WorkflowsOverview() {
     return rule.conditions?.category?.enabled === true
   }
 
-  // Handle toggle - show preview when enabling delete or category rules
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
+  const isTagRule = (rule: Automation): boolean => {
+    if (isDeleteRule(rule) || isCategoryRule(rule)) return false
+    return getRuleTagActions(rule).some(action => action?.enabled)
+  }
+
+  // The condition of the action that the preview runs, for its columns
+  const previewCondition = (rule: Automation) => {
+    if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
+    if (isCategoryRule(rule)) return rule.conditions?.category?.condition
+    return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
+  }
+
+  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
-    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
-      // Enabling a delete or category rule - show preview first
+    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
+      // Enabling a delete, category, or tag rule - show preview first
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
@@ -1008,6 +1014,7 @@ export function WorkflowsOverview() {
                                     onEdit={() => openEditDialog(instance.id, rule)}
                                     onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
                                     onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
+                                    onRunNow={() => setRunNowTarget({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
                                     onEditJson={() => setJsonEdit(rule)}
@@ -1544,6 +1551,8 @@ export function WorkflowsOverview() {
         />
       )}
 
+      <RunWorkflowNowDialog target={runNowTarget} onClose={() => setRunNowTarget(null)} />
+
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1573,7 +1582,7 @@ export function WorkflowsOverview() {
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): t("preferences.workflowsOverview.enableDeleteRule")
+          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): enableConfirm && isTagRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableTagRule"): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1586,6 +1595,17 @@ export function WorkflowsOverview() {
                     <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
                   ) : null}
                   {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
+              </>
+            ) : enableConfirm && isTagRule(enableConfirm.rule) ? (
+              <>
+                <p>
+                  {t("preferences.workflowDialog.preview.tagPrefix")}{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
+                  {enableConfirm.preview.crossSeedCount ? (
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
+                  ) : null}.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
@@ -1605,7 +1625,7 @@ export function WorkflowsOverview() {
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
+        condition={enableConfirm ? previewCondition(enableConfirm.rule) : null}
         onConfirm={confirmEnableRule}
         previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}
@@ -1685,6 +1705,7 @@ interface RulePreviewProps {
   onEdit: () => void
   onDelete: () => void
   onRunDryRun: () => void
+  onRunNow: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
   onEditJson: () => void
@@ -1703,6 +1724,7 @@ function SortableRulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1738,6 +1760,7 @@ function SortableRulePreview({
         onEdit={onEdit}
         onDelete={onDelete}
         onRunDryRun={onRunDryRun}
+        onRunNow={onRunNow}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
         onEditJson={onEditJson}
@@ -1774,6 +1797,7 @@ function RulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1935,6 +1959,10 @@ function RulePreview({
             <DropdownMenuItem onClick={onRunDryRun}>
               <RefreshCcw className="h-4 w-4 mr-2" />
               {t("preferences.workflowsOverview.runDryRunNow")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRunNow}>
+              <Zap className="h-4 w-4 mr-2" />
+              {t("preferences.runWorkflowNow.action")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>

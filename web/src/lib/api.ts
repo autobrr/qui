@@ -29,6 +29,10 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
+  CrossSeedRoute,
+  CrossSeedRouteRow,
+  CrossSeedRouteStatus,
+  CrossSeedRouteTestResult,
   CrossSeedInstanceResult,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
@@ -130,6 +134,7 @@ import type {
   ThemeSettings,
   ThemeSlot,
   ThemeSlots,
+  UncheckedInstance,
   User,
   VersionInfo,
   WarningResponse,
@@ -487,6 +492,8 @@ type RawCrossSeedInstanceResult = {
   status: string
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
+  cross_seed_instance_id?: number
+  cross_seed_instance_name?: string
 }
 
 function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): CrossSeedInstanceResult {
@@ -496,6 +503,8 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     success: instance.success,
     status: instance.status,
     message: instance.message,
+    crossSeedInstanceId: instance.cross_seed_instance_id,
+    crossSeedInstanceName: instance.cross_seed_instance_name,
     matchedTorrent: instance.matched_torrent? {
       hash: instance.matched_torrent.hash ?? "",
       name: instance.matched_torrent.name ?? "",
@@ -1272,19 +1281,15 @@ class ApiClient {
   }
 
   /**
-   * Get local cross-seed matches for a torrent across all instances.
-   * Uses proper release metadata parsing (rls library), not fuzzy string matching.
-   *
-   * @param strict - When true, fail if file overlap checks can't complete (use for delete dialogs)
+   * Get the cross-seeds of a torrent on every active instance, from the batch matcher.
+   * Rejects when a file list or a link check cannot be read.
    */
   async getLocalCrossSeedMatches(
     instanceId: number,
-    hash: string,
-    strict = false
+    hash: string
   ): Promise<LocalCrossSeedMatch[]> {
-    const params = strict ? "?strict=true" : ""
     const raw = await this.request<RawLocalMatchesResponse>(
-      `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
       { method: "GET" }
     )
     return toLocalCrossSeedMatches(raw)
@@ -1294,6 +1299,7 @@ class ApiClient {
    * Get the torrents that a delete of the selected torrents with their files affects.
    * Takes the selection of a bulk action, so a select-all delete checks every selected
    * torrent in one request. The selected torrents are not in the result.
+   * uncheckedInstances names the instances that the check could not read.
    */
   async getDeleteCrossSeeds(
     instanceId: number,
@@ -1307,12 +1313,17 @@ class ApiClient {
       instanceIds?: number[]
     },
     signal?: AbortSignal
-  ): Promise<LocalCrossSeedMatch[]> {
-    const raw = await this.request<RawLocalMatchesResponse>(
+  ): Promise<{ matches: LocalCrossSeedMatch[]; uncheckedInstances: UncheckedInstance[] }> {
+    const raw = await this.request<RawLocalMatchesResponse & {
+      unchecked_instances: Array<{ instance_id: number; instance_name: string; reason: UncheckedInstance["reason"] }>
+    }>(
       `/instances/${instanceId}/torrents/delete-cross-seeds`,
       { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
     )
-    return toLocalCrossSeedMatches(raw)
+    return {
+      matches: toLocalCrossSeedMatches(raw),
+      uncheckedInstances: raw.unchecked_instances.map(u => ({ instanceId: u.instance_id, instanceName: u.instance_name, reason: u.reason })),
+    }
   }
 
   async searchCrossSeedTorrent(
@@ -1688,6 +1699,32 @@ class ApiClient {
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
     return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedRoutes(): Promise<CrossSeedRoute[]> {
+    return this.request<CrossSeedRoute[]>("/cross-seed/routes")
+  }
+
+  async getCrossSeedRoute(sourceInstanceId: number): Promise<CrossSeedRouteStatus | null> {
+    return this.request<CrossSeedRouteStatus | null>(`/cross-seed/routes/${sourceInstanceId}`)
+  }
+
+  async saveCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRoute> {
+    return this.request<CrossSeedRoute>(`/cross-seed/routes/${sourceInstanceId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async clearCrossSeedRoute(sourceInstanceId: number): Promise<void> {
+    await this.request(`/cross-seed/routes/${sourceInstanceId}`, { method: "DELETE" })
+  }
+
+  async testCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRouteTestResult> {
+    return this.request<CrossSeedRouteTestResult>(`/cross-seed/routes/${sourceInstanceId}/test`, {
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
@@ -2071,6 +2108,12 @@ class ApiClient {
     return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/dry-run`, {
       method: "POST",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async applyAutomationNow(instanceId: number, ruleId: number): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/${ruleId}/apply`, {
+      method: "POST",
     })
   }
 

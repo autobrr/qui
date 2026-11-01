@@ -125,7 +125,7 @@ Because hardlinked copies keep their own links to the data, deleting the origina
 Detection requires:
 
 - **Local filesystem access** enabled on the instances. qui must run in an environment where qBittorrent save paths are valid, identical to the requirements above. Without local access, qui detects only same-path cross-seeds.
-- The copy torrent must have the same name as the original, or the same release title and metadata. qui does not detect a copy with a different title.
+- The copy torrent must have the same name as the original, or the same release title and metadata. A copy with a different title also counts when it has the same total size and the other release details match. A copy that numbers its episodes in another way, for example `Show - 25` and `Show S02E01`, counts under the same condition. If such a copy has an extra file, its total size is different, and qui does not detect it.
 
 If qui cannot verify a copy (for example when its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
 
@@ -142,6 +142,99 @@ On Windows, the same delete check also detects ReFS block-cloned files and displ
 The ReFS check compares current allocated disk extents. It proves that the files share at least one allocated cluster at the time of the check. It does not prove clone history, and it does not prove that the files still share every byte. Copy-on-write modifications can leave only part of a file shared. If a process rewrites all formerly shared clusters, qui cannot detect the clone.
 
 Files smaller than one ReFS allocation cluster have no cloned extent, because qui's Windows reflink implementation copies the non-cluster-aligned tail. Those files cannot provide ReFS shared-extent evidence.
+
+## Cross-seed instance
+
+Some setups use two qBittorrent instances on the same disk. Sonarr and Radarr manage the first instance. The second instance holds only cross-seeds, so Sonarr and Radarr never see them. A **route** tells qui to add the cross-seeds that it finds for the first instance to the second instance.
+
+- The **Source instance** holds the matched torrents and names a Cross-seed instance. In this example, it is the instance that Sonarr and Radarr manage.
+- The **Cross-seed instance** receives the cross-seeds that qui finds on the Source instance.
+
+When the Source instance has a route, qui adds no cross-seed to it from a search or a match. RSS, webhook, Library Scan, completion search, manual search, manual match, and season pack apply and assembly all add to the Cross-seed instance. [Dir Scan](./dir-scan.md) keeps its own target instance and does not follow the route.
+
+### Requirements for a route
+
+- The Source instance uses hardlink or reflink mode and has at least one base directory. A routed add never uses regular mode, and it ignores the **Fallback to regular mode on error** setting. If a link fails, the add fails.
+- The Source instance has [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Link mode alone does not need it, but a route does.
+- The Cross-seed instance is online and runs qBittorrent 5.0 or later. It needs no Local Filesystem Access.
+- The qBittorrent of the Cross-seed instance can read and write the folders that the route maps. It reads the linked files there, and it downloads files that the matched torrent does not have (pending files) into the same folders.
+- A route has one step. The Cross-seed instance cannot have a route of its own, and no other instance can route to the Source instance. Several Source instances can route to one Cross-seed instance.
+
+### Example setup
+
+| Instance | Role | Base directory as the instance sees it |
+|----------|------|----------------------------------------|
+| `qbit-arr` | Source instance. Sonarr and Radarr manage it. | `/data/cross-seed` |
+| `qbit-cross` | Cross-seed instance, in a container that mounts the same disk at `/mnt/data` | `/mnt/data/cross-seed` |
+
+1. On `qbit-arr`, enable Local Filesystem Access in Instance Settings.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand `qbit-arr`. Set the mode to **Hardlink** or **Reflink**, set the base directory `/data/cross-seed`, and save.
+3. In the **Cross-seed instance** field of `qbit-arr`, select `qbit-cross`.
+4. In the row for `/data/cross-seed`, type `/mnt/data/cross-seed`. That is the path where `qbit-cross` sees the folder.
+5. Click **Test route**. Each row must show that the Cross-seed instance sees it.
+6. Click **Save route**.
+
+qui builds the link tree on the disk of the Source instance, with the link settings of the Source instance. qui then adds the torrent to the Cross-seed instance with the mapped path. The `by-instance` preset uses the name of the Cross-seed instance. The category, the tags, the recheck, the resume, and the External Program run on the Cross-seed instance.
+
+### Path rows
+
+The route has one row for each base directory of the Source instance. In each row, type the path where the Cross-seed instance sees that folder. An empty row means that both instances see the folder at the same path. Each row suggests folders from the Cross-seed instance as you type. A new base directory shows as a new empty row.
+
+qui refuses two rows that map to the same folder, or to folders inside each other. If the Cross-seed instance has Local Filesystem Access, every row must keep the same path.
+
+### Test route
+
+**Test route** tests the rows in the form, also before you save them. For each base directory, qui creates a marker folder on the Source instance. qui then asks the qBittorrent of the Cross-seed instance to list the mapped folder, and looks for the marker. qui removes the marker after the test, also after an error. Each row shows one of these results:
+
+- The Cross-seed instance sees the folder. The row is correct.
+- The Cross-seed instance sees the folder but not the marker. The mapped path names another folder, or a cache on the mount of the Cross-seed instance hides the new marker. An NFS mount can show an old folder listing for up to 60 seconds. Wait a minute and test again. If the result stays, make sure that the row names the same folder on the same disk.
+- The Cross-seed instance cannot see the folder. The path is wrong, or the Cross-seed instance does not mount the folder.
+- qui cannot write to the folder on the Source instance. Give qui write access to the base directory.
+
+Test route lists each folder one time and does not try again. If the Cross-seed instance is unavailable, the test shows "Cross-seed instance unavailable" one time, for all rows.
+
+### Check before each routed add
+
+Before each routed add, qui makes sure that the Cross-seed instance sees the linked files. qui asks the qBittorrent of the Cross-seed instance to list the folder that holds one linked file. If the file is not there, qui lists the folder 3 more times over about 15 seconds. If the file is still not there, qui removes the link tree, adds nothing, and reports "Cross-seed instance cannot see the data at `<path>`". RSS tries the item again on its next run. In one run, after the check fails for a base directory, later adds under that base directory list one time and do not try again.
+
+If the Cross-seed instance uses an NFS mount and this check fails often, lower the folder cache time of the mount. NFS can keep a folder listing for up to 60 seconds. The `acdirmax` mount option sets this time.
+
+Before the add, qui also skips a torrent that the Source instance or the Cross-seed instance already has. qui applies the [blocklist](./overview.md#blocklist) of the Cross-seed instance to a routed add. A [manual assembly](./overview.md#manual-match) from selected episodes ignores the blocklist, as it does without a route. The blocklist of the Source instance does not apply.
+
+### Files of routed cross-seeds
+
+A routed cross-seed is a hardlinked or reflinked copy of the files of the Source instance. The delete dialog does not list it as a cross-seed on another instance. See [Shared files on other instances](./overview.md#shared-files-on-other-instances).
+
+The route protects these files on the Source instance:
+
+- [Orphan scan](../orphan-scan.md) on the Source instance keeps the files that routed torrents use, also pending files that the Cross-seed instance downloaded.
+- [Hardlink scope](../automations.md#hardlink-detection) on the Source instance counts routed torrents as "Only other torrents".
+
+Before a change removes this protection, qui asks you to confirm, and shows the number of routed torrents. Such changes are a route change, a route clear, a removed base directory, and an edited row. The delete dialog of a Cross-seed instance shows the same count for each Source instance that routes to it, and says that the Source instance adds cross-seeds to itself again after the delete.
+
+### When an instance is unavailable
+
+A Cross-seed instance is unavailable when it is offline or turned off in qui. Then:
+
+- Routed adds and season pack apply stop with "Cross-seed instance unavailable". qui does not add to the Source instance instead.
+- A Library Scan on the Source instance does not start.
+- The orphan scan of the Source instance fails.
+- Hardlink scope rules on the Source instance read unknown, and their deletes wait.
+- If the target of a Dir Scan is a Source instance, Dir Scan skips the match and logs a warning. The next scan tries again.
+
+To end this, enable the Cross-seed instance or clear the route.
+
+If the qBittorrent of the Cross-seed instance is older than 5.0, routed adds, Test route, and the start of a Library Scan also stop with "Cross-seed instance unavailable". Upgrade it to 5.0 or later, or clear the route.
+
+An add to a Cross-seed instance also looks for the torrent on each of its Source instances. If a Source instance is offline, adds to the Cross-seed instance fail and name the Source instance. To end this, enable the Source instance or clear its route. qui skips a Source instance that is turned off in qui.
+
+### Move from the export and delete automations
+
+Some users moved cross-seeds with two automations: an [Export to Instance](../automations.md#export-to-instance) to the instance that holds the cross-seeds, and a delete on the instance that Sonarr and Radarr manage. With a route, qui adds new cross-seeds to the Cross-seed instance directly. You can turn those two automations off. The route does not move cross-seeds that the Source instance already holds.
+
+### Swap the roles of two instances
+
+A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps their reflinked files and their pending files. A hardlinked file stays kept while a torrent on the Source instance uses the same file. Move or delete the old routed torrents before you clear the route.
 
 ## Reflink Mode (Alternative)
 

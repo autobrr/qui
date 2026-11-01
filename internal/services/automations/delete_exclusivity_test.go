@@ -41,6 +41,17 @@ func (s *stubQbt) writtenHashes() map[string][]string {
 	return out
 }
 
+// filesDeleted returns the hashes of each delete that also removed the files.
+func (s *stubQbt) filesDeleted() []string {
+	var out []string
+	for _, write := range s.recordedWrites() {
+		if write.path == "torrents/delete" && write.form.Get("deleteFiles") == "true" {
+			out = append(out, strings.Split(write.form.Get("hashes"), "|")...)
+		}
+	}
+	return out
+}
+
 type stubTorrent struct {
 	hash, name, tags, tracker string
 }
@@ -71,15 +82,25 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 			}
 		}
 	}
-	svc, _, instanceIDs := newStubService(t, sharedFilesMatcher{sharing}, stub)
+	svc, _, instanceIDs := newStubService(t, sharedFilesMatcher{sharing: sharing}, stub)
 	return svc, instanceIDs[0], stub
 }
 
 // sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
-type sharedFilesMatcher struct{ sharing map[string][]string }
+// otherShared, otherUnknown, and offline are the result of the check on other instances.
+type sharedFilesMatcher struct {
+	sharing                   map[string][]string
+	otherShared, otherUnknown map[string]struct{}
+	offline                   []string
+}
 
 func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
-	return &CrossMatchResult{SameInstanceContentByHash: m.sharing}
+	return &CrossMatchResult{
+		SameInstanceContentByHash:  m.sharing,
+		OtherInstanceShared:        m.otherShared,
+		OtherInstanceSharedUnknown: m.otherUnknown,
+		OfflineLocalInstances:      m.offline,
+	}
 }
 
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.
@@ -168,6 +189,11 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", Condition: tagsContain("del")}}},
 	}
 
+	tagCrossSeedsRule := &models.Automation{
+		ID: 2, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 2,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", IncludeCrossSeeds: true, Condition: tagsContain("del")}}},
+	}
+
 	tests := []struct {
 		name     string
 		torrents []stubTorrent
@@ -204,6 +230,12 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			torrents: crossSeeds("del,mv"),
 			rules:    []*models.Automation{deleteRule(DeleteModeKeepFiles, tagsContain("del")), categoryRule(false, GroupCrossSeedContentSavePath)},
 			want:     map[string][]string{"category": {y}, "delete": {x}},
+		},
+		{
+			name:     "a deleted torrent does not pass its tag to its cross-seed",
+			torrents: crossSeeds("del"),
+			rules:    []*models.Automation{deleteRule(DeleteModeKeepFiles, tagsContain("del")), tagCrossSeedsRule},
+			want:     map[string][]string{"delete": {x}},
 		},
 		{
 			name:     "a cross-seed pulled into the delete gets none of its own actions",

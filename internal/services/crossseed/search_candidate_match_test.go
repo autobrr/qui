@@ -1915,7 +1915,6 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 			return &CrossSeedResponse{Success: true}, nil
 		},
 	}
-	state := &searchRunState{opts: SearchRunOptions{InstanceID: 1}}
 	match := TorrentSearchResult{
 		Indexer:     "Indexer",
 		IndexerID:   7,
@@ -1931,7 +1930,8 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		state,
+		1,
+		triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		match,
 		time.Now(),
@@ -1960,7 +1960,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
-		&searchRunState{opts: SearchRunOptions{InstanceID: 1}},
+		1, triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{
 			Indexer:     "Indexer",
@@ -2056,7 +2056,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 		&CrossSeedRequest{SkipRecheck: true},
 		service.releaseCache.Parse("Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"),
 		nil,
-		nil,
+		nil, nil,
 	)
 
 	require.Equal(t, "skipped_recheck", result.Status)
@@ -2502,7 +2502,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	t.Run("automated apply", func(t *testing.T) {
 		result, applyErr := service.executeCrossSeedSearchAttempt(
 			context.Background(),
-			&searchRunState{opts: SearchRunOptions{InstanceID: instanceID}},
+			instanceID, triggerDefaults{},
 			&source,
 			match,
 			time.Now(),
@@ -2542,6 +2542,37 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			listing:  "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.H264-GRP",
 			download: "Kaiju.Squad.S02E05.1080p.AMZN.WEBRip.H264-GRP",
 			want:     true,
+		},
+		{
+			name:     "the download keeps the HYBRID tag that search let pass",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			want:     true,
+		},
+		{
+			name:     "the download drops the HYBRID tag that search let pass",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			want:     true,
+		},
+		{
+			name:     "the HYBRID tolerance keeps a CRC tag that only the listing has",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			local:    "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01E01.1080p.BluRay.HYBRID.x264-GRP [ABCD1234]",
+			want:     true,
+		},
+		{
+			name:     "the HYBRID tolerance does not admit an IMAX download",
+			class:    searchCandidateClassHybridTolerance,
+			listing:  "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
+			local:    "Kaiju.Squad.S01.1080p.BluRay.x264-GRP",
+			download: "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
 		},
 		{
 			name:     "a strict verdict lists no web source difference",
@@ -2627,4 +2658,65 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			require.Equal(t, tt.want, m.downloadReadsAsListing(decision, m.readName(tt.local), m.readName(tt.download), false))
 		})
 	}
+}
+
+func TestClassifySearchCandidateHybridOutsideToleranceNamesSizeGap(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.x264-GRP"
+		candidateName = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    9_200,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.False(t, decision.Accepted)
+	require.Equal(t, "HYBRID (size differs by 8.00%)", decision.RejectReason)
+}
+
+func TestClassifySearchCandidateHybridExactSizeWithoutGroupUsesTolerance(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.2019.1080p.BluRay.x264"
+		candidateName = "Kaiju.Squad.2019.1080p.BluRay.HYBRID.x264"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    10_000,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
+	require.Equal(t, []string{"variant"}, decision.RelaxedDifferences)
+}
+
+func TestClassifySearchCandidateHybridPackAgainstEpisodeSkipsSizeCheck(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+		candidateName = "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP"
+	)
+
+	// Cross-seed episodes from packs skips the size check, as it does for a
+	// strict match.
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:                 namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:              namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:             10_000,
+		CandidateSize:          1_000,
+		TolerancePercent:       defaultSizeMismatchTolerancePercent,
+		FindIndividualEpisodes: true,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
 }

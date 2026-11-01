@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -66,9 +68,11 @@ type torrentDesiredState struct {
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags  map[string]struct{}
-	tagActions   map[string]string // tag -> "add" | "remove"
-	tagRuleByTag map[string]ruleRef
+	currentTags    map[string]struct{}
+	tagActions     map[string]string // tag -> "add" | "remove"
+	tagRuleByTag   map[string]ruleRef
+	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
+	tagResetTags   map[string]struct{}        // tags re-added after a managed reset: a real change even when already present
 
 	// Category (last rule wins)
 	category                  *string
@@ -104,6 +108,16 @@ type ruleRef struct {
 	name string
 }
 
+// tagExpandIntent is a pending cross-seed expansion of a tag decision: the rule
+// that requested it, the decision to propagate ("add" or "remove"), and whether
+// the action runs in managed-reset mode (the tag is wholesale-deleted in the
+// client before matches are re-added).
+type tagExpandIntent struct {
+	rule            ruleRef
+	action          string
+	resetFromClient bool
+}
+
 type ruleRunStats struct {
 	MatchedTrackers                  int
 	SpeedApplied                     int
@@ -122,7 +136,7 @@ type ruleRunStats struct {
 	AutoManageConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
-	TagSkippedMissingUnregisteredSet int
+	TagSkippedMissingTrackerHealth   int
 	CategoryApplied                  int
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
@@ -181,6 +195,7 @@ func processTorrents(
 	torrents []qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	stats map[int]*ruleRunStats,
@@ -192,8 +207,6 @@ func processTorrents(
 	} else {
 		states = make(map[string]*torrentDesiredState)
 	}
-
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -425,14 +438,14 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 		// Skip if condition uses IS_UNREGISTERED but health data isn't available
 		if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) &&
-			(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
+			(evalCtx == nil || evalCtx.TrackerHealth == nil) {
 			// Skip tag processing for this rule
 			if stats != nil {
-				stats.TagSkippedMissingUnregisteredSet++
+				stats.TagSkippedMissingTrackerHealth++
 			}
 			continue
 		}
-		matches := processTagAction(rule, tagAction, torrent, state, evalCtx)
+		matches := processTagAction(rule, tagAction, torrent, state, evalCtx, crossSeeds)
 		if stats != nil {
 			if matches {
 				stats.TagConditionMet++
@@ -700,7 +713,7 @@ func containsStringFold(list []string, candidate string) bool {
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
-func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
+func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
 	tagMode := tagAction.Mode
 	if tagMode == "" {
 		tagMode = models.TagModeFull
@@ -724,6 +737,24 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		}
 	}
 	resetFromClient := shouldResetTagActionInClient(tagAction)
+	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
+	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
+	// As category: a group whose file check did not complete gets no decision,
+	// so the copies never diverge. A managed reset deletes the tag from every
+	// torrent first, so such a torrent keeps the tags it has.
+	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		if resetFromClient && rule != nil {
+			for _, managedTag := range tagsToManage {
+				_, hasTag := state.currentTags[managedTag]
+				if _, pending := state.tagActions[managedTag]; hasTag && !pending {
+					state.tagActions[managedTag] = "add"
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+					markTagReset(state, managedTag, true)
+				}
+			}
+		}
+		return false
+	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
@@ -741,37 +772,85 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
+		// action is the local change; assert is the steady-state decision a
+		// matching copy that already looks right still pushes across its
+		// cross-seed siblings (any-match-wins, and siblings added after the
+		// first run). Full-mode removals happen on non-matches and stay local.
+		action, assert := "", ""
 		switch tagMode {
 		case models.TagModeAdd:
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
 		case models.TagModeRemove:
-			if hasTag && matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case hasTag && matchesCondition:
+				action = "remove"
+			case !hasTag && matchesCondition:
+				assert = "remove"
 			}
 		default: // full (incl. unknown/empty)
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
-			} else if hasTag && !matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && !matchesCondition:
+				action = "remove"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
+		}
+		if action != "" {
+			state.tagActions[managedTag] = action
+			if rule != nil {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			markTagReset(state, managedTag, resetFromClient && action == "add")
+			if matchesCondition {
+				assert = action
+			}
+		} else if rule != nil && len(crossSeeds[torrent.Hash]) > 1 &&
+			(assert != "" || (tagMode != models.TagModeAdd && tagMode != models.TagModeRemove)) {
+			// A no-op decision (full mode always decides) still owns the tag:
+			// another rule's expansion must not override it, or the copy
+			// flips on every other run.
+			if _, decided := state.tagRuleByTag[managedTag]; !decided {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+		}
+		// A later rule's decision without expansion clears earlier intent (last rule wins).
+		if assert == "" || !expandCrossSeeds || rule == nil {
+			if action != "" {
+				delete(state.tagExpandByTag, managedTag)
+			}
+			continue
+		}
+		if state.tagExpandByTag == nil {
+			state.tagExpandByTag = make(map[string]tagExpandIntent)
+		}
+		state.tagExpandByTag[managedTag] = tagExpandIntent{
+			rule:            ruleRef{id: rule.ID, name: rule.Name},
+			action:          assert,
+			resetFromClient: resetFromClient,
 		}
 	}
 
 	return matchesCondition
+}
+
+// markTagReset records or clears a managed-reset re-add for tag, so the preview
+// counts it as the live path does (the tag is wholesale-deleted first).
+func markTagReset(state *torrentDesiredState, tag string, reset bool) {
+	if !reset {
+		delete(state.tagResetTags, tag)
+		return
+	}
+	if state.tagResetTags == nil {
+		state.tagResetTags = make(map[string]struct{})
+	}
+	state.tagResetTags[tag] = struct{}{}
 }
 
 // hasActions returns true if the state has any actions to execute.
@@ -786,6 +865,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldReannounce ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
+		len(state.tagExpandByTag) > 0 ||
+		len(state.tagRuleByTag) > 0 ||
 		state.category != nil ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||
@@ -850,6 +931,11 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
 		return true
 	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		if _, keep := otherInstanceKeepsFiles(evalCtx, torrent.Hash); keep {
+			return true
+		}
+	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
 		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
@@ -899,6 +985,11 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
 	if !ok {
 		return false
+	}
+	// The selection keeps the files of the whole group, so the group frees nothing.
+	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
+		maps.Copy(evalCtx.CrossSeedHashesToClear, expanded.expandedSet)
+		return true
 	}
 	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
 }
@@ -976,6 +1067,23 @@ func verifiedCrossSeedFileBytes(
 	return totalBytes, true
 }
 
+// sortFieldsError reports the first field of config that cannot sort or score.
+// unknown starts the error text for a simple sort field; rule validation and the sort word it differently.
+func sortFieldsError(config *models.SortingConfig, unknown string) error {
+	if config.Type == models.SortingTypeSimple && !ConditionFields[config.Field].Sortable() {
+		return fmt.Errorf("%s: %s", unknown, config.Field)
+	}
+	if config.Type != models.SortingTypeScore {
+		return nil
+	}
+	for _, r := range config.ScoreRules {
+		if r.Type == models.ScoreRuleTypeFieldMultiplier && r.FieldMultiplier != nil && !ConditionFields[r.FieldMultiplier.Field].Scorable() {
+			return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
+		}
+	}
+	return nil
+}
+
 // CalculateScore computes the weighted score for a torrent based on configuration.
 func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) float64 {
 	var totalScore float64
@@ -988,9 +1096,9 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 		switch rule.Type {
 		case models.ScoreRuleTypeFieldMultiplier:
 			if rule.FieldMultiplier != nil && rule.FieldMultiplier.Field != "" {
-				val := getNumericFieldValue(torrent, rule.FieldMultiplier.Field, evalCtx)
-				points := val * rule.FieldMultiplier.Multiplier
-				totalScore += points
+				if read := ConditionFields[rule.FieldMultiplier.Field].Sort.Number; read != nil {
+					totalScore += read(torrent, evalCtx) * rule.FieldMultiplier.Multiplier
+				}
 			}
 
 		case models.ScoreRuleTypeConditional:
@@ -1019,11 +1127,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if !config.Field.IsNumeric() {
-				if !config.Field.IsString() {
-					return fmt.Errorf("unsupported sort field: %s", config.Field)
-				}
-			}
 		case models.SortingTypeScore:
 			if len(config.ScoreRules) == 0 {
 				return errors.New("score sort requires at least one rule")
@@ -1033,9 +1136,6 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 				case models.ScoreRuleTypeFieldMultiplier:
 					if r.FieldMultiplier == nil {
 						return fmt.Errorf("score rule %d: content missing for field multiplier", i)
-					}
-					if !r.FieldMultiplier.Field.IsNumeric() {
-						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 					}
 				case models.ScoreRuleTypeConditional:
 					if r.Conditional == nil {
@@ -1051,6 +1151,9 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		default:
 			return fmt.Errorf("unsupported sorting type: %s", config.Type)
 		}
+		if err := sortFieldsError(config, "unsupported sort field"); err != nil {
+			return err
+		}
 	}
 
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
@@ -1062,31 +1165,36 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		}
 	}
 
+	var sortValue SortValue
+	if config != nil && config.Type == models.SortingTypeSimple {
+		sortValue = ConditionFields[config.Field].Sort
+	}
+
 	sort.Slice(torrents, func(i, j int) bool {
-		return compareTorrents(torrents[i], torrents[j], config, scores, evalCtx)
+		return compareTorrents(torrents[i], torrents[j], config, sortValue, scores, evalCtx)
 	})
 
 	return nil
 }
 
 // compareTorrents is a helper function that returns true if t1 should sort before t2.
-func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores map[string]float64, evalCtx *EvalContext) bool {
+func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, sortValue SortValue, scores map[string]float64, evalCtx *EvalContext) bool {
 	// 1. Primary Sort
 	if config != nil {
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if config.Field.IsNumeric() {
-				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
-				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
+			if sortValue.Number != nil {
+				v1 := sortValue.Number(t1, evalCtx)
+				v2 := sortValue.Number(t2, evalCtx)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
 					}
 					return v1 > v2
 				}
-			} else {
-				v1, _ := extractStringValue(t1, config.Field)
-				v2, _ := extractStringValue(t2, config.Field)
+			} else if sortValue.Text != nil {
+				v1 := sortValue.Text(t1)
+				v2 := sortValue.Text(t2)
 				if v1 != v2 {
 					if config.Direction == models.SortDirectionASC {
 						return v1 < v2
@@ -1126,88 +1234,6 @@ func getNowUnix(evalCtx *EvalContext) int64 {
 	return time.Now().Unix()
 }
 
-// getNumericFieldValue returns the float64 representation of a field for scoring.
-// Returns 0 if field is not numeric or not found.
-//
-//nolint:exhaustive // Only numeric sort fields are supported.
-func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
-	switch field {
-	case models.FieldSize:
-		return float64(t.Size)
-	case models.FieldTotalSize:
-		return float64(t.TotalSize)
-	case models.FieldDownloaded:
-		return float64(t.Downloaded)
-	case models.FieldUploaded:
-		return float64(t.Uploaded)
-	case models.FieldAmountLeft:
-		return float64(t.AmountLeft)
-	case models.FieldFreeSpace:
-		if evalCtx != nil && evalCtx.FreeSpace > 0 {
-			return float64(evalCtx.FreeSpace)
-		}
-		return 0
-	case models.FieldAddedOn:
-		if t.AddedOn <= 0 {
-			return 0
-		}
-		return float64(t.AddedOn)
-	case models.FieldCompletionOn:
-		return float64(qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn))
-	case models.FieldLastActivity:
-		if t.LastActivity <= 0 {
-			return 0
-		}
-		return float64(t.LastActivity)
-	case models.FieldSeedingTime:
-		if t.SeedingTime <= 0 {
-			return 0
-		}
-		return float64(t.SeedingTime)
-	case models.FieldTimeActive:
-		if t.TimeActive <= 0 {
-			return 0
-		}
-		return float64(t.TimeActive)
-	case models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge:
-		return getAgeFieldValue(evalCtx, field, t)
-	case models.FieldRatio:
-		return t.Ratio
-	case models.FieldProgress:
-		return t.Progress * 100
-	case models.FieldAvailability:
-		return t.Availability
-	case models.FieldDlSpeed:
-		return float64(t.DlSpeed)
-	case models.FieldUpSpeed:
-		return float64(t.UpSpeed)
-	case models.FieldNumSeeds:
-		return float64(t.NumSeeds)
-	case models.FieldNumLeechs:
-		return float64(t.NumLeechs)
-	case models.FieldNumComplete:
-		return float64(t.NumComplete)
-	case models.FieldNumIncomplete:
-		return float64(t.NumIncomplete)
-	case models.FieldTrackersCount:
-		return float64(t.TrackersCount)
-	case models.FieldSystemHour:
-		return float64(evaluateTime(evalCtx).Hour())
-	case models.FieldSystemMinute:
-		return float64(evaluateTime(evalCtx).Minute())
-	case models.FieldSystemDayOfWeek:
-		return float64(evaluateTime(evalCtx).Weekday())
-	case models.FieldSystemDay:
-		return float64(evaluateTime(evalCtx).Day())
-	case models.FieldSystemMonth:
-		return float64(evaluateTime(evalCtx).Month())
-	case models.FieldSystemYear:
-		return float64(evaluateTime(evalCtx).Year())
-	default:
-		return 0
-	}
-}
-
 //nolint:exhaustive // Only age-backed fields are supported.
 func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
 	var ts int64
@@ -1225,28 +1251,4 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 		return 0
 	}
 	return float64(getNowUnix(evalCtx) - ts)
-}
-
-//nolint:exhaustive // Only string sort fields are supported.
-func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
-	switch field {
-	case models.FieldName:
-		return strings.ToLower(t.Name), true
-	case models.FieldCategory:
-		return strings.ToLower(t.Category), true
-	case models.FieldTags:
-		return strings.ToLower(t.Tags), true
-	case models.FieldTracker:
-		return strings.ToLower(t.Tracker), true
-	case models.FieldState:
-		return strings.ToLower(string(t.State)), true
-	case models.FieldSavePath:
-		return strings.ToLower(t.SavePath), true
-	case models.FieldContentPath:
-		return strings.ToLower(t.ContentPath), true
-	case models.FieldComment:
-		return strings.ToLower(t.Comment), true
-	default:
-		return "", false
-	}
 }

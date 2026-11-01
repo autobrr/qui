@@ -163,6 +163,9 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 			if actionsGroupCrossSeeds(ac) {
 				needs.CrossMatch.SameContent = true
 			}
+			if deleteKeepsFilesForOtherInstances(ac.Delete) {
+				needs.CrossMatch.OtherShared = true
+			}
 		}
 	}
 	return needs
@@ -170,8 +173,9 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 
 // actionsGroupCrossSeeds reports whether an enabled action reads the cross-seed
 // groups: a delete that keeps, expands to, or counts once the torrents that share
-// files, any move (it takes the torrents that share files along), and a category
-// change that blocks on or includes cross-seeds.
+// files, any move (it takes the torrents that share files along), a category
+// change that blocks on or includes cross-seeds, and a tag action that includes
+// cross-seeds.
 func actionsGroupCrossSeeds(ac *models.ActionConditions) bool {
 	if del := ac.Delete; del != nil && del.Enabled {
 		switch del.Mode {
@@ -186,8 +190,20 @@ func actionsGroupCrossSeeds(ac *models.ActionConditions) bool {
 	if move := ac.Move; move != nil && move.Enabled {
 		return true
 	}
+	for _, tag := range ac.TagActions() {
+		if tag != nil && tag.Enabled && tag.IncludeCrossSeeds && !tag.UseTrackerAsTag {
+			return true
+		}
+	}
 	cat := ac.Category
 	return cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)
+}
+
+// deleteKeepsFilesForOtherInstances reports whether the delete mode keeps the
+// files that a torrent on another instance needs.
+func deleteKeepsFilesForOtherInstances(del *models.DeleteAction) bool {
+	return del != nil && del.Enabled &&
+		(del.Mode == DeleteModeWithFilesPreserveCrossSeeds || del.Mode == DeleteModeWithFilesIncludeCrossSeeds)
 }
 
 // previewNeeds is NeedsFor of one rule as if it were enabled: the preview shows

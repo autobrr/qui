@@ -134,6 +134,8 @@
     "error": "Falha ao verificar cross-seeds",
     "retry": "Tentar novamente",
     "noCrossSeeds": "Nenhum cross-seed encontrado",
+    "uncheckedOffline": "Não foi possível verificar {{instance}}: o qui não consegue acessá-la.",
+    "uncheckedDisabled": "{{instance}} não foi verificada: ela está desativada no qui.",
     "deleteCrossSeeds": "Estes cross-seeds também serão excluídos",
     "deletingFilesBreaks": "Excluir os arquivos vai quebrar estes cross-seeds",
     "dataPreserved": "Cross-seeds detectados: os dados serão preservados",
@@ -821,7 +823,8 @@
       "fewerIndexers": "Tente pesquisar com menos indexadores selecionados",
       "useRss": "Use a automação RSS para cross-seeding contínuo",
       "checkIndexers": "Verifique a página de indexadores para ver quais estão limitados"
-    }
+    },
+    "routedTo": "Os cross-seeds vão para a instância de cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrar {{column}}",
@@ -1014,7 +1017,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregados",
     "scrollForMore": "(role para mais)",
-    "loading": "Carregando...",
     "freeSpace": "Espaço Livre",
     "switchToBits": "Mudar para bits por segundo (bps)",
     "switchToBytes": "Mudar para bytes por segundo (B/s)",
@@ -1652,6 +1654,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Adicione uma tag e pressione Enter",
     "savePath": "Caminho de salvamento (destino efetivo)",
+    "routedTo": "O cross-seed vai para a instância de cross-seed {{instance}}.",
     "cancel": "Cancelar",
     "apply": "Adicionar cross-seed",
     "applying": "Adicionando...",
@@ -1679,6 +1682,7 @@
         "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
         "target_not_found": "Destino não encontrado nesta instância.",
         "incomplete": "O download do destino está incompleto.",
+        "not_settled": "Este torrent ainda está sendo movido ou verificado. Tente novamente quando terminar.",
         "no_episode_identity": "Não foi possível reconhecer o número do episódio.",
         "file_list_unavailable": "A lista de arquivos do destino não está disponível.",
         "episode_file_invalid": "O destino deve conter um arquivo reproduzível com a identidade do episódio selecionado.",

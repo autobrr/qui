@@ -138,6 +138,8 @@
     "error": "Nepodařilo se zkontrolovat křížová sdílení",
     "retry": "Zkusit znovu",
     "noCrossSeeds": "Nenalezena žádná křížová sdílení",
+    "uncheckedOffline": "{{instance}} nelze zkontrolovat: qui se k ní nemůže připojit.",
+    "uncheckedDisabled": "{{instance}} nebyla zkontrolována: v qui je vypnutá.",
     "deleteCrossSeeds": "Tyto křížová sdílení budou také smazány",
     "deletingFilesBreaks": "Smazání souborů rozbije tyto křížová sdílení",
     "dataPreserved": "Křížová sdílení detekována: data budou zachována",
@@ -880,7 +882,8 @@
       "fewerIndexers": "Vyhledávejte s méně indexery",
       "useRss": "Použijte funkci RSS automatizace pro trvalé křížové sdílení",
       "checkIndexers": "Zkontrolujte help stránky indexerů a zjistěte, které jsou omezené"
-    }
+    },
+    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrovat {{column}}",
@@ -1076,7 +1079,6 @@
     "torrentCount_other": "{{count}} torrenty",
     "torrentsLoaded": "{{loaded}} z {{total}} torrentů načteno",
     "scrollForMore": "(skrolovat pro více)",
-    "loading": "Načítání...",
     "freeSpace": "Volné místo",
     "switchToBits": "Přepnout na bitů za sekundu (bps)",
     "switchToBytes": "Přepnout na bajtů za sekundu (B/s)",
@@ -1730,6 +1732,7 @@
     "tags": "Štítky",
     "newTagPlaceholder": "Zadejte štítek a stiskněte Enter",
     "savePath": "Cesta uložení (skutečné umístění)",
+    "routedTo": "Křížové sdílení jde do instance pro křížové sdílení {{instance}}.",
     "cancel": "Zrušit",
     "apply": "Přidat cross-seed",
     "applying": "Přidávání...",
@@ -1757,6 +1760,7 @@
         "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",
         "target_not_found": "Cíl nebyl v této instanci nalezen.",
         "incomplete": "Stahování cíle není dokončeno.",
+        "not_settled": "Tento torrent se stále přesouvá nebo kontroluje. Zkuste to znovu, až to skončí.",
         "no_episode_identity": "Číslo epizody nelze rozpoznat.",
         "file_list_unavailable": "Seznam souborů cíle není dostupný.",
         "episode_file_invalid": "Cíl musí obsahovat jeden přehratelný soubor s identitou vybrané epizody.",

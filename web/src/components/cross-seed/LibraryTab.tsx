@@ -31,10 +31,11 @@ import {
 } from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
-import { normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
+import { crossSeedRouteText, normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import { libraryRunState } from "@/lib/run-state"
 import type {
   CrossSeedAutomationSettings,
+  CrossSeedSearchResult,
   CrossSeedSearchSettings,
   Instance
 } from "@/types"
@@ -687,6 +688,14 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                 {searchRuns && searchRuns.length > 0 ? (
                   <div className="space-y-1">
                     {searchRuns.map(run => {
+                      const sourceName = instances.find(instance => instance.id === run.instanceId)?.name ?? String(run.instanceId)
+                      // A routed result names the Cross-seed instance that got the add. The label
+                      // truncates on a narrow screen, so the release name keeps its room.
+                      const routeLabel = (result: CrossSeedSearchResult) => {
+                        if (!result.crossSeedInstanceName) return null
+                        const text = crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")
+                        return <span className="min-w-0 truncate text-muted-foreground/80" title={text}>{text}</span>
+                      }
                       const successResults = run.results?.filter(r => r.status === "added") ?? []
                       const failedResults = run.results?.filter(r => r.status === "failed") ?? []
                       const skippedResults = run.results?.filter(r => r.status === "skipped") ?? []
@@ -726,6 +735,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                   <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
                                     <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                     <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                    {routeLabel(result)}
                                   </div>
                                 ))}
                                 {successResults.length === 0 && failedResults.length === 0 && skippedResults.length === 0 && run.results && run.results.length > 0 && (
@@ -739,6 +749,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                         <div className="flex items-center gap-2">
                                           <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                          {routeLabel(result)}
                                         </div>
                                         {result.message && (
                                           <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
@@ -755,6 +766,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                         <div className="flex items-center gap-2">
                                           <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                          {routeLabel(result)}
                                         </div>
                                         <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || t("scan.noMessageProvided")}</span>
                                       </div>

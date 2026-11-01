@@ -4113,7 +4113,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 				}, nil
 			}
 
-			state := &searchRunState{opts: tt.opts}
+			defaults := triggerDefaults{sourceFilter: sourceFilter{tt.opts.Categories, tt.opts.Tags, tt.opts.ExcludeCategories, tt.opts.ExcludeTags}}
 			torrent := &qbt.Torrent{
 				Hash:     "testhash",
 				Name:     "Test.Movie.2025.1080p.BluRay-GROUP",
@@ -4129,7 +4129,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 				Size:        1024,
 			}
 
-			_, err := service.executeCrossSeedSearchAttempt(ctx, state, torrent, match, time.Now().UTC())
+			_, err := service.executeCrossSeedSearchAttempt(ctx, tt.opts.InstanceID, defaults, torrent, match, time.Now().UTC())
 			require.NoError(t, err)
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
@@ -4262,4 +4262,112 @@ func TestMatchesSearchFilters(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// regression: #3626
+func TestCheckWebhook_SettledSource(t *testing.T) {
+	t.Parallel()
+
+	instanceA := &models.Instance{ID: 1, Name: "A"}
+	instanceB := &models.Instance{ID: 2, Name: "B"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{instanceA.ID: instanceA, instanceB.ID: instanceB}}
+
+	torrentName := "Quiet.Harbor.2025.2160p.WEB-DL.DDP5.1.H.265-NTB"
+	torrentSize := int64(13 << 30)
+	// qBittorrent reports the content path under the download path until the move ends.
+	moving := qbt.Torrent{
+		Hash: "moving", Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateMoving,
+		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
+	}
+	settled := qbt.Torrent{
+		Hash: "settled", Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateStalledUp,
+		SavePath: "/data/movies", ContentPath: "/data/movies/" + torrentName + ".mkv",
+	}
+	errored := settled
+	errored.Hash, errored.State = "errored", qbt.TorrentStateError
+	erroredPartial := errored
+	erroredPartial.Hash, erroredPartial.Progress = "errored-partial", 0.4
+
+	tests := []struct {
+		name             string
+		recoverErrored   bool
+		torrentsA        []qbt.Torrent
+		torrentsB        []qbt.Torrent
+		wantCanCrossSeed bool
+		wantMatches      []string
+	}{
+		{name: "moving source is pending", torrentsA: []qbt.Torrent{moving}, wantMatches: []string{"moving"}},
+		{name: "settled copy on another instance is complete", torrentsA: []qbt.Torrent{moving}, torrentsB: []qbt.Torrent{settled}, wantCanCrossSeed: true, wantMatches: []string{"moving", "settled"}},
+		{name: "errored source with recovery off is no match", torrentsA: []qbt.Torrent{errored}},
+		{name: "partial errored source with recovery off is no match", torrentsA: []qbt.Torrent{erroredPartial}},
+		{name: "moving source with recovery on is pending", recoverErrored: true, torrentsA: []qbt.Torrent{moving}, wantMatches: []string{"moving"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &Service{
+				instanceStore: store,
+				syncManager: &fakeSyncManager{cached: map[int][]internalqb.CrossInstanceTorrentView{
+					instanceA.ID: buildCrossInstanceViews(instanceA, tt.torrentsA),
+					instanceB.ID: buildCrossInstanceViews(instanceB, tt.torrentsB),
+				}},
+				releaseCache:                  NewReleaseCache(),
+				stringNormalizer:              stringutils.NewDefaultNormalizer(),
+				recoverErroredTorrentsEnabled: tt.recoverErrored,
+			}
+
+			resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{TorrentName: torrentName, Size: uint64(torrentSize)})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
+			gotHashes := make([]string, 0, len(resp.Matches))
+			for _, match := range resp.Matches {
+				gotHashes = append(gotHashes, match.TorrentHash)
+			}
+			assert.ElementsMatch(t, tt.wantMatches, gotHashes)
+		})
+	}
+}
+
+// regression: #3626
+func TestFindCandidatesSkipsSourceThatIsNotSettled(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1, Name: "main"}
+	name := "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
+	size := int64(4 << 20)
+	source := qbt.Torrent{
+		Hash: "moving", Name: name, Size: size, Progress: 1, State: qbt.TorrentStateMoving,
+		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
+	}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{"moving": {{Name: name + ".mkv", Size: size}}}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := svc.FindCandidates(t.Context(), &FindCandidatesRequest{TorrentName: name, TargetInstanceIDs: []int{instance.ID}})
+	require.NoError(t, err)
+	require.Empty(t, resp.Candidates)
+
+	svc.syncManager.(*fakeSyncManager).all[instance.ID][0].State = qbt.TorrentStateStalledUp
+	resp, err = svc.FindCandidates(t.Context(), &FindCandidatesRequest{TorrentName: name, TargetInstanceIDs: []int{instance.ID}})
+	require.NoError(t, err)
+	require.Len(t, resp.Candidates, 1)
+}
+
+func (*fakeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*mockRecoverSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*infohashTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*rssFilterTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

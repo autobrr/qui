@@ -95,6 +95,9 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
         - pattern: ^qbittorrent\.Category(Save|Download)Path$
           pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
           msg: read category folders through SyncManager.InstanceFolders
@@ -103,6 +106,9 @@ linters:
           msg: use crossseed.Adder
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
+        - pattern: ^models\.CrossSeedStore\.\w*PartialPool\w*$
+          pkg: ^github\.com/autobrr/qui/internal/models$
+          msg: ask the partial pool coordinator in internal/services/crossseed/partial_pool.go
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -169,6 +175,12 @@ linters:
           - forbidigo
         text: Search scope module
 
+      # Only the source apply module runs normal matches, then title rescue.
+      - path: internal/services/crossseed/source_apply\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: source apply module
+
       # Only the Adder adds a torrent in the cross-seed and Dir Scan packages (ADR 0022).
       - path-except: ^internal/services/(crossseed|dirscan)/
         linters:
@@ -188,6 +200,13 @@ linters:
         linters:
           - forbidigo
         text: use crossseed\.Aligner
+
+      # Only the partial pool coordinator and the store itself call the partial
+      # pool store methods.
+      - path: internal/services/crossseed/partial_pool\.go$|internal/models/crossseed_partial_pool\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: partial pool coordinator
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.

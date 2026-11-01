@@ -88,7 +88,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		withAdder(service)
 		result := service.processCrossSeedCandidate(
 			context.Background(), candidate, []byte("torrent"), newHash, "",
-			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil,
+			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil, nil,
 		)
 		return result, sync
 	}
@@ -132,6 +132,24 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		require.False(t, result.Success)
 		require.Equal(t, "skipped_recheck", result.Status)
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
+	})
+
+	// A HYBRID copy passes the same size checks as any other encode difference,
+	// so an exact layout keeps the fast path, also with Skip recheck on.
+	t.Run("HYBRID tolerance keeps the unverified fast path", func(t *testing.T) {
+		for _, skipRecheck := range []bool{false, true} {
+			req := newRequest()
+			req.SearchDecision.Class = searchCandidateClassHybridTolerance
+			req.SearchDecision.Relaxed = 0
+			req.SkipRecheck = skipRecheck
+
+			result, sync := run(t, req)
+
+			require.Equal(t, "added", result.Status, "skipRecheck=%v message: %s", skipRecheck, result.Message)
+			for _, action := range sync.bulkActions {
+				require.NotContains(t, action, "recheck:")
+			}
+		}
 	})
 
 	t.Run("soft relaxations keep the unverified fast path", func(t *testing.T) {
@@ -210,7 +228,7 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 				},
 				service.releaseCache.Parse(renameOnlySourceFile),
 				sourceFiles,
-				nil,
+				nil, nil,
 			)
 
 			require.True(t, result.Success, "message: %s", result.Message)

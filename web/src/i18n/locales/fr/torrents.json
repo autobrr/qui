@@ -134,6 +134,8 @@
     "error": "Échec de la vérification des cross-seeds",
     "retry": "Réessayer",
     "noCrossSeeds": "Aucun cross-seed trouvé",
+    "uncheckedOffline": "Impossible de vérifier {{instance}} : qui ne peut pas la joindre.",
+    "uncheckedDisabled": "{{instance}} n'a pas été vérifiée : elle est désactivée dans qui.",
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
     "dataPreserved": "Cross-seeds détectés : les données seront préservées",
@@ -821,7 +823,8 @@
       "fewerIndexers": "Essayez de rechercher avec moins d'indexeurs",
       "useRss": "Utilisez l'automatisation RSS pour les cross-seeds réguliers",
       "checkIndexers": "Vérifiez la page des indexeurs pour voir lesquels sont limités"
-    }
+    },
+    "routedTo": "Les cross-seeds vont à l'instance de cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrer {{column}}",
@@ -1014,7 +1017,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} sur {{total}} torrents chargés",
     "scrollForMore": "(défiler pour plus)",
-    "loading": "Chargement...",
     "freeSpace": "Espace libre",
     "switchToBits": "Basculer en bits par seconde (bps)",
     "switchToBytes": "Basculer en octets par seconde (o/s)",
@@ -1652,6 +1654,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Ajoutez un tag et appuyez sur Entrée",
     "savePath": "Chemin de sauvegarde (destination effective)",
+    "routedTo": "Le cross-seed va à l'instance de cross-seed {{instance}}.",
     "cancel": "Annuler",
     "apply": "Ajouter le cross-seed",
     "applying": "Ajout...",
@@ -1679,6 +1682,7 @@
         "no_episode_files": "Aucun fichier vidéo d’épisode trouvé dans ce pack.",
         "target_not_found": "Cible introuvable dans cette instance.",
         "incomplete": "Le téléchargement de la cible est incomplet.",
+        "not_settled": "Ce torrent est encore en cours de déplacement ou de vérification. Réessayez une fois l'opération terminée.",
         "no_episode_identity": "Le numéro d’épisode est illisible.",
         "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
         "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",

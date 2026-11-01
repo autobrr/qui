@@ -617,6 +617,7 @@
         "cancel": "Abbrechen",
         "delete": "Löschen"
       },
+      "enableTagRule": "Tag-Regel aktivieren",
       "enableDeleteRule": "Löschregel aktivieren",
       "enableCategoryRule": "Kategorieregel aktivieren → {{category}}",
       "enableRuleImmediately": "Mit dem Bestätigen wird diese Regel sofort aktiviert.",
@@ -669,6 +670,24 @@
         "hashCopied": "Hash kopiert"
       },
       "exported": "Exportiert"
+    },
+    "runWorkflowNow": {
+      "action": "Jetzt ausführen",
+      "title": "\"{{name}}\" jetzt ausführen?",
+      "description": "qui führt den gespeicherten Workflow jetzt einmal aus und wendet seine Aktionen auf die passenden Torrents an. Er läuft auch, wenn der Workflow deaktiviert ist.",
+      "dryRunDescription": "Dieser Workflow ist als Probelauf eingestellt, daher zeichnet qui nur auf, was es tun würde. Kein Torrent wird geändert.",
+      "actions": "Aktionen",
+      "cancel": "Abbrechen",
+      "confirm": "Jetzt ausführen",
+      "toast": {
+        "running": "\"{{name}}\" wird ausgeführt…",
+        "completed": "Ausführung für \"{{name}}\" abgeschlossen",
+        "noChanges": "Ausführung für \"{{name}}\" abgeschlossen. Kein Torrent musste geändert werden.",
+        "completedWithErrors": "Ausführung für \"{{name}}\" mit Fehlern abgeschlossen. Siehe Aktivitätsprotokoll.",
+        "dryRunCompleted": "Probelauf für \"{{name}}\" abgeschlossen",
+        "inProgress": "Eine Ausführung läuft bereits. Versuche es gleich noch einmal.",
+        "failed": "Workflow konnte nicht ausgeführt werden"
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Vorschau wird geladen. Das kann einen Moment dauern...",
@@ -1205,6 +1224,7 @@
         "strategyReplace": "Im Client ersetzen",
         "replaceDescription": "Der Ersetzen-Modus erzwingt vor dem Anwenden dieser Regel ein vollständiges client-weites Zurücksetzen dieser Tags.",
         "managedDescription": "Der verwaltete Modus hält Tags mit diff-basierten Updates aktuell; voller Sync fügt Tags zu Treffern hinzu und entfernt sie von Nicht-Treffern.",
+        "includeAffectedCrossSeeds": "Betroffene Cross-Seeds einbeziehen",
         "useTrackerName": "Tracker-Namen als Tag verwenden",
         "useDisplayName": "Anzeigenamen verwenden",
         "aboutDisplayNames": "Über Anzeigenamen",
@@ -1349,11 +1369,13 @@
       "preview": {
         "confirmDeleteRule": "Löschregel bestätigen",
         "previewDeleteRule": "Löschregel-Vorschau",
+        "confirmTagChange": "Tag-Änderungen bestätigen",
         "confirmCategoryChange": "Kategorieänderung bestätigen → {{category}}",
         "deleteEnabledSummary": "Diese Regel betrifft {{count}} Torrent, der aktuell passt.",
         "deleteEnabledSummary_other": "Diese Regel betrifft {{count}} Torrents, die aktuell passen.",
         "deleteDisabledSummary": "{{count}} Torrent würde dieser Regel entsprechen, wenn sie aktiviert wäre.",
         "deleteDisabledSummary_other": "{{count}} Torrents würden dieser Regel entsprechen, wenn sie aktiviert wäre.",
+        "tagPrefix": "Diese Regel aktualisiert die Tags von",
         "categoryPrefix": "Diese Regel verschiebt",
         "torrents": "{{count}} Torrent",
         "torrents_other": "{{count}} Torrents",

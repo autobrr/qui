@@ -158,10 +158,24 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
+		// files moved out of the save path are absolute in mapped_files and
+		// need the same rewrite as the save path
+		fastResume.SavePath = replacePath(fastResume.SavePath, di.opts.PathReplaces)
+		for idx, p := range fastResume.MappedFiles {
+			fastResume.MappedFiles[idx] = replacePath(p, di.opts.PathReplaces)
+		}
+
 		// a corrupt entry with an unusable save path would import a torrent
-		// qBittorrent resolves against its own default download dir
+		// qBittorrent resolves against its own default download dir; a save
+		// path from another OS needs --replace-path
 		if !filepath.IsAbs(filepath.Clean(fastResume.SavePath)) {
-			log.Warn().Msgf("(%d/%d) %s has an unusable save path %q, skipping", positionNum, totalJobs, torrentID, fastResume.SavePath)
+			log.Warn().Msgf("(%d/%d) %s has an unusable save path %q, skipping, map it with --replace-path", positionNum, totalJobs, torrentID, fastResume.SavePath)
+			skipped++
+			continue
+		}
+
+		if idx := slices.IndexFunc(fastResume.MappedFiles, foreignAbs); idx >= 0 {
+			log.Warn().Msgf("(%d/%d) %s has a moved file at unusable path %q, skipping, map it with --replace-path", positionNum, totalJobs, torrentID, fastResume.MappedFiles[idx])
 			skipped++
 			continue
 		}
@@ -240,8 +254,6 @@ func (di *DelugeImport) Migrate() error {
 		// source's partial-piece list so it cannot contradict the bitfield
 		fastResume.Pieces = pieces
 		fastResume.Unfinished = nil
-
-		// TODO handle replace paths
 
 		if di.opts.DryRun {
 			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)

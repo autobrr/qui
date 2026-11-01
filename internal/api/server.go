@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
@@ -93,6 +94,7 @@ type Server struct {
 	notificationService              *notifications.Service
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	seasonPackRunStore               *models.SeasonPackRunStore
+	crossSeedRoutes                  *crossseedroute.Service
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
 	discScanStore                    *models.DiscScanStore
@@ -146,6 +148,7 @@ type Dependencies struct {
 	NotificationService              *notifications.Service
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	SeasonPackRunStore               *models.SeasonPackRunStore
+	CrossSeedRoutes                  *crossseedroute.Service
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
 	DiscScanStore                    *models.DiscScanStore
@@ -223,6 +226,7 @@ func NewServer(deps *Dependencies) *Server {
 		notificationService:              deps.NotificationService,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 		seasonPackRunStore:               deps.SeasonPackRunStore,
+		crossSeedRoutes:                  deps.CrossSeedRoutes,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
 		discScanStore:                    deps.DiscScanStore,
@@ -373,6 +377,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
+	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -395,6 +400,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.instanceCrossSeedCompletionStore,
 		s.instanceStore,
 		s.seasonPackRunStore,
+		s.crossSeedRoutes,
+		s.syncManager,
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
@@ -686,6 +693,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Route("/{ruleID}", func(r chi.Router) {
 							r.Put("/", automationsHandler.Update)
 							r.Delete("/", automationsHandler.Delete)
+							r.Post("/apply", automationsHandler.ApplyRuleNow)
 						})
 					})
 

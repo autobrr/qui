@@ -134,6 +134,8 @@
     "error": "Verifica dei cross-seed non riuscita",
     "retry": "Riprova",
     "noCrossSeeds": "Nessun cross-seed trovato",
+    "uncheckedOffline": "Impossibile controllare {{instance}}: qui non riesce a raggiungerla.",
+    "uncheckedDisabled": "{{instance}} non è stata controllata: è disattivata in qui.",
     "deleteCrossSeeds": "Anche questi cross-seed verranno eliminati",
     "deletingFilesBreaks": "L'eliminazione dei file comprometterà questi cross-seed",
     "dataPreserved": "Cross-seed rilevati: i dati verranno preservati",
@@ -821,7 +823,8 @@
       "fewerIndexers": "Prova a cercare con meno indexer selezionati",
       "useRss": "Usa la funzione di automazione RSS per il cross-seeding continuo",
       "checkIndexers": "Controlla la pagina degli indexer per vedere quali sono soggetti a rate limit"
-    }
+    },
+    "routedTo": "I cross-seed vanno all'istanza di cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtra {{column}}",
@@ -1014,7 +1017,6 @@
     "torrentCount_other": "{{count}} torrent",
     "torrentsLoaded": "{{loaded}} di {{total}} torrent caricati",
     "scrollForMore": "(scorri per altri)",
-    "loading": "Caricamento...",
     "freeSpace": "Spazio libero",
     "switchToBits": "Passa a bit al secondo (bps)",
     "switchToBytes": "Passa a byte al secondo (B/s)",
@@ -1652,6 +1654,7 @@
     "tags": "Tag",
     "newTagPlaceholder": "Aggiungi un tag e premi Invio",
     "savePath": "Percorso di salvataggio (destinazione effettiva)",
+    "routedTo": "Il cross-seed va all'istanza di cross-seed {{instance}}.",
     "cancel": "Annulla",
     "apply": "Aggiungi cross-seed",
     "applying": "Aggiunta...",
@@ -1679,6 +1682,7 @@
         "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",
         "target_not_found": "Destinazione non trovata in questa istanza.",
         "incomplete": "Il download della destinazione è incompleto.",
+        "not_settled": "Questo torrent è ancora in fase di spostamento o di verifica. Riprova al termine.",
         "no_episode_identity": "Impossibile riconoscere il numero dell’episodio.",
         "file_list_unavailable": "L’elenco dei file della destinazione non è disponibile.",
         "episode_file_invalid": "La destinazione deve contenere un solo file riproducibile con l’identità dell’episodio selezionato.",

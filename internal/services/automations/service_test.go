@@ -538,6 +538,7 @@ func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
 		&EvalContext{},
 		nil,
 		nil,
+		nil,
 		map[int]*ruleRunStats{},
 		map[string]*torrentDesiredState{},
 	)
@@ -2135,7 +2136,7 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 

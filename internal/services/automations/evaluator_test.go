@@ -10,6 +10,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -727,8 +728,6 @@ func TestEvaluateCondition_GroupFields_UseConditionGroupID(t *testing.T) {
 		FreeSpaceStates:     nil,
 		CategoryIndex:       nil,
 		CategoryNames:       nil,
-		UnregisteredSet:     nil,
-		TrackerDownSet:      nil,
 		HardlinkScopeByHash: nil,
 	}
 
@@ -1303,6 +1302,67 @@ func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_IsUnregistered_WithContext(t *testing.T) {
+	cond := &RuleCondition{Field: FieldIsUnregistered, Operator: OperatorEqual, Value: "true"}
+	ctx := &EvalContext{
+		TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{
+			"unregistered": qbittorrent.TrackerHealthUnregistered,
+			"down":         qbittorrent.TrackerHealthDown,
+		}),
+	}
+
+	if !EvaluateConditionWithContext(cond, qbt.Torrent{Hash: "unregistered"}, ctx, 0) {
+		t.Fatal("expected an unregistered torrent to match")
+	}
+	if EvaluateConditionWithContext(cond, qbt.Torrent{Hash: "down"}, ctx, 0) {
+		t.Fatal("expected a tracker down torrent not to match")
+	}
+	if EvaluateConditionWithContext(cond, qbt.Torrent{Hash: "unregistered"}, &EvalContext{}, 0) {
+		t.Fatal("expected no match without a snapshot")
+	}
+}
+
+// A tag rule on "is unregistered" must not act on missing data: with no
+// snapshot it would remove the managed tag from every torrent.
+func TestProcessRuleForTorrent_TagSkipsWithoutTrackerHealth(t *testing.T) {
+	rule := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "Tag unregistered",
+		Conditions: &models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled:   true,
+				Tags:      []string{"unregistered"},
+				Mode:      "full",
+				Condition: &RuleCondition{Field: FieldIsUnregistered, Operator: OperatorEqual, Value: "true"},
+			},
+		},
+	}
+	torrent := qbt.Torrent{Hash: "hash1", Tags: "unregistered"}
+	newState := func() *torrentDesiredState {
+		return &torrentDesiredState{
+			hash:        torrent.Hash,
+			currentTags: map[string]struct{}{"unregistered": {}},
+			tagActions:  make(map[string]string),
+		}
+	}
+
+	stats := &ruleRunStats{}
+	state := newState()
+	processRuleForTorrent(rule, torrent, state, &EvalContext{}, nil, nil, stats, nil)
+	if stats.TagSkippedMissingTrackerHealth != 1 || len(state.tagActions) != 0 {
+		t.Fatalf("expected the tag rule to skip without a snapshot, got skips=%d actions=%v", stats.TagSkippedMissingTrackerHealth, state.tagActions)
+	}
+
+	stats = &ruleRunStats{}
+	state = newState()
+	ctx := &EvalContext{TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{})}
+	processRuleForTorrent(rule, torrent, state, ctx, nil, nil, stats, nil)
+	if stats.TagSkippedMissingTrackerHealth != 0 || state.tagActions["unregistered"] != "remove" {
+		t.Fatalf("expected the tag rule to run with a snapshot, got skips=%d actions=%v", stats.TagSkippedMissingTrackerHealth, state.tagActions)
+	}
+}
+
 func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	cond := &RuleCondition{
 		Field:    FieldState,
@@ -1315,9 +1375,9 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 		State: qbt.TorrentStateUploading,
 	}
 
-	t.Run("matches when in TrackerDownSet", func(t *testing.T) {
+	t.Run("matches when the snapshot says tracker down", func(t *testing.T) {
 		ctx := &EvalContext{
-			TrackerDownSet: map[string]struct{}{"hash1": {}},
+			TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthDown}),
 		}
 		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
 		if !got {
@@ -1325,7 +1385,7 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 		}
 	})
 
-	t.Run("does not match without TrackerDownSet", func(t *testing.T) {
+	t.Run("does not match without a snapshot", func(t *testing.T) {
 		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
 		if got {
 			t.Fatalf("expected false, got true")
@@ -1345,9 +1405,9 @@ func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
 		State: qbt.TorrentStateUploading,
 	}
 
-	t.Run("matches when in TrackerErrorSet", func(t *testing.T) {
+	t.Run("matches when the snapshot says tracker error", func(t *testing.T) {
 		ctx := &EvalContext{
-			TrackerErrorSet: map[string]struct{}{"hash1": {}},
+			TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthError}),
 		}
 		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
 		if !got {
@@ -1355,7 +1415,7 @@ func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
 		}
 	})
 
-	t.Run("does not match without TrackerErrorSet", func(t *testing.T) {
+	t.Run("does not match without a snapshot", func(t *testing.T) {
 		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
 		if got {
 			t.Fatalf("expected false, got true")

@@ -134,6 +134,8 @@
     "error": "Failed to check for cross-seeds",
     "retry": "Retry",
     "noCrossSeeds": "No cross-seeds found",
+    "uncheckedOffline": "Could not check {{instance}}: qui cannot reach it.",
+    "uncheckedDisabled": "Did not check {{instance}}: it is turned off in qui.",
     "deleteCrossSeeds": "These cross-seeds will also be deleted",
     "deletingFilesBreaks": "Deleting files will break these cross-seeds",
     "dataPreserved": "Cross-seeds detected: data will be preserved",
@@ -821,7 +823,8 @@
       "fewerIndexers": "Try searching with fewer indexers selected",
       "useRss": "Use the RSS automation feature for ongoing cross-seeding",
       "checkIndexers": "Check the indexers page to see which ones are rate-limited"
-    }
+    },
+    "routedTo": "Cross-seeds go to the Cross-seed instance {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filter {{column}}",
@@ -1014,7 +1017,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} of {{total}} torrents loaded",
     "scrollForMore": "(scroll for more)",
-    "loading": "Loading...",
     "freeSpace": "Free Space",
     "switchToBits": "Switch to bits per second (bps)",
     "switchToBytes": "Switch to bytes per second (B/s)",
@@ -1652,6 +1654,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Add a tag and press Enter",
     "savePath": "Save path (effective destination)",
+    "routedTo": "The cross-seed goes to the Cross-seed instance {{instance}}.",
     "cancel": "Cancel",
     "apply": "Add cross-seed",
     "applying": "Adding...",
@@ -1679,6 +1682,7 @@
         "no_episode_files": "No playable episode files were found in this pack.",
         "target_not_found": "Target not found in this instance.",
         "incomplete": "Target download is incomplete.",
+        "not_settled": "This torrent is still moving or being checked. Try again when it is done.",
         "no_episode_identity": "The episode number could not be parsed.",
         "file_list_unavailable": "The target file list is unavailable.",
         "episode_file_invalid": "The target must contain one playable file with the selected episode identity.",

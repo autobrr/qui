@@ -325,3 +325,7 @@ func TestManualMatchApplyFailsWhenSettingsReadFails(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "Failed to load cross-seed settings")
 	require.Zero(t, syncManager.addCalls)
 }
+
+func (*seasonPackHandlerSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

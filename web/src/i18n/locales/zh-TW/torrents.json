@@ -130,6 +130,8 @@
     "error": "檢查輔種失敗",
     "retry": "重試",
     "noCrossSeeds": "未找到輔種",
+    "uncheckedOffline": "無法檢查 {{instance}}：qui 無法連線到它。",
+    "uncheckedDisabled": "未檢查 {{instance}}：它已在 qui 中停用。",
     "deleteCrossSeeds": "這些輔種也將被刪除",
     "deletingFilesBreaks": "刪除檔案將破壞這些輔種",
     "dataPreserved": "檢測到輔種——資料將被保留",
@@ -762,7 +764,8 @@
       "fewerIndexers": "嘗試選擇更少的索引器進行搜尋",
       "useRss": "使用 RSS 自動化功能進行持續輔種",
       "checkIndexers": "檢查索引器頁面以檢視哪些被限流"
-    }
+    },
+    "routedTo": "輔種將新增到輔種實例 {{instance}}。"
   },
   "columnFilter": {
     "filterColumn": "篩選 {{column}}",
@@ -952,7 +955,6 @@
     "torrentCount_other": "{{count}} 個種子",
     "torrentsLoaded": "已載入 {{loaded}}/{{total}} 個種子",
     "scrollForMore": "（捲動載入更多）",
-    "loading": "載入中...",
     "freeSpace": "可用空間",
     "switchToBits": "切換到每秒位元（bps）",
     "switchToBytes": "切換到每秒位元組（B/s）",
@@ -1574,6 +1576,7 @@
     "tags": "標籤",
     "newTagPlaceholder": "輸入標籤後按 Enter",
     "savePath": "儲存路徑（實際目標位置）",
+    "routedTo": "輔種將新增到輔種實例 {{instance}}。",
     "cancel": "取消",
     "apply": "新增輔種",
     "applying": "正在新增...",
@@ -1601,6 +1604,7 @@
         "no_episode_files": "此整季包中未找到可播放的單集檔案。",
         "target_not_found": "此實例中未找到目標種子。",
         "incomplete": "目標種子尚未下載完成。",
+        "not_settled": "此種子仍在移動或檢查中。請在完成後重試。",
         "no_episode_identity": "無法解析集數。",
         "file_list_unavailable": "無法取得目標種子的檔案清單。",
         "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",

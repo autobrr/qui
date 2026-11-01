@@ -134,6 +134,8 @@
     "error": "Prüfung auf Cross-Seeds fehlgeschlagen",
     "retry": "Erneut versuchen",
     "noCrossSeeds": "Keine Cross-Seeds gefunden",
+    "uncheckedOffline": "{{instance}} konnte nicht geprüft werden: qui erreicht die Instanz nicht.",
+    "uncheckedDisabled": "{{instance}} wurde nicht geprüft: Die Instanz ist in qui deaktiviert.",
     "deleteCrossSeeds": "Diese Cross-Seeds werden ebenfalls gelöscht",
     "deletingFilesBreaks": "Das Löschen von Dateien zerstört diese Cross-Seeds",
     "dataPreserved": "Cross-Seeds erkannt: Daten bleiben erhalten",
@@ -821,7 +823,8 @@
       "fewerIndexers": "Versuche die Suche mit weniger ausgewählten Indexern",
       "useRss": "Nutze die RSS-Automatisierung für fortlaufendes Cross-Seeding",
       "checkIndexers": "Prüfe auf der Indexer-Seite, welche davon rate-limitiert sind"
-    }
+    },
+    "routedTo": "Cross-Seeds gehen an die Cross-Seed-Instanz {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "{{column}} filtern",
@@ -1014,7 +1017,6 @@
     "torrentCount_other": "{{count}} Torrents",
     "torrentsLoaded": "{{loaded}} von {{total}} Torrents geladen",
     "scrollForMore": "(scrollen für mehr)",
-    "loading": "Wird geladen...",
     "freeSpace": "Freier Speicher",
     "switchToBits": "Zu Bits pro Sekunde (bps) wechseln",
     "switchToBytes": "Zu Bytes pro Sekunde (B/s) wechseln",
@@ -1652,6 +1654,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Tag eingeben und Enter drücken",
     "savePath": "Speicherpfad (effektives Ziel)",
+    "routedTo": "Der Cross-Seed geht an die Cross-Seed-Instanz {{instance}}.",
     "cancel": "Abbrechen",
     "apply": "Cross-Seed hinzufügen",
     "applying": "Wird hinzugefügt...",
@@ -1679,6 +1682,7 @@
         "no_episode_files": "In diesem Paket wurden keine abspielbaren Episodendateien gefunden.",
         "target_not_found": "Ziel in dieser Instanz nicht gefunden.",
         "incomplete": "Der Download des Ziels ist unvollständig.",
+        "not_settled": "Dieser Torrent wird noch verschoben oder geprüft. Versuche es erneut, wenn der Vorgang abgeschlossen ist.",
         "no_episode_identity": "Die Episodennummer konnte nicht erkannt werden.",
         "file_list_unavailable": "Die Dateiliste des Ziels ist nicht verfügbar.",
         "episode_file_invalid": "Das Ziel muss genau eine abspielbare Datei mit der ausgewählten Episodenkennung enthalten.",

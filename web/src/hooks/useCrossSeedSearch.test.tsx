@@ -17,6 +17,8 @@ vi.mock("@/lib/api", () => ({
     analyzeTorrentForCrossSeedSearch: vi.fn(),
     searchCrossSeedTorrent: vi.fn(),
     applyCrossSeedSearchResults: vi.fn(),
+    listCrossSeedRoutes: vi.fn(),
+    getInstances: vi.fn(),
   },
 }))
 
@@ -176,6 +178,8 @@ describe("useCrossSeedSearch", () => {
       hash: "abcdef0123456789",
     } as never)
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse())
+    mockedApi.listCrossSeedRoutes.mockResolvedValue([])
+    mockedApi.getInstances.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -765,6 +769,37 @@ describe("useCrossSeedSearch", () => {
       queryKey: ["torrent-counts", 1],
       exact: false,
     })
+  })
+
+  it("names the Cross-seed instance and refreshes its torrent list after a routed apply", async () => {
+    mockedApi.listCrossSeedRoutes.mockResolvedValue([{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] }])
+    mockedApi.getInstances.mockResolvedValue([{ id: 1, name: "lib" }, { id: 2, name: "seeds" }] as never)
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-routed" })] }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [{
+        title: "Some Release", indexer: "indexer-1", success: true,
+        instanceResults: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }],
+      }],
+    } as never)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+    const { result } = await renderSettled(1, queryClient)
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-routed" }))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(dialogProps(result).crossSeedInstanceName).toBe("seeds"))
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["torrents-list", 2], exact: false })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["torrents-list", 1], exact: false })
   })
 
   it("maps partial apply results (some added, some failed) to a warning", async () => {

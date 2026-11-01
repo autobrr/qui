@@ -57,9 +57,14 @@ type torrentManager interface {
 type adderQbit struct {
 	torrentAdder
 	existing *qbt.Torrent
+	// existingOn limits existing to one instance when it is set.
+	existingOn int
 }
 
-func (q adderQbit) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+	if q.existingOn != 0 && instanceID != q.existingOn {
+		return nil, false, nil
+	}
 	return q.existing, q.existing != nil, nil
 }
 
@@ -652,7 +657,7 @@ func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 		Searchee: &Searchee{
 			Name: "Movie",
 			// A real searchee's Path is the release directory itself, with file RelPaths relative to
-			// it (scanner.scanSearcheeDir), so the on-disk folder name matches the torrent root and
+			// it (Scanner.ScanDirectory), so the on-disk folder name matches the torrent root and
 			// no content-path alignment is needed here.
 			Path: filepath.Join(sourceDir, "Movie"),
 			Files: []*ScannedFile{{

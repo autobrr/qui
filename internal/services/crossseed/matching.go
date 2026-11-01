@@ -6,6 +6,7 @@ package crossseed
 import (
 	"cmp"
 	"fmt"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -308,8 +309,8 @@ func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, ca
 // reject. The Match verdict pairs this with an exact-size gate, because
 // with the title ignored a sparsely parsed name can leave nothing else to
 // reject on. A path that adds data gets the paused-add full recheck as the
-// final authority; Local matches only reports existing pairings, so its false
-// positives stay confined to display.
+// final authority; the batch matcher only reports existing pairings and pairs
+// their file sizes or links.
 func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
 	comparison := m.compareExceptTitle(releaseComparison{}, sourceSide, candidateSide, findIndividualEpisodes, true, true)
 	return comparison.matched(), comparison.reason()
@@ -1374,26 +1375,31 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	return &enriched
 }
 
-// shouldIgnoreFile checks if a file should be ignored during matching.
-// Uses hardcoded lists of extensions and path keywords to filter out scene
-// metadata files, subtitles, samples, and other non-content files.
+// shouldIgnoreFile reports whether a file is a sidecar, a sample, or a bonus
+// video. Real titles begin with keywords ("Trailer.Park.Boys.S01E01"), so a
+// keyword at the start of a release name is a title word.
 func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(filename)
+	if slices.Contains(DefaultIgnoredExtensions, path.Ext(lower)) {
+		return true
+	}
 
-	// Check extension matches
-	for _, ext := range DefaultIgnoredExtensions {
-		if strings.HasSuffix(lower, ext) {
+	dir, base := path.Split(lower)
+	for segment := range strings.SplitSeq(dir, "/") {
+		if slices.Contains(DefaultIgnoredPathKeywords, segment) || slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "s")) ||
+			slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "es")) {
 			return true
 		}
 	}
-
-	// Check path keyword matches (e.g., "sample", "proof", "extras")
+	stem := strings.TrimSuffix(base, path.Ext(base))
 	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
+		if after, ok := strings.CutPrefix(stem, keyword); ok && (strings.TrimLeft(after, "0123456789") == "" || after[0] == '-') {
+			return true
+		}
+		if before, ok := strings.CutSuffix(stem, keyword); ok && strings.IndexByte("-._ ", before[len(before)-1]) >= 0 {
 			return true
 		}
 	}
-
 	return false
 }
 

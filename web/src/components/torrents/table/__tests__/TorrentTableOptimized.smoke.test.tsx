@@ -184,7 +184,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
 })
 
 // The action hook that drives dialog state (all dialogs closed). Every handler
-// is the same spy, so a test can read the hashes that an action sent.
+// is the same spy, so a test can read the Action target that an action got.
 const actionHandler = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/useTorrentActions", () => {
   const noop = actionHandler
@@ -196,8 +196,6 @@ vi.mock("@/hooks/useTorrentActions", () => {
       isDeleteFilesLocked: false,
       pendingTmmEnable: false,
       isPending: false,
-      contextHashes: [],
-      contextTorrents: [],
     } as Record<string, unknown>,
     {
       // Unknown dialog flags read as falsy; unknown handlers read as no-ops.
@@ -230,12 +228,12 @@ function checkedRows(container: HTMLElement) {
   return torrents.map(t => t.name).filter(name => isRowChecked(container, name))
 }
 
-// Opens the menu of the row and clicks Pause. Returns the hashes that the action sent.
+// Opens the menu of the row and clicks Pause. Returns the ticked hashes of the Action target, undefined in Select all mode.
 async function pauseFromMenu(container: HTMLElement, name: string, findByRole: (role: string, options: { name: RegExp }) => Promise<HTMLElement>) {
   fireEvent.contextMenu(within(container).getByText(name))
   fireEvent.click(await findByRole("menuitem", { name: /^contextMenu\.pause/ }))
   await waitFor(() => expect(actionHandler).toHaveBeenCalled())
-  return actionHandler.mock.calls[0][1]
+  return (actionHandler.mock.calls[0][1] as { hashes?: string[] }).hashes
 }
 
 function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {

@@ -6,6 +6,7 @@
 package dirscan
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -30,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
@@ -70,7 +72,7 @@ type Service struct {
 	store          *models.DirScanStore
 	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
-	syncManager    *qbittorrent.SyncManager
+	torrentFiles   torrentFilesReader
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
@@ -114,6 +116,7 @@ type Service struct {
 	searchGate searchGate
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
 }
 
 // syncManagerTorrentChecker adapts SyncManager to the TorrentChecker interface.
@@ -128,6 +131,24 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 		return nil, false, fmt.Errorf("check torrent by hash: %w", err)
 	}
 	return torrent, exists, nil
+}
+
+// syncManagerTorrentFiles adds the first-sync check of the seeding index to
+// SyncManager.
+type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
+
+// SeedingReady asks for a sync when the instance has none yet, because a
+// failed first sync is not retried until something else asks for one.
+func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID int) error {
+	client, err := f.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("get client: %w", err)
+	}
+	if client.GetLastSyncUpdate().IsZero() {
+		f.HintMainDataRefresh(instanceID, "dir scan seeding index") //nolint:contextcheck // the first sync must outlive this scan
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	return nil
 }
 
 // NewService creates a new directory scanner service.
@@ -165,7 +186,7 @@ func NewService(
 		store:                     store,
 		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
-		syncManager:               syncManager,
+		torrentFiles:              syncManagerTorrentFiles{syncManager},
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
@@ -191,6 +212,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // emitRunActivity signals connected clients that a directory's scan-run state
@@ -913,15 +939,14 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
-	// This is best-effort; if it fails, scanning continues without seeding skips.
+	// This is best-effort; if it fails, scanning continues without seeding skips,
+	// and files marked already seeding by an earlier run keep that status.
 	fileIDIndex := &seedingIndex{}
-	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
-			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else if index.len() > 0 {
-			fileIDIndex = index
-			scanner.SetFileIDIndex(index)
-		}
+	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+	} else {
+		fileIDIndex = index
+		scanner.SetFileIDIndex(index)
 	}
 
 	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)
@@ -1066,6 +1091,9 @@ func (s *Service) processRootSearchee(
 	// The set of indexers this scan considers; recorded on no_match stamps so a
 	// later scan can reopen the file when new indexers appear.
 	consideredIndexerIDs := sortedIndexerIDs(enabledIndexerIDs)
+	// Files of a work item that asked for a retry stay pending, also when a
+	// season search and its episode searches cover the same files.
+	retryFiles := make(map[string]struct{})
 	hadSearchSuccess := false
 	hadSearchError := false
 	hasProcessingError := false
@@ -1148,6 +1176,13 @@ func (s *Service) processRootSearchee(
 		if outcome.searched {
 			hadSearchSuccess = true
 		}
+		if outcome.retry {
+			for _, f := range item.searchee.Files {
+				if f != nil {
+					retryFiles[f.Path] = struct{}{}
+				}
+			}
+		}
 		if outcome.searchError {
 			hadSearchError = true
 			hasProcessingError = true
@@ -1203,7 +1238,8 @@ func (s *Service) processRootSearchee(
 			}
 		}
 
-		if anyInjected {
+		// A season pack covers the other episodes of its group. A single episode does not.
+		if anyInjected && !item.isEpisode {
 			markTVGroupInjected(injectedTVGroups, item.tvGroup)
 		}
 
@@ -1257,6 +1293,10 @@ func (s *Service) processRootSearchee(
 				}
 			}
 		}
+	}
+
+	for path := range retryFiles {
+		delete(attemptedFiles, path)
 	}
 
 	finalizeCtx := ctx
@@ -1610,6 +1650,9 @@ type searcheeOutcome struct {
 	// the searchee stays pending and the next scan retries it.
 	searched    bool
 	searchError bool
+	// retry is set when a linked instance of a cross-seed route was
+	// unavailable, so the searchee's files must stay pending.
+	retry bool
 }
 
 type tryMatchResultsStats struct {
@@ -1766,8 +1809,8 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	matches := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
-	return matches, searcheeOutcome{searched: searchComplete}
+	matches, retry := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return matches, searcheeOutcome{searched: searchComplete && !retry, retry: retry}
 }
 
 // sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
@@ -1948,6 +1991,9 @@ type searchGate struct {
 	busy           bool
 	lastSearchAt   time.Time
 	webhookWaiting int
+	// interval overrides the minimum wait between searches. Zero uses
+	// crossseed.MinTorznabSearchInterval. Tests set it to skip the wait.
+	interval time.Duration
 	// changed is closed when the gate frees or the last webhook item stops waiting.
 	changed chan struct{}
 }
@@ -1966,8 +2012,9 @@ func (g *searchGate) acquire(ctx context.Context, webhook bool) error {
 		}()
 	}
 
+	interval := cmp.Or(g.interval, crossseed.MinTorznabSearchInterval)
 	for {
-		wait := time.Until(g.lastSearchAt.Add(crossseed.MinTorznabSearchInterval))
+		wait := time.Until(g.lastSearchAt.Add(interval))
 		if !g.busy && wait <= 0 && (webhook || g.webhookWaiting == 0) {
 			g.busy = true
 			return nil
@@ -2156,7 +2203,7 @@ func (s *Service) tryMatchResults(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) []*searcheeMatch {
+) (matches []*searcheeMatch, retry bool) {
 	matches, stats := tryMatchResultsPerIndexer(
 		response.Results,
 		minSize,
@@ -2168,7 +2215,9 @@ func (s *Service) tryMatchResults(
 			return false
 		},
 		func(result *jackett.SearchResult) *searcheeMatch {
-			return s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+			match, retryResult := s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+			retry = retry || retryResult
+			return match
 		},
 	)
 
@@ -2192,9 +2241,9 @@ func (s *Service) tryMatchResults(
 		}
 	}
 	if len(matches) == 0 {
-		return nil
+		return nil, retry
 	}
-	return matches
+	return matches, retry
 }
 
 func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists, checked bool) {
@@ -2230,6 +2279,8 @@ func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int,
 }
 
 // tryMatchAndInject downloads a torrent, matches files, and injects if successful.
+// retry is set when a linked instance of a cross-seed route is unavailable, so
+// the searchee stays pending and the next scan tries the match again.
 func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -2241,10 +2292,10 @@ func (s *Service) tryMatchAndInject(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) *searcheeMatch {
+) (match *searcheeMatch, retry bool) {
 	torrentData, parsed := s.downloadAndParseTorrent(ctx, result, l)
 	if parsed == nil {
-		return nil
+		return nil, false
 	}
 
 	matchResult := matcher.Match(searchee, parsed.Files)
@@ -2252,7 +2303,7 @@ func (s *Service) tryMatchAndInject(
 	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
-		return nil
+		return nil, false
 	}
 
 	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
@@ -2260,11 +2311,11 @@ func (s *Service) tryMatchAndInject(
 	case refusal == nil:
 	case refusal.Status == "blocked":
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
-		return nil
+		return nil, false
 	case refusal.Status != "exists":
 		// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
 		l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
-		return nil
+		return nil, errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
 	default:
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
 		return &searcheeMatch{
@@ -2276,7 +2327,7 @@ func (s *Service) tryMatchAndInject(
 			inQBittorrent:   true,
 			injected:        false,
 			injectionFailed: false,
-		}
+		}, false
 	}
 
 	logDirScanAcceptedMatch(l, searchee, parsed, matchResult, decision)
@@ -2335,7 +2386,7 @@ func (s *Service) tryMatchAndInject(
 		searchResult:    result,
 		injected:        injected,
 		injectionFailed: injectionFailed,
-	}
+	}, false
 }
 
 func logDirScanMatchRejection(

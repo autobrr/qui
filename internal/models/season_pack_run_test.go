@@ -28,12 +28,13 @@ func TestSeasonPackRunStore_CreateAndList(t *testing.T) {
 
 	ctx := context.Background()
 
-	instanceID := 1
+	instanceID, addedInstanceID := 1, 2
 	created, err := store.Create(ctx, &models.SeasonPackRun{
 		TorrentName:     "Show.S01.1080p.WEB-DL-GRP",
 		Phase:           "check",
 		Status:          "ready",
 		InstanceID:      &instanceID,
+		AddedInstanceID: &addedInstanceID,
 		MatchedEpisodes: 10,
 		TotalEpisodes:   12,
 		Coverage:        0.8333,
@@ -50,6 +51,7 @@ func TestSeasonPackRunStore_CreateAndList(t *testing.T) {
 	require.Equal(t, "ready", runs[0].Status)
 	require.NotNil(t, runs[0].InstanceID)
 	require.Equal(t, 1, *runs[0].InstanceID)
+	require.Equal(t, &addedInstanceID, runs[0].AddedInstanceID)
 	require.Equal(t, 10, runs[0].MatchedEpisodes)
 	require.Equal(t, 12, runs[0].TotalEpisodes)
 	require.InDelta(t, 0.8333, runs[0].Coverage, 0.0001)
@@ -73,6 +75,7 @@ func TestSeasonPackRunStore_CreateWithoutInstance(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, created.ID)
 	require.Nil(t, created.InstanceID)
+	require.Nil(t, created.AddedInstanceID)
 	require.Equal(t, "below threshold", created.Reason)
 }
 
@@ -122,6 +125,68 @@ func TestSeasonPackRunStore_CreatePrunesOldRuns(t *testing.T) {
 	var count int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM season_pack_runs`).Scan(&count))
 	require.Equal(t, 200, count)
+}
+
+// regression: #3683
+func TestSeasonPackRunStore_FailedRunsKeepAppliedHistory(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	store := models.NewSeasonPackRunStore(db)
+
+	ctx := t.Context()
+
+	for i := range 12 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{
+			TorrentName:   "Show.S01.1080p.WEB-DL-GRP",
+			Phase:         "apply",
+			Status:        "applied",
+			TotalEpisodes: i + 1,
+		})
+		require.NoError(t, err)
+	}
+	for i := range 250 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{
+			TorrentName:   "Show.S02.1080p.WEB-DL-GRP",
+			Phase:         "apply",
+			Status:        "failed",
+			TotalEpisodes: i + 1,
+		})
+		require.NoError(t, err)
+	}
+
+	runs, err := store.List(ctx, 400)
+	require.NoError(t, err)
+	require.Len(t, runs, 212)
+	for i, run := range runs[:200] {
+		require.Equal(t, "failed", run.Status)
+		require.Equal(t, 250-i, run.TotalEpisodes)
+	}
+	for i, run := range runs[200:] {
+		require.Equal(t, "applied", run.Status)
+		require.Equal(t, 12-i, run.TotalEpisodes)
+	}
+}
+
+func TestSeasonPackRunStore_CreatePrunesAppliedRuns(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	store := models.NewSeasonPackRunStore(db)
+
+	ctx := t.Context()
+
+	for i := range 201 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{
+			TorrentName:   "Show.S01.1080p.WEB-DL-GRP",
+			Phase:         "apply",
+			Status:        "applied",
+			TotalEpisodes: i + 1,
+		})
+		require.NoError(t, err)
+	}
+
+	runs, err := store.List(ctx, 400)
+	require.NoError(t, err)
+	require.Len(t, runs, 200)
+	require.Equal(t, 201, runs[0].TotalEpisodes)
+	require.Equal(t, 2, runs[len(runs)-1].TotalEpisodes)
 }
 
 func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {

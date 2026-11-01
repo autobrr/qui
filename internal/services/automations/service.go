@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -85,6 +86,7 @@ type automationSummary struct {
 	sampleErrors     []string
 	sampleSeen       map[string]struct{}
 	tagSampleSeen    map[string]struct{}
+	activities       []*models.AutomationActivity // the rows the run recorded, in order
 }
 
 type automationRuleSummary struct {
@@ -172,6 +174,10 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 	if count <= 0 {
 		count = 1
 	}
+	if activity.CreatedAt.IsZero() {
+		activity.CreatedAt = time.Now().UTC() // the store lets the database stamp the row and leaves this field unset
+	}
+	s.activities = append(s.activities, activity)
 	s.add(activity.Action, activity.Outcome, count)
 	s.addRuleAction(activity, count)
 	s.addSamplesFromActivity(activity)
@@ -555,9 +561,13 @@ type Service struct {
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
+	runningInstances      map[int]struct{}             // instances with a run that applies actions
 	mu                    sync.RWMutex
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
+	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
+	routedTorrents crossseedroute.TorrentReader
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -588,6 +598,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
+		routedTorrents:            syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -609,6 +620,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
@@ -705,7 +721,9 @@ func (s *Service) applyAll(ctx context.Context) {
 		if !instance.IsActive {
 			continue
 		}
-		if err := s.applyForInstance(ctx, instance.ID, false); err != nil {
+		if err := s.applyForInstance(ctx, instance.ID, false); errors.Is(err, ErrRunInProgress) {
+			log.Debug().Int("instanceID", instance.ID).Msg("automations: run in progress, skipping instance until the next check")
+		} else if err != nil {
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
@@ -715,6 +733,69 @@ func (s *Service) applyAll(ctx context.Context) {
 // It bypasses per-rule interval checks (force=true).
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
 	return s.applyForInstance(ctx, instanceID, true)
+}
+
+// ErrRunInProgress means that another run applies actions on the instance.
+var ErrRunInProgress = errors.New("automations: a run is in progress on this instance")
+
+// tryLockRun claims the instance for a run that applies actions. Only one such run acts on an instance at a time.
+func (s *Service) tryLockRun(instanceID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, running := s.runningInstances[instanceID]; running {
+		return false
+	}
+	if s.runningInstances == nil {
+		s.runningInstances = make(map[int]struct{})
+	}
+	s.runningInstances[instanceID] = struct{}{}
+	return true
+}
+
+func (s *Service) unlockRun(instanceID int) {
+	s.mu.Lock()
+	delete(s.runningInstances, instanceID)
+	s.mu.Unlock()
+}
+
+// ApplyRuleNow runs a single saved rule immediately and applies its actions, unless the rule itself is a dry run.
+// The rule is forced enabled for this execution only, and its interval is ignored.
+// Returns the activity rows written for this run, or ErrRunInProgress when another run acts on the instance.
+func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
+	if s.syncManager == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+	if rule.DryRun {
+		activities, err := s.ApplyRuleDryRun(ctx, instanceID, rule)
+		s.publishActivity(instanceID, activities)
+		return activities, err
+	}
+
+	if !s.tryLockRun(instanceID) {
+		return nil, ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
+	liveRule := *rule
+	liveRule.Enabled = true
+	activities, err := s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{&liveRule}, false)
+	if err != nil {
+		return nil, err
+	}
+	s.publishActivity(instanceID, activities)
+	return activities, nil
+}
+
+// publishActivity signals connected clients that this instance's automation activity changed so
+// they refetch instead of polling. It sends nothing when the run wrote no activity rows.
+func (s *Service) publishActivity(instanceID int, activities []*models.AutomationActivity) {
+	if len(activities) == 0 || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindAutomationActivity,
+		InstanceID: instanceID,
+	})
 }
 
 // ApplyRuleDryRun executes a single rule immediately in dry-run mode.
@@ -775,7 +856,7 @@ func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Autom
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
-	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
+	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (category and tag preview)
 	Examples       []PreviewTorrent `json:"examples"`
 }
 
@@ -846,9 +927,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 	}
 
 	if evalCtx != nil {
-		if evalCtx.UnregisteredSet != nil {
-			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
+		pt.IsUnregistered = evalCtx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
@@ -889,11 +968,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	if s.syncManager != nil {
-		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
-		}
+		evalCtx.TrackerHealth = s.syncManager.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	// The cached index provides scope detection AND hardlink grouping in a single build.
@@ -1230,33 +1305,41 @@ func (s *Service) buildDeletePreviewResult(
 	return result
 }
 
-// categoryPreviewState tracks state during category preview processing.
-type categoryPreviewState struct {
-	directMatchSet map[string]struct{}
-	crossSeedSet   map[string]struct{}
-	matchedKeys    map[string]struct{}
-	targetCategory string
-}
-
-func newCategoryPreviewState(targetCategory string) *categoryPreviewState {
-	return &categoryPreviewState{
-		directMatchSet: make(map[string]struct{}),
-		crossSeedSet:   make(map[string]struct{}),
-		matchedKeys:    make(map[string]struct{}),
-		targetCategory: targetCategory,
-	}
-}
-
 // PreviewCategoryRule returns torrents that would have their category changed by the given rule.
-// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
+// It shows the category part of the Run plan of the rule, with the group members and cross-seeds
+// that the plan takes along.
 func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
+	return s.previewPlanPart(ctx, instanceID, rule, models.ActionConditions{Category: rule.Conditions.Category}, limit, offset, func(plan runPlan) []string {
+		var hashes []string
+		for _, targetHashes := range plan.category.byTarget {
+			hashes = append(hashes, targetHashes...)
+		}
+		return hashes
+	})
+}
+
+// PreviewTagRule returns torrents whose tags would change under the given rule's tag actions.
+// It shows the tag part of the Run plan of the rule, with the cross-seeds that the plan takes along.
+func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
+	return s.previewPlanPart(ctx, instanceID, rule, models.ActionConditions{Tag: rule.Conditions.Tag, Tags: rule.Conditions.Tags}, limit, offset, func(plan runPlan) []string {
+		return slices.Collect(maps.Keys(plan.tags))
+	})
+}
+
+// previewPlanPart builds the Run plan of the rule with only the actions in keep, and pages the
+// torrents that part returns from the plan. A torrent is a direct match when the rule changed it
+// on its own, before the cross-seed expansion. Each other torrent counts as a cross-seed.
+func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, limit, offset int, part func(runPlan) []string) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
 	rule = prepareRuleForPreview(rule, instanceID)
-	if rule == nil {
-		return &PreviewResult{}, nil
-	}
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
@@ -1275,33 +1358,31 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, err
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
 
-	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	// The plan step activates the grouping of the rule and sorts torrents in the sort order of the rule.
+	plan, own := s.planPreview(ctx, instanceID, rule, keep, torrents, evalCtx, crossSeeds)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
-	catAction := getCategoryAction(rule)
-	state := newCategoryPreviewState(catAction.targetCategory)
-
-	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeeds, catAction, state)
-	if catAction.groupID != "" {
-		s.findCategoryGroupMembers(ctx, instanceID, rule, torrents, evalCtx, catAction, state)
-	} else {
-		s.findCategoryCrossSeeds(torrents, crossSeeds, catAction, state)
+	directSet := make(map[string]struct{})
+	crossSeedSet := make(map[string]struct{})
+	for _, hash := range part(plan) {
+		if _, ok := own[hash]; ok {
+			directSet[hash] = struct{}{}
+		} else {
+			crossSeedSet[hash] = struct{}{}
+		}
 	}
 
-	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule, scoreByHash), nil
+	return s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
 }
 
 // categoryActionConfig holds category action configuration.
 type categoryActionConfig struct {
-	targetCategory    string
 	includeCrossSeeds bool
-	groupID           string
 	blockCategories   []string
 	condition         *RuleCondition
 	enabled           bool
@@ -1315,9 +1396,7 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 	cat := rule.Conditions.Category
 	groupID := strings.TrimSpace(cat.GroupID)
 	return categoryActionConfig{
-		targetCategory:    cat.Category,
 		includeCrossSeeds: groupID == "" && cat.IncludeCrossSeeds,
-		groupID:           groupID,
 		blockCategories:   cat.BlockIfCrossSeedInCategories,
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
@@ -1338,157 +1417,27 @@ func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionCon
 	return !shouldBlockCategoryChangeForCrossSeeds(*torrent, catAction.blockCategories, crossSeeds)
 }
 
-// findDirectCategoryMatches finds torrents that directly match the category rule.
-func (s *Service) findDirectCategoryMatches(
-	rule *models.Automation,
+// buildMatchPreviewResult builds a paginated preview result from direct-match
+// and cross-seed hash sets (shared by the category and tag previews).
+func (s *Service) buildMatchPreviewResult(
 	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	for i := range torrents {
-		torrent := &torrents[i]
-
-		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-
-		if !shouldApplyCategoryAction(torrent, catAction, evalCtx, crossSeeds) {
-			continue
-		}
-
-		state.directMatchSet[torrent.Hash] = struct{}{}
-		if catAction.includeCrossSeeds {
-			state.matchedKeys[crossSeeds.key(*torrent)] = struct{}{}
-		}
-	}
-}
-
-// findCategoryCrossSeeds finds cross-seeds for matched torrents.
-func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, crossSeeds crossSeedGroups, catAction categoryActionConfig, state *categoryPreviewState) {
-	if !catAction.includeCrossSeeds || len(state.matchedKeys) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if _, matched := state.matchedKeys[crossSeeds.key(*torrent)]; matched {
-			state.crossSeedSet[torrent.Hash] = struct{}{}
-		}
-	}
-}
-
-func (s *Service) findCategoryGroupMembers(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	if rule == nil || evalCtx == nil || state == nil {
-		return
-	}
-	groupID := strings.TrimSpace(catAction.groupID)
-	if groupID == "" {
-		return
-	}
-	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
-	if idx == nil {
-		return
-	}
-
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, t := range torrents {
-		torrentByHash[t.Hash] = t
-	}
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-
-	keySet := make(map[string]struct{})
-	keyEligibility := make(map[string]bool)
-	for h := range state.directMatchSet {
-		gk := idx.KeyForHash(h)
-		if gk == "" {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		eligible, computed := keyEligibility[gk]
-		if !computed {
-			eligible = true
-			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
-				eligible = false
-			}
-			if eligible {
-				if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-					evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-				}
-				activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-				members := idx.MembersForHash(h)
-				if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeeds) {
-					eligible = false
-				}
-			}
-			keyEligibility[gk] = eligible
-		}
-		if !eligible {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		keySet[gk] = struct{}{}
-	}
-	if len(keySet) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if gk := idx.KeyForHash(torrent.Hash); gk != "" {
-			if _, ok := keySet[gk]; ok {
-				state.crossSeedSet[torrent.Hash] = struct{}{}
-			}
-		}
-	}
-}
-
-// buildCategoryPreviewResult builds the paginated preview result for category preview.
-func (s *Service) buildCategoryPreviewResult(
-	torrents []qbt.Torrent,
-	state *categoryPreviewState,
+	directSet, crossSeedSet map[string]struct{},
 	evalCtx *EvalContext,
 	cfg previewConfig,
 	rule *models.Automation,
 	scoreByHash map[string]float64,
 ) *PreviewResult {
-	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
-	for h := range state.directMatchSet {
+	allMatches := make(map[string]struct{}, len(directSet)+len(crossSeedSet))
+	for h := range directSet {
 		allMatches[h] = struct{}{}
 	}
-	for h := range state.crossSeedSet {
+	for h := range crossSeedSet {
 		allMatches[h] = struct{}{}
 	}
 
 	result := &PreviewResult{
 		TotalMatches:   len(allMatches),
-		CrossSeedCount: len(state.crossSeedSet),
+		CrossSeedCount: len(crossSeedSet),
 		Examples:       make([]PreviewTorrent, 0, cfg.limit),
 	}
 
@@ -1507,7 +1456,7 @@ func (s *Service) buildCategoryPreviewResult(
 			break
 		}
 
-		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+		_, isCrossSeed := crossSeedSet[torrent.Hash]
 
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
@@ -1566,6 +1515,11 @@ func (s *Service) blockedDeleteCandidates(
 }
 
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
+	if !s.tryLockRun(instanceID) {
+		return ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
@@ -1595,18 +1549,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return err
 	}
 
-	// Signal connected clients that this instance's automation activity changed so
-	// they refetch instead of polling. Emitted only when activity rows were actually
-	// written this cycle (not on idle ticks), after writes and with no lock held.
-	if len(dryActivity) > 0 || len(liveActivity) > 0 {
-		if s.activityPublisher != nil {
-			s.activityPublisher.Publish(activity.Event{
-				Kind:       activity.KindAutomationActivity,
-				InstanceID: instanceID,
-			})
-		}
-	}
-
+	s.publishActivity(instanceID, append(dryActivity, liveActivity...))
 	return nil
 }
 
@@ -1861,7 +1804,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	states := make(map[string]*torrentDesiredState)
 
 	// Group rules into batches based on sorting config equality
-	s.buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
+	s.buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, crossSeeds, skipCheck, ruleStats, states)
 
 	if len(states) == 0 && len(deletions.triggers) == 0 {
 		log.Trace().
@@ -1906,7 +1849,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
-			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("tagMissingTrackerHealth", stats.TagSkippedMissingTrackerHealth).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 			Int("deleteNoMatch", stats.DeleteConditionNotMet).
 			Int("moveNoMatch", stats.MoveConditionNotMet).
@@ -2007,7 +1950,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": speedLimits}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2089,7 +2032,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			limitCounts[limitKey] = len(hashes)
 			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"limits": limitCounts}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2135,7 +2078,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated pause activity
 	if pausedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": pausedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2181,7 +2124,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated resume activity
 	if resumedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": resumedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2227,7 +2170,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated recheck activity
 	if recheckedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": recheckedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": recheckedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2273,7 +2216,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated reannounce activity
 	if reannouncedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": reannouncedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": reannouncedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2329,7 +2272,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Record aggregated auto management activity
 	if autoManagedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
+		detailsJSON, _ := json.Marshal(map[string]int{"count": autoManagedCount}) //nolint:errchkjson // map[string]int cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2482,7 +2425,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Only record if there were actual changes
 		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 				"added":   addCounts,
 				"removed": removeCounts,
 			})
@@ -2548,7 +2491,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			categoryCounts[move.category]++
 		}
 
-		detailsJSON, _ := json.Marshal(map[string]any{
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{ //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 			"categories": categoryCounts,
 		})
 		activity := &models.AutomationActivity{
@@ -2614,7 +2557,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	if successCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"paths": successfulMovesByPath}) //nolint:errchkjson // string-keyed int maps cannot fail to marshal
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2642,7 +2585,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 	if failureCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"paths": failedMovesByPath}) //nolint:errchkjson // string keys and int values cannot fail to encode
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2679,7 +2622,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
 	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
-		detailsJSON, _ := json.Marshal(map[string]any{"filesKept": pending.filesKept(), "deleteMode": pending.deleteMode, "isTrigger": pending.trigger})
+		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // string and bool fields cannot fail to encode
+			DeleteMode string `json:"deleteMode"`
+			FilesKept  bool   `json:"filesKept"`
+			IsTrigger  bool   `json:"isTrigger"`
+		}{pending.deleteMode, pending.filesKept(), pending.trigger})
 		torrent := torrentByHash[hash]
 		return &models.AutomationActivity{
 			InstanceID:    instanceID,
@@ -2829,7 +2776,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return nil, nil
+	return summary.activities, nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {
@@ -3682,6 +3629,134 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	return percent >= int64(minOverlapPercent), nil
 }
 
+// expandTagStatesForCrossSeeds propagates pending tag decisions flagged with
+// includeCrossSeeds onto the trigger's cross-seed group: the torrents that
+// share a file with it, as category expansion uses. Siblings get their own
+// state entry (seeded with their current tags) so the tag diff loop computes
+// a correct per-sibling desired set - SetTorrentTags replaces a torrent's
+// whole tag list, so deltas must never be shared.
+func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds crossSeedGroups) {
+	// Deterministic trigger order keeps sibling attribution stable when several
+	// triggers in one group expand the same tag.
+	var triggerHashes []string
+	for hash, state := range states {
+		if state != nil && len(state.tagExpandByTag) > 0 {
+			triggerHashes = append(triggerHashes, hash)
+		}
+	}
+	if len(triggerHashes) == 0 {
+		return
+	}
+	sort.Strings(triggerHashes)
+
+	exp := tagExpansion{states: states, rulePos: rulePositions(ruleByID), injected: make(map[tagInjectionKey]tagInjection)}
+	for _, hash := range triggerHashes {
+		state := states[hash]
+		for _, tag := range slices.Sorted(maps.Keys(state.tagExpandByTag)) {
+			intent := state.tagExpandByTag[tag]
+			if ruleByID[intent.rule.id] == nil {
+				continue
+			}
+			for _, sibTorrent := range crossSeeds[hash] {
+				if sibTorrent.Hash != hash {
+					exp.inject(sibTorrent, tag, intent)
+				}
+			}
+		}
+	}
+}
+
+// rulePositions maps each rule to its evaluation order ((sort_order, id), the
+// store's ordering). It resolves conflicting expansions injected by different
+// rules: the later rule wins, independent of trigger hash order.
+func rulePositions(ruleByID map[int]*models.Automation) map[int]int {
+	ordered := slices.SortedFunc(maps.Values(ruleByID), func(a, b *models.Automation) int {
+		if a.SortOrder != b.SortOrder {
+			return a.SortOrder - b.SortOrder
+		}
+		return a.ID - b.ID
+	})
+	pos := make(map[int]int, len(ordered))
+	for i, rule := range ordered {
+		pos[rule.ID] = i
+	}
+	return pos
+}
+
+type tagInjectionKey struct {
+	hash string
+	tag  string
+}
+
+// tagInjection is a sibling tag decision injected (or canceled as a no-op) by
+// expansion: the injecting rule's position and the injected action.
+type tagInjection struct {
+	pos    int
+	action string
+}
+
+// tagExpansion injects tag decisions into sibling states. injected
+// distinguishes them from a sibling's own evaluated decisions, which a
+// different rule's expansion never overrides.
+type tagExpansion struct {
+	states   map[string]*torrentDesiredState
+	rulePos  map[int]int
+	injected map[tagInjectionKey]tagInjection
+}
+
+func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpandIntent) {
+	sibState := e.states[sibTorrent.Hash]
+	if sibState == nil {
+		sibState = &torrentDesiredState{
+			hash:         sibTorrent.Hash,
+			name:         sibTorrent.Name,
+			currentTags:  parseTorrentTags(sibTorrent.Tags),
+			tagActions:   make(map[string]string),
+			tagRuleByTag: make(map[string]ruleRef),
+		}
+		e.states[sibTorrent.Hash] = sibState
+	}
+	key := tagInjectionKey{hash: sibTorrent.Hash, tag: tag}
+	pos := e.rulePos[intent.rule.id]
+	prev, wasInjected := e.injected[key]
+	if wasInjected && pos < prev.pos {
+		return // a later rule's expansion already decided this tag
+	}
+	if wasInjected && pos == prev.pos && prev.action == "add" && intent.action == "remove" {
+		return // same-rule conflicts resolve add-over-remove
+	}
+	if ownRule, hasOwn := sibState.tagRuleByTag[tag]; hasOwn && !wasInjected {
+		if ownRule.id != intent.rule.id {
+			return // sibling's own decision from another rule wins, a no-op one too
+		}
+		if sibState.tagActions[tag] == intent.action || intent.action == "remove" {
+			return // same-rule conflicts resolve add-over-remove
+		}
+	}
+	e.injected[key] = tagInjection{pos: pos, action: intent.action}
+
+	// Skip changes the sibling's current tags already satisfy, so no-op
+	// siblings don't land in tagChanges and inflate activity counts. Managed
+	// reset is the exception: the tag is wholesale-deleted in the client
+	// first, so its re-adds are real changes, also for a later rule's add
+	// after an earlier reset re-add. A canceled entry stays canceled: the
+	// winning decision is "leave as is".
+	_, sibHasTag := sibState.currentTags[tag]
+	_, resetPending := sibState.tagResetTags[tag]
+	reset := intent.resetFromClient || resetPending
+	if reset {
+		sibHasTag = false
+	}
+	if (intent.action == "add") == sibHasTag {
+		delete(sibState.tagActions, tag)
+		delete(sibState.tagRuleByTag, tag)
+		return
+	}
+	sibState.tagActions[tag] = intent.action
+	sibState.tagRuleByTag[tag] = intent.rule
+	markTagReset(sibState, tag, reset && intent.action == "add")
+}
+
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
 // for a trigger torrent when ContentPath is ambiguous (ContentPath == SavePath).
 //
@@ -4003,6 +4078,26 @@ func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatch
 	}
 	evalCtx.SameInstanceCrossSeedUnknown = result.SameInstanceUnknown
 	evalCtx.CrossInstanceUnknown = result.OtherInstanceUnknown
+	evalCtx.CrossInstanceSharedHashSet = result.OtherInstanceShared
+	evalCtx.CrossInstanceSharedUnknown = result.OtherInstanceSharedUnknown
+	evalCtx.OfflineLocalInstances = result.OfflineLocalInstances
+}
+
+// otherInstanceKeepsFiles reports whether a torrent on another instance can
+// need the files of the torrent: they share a file, or qui could not check. A
+// rule never reaches another instance, so the delete keeps the files. logMsg
+// says why.
+func otherInstanceKeepsFiles(evalCtx *EvalContext, hash string) (logMsg string, keep bool) {
+	if _, shared := evalCtx.CrossInstanceSharedHashSet[hash]; shared {
+		return "automations: removing torrent (a torrent on another instance shares the files - keeping files)", true
+	}
+	if _, unknown := evalCtx.CrossInstanceSharedUnknown[hash]; !unknown {
+		return "", false
+	}
+	if len(evalCtx.OfflineLocalInstances) == 0 {
+		return "automations: removing torrent (could not check other instances - keeping files)", true
+	}
+	return "automations: removing torrent (could not check instance " + strings.Join(evalCtx.OfflineLocalInstances, ", ") + " - keeping files)", true
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
@@ -4181,7 +4276,7 @@ func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*mo
 		return nil
 	}
 
-	detailsJSON, _ := json.Marshal(map[string]any{"count": 0})
+	detailsJSON, _ := json.Marshal(map[string]int{"count": 0}) //nolint:errchkjson // string keys and int values cannot fail to encode
 	activity := &models.AutomationActivity{
 		InstanceID: instanceID,
 		Hash:       "",
@@ -4801,7 +4896,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		// Handle preflight failures without spawning a goroutine
 		if exec.failureReason != "" {
 			ruleID := exec.ruleID
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]int{ //nolint:errchkjson // string keys and int values cannot fail to encode
 				"targetInstanceId": exec.action.TargetInstanceID,
 				"count":            1,
 			})
@@ -4857,11 +4952,11 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 			buildActivity := func(outcome, reason string) *models.AutomationActivity {
 				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"targetInstanceId": exec.action.TargetInstanceID,
-					"savePath":         exec.resolvedSavePath,
-					"count":            1,
-				})
+				detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
+					Count            int    `json:"count"`
+					SavePath         string `json:"savePath"`
+					TargetInstanceID int    `json:"targetInstanceId"`
+				}{1, exec.resolvedSavePath, exec.action.TargetInstanceID})
 				return &models.AutomationActivity{
 					InstanceID:    sourceInstanceID,
 					Hash:          exec.hash,
@@ -5126,6 +5221,7 @@ func executeBatch(
 	currentBatch []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	ruleStats map[int]*ruleRunStats,
@@ -5141,7 +5237,7 @@ func executeBatch(
 	SortTorrentsWithFallback(torrents, currentBatch[0].SortingConfig, evalCtx, instanceID, currentBatch[0].Name)
 
 	// 2. Process rules
-	processTorrents(torrents, currentBatch, evalCtx, sm, skipCheck, ruleStats, states)
+	processTorrents(torrents, currentBatch, evalCtx, crossSeeds, sm, skipCheck, ruleStats, states)
 }
 
 func (s *Service) buildAndExecuteBatches(
@@ -5149,6 +5245,7 @@ func (s *Service) buildAndExecuteBatches(
 	eligibleRules []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
+	crossSeeds crossSeedGroups,
 	skipCheck func(hash string) bool,
 	ruleStats map[int]*ruleRunStats,
 	states map[string]*torrentDesiredState,
@@ -5166,14 +5263,14 @@ func (s *Service) buildAndExecuteBatches(
 			currentBatch = append(currentBatch, rule)
 		} else {
 			// Execute current batch
-			executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+			executeBatch(instanceID, currentBatch, torrents, evalCtx, crossSeeds, s.syncManager, skipCheck, ruleStats, states)
 			// Start new batch
 			currentBatch = []*models.Automation{rule}
 		}
 	}
 	// Execute final batch
 	if len(currentBatch) > 0 {
-		executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+		executeBatch(instanceID, currentBatch, torrents, evalCtx, crossSeeds, s.syncManager, skipCheck, ruleStats, states)
 	}
 }
 

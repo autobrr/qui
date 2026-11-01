@@ -91,7 +91,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)
@@ -173,7 +173,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)
@@ -267,7 +267,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.True(t, result.Success)
@@ -351,7 +351,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)

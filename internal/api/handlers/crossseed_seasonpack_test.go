@@ -115,6 +115,43 @@ func TestListSeasonPackRuns(t *testing.T) {
 	}
 }
 
+func TestListSeasonPackRuns_LimitRange(t *testing.T) {
+	store := newTestSeasonPackRunStore(t)
+	handler := &CrossSeedHandler{seasonPackRunStore: store}
+
+	ctx := t.Context()
+	for range 12 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{TorrentName: "Pack.S01.720p", Phase: "apply", Status: "applied"})
+		require.NoError(t, err)
+	}
+	for range 250 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{TorrentName: "Pack.S02.720p", Phase: "apply", Status: "failed"})
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		path    string
+		wantLen int
+	}{
+		{path: "/api/cross-seed/season-pack/runs?limit=400", wantLen: 212},
+		{path: "/api/cross-seed/season-pack/runs?limit=401", wantLen: 20},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, tt.path, nil)
+			resp := httptest.NewRecorder()
+
+			handler.ListSeasonPackRuns(resp, req)
+
+			require.Equal(t, http.StatusOK, resp.Code)
+			var runs []*models.SeasonPackRun
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&runs))
+			require.Len(t, runs, tt.wantLen)
+		})
+	}
+}
+
 func TestListSeasonPackRuns_ReturnsEmptyArrayWhenNoRuns(t *testing.T) {
 	store := newTestSeasonPackRunStore(t)
 	handler := &CrossSeedHandler{seasonPackRunStore: store}

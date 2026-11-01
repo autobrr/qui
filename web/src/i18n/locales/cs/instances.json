@@ -635,6 +635,7 @@
         "cancel": "Zrušit",
         "delete": "Smazat"
       },
+      "enableTagRule": "Aktivovat pravidlo pro tagy",
       "enableDeleteRule": "Aktivovat pravidlo pro smazání",
       "enableCategoryRule": "Aktivovat pravidlo pro kategorii → {{category}}",
       "enableRuleImmediately": "Potvrzením se toto pravidlo okamžitě aktivuje.",
@@ -687,6 +688,24 @@
         "hashCopied": "Hash zkopírován"
       },
       "exported": "Exportováno"
+    },
+    "runWorkflowNow": {
+      "action": "Spustit nyní",
+      "title": "Spustit \"{{name}}\" nyní?",
+      "description": "qui nyní jednou spustí uložený postup automatizace a použije jeho akce na odpovídající torrenty. Spustí se i tehdy, když je postup vypnutý.",
+      "dryRunDescription": "Tento postup automatizace je nastaven jako zkušební běh, takže qui jen zaznamená, co by udělal. Žádný torrent se nezmění.",
+      "actions": "Akce",
+      "cancel": "Zrušit",
+      "confirm": "Spustit nyní",
+      "toast": {
+        "running": "Spouští se \"{{name}}\"…",
+        "completed": "Běh dokončen pro \"{{name}}\"",
+        "noChanges": "Běh dokončen pro \"{{name}}\". Žádný torrent nepotřeboval změnu.",
+        "completedWithErrors": "Běh pro \"{{name}}\" skončil s chybami. Podívejte se do protokolu aktivity.",
+        "dryRunCompleted": "Zkušební běh dokončen pro \"{{name}}\"",
+        "inProgress": "Probíhá jiný běh. Zkuste to za chvíli znovu.",
+        "failed": "Postup automatizace se nepodařilo spustit"
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Načítá se náhled. To může trvat nějakou dobu...",
@@ -1240,6 +1259,7 @@
         "strategyReplace": "Nahradit v klientu",
         "replaceDescription": "Nahrazující režim vynutí úplné obnovení těchto tagů před použitím tohoto pravidla.",
         "managedDescription": "Spravovaný režim udržuje tagy s aktualizacemi založenými na rozdílech; Úplná synchronizace přidává tagy k shodám a odebírá je z neshodných.",
+        "includeAffectedCrossSeeds": "Zahrnout ovlivněné křížové seedy",
         "useTrackerName": "Použít název trackeru jako tag",
         "useDisplayName": "Použít název zobrazení",
         "aboutDisplayNames": "O názvech zobrazení",
@@ -1384,11 +1404,13 @@
       "preview": {
         "confirmDeleteRule": "Potvrdit smazání pravidla",
         "previewDeleteRule": "Náhled smazání pravidla",
+        "confirmTagChange": "Potvrdit změny tagů",
         "confirmCategoryChange": "Potvrdit změnu kategorie → {{category}}",
         "deleteEnabledSummary": "Toto pravidlo ovlivní {{count}} torrent, které aktuálně odpovídají.",
         "deleteEnabledSummary_other": "Toto pravidlo ovlivní {{count}} torrenty, které aktuálně odpovídají.",
         "deleteDisabledSummary": "{{count}} torrent by odpovídal tomuto pravidlu, pokud by byl povolen.",
         "deleteDisabledSummary_other": "{{count}} torrenty by odpovídaly tomuto pravidlu, pokud by byl povolen.",
+        "tagPrefix": "Toto pravidlo aktualizuje tagy u",
         "categoryPrefix": "Toto pravidlo přesune",
         "torrents": "{{count}} torrentů",
         "torrents_other": "{{count}} torrentů",

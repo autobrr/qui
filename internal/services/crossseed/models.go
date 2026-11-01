@@ -102,6 +102,11 @@ type InstanceCrossSeedResult struct {
 	// MatchedTorrent is the existing torrent that matched (if any).
 	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add (ADR 0035). InstanceID stays the instance that
+	// holds the match. Both are empty for an add that is not routed.
+	CrossSeedInstanceID   int    `json:"cross_seed_instance_id,omitzero"`
+	CrossSeedInstanceName string `json:"cross_seed_instance_name,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool
 }
@@ -230,6 +235,9 @@ type CrossSeedCandidate struct {
 	MatchType string `json:"match_type"`
 	// titleRescue binds the title bypass to the exact local source torrent.
 	titleRescue bool
+	// route is set when InstanceID routes its cross-seeds. InstanceID stays the
+	// instance that holds the match, so that the Match verdict keeps comparing it.
+	route *candidateRoute
 }
 
 // TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.
@@ -369,6 +377,28 @@ type ApplyTorrentSearchResponse struct {
 // LocalMatchesResponse contains torrents from all instances that match a source torrent.
 type LocalMatchesResponse struct {
 	Matches []LocalMatch `json:"matches"`
+}
+
+// Reasons of an UncheckedInstance.
+const (
+	UncheckedOffline  = "offline"
+	UncheckedDisabled = "disabled"
+)
+
+// DeleteMatchesResponse holds the torrents that a delete with files affects,
+// and the instances with local filesystem access that the check could not
+// read, so that the list never reads as complete when it is not.
+type DeleteMatchesResponse struct {
+	Matches   []LocalMatch        `json:"matches"`
+	Unchecked []UncheckedInstance `json:"unchecked_instances"`
+}
+
+// UncheckedInstance is an instance that the delete check did not check.
+// Reason is UncheckedOffline or UncheckedDisabled.
+type UncheckedInstance struct {
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+	Reason       string `json:"reason"`
 }
 
 // LocalMatch represents a torrent that matches the source across instances.
@@ -559,6 +589,7 @@ type SeasonPackApplyResponse struct {
 	Reason          string  `json:"reason,omitempty"`
 	Message         string  `json:"message,omitempty"`
 	InstanceID      int     `json:"instanceId,omitempty"`
+	AddedInstanceID int     `json:"addedInstanceId,omitzero"`
 	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
 	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
 	Coverage        float64 `json:"coverage,omitempty"`

@@ -99,7 +99,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "include hardlinks",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, IncludeHardlinks: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}}),
-			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
 		},
 		{
 			name:  "include hardlinks outside the include-cross-seeds mode",
@@ -122,7 +122,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "preserve cross-seeds delete",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}}),
-			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
 		},
 		{
 			name:  "plain delete with files counts free space once per cross-seed group",
@@ -146,6 +146,16 @@ func TestNeedsFor(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, NeedsFor(tt.rules))
 		})
+	}
+}
+
+// Without an eval context, no field that needs extra data has it. A field that
+// the shortcut in conditionDataKnown leaves out reports known here.
+func TestConditionDataKnown_NoContextIsUnknown(t *testing.T) {
+	for field, data := range conditionFieldData {
+		if data.known != nil {
+			require.False(t, conditionDataKnown(field, "hash", nil), field)
+		}
 	}
 }
 

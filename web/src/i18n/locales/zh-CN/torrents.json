@@ -130,6 +130,8 @@
     "error": "检查辅种失败",
     "retry": "重试",
     "noCrossSeeds": "未找到辅种",
+    "uncheckedOffline": "无法检查 {{instance}}：qui 无法连接到它。",
+    "uncheckedDisabled": "未检查 {{instance}}：它已在 qui 中停用。",
     "deleteCrossSeeds": "这些辅种也将被删除",
     "deletingFilesBreaks": "删除文件将破坏这些辅种",
     "dataPreserved": "检测到辅种——数据将被保留",
@@ -762,7 +764,8 @@
       "fewerIndexers": "尝试选择更少的索引器进行搜索",
       "useRss": "使用 RSS 自动化功能进行持续辅种",
       "checkIndexers": "检查索引器页面以查看哪些被限流"
-    }
+    },
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。"
   },
   "columnFilter": {
     "filterColumn": "筛选 {{column}}",
@@ -952,7 +955,6 @@
     "torrentCount_other": "{{count}} 个种子",
     "torrentsLoaded": "已加载 {{loaded}}/{{total}} 个种子",
     "scrollForMore": "（滚动加载更多）",
-    "loading": "加载中...",
     "freeSpace": "可用空间",
     "switchToBits": "切换到每秒比特（bps）",
     "switchToBytes": "切换到每秒字节（B/s）",
@@ -1574,6 +1576,7 @@
     "tags": "标签",
     "newTagPlaceholder": "输入标签后按 Enter",
     "savePath": "保存路径（实际目标位置）",
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。",
     "cancel": "取消",
     "apply": "添加辅种",
     "applying": "正在添加...",
@@ -1601,6 +1604,7 @@
         "no_episode_files": "此整季包中未找到可播放的单集文件。",
         "target_not_found": "此实例中未找到目标种子。",
         "incomplete": "目标种子尚未下载完成。",
+        "not_settled": "此种子仍在移动或校验中。请在完成后重试。",
         "no_episode_identity": "无法解析集数。",
         "file_list_unavailable": "无法获取目标种子的文件列表。",
         "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",

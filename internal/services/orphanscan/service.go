@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -82,6 +83,7 @@ type Service struct {
 	backendPool *fsops.Pool
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
 
 	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
@@ -147,6 +149,11 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
 }
 
 // emitRun signals connected clients that an orphan scan run changed status.
@@ -903,7 +910,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 	protected.setScanRoots(scanRoots)
-	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs()), backend)
+	// run.ScanPaths keeps every root so deletion still resolves the narrowest
+	// one per file, but walking an ancestor already covers its descendants.
+	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
+	inUseRoots = pruneNestedScanRoots(ctx, mergeRootLists(d, inUseRoots, protected.ignoredTorrentDirs(),
+		linkedPeerRoots(ctx, result.peerRoots, scanRoots, walkRoots, backend)), backend)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
@@ -913,9 +924,6 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
 
-	// run.ScanPaths keeps every root so deletion still resolves the narrowest
-	// one per file, but walking an ancestor already covers its descendants.
-	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
 	expectedAbsent := make(map[string]struct{}, len(result.declaredOnlyRoots))
 	for _, root := range result.declaredOnlyRoots {
 		expectedAbsent[root] = struct{}{}
@@ -1433,6 +1441,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// disabled directory cleanup after the scan.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	scope.AbandonedDirs = true
+	scope.TorrentPaths = true
 
 	// Build fresh file map for re-checking
 	fileMapResult, err := s.buildFileMap(ctx, instance, deleteBackend, scope)
@@ -1479,6 +1488,29 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		for _, e := range entries {
 			s.updateFileStatus(ctx, e.ID, "skipped", "the SSH settings changed during the deletion")
 		}
+	}
+
+	// The map protects by path. A torrent added since the scan can reach a
+	// listed file through another path, so the files are also compared by
+	// identity, as the scan compared them. Abandoned directories need no
+	// identities, since they go only when empty.
+	if len(fileEntries) > 0 {
+		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, fileMapResult.torrentPaths)
+		if err != nil {
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent file")
+			switch {
+			// A redial reaches the instance's current row, so a moved
+			// endpoint is the likelier story than a dropped link.
+			case checkSSH():
+				s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+			case errors.Is(err, fsops.ErrConnectionLost):
+				s.failRun(ctx, runID, instanceID, "Deletion stopped before deleting anything: the connection to the remote instance was lost while qui checked which files torrents use. Run a new scan to try again.")
+			default:
+				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which files torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", err))
+			}
+			return
+		}
+		protected.inUse = inUse
 	}
 
 	// Track deletion failures for user-facing error reporting
@@ -1530,6 +1562,10 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		switch disp {
 		case deleteDispositionSkippedInUse:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file is now in use by a torrent")
+		case deleteDispositionSkippedInUseThroughAlias:
+			s.updateFileStatus(ctx, f.ID, "skipped", "a torrent now uses this file through another path")
+		case deleteDispositionSkippedFolderInUseThroughAlias:
+			s.updateFileStatus(ctx, f.ID, "skipped", "a torrent now uses a file in this folder through another path")
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
 		case deleteDispositionSkippedIgnored:
@@ -1826,6 +1862,61 @@ func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
 }
 
+// linkedPeerRoots returns the save paths of merged instances below a walk root
+// that the walk does not reach, because the path is a symlink or a symlink is on
+// the way. The walk finds their files only at the target, under another path.
+// A scan root is walked or reached already, so a peer root that is also one
+// costs no lookup.
+func linkedPeerRoots(ctx context.Context, peerRoots, scanRoots, walkRoots []string, backend fsops.Backend) []string {
+	d := backend.Paths()
+	// Peer roots share their parents, and over SSH each lookup is a round trip.
+	realDirs := map[string]bool{}
+	isRealDir := func(p string) bool {
+		ok, seen := realDirs[p]
+		if !seen {
+			info, err := backend.Lstat(ctx, p)
+			ok = err == nil && info.IsDir && !info.IsSymlink
+			realDirs[p] = ok
+		}
+		return ok
+	}
+	// A peer may spell a walk root in another case on a filesystem that
+	// ignores it, so compare as the protected paths do.
+	norm := func(p string) string { return fsops.NormalizePath(d, p) }
+	var linked []string
+	for _, root := range peerRoots {
+		if slices.Contains(scanRoots, root) {
+			continue
+		}
+		under := func(w string) bool { return isPathUnderNormalized(d, norm(root), norm(w)) }
+		if !slices.ContainsFunc(walkRoots, under) {
+			continue
+		}
+		// As walkReaches, but the root itself must be a real directory too.
+		reached := func(w string) bool {
+			nw := norm(w)
+			for dir := root; dir != w && dir != w+d.Separator(); dir = d.Dir(dir) {
+				if !isRealDir(dir) {
+					return false
+				}
+				// The walk root in another case. Where case counts, a real
+				// folder of that name is a tree the walk never enters.
+				if n := norm(dir); n == nw || n == nw+d.Separator() {
+					return true
+				}
+				if d.Dir(dir) == dir {
+					return false
+				}
+			}
+			return true
+		}
+		if !slices.ContainsFunc(walkRoots, func(w string) bool { return under(w) && reached(w) }) {
+			linked = append(linked, root)
+		}
+	}
+	return linked
+}
+
 // ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
 // symlinks.
 func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
@@ -2068,14 +2159,35 @@ type buildFileMapResult struct {
 	// allowed to be absent and say nothing about the health of the library.
 	declaredOnlyRoots []string
 	torrentCount      int
+	// torrentPaths are the map's files as spelled for the backend, not folded,
+	// so the delete can read their identities. Peers' files join on merge.
+	// Filled only when the scope asks for them.
+	torrentPaths []string
+	// peerRoots are the save paths of the merged instances. They are never
+	// scan roots; the scan walks one only when a symlink hides it from the walk.
+	peerRoots []string
 }
 
-func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
+// mergeProtection adds the files, skipped roots and metadata roots of
+// another instance to r, never its scan roots, and returns the number of new
+// files.
+func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFileMapResult) int {
+	added := r.fileMap.MergeFrom(other.fileMap)
+	r.torrentPaths = append(r.torrentPaths, other.torrentPaths...)
+	r.peerRoots = mergeRootLists(d, r.peerRoots, other.scanRoots)
+	r.skippedRoots = mergeRootLists(d, r.skippedRoots, other.skippedRoots)
+	r.metadataRoots = mergeRootLists(d, r.metadataRoots, other.metadataRoots)
+	r.scanRoots = filterCoveredScanRoots(d, r.scanRoots, r.skippedRoots)
+	return added
+}
+
+func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
 	metadataRoots := make(map[string]struct{})
 	stableMissingFiles := 0
+	var torrentPaths []string
 
 	for i := range torrents {
 		torrent := torrents[i]
@@ -2107,19 +2219,23 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 			continue
 		}
 
-		scanRoots[savePath] = struct{}{}
-		for _, f := range files {
-			tfm.Add(fsops.NormalizePath(d, d.Join(savePath, d.FromSlash(f.Name))))
+		add := func(root string) {
+			scanRoots[root] = struct{}{}
+			for _, f := range files {
+				p := d.Join(root, d.FromSlash(f.Name))
+				if wantPaths {
+					torrentPaths = append(torrentPaths, p)
+				}
+				tfm.Add(fsops.NormalizePath(d, p))
+			}
 		}
+		add(savePath)
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
 		actualSavePath := actualSavePathFromContentPath(d, savePath, torrent.ContentPath, files)
 		if actualSavePath != "" && actualSavePath != savePath {
-			scanRoots[actualSavePath] = struct{}{}
-			for _, f := range files {
-				tfm.Add(fsops.NormalizePath(d, d.Join(actualSavePath, d.FromSlash(f.Name))))
-			}
+			add(actualSavePath)
 		}
 	}
 
@@ -2136,6 +2252,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 		skippedRoots:  skippedRootList,
 		metadataRoots: sortedRoots(metadataRoots),
 		torrentCount:  len(torrents),
+		torrentPaths:  torrentPaths,
 	}, nil
 }
 
@@ -2243,7 +2360,7 @@ func (s *Service) instanceScanRootsForOverlap(ctx context.Context, d fsops.PathD
 // buildInstanceFileMap reads instanceID's torrents and checks their roots through
 // backend, which was built from scanned. A peer walk passes the peer's ID with the
 // scanning instance's backend, so identities are scoped to the filesystem read.
-func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scanned *models.Instance, timeout time.Duration, backend fsops.Backend) (*buildFileMapResult, error) {
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scanned *models.Instance, timeout time.Duration, backend fsops.Backend, wantPaths bool) (*buildFileMapResult, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -2269,7 +2386,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
-	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash)
+	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash, wantPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -2284,7 +2401,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, backend fsops.Backend, scope scanScope) (*buildFileMapResult, error) {
 	instanceID := scanned.ID
 	d := backend.Paths()
-	result, err := s.buildInstanceFileMap(ctx, instanceID, scanned, 5*time.Minute, backend)
+	result, err := s.buildInstanceFileMap(ctx, instanceID, scanned, 5*time.Minute, backend, scope.TorrentPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -2329,15 +2446,12 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			}
 		}
 
-		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, scanned, 2*time.Minute, backend)
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, scanned, 2*time.Minute, backend, scope.TorrentPaths)
 		if err != nil {
 			return nil, fmt.Errorf("overlapping %s unavailable (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 		}
 
-		added := result.fileMap.MergeFrom(otherResult.fileMap)
-		result.skippedRoots = mergeRootLists(d, result.skippedRoots, otherResult.skippedRoots)
-		result.metadataRoots = mergeRootLists(d, result.metadataRoots, otherResult.metadataRoots)
-		result.scanRoots = filterCoveredScanRoots(d, result.scanRoots, result.skippedRoots)
+		added := result.mergeProtection(d, otherResult)
 		log.Debug().
 			Int("instance", inst.ID).
 			Int("filesAdded", added).
@@ -2345,7 +2459,50 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 			Msg("orphanscan: merged cross-instance torrent files (overlapping scan roots)")
 	}
 
+	if err := s.mergeRouted(ctx, instanceID, d, scope.TorrentPaths, result); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+// mergeRouted protects the files of the routed torrents on instanceID's
+// Cross-seed instance, mapped back to instanceID's paths (ADR 0035). Like a
+// peer, it adds files, skipped roots and metadata roots, never scan roots.
+// Unlike the peer loop, a turned-off Cross-seed instance fails the scan.
+func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathDialect, wantPaths bool, result *buildFileMapResult) error {
+	if s.crossSeedRoutes == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	routed, err := s.crossSeedRoutes.LoadRouted(ctx, freshTorrents{s.sync}, instanceID)
+	switch {
+	case errors.Is(err, crossseedroute.ErrUnavailable):
+		return fmt.Errorf("%w. Enable it in qui or clear the cross-seed route of this instance", crossseedroute.CrossSeedUnavailable(err))
+	case err != nil:
+		return fmt.Errorf("read the cross-seed route: %w", err)
+	case routed == nil:
+		return nil
+	}
+	other, err := buildFileMapFromTorrents(d, routed.Torrents, routed.Files, wantPaths)
+	if err != nil {
+		return fmt.Errorf("routed torrents of the Cross-seed instance: %w", err)
+	}
+	added := result.mergeProtection(d, other)
+	log.Debug().Int("instance", instanceID).Int("filesAdded", added).Msg("orphanscan: merged routed torrent files of the Cross-seed instance")
+	return nil
+}
+
+// freshTorrents reads the Cross-seed instance as buildInstanceFileMap reads a
+// peer: fresh torrents and file lists.
+type freshTorrents struct{ sync syncReader }
+
+func (r freshTorrents) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	return r.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+}
+
+func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	return r.sync.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hashes)
 }
 
 func torrentHashes(torrents []qbt.Torrent) []string {

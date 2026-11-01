@@ -190,7 +190,8 @@ export function useTorrentsList(
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
-  const [lastRequestTime, setLastRequestTime] = useState(0)
+  // A ref, not state: two scroll callbacks of one render must see the first request.
+  const lastRequestTimeRef = useRef(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
@@ -480,7 +481,7 @@ export function useTorrentsList(
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   useEffect(() => {
     setCurrentPage(0)
-    setLastRequestTime(0)
+    lastRequestTimeRef.current = 0
     setAllTorrents([])
     setHasLoadedAll(false)
     setLastKnownTotal(0)
@@ -699,11 +700,11 @@ export function useTorrentsList(
     }
 
     // Throttle repeated scroll callbacks.
-    if (now - lastRequestTime < 500) {
+    if (now - lastRequestTimeRef.current < 500) {
       return
     }
 
-    setLastRequestTime(now)
+    lastRequestTimeRef.current = now
     if (isError && currentPage !== lastProcessedPage) {
       // Retry the pending page instead of skipping rows after a failed request.
       void refetch()

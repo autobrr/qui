@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -46,7 +45,7 @@ type torrentDownloader interface {
 }
 
 type deleteMatchFinder interface {
-	FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error)
+	FindDeleteMatches(ctx context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error)
 }
 
 type torrentContentResolver interface {
@@ -759,7 +758,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
-				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
+				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
 				failedCount++
 				lastError = err
@@ -805,12 +804,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
-						log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
+						log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
 						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
 					} else if err := torrentURLAddFailureError(resp); err != nil {
-						log.Error().
+						log.Debug().
 							Int("instanceID", instanceID).
 							Str("url", redact.URLString(url)).
 							Int64("successCount", resp.SuccessCount).
@@ -840,12 +839,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
 							}
-							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
 							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
 							failedCount++
 							lastError = err
 						} else if err := torrentURLAddFailureError(resp); err != nil {
-							log.Error().
+							log.Debug().
 								Int("instanceID", instanceID).
 								Str("url", redact.URLString(magnetURL)).
 								Int64("successCount", resp.SuccessCount).
@@ -860,7 +859,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 						}
 						continue
 					}
-					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
+					log.Debug().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -872,7 +871,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", redact.URLString(url)).Msg("Failed to add downloaded torrent")
+					log.Debug().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", redact.URLString(url)).Msg("Failed to add downloaded torrent")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -905,7 +904,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
+					log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -913,7 +912,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if err := torrentURLAddFailureError(resp); err != nil {
-					log.Error().
+					log.Debug().
 						Int("instanceID", instanceID).
 						Str("url", redact.URLString(url)).
 						Int64("successCount", resp.SuccessCount).
@@ -933,6 +932,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					Msg("Skipped empty URLs in add torrent request")
 			}
 		}
+	}
+
+	if failedCount > 0 {
+		log.Error().Err(lastError).Int("instanceID", instanceID).Int("added", addedCount).Int("failed", failedCount).
+			Msg("Failed to add torrents")
 	}
 
 	// Check if any torrents failed
@@ -1428,22 +1432,18 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	matches := []crossseed.LocalMatch{}
-	for _, targetInstanceID := range slices.Sorted(maps.Keys(targetsByInstance)) {
-		found, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetInstanceID, targetsByInstance[targetInstanceID])
-		if findErr != nil {
-			// The dialog closed and the browser cancelled the request.
-			if r.Context().Err() != nil {
-				return
-			}
-			log.Error().Err(findErr).Int("instanceID", targetInstanceID).Msg("Failed to check cross-seeds for delete")
-			RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+	response, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetsByInstance)
+	if findErr != nil {
+		// The dialog closed and the browser cancelled the request.
+		if r.Context().Err() != nil {
 			return
 		}
-		matches = append(matches, found...)
+		log.Error().Err(findErr).Int("instanceID", instanceID).Msg("Failed to check cross-seeds for delete")
+		RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+		return
 	}
 
-	RespondJSON(w, http.StatusOK, crossseed.LocalMatchesResponse{Matches: matches})
+	RespondJSON(w, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {

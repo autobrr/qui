@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,100 +81,29 @@ func (s *Scanner) SetFileIDIndex(index *seedingIndex) {
 	s.seenFileIDs = index
 }
 
-// ScanDirectory walks a directory and returns searchees.
+// rootEntry is one top-level entry of a scan while the walk runs: a folder
+// that collects its files, or a root-level media file.
+type rootEntry struct {
+	searchee *Searchee
+	failed   bool // the walk could not read the folder, or a link has no file target
+	symlink  bool // a root-level link, resolved after the walk
+}
+
+// ScanDirectory walks rootPath once and returns one searchee per top-level
+// folder or media file, in the order of the root listing.
 func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResult, error) {
-	result := &ScanResult{}
-	rootPath = s.backend.Paths().Clean(rootPath)
-
-	dirEntries, err := s.backend.ReadDir(ctx, rootPath)
-	if err != nil {
-		return nil, fmt.Errorf("read directory %s: %w", rootPath, err)
-	}
-
-	for _, entry := range dirEntries {
-		if ctx.Err() != nil {
-			return result, fmt.Errorf("scan directory: %w", ctx.Err())
-		}
-
-		if strings.HasPrefix(entry.Name, ".") {
-			continue
-		}
-
-		entryPath := s.backend.Paths().Join(rootPath, entry.Name)
-		s.processRootEntry(ctx, entry, entryPath, result)
-		if err := ctx.Err(); err != nil {
-			return result, fmt.Errorf("scan directory: %w", err)
-		}
-	}
-
-	return result, nil
-}
-
-// processRootEntry handles a single entry in the root directory.
-func (s *Scanner) processRootEntry(ctx context.Context, entry fsops.DirEntry, entryPath string, result *ScanResult) {
-	if entry.IsDir {
-		s.processDirEntry(ctx, entryPath, entry.Name, result)
-	} else if (entry.Mode.IsRegular() || entry.IsSymlink) && isMediaFile(entry.Name) {
-		s.processFileEntry(ctx, entryPath, result)
-	}
-}
-
-// processDirEntry scans a directory and adds it as a searchee.
-func (s *Scanner) processDirEntry(ctx context.Context, entryPath, name string, result *ScanResult) {
-	searchee, err := s.scanSearcheeDir(ctx, entryPath, name)
-	if err != nil || len(searchee.Files) == 0 {
-		return
-	}
-
-	alreadySeeding, _ := s.CheckAlreadySeeding(searchee)
-	if alreadySeeding {
-		result.SkippedFiles += len(searchee.Files)
-	}
-
-	result.Searchees = append(result.Searchees, searchee)
-	if !alreadySeeding {
-		for _, f := range searchee.Files {
-			result.TotalFiles++
-			result.TotalSize += f.Size
-		}
-	}
-}
-
-// processFileEntry scans a single file and adds it as a searchee.
-func (s *Scanner) processFileEntry(ctx context.Context, entryPath string, result *ScanResult) {
-	searchee, err := s.scanSingleFile(ctx, entryPath)
-	if err != nil || searchee == nil {
-		return
-	}
-
-	alreadySeeding, _ := s.CheckAlreadySeeding(searchee)
-	if alreadySeeding {
-		result.SkippedFiles++
-	}
-
-	result.Searchees = append(result.Searchees, searchee)
-	if !alreadySeeding {
-		result.TotalFiles++
-		result.TotalSize += searchee.Files[0].Size
-	}
-}
-
-// scanSearcheeDir scans a directory as a searchee using the backend's WalkDir.
-func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*Searchee, error) {
-	searchee := &Searchee{
-		Name:   name,
-		Path:   dirPath,
-		IsDisc: s.isDiscLayoutRoot(ctx, dirPath),
-	}
+	d := s.backend.Paths()
+	rootPath = d.Clean(rootPath)
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
-	ch, err := s.backend.WalkDir(walkCtx, dirPath, fsops.WalkOptions{
+	ch, err := s.backend.WalkDir(walkCtx, rootPath, fsops.WalkOptions{
 		SkipHidden: true,
 		WantFileID: true,
+		FollowRoot: true,
 	})
 	if err != nil {
 		cancelWalk()
-		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("read directory %s: %w", rootPath, err)
 	}
 	defer func() {
 		cancelWalk()
@@ -181,63 +111,163 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 		}
 	}()
 
+	var order []*rootEntry
+	byName := map[string]*rootEntry{} // nil for a name that is not a searchee
 	for entry := range ch {
-		if entry.Err != nil {
-			if errors.Is(entry.Err, fs.ErrPermission) {
-				continue
+		if entry.Path == rootPath {
+			if err := checkScanRoot(&entry, rootPath); err != nil {
+				return nil, err
 			}
-			return nil, fmt.Errorf("walk entry %s: %w", entry.Path, entry.Err)
-		}
-
-		// Links, junctions and other special entries are not media files.
-		if !entry.Mode.IsRegular() {
 			continue
 		}
-
-		// For non-disc layouts, only process media files
-		if !searchee.IsDisc && !isMediaFile(filepath.Base(entry.Path)) {
-			continue
+		// A lost connection ends the walk, so the folders it had not finished
+		// would read as complete.
+		if errors.Is(entry.Err, fsops.ErrConnectionLost) {
+			return nil, fmt.Errorf("scan directory: %w", entry.Err)
 		}
 
-		relPath := entry.RelPath
-		if relPath == "" {
-			relPath = filepath.Base(entry.Path)
+		name, rest, nested := strings.Cut(entry.RelPath, d.Separator())
+		top, seen := byName[name]
+		if !seen {
+			top = newRootEntry(d, rootPath, name, &entry, nested)
+			byName[name] = top
+			if top != nil {
+				order = append(order, top)
+			}
 		}
-
-		searchee.Files = append(searchee.Files, &ScannedFile{
-			Path:      entry.Path,
-			RelPath:   relPath,
-			Size:      entry.Size,
-			ModTime:   entry.ModTime,
-			FileID:    entry.FileID,
-			LinkCount: entry.Nlinks,
-			HasLinks:  entry.Nlinks > 1,
-		})
+		switch {
+		case top == nil:
+			// A walk racing a rename can list more entries under a name first seen as a file.
+		case entry.Err != nil:
+			// A denied subtree is skipped, any other read error drops the folder.
+			if !errors.Is(entry.Err, fs.ErrPermission) {
+				top.failed = true
+			}
+		case nested:
+			top.add(&entry, rest, d)
+		}
+	}
+	if err := s.resolveRootSymlinks(ctx, order); err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("scan directory: %w", err)
 	}
 
-	return searchee, nil
+	result := &ScanResult{}
+	for _, top := range order {
+		if top.failed {
+			continue
+		}
+		searchee := top.searchee
+		// A folder holds its other files only until the walk has shown
+		// whether it is a disc layout, since the marker can come after them.
+		// The clone frees the slots they took.
+		if !searchee.IsDisc {
+			searchee.Files = slices.Clone(slices.DeleteFunc(searchee.Files, func(f *ScannedFile) bool {
+				return !isMediaFile(d.Base(f.Path))
+			}))
+		}
+		if len(searchee.Files) == 0 {
+			continue
+		}
+		s.addSearchee(result, searchee)
+	}
+
+	return result, nil
 }
 
-// scanSingleFile creates a searchee for a single file. Stat, not Lstat:
-// root-level symlinked media files are scanned via their target, unlike the
-// directory walk which skips links inside a searchee.
-func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searchee, error) {
-	info, err := s.backend.Stat(ctx, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
+// newRootEntry starts a top-level entry from the first walk entry under its
+// name, or returns nil for an entry that is not a searchee.
+func newRootEntry(d fsops.PathDialect, rootPath, name string, entry *fsops.WalkEntry, nested bool) *rootEntry {
+	if entry.IsDir || nested || entry.Err != nil {
+		// name is cut from the walk entry's path, so it is cloned to keep
+		// that path from staying alive with the searchee.
+		return &rootEntry{searchee: &Searchee{Name: strings.Clone(name), Path: d.Join(rootPath, name)}}
 	}
-	if !info.Mode.IsRegular() {
-		return nil, nil
+	if !isMediaFile(name) {
+		return nil
+	}
+	// A root-level link is scanned through its target, unlike a link inside
+	// a folder, which the walk skips.
+	if entry.IsSymlink {
+		return &rootEntry{searchee: &Searchee{Path: entry.Path}, symlink: true}
+	}
+	if !entry.Mode.IsRegular() {
+		return nil
+	}
+	return &rootEntry{searchee: singleFileSearchee(entry.Path, name, &entry.LstatInfo)}
+}
+
+// add takes one entry beneath a top-level folder. rest is its path relative
+// to that folder.
+func (top *rootEntry) add(entry *fsops.WalkEntry, rest string, d fsops.PathDialect) {
+	if entry.IsDir && !strings.Contains(rest, d.Separator()) && isDiscLayoutMarker(rest) {
+		top.searchee.IsDisc = true
+		return
+	}
+	// Links, junctions and other special entries are not media files.
+	if !entry.Mode.IsRegular() {
+		return
+	}
+	top.searchee.Files = append(top.searchee.Files, &ScannedFile{
+		Path:      entry.Path,
+		RelPath:   rest,
+		Size:      entry.Size,
+		ModTime:   entry.ModTime,
+		FileID:    entry.FileID,
+		LinkCount: entry.Nlinks,
+		HasLinks:  entry.Nlinks > 1,
+	})
+}
+
+// checkScanRoot fails the scan when the walk could not read the root or the
+// root is not a directory.
+func checkScanRoot(entry *fsops.WalkEntry, rootPath string) error {
+	if entry.Err != nil {
+		return fmt.Errorf("read directory %s: %w", rootPath, entry.Err)
+	}
+	if !entry.IsDir {
+		return fmt.Errorf("read directory %s: not a directory", rootPath)
+	}
+	return nil
+}
+
+// resolveRootSymlinks stats every root-level link in one batch and keeps
+// the ones whose target is a regular file. A lost connection fails the scan,
+// since the links it left unread would be dropped as if they led nowhere.
+func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) error {
+	var links []*rootEntry
+	var paths []string
+	for _, top := range order {
+		if top.symlink {
+			links = append(links, top)
+			paths = append(paths, top.searchee.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
 	}
 
-	base := filepath.Base(filePath)
-	name := strings.TrimSuffix(base, filepath.Ext(base))
+	infos, errs := fsops.StatAll(ctx, s.backend, paths)
+	for i, top := range links {
+		if errors.Is(errs[i], fsops.ErrConnectionLost) {
+			return fmt.Errorf("scan directory: %w", errs[i])
+		}
+		if errs[i] != nil || !infos[i].Mode.IsRegular() {
+			top.failed = true
+			continue
+		}
+		base := s.backend.Paths().Base(paths[i])
+		top.searchee = singleFileSearchee(paths[i], base, infos[i])
+	}
+	return nil
+}
 
+// singleFileSearchee is the searchee of one root-level media file.
+func singleFileSearchee(filePath, base string, info *fsops.LstatInfo) *Searchee {
 	return &Searchee{
-		Name: name,
+		Name: strings.TrimSuffix(base, filepath.Ext(base)),
 		Path: filePath,
 		Files: []*ScannedFile{{
 			Path:      filePath,
@@ -248,7 +278,21 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 			LinkCount: info.Nlinks,
 			HasLinks:  info.Nlinks > 1,
 		}},
-	}, nil
+	}
+}
+
+// addSearchee adds a searchee to the result. The files of an already seeding
+// searchee count as skipped.
+func (s *Scanner) addSearchee(result *ScanResult, searchee *Searchee) {
+	result.Searchees = append(result.Searchees, searchee)
+	if alreadySeeding, _ := s.CheckAlreadySeeding(searchee); alreadySeeding {
+		result.SkippedFiles += len(searchee.Files)
+		return
+	}
+	for _, f := range searchee.Files {
+		result.TotalFiles++
+		result.TotalSize += f.Size
+	}
 }
 
 // CheckAlreadySeeding checks if a searchee's files are already being seeded.
@@ -278,21 +322,9 @@ func isMediaFile(name string) bool {
 	return ok
 }
 
-// isDiscLayoutRoot checks if a directory is a disc layout root.
-func (s *Scanner) isDiscLayoutRoot(ctx context.Context, dirPath string) bool {
-	entries, err := s.backend.ReadDir(ctx, dirPath)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir {
-			continue
-		}
-		if _, ok := discLayoutMarkers[strings.ToLower(entry.Name)]; ok {
-			return true
-		}
-	}
-
-	return false
+// isDiscLayoutMarker reports whether a folder with this name makes its parent
+// a disc layout.
+func isDiscLayoutMarker(name string) bool {
+	_, ok := discLayoutMarkers[strings.ToLower(name)]
+	return ok
 }

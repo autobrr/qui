@@ -49,10 +49,10 @@ qui provides several ways to find cross-seed opportunities:
 
 ### RSS Automation
 
-qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the target instances and indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
+qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the instances to search, the indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
 
 - **Run interval**: How often qui polls the feeds (minimum 30 minutes)
-- **Target instances**: The qBittorrent instances that receive cross-seeds
+- **Instances to search**: The qBittorrent instances whose torrents qui searches for matches. qui adds each cross-seed to the instance that holds the match. If that instance has a Cross-seed instance, qui adds the cross-seed to the Cross-seed instance.
 - **Target indexers**: Limit to specific indexers, or use all enabled ones
 
 RSS automation processes the full feed from each selected target indexer on each run. If you select no target indexers, qui uses all enabled indexers.
@@ -102,7 +102,7 @@ Completion searches use the same Torznab result classifier as interactive and sc
 Right-click any torrent in the list to open the cross-seed actions:
 
 - **Search Cross-Seeds**: Query indexers for matching torrents on other trackers
-- **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents.
+- **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents. If qui cannot read a file list or check a link, Filter Cross-Seeds shows an error and does not filter the list.
 
 Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
 
@@ -169,3 +169,17 @@ An entry blocks the infohash only on its own instance. Season pack assembly can 
 A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
 
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
+
+### Shared files on other instances
+
+Two qBittorrent instances can save into one folder on one disk. A torrent on the second instance then reads the same files as a torrent on the first. A delete with files on the first instance removes the files of both.
+
+The delete dialog lists such a torrent with its instance name. qui finds it when both instances have [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Two files are one file on disk when their folders have the same file identity on disk and their names are equal. The folders can have different paths, for example two mounts of one folder. If you select **Also delete these cross-seeded torrents**, qui deletes the torrent on the other instance too. A hardlinked or reflinked copy, or a separate copy with the same name, on another instance keeps its own files. The dialog does not list it.
+
+qui does not compare every file of every torrent. It checks a torrent on another instance when it has the same save path or content path, the same name, the same release, or the same total size. Known limit: qui does not find a torrent that reads a file inside the folder of the selected torrent through a mount with another path, and that has another name, release, and total size. An example is a single episode that reads a file in a season pack through a second mount.
+
+qui does not check remote instances, also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
+
+If qui cannot read the torrent list of an instance with local filesystem access, the dialog shows the matches that it found and adds a line that it could not check that instance. If an instance with local filesystem access is turned off in qui, the dialog adds a line that it did not check that instance.
+
+Automations do not delete torrents on other instances. See [Delete](../automations.md#delete) for how the modes that preserve or include cross-seeds keep the files.
