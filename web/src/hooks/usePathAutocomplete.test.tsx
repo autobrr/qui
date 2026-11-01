@@ -251,4 +251,16 @@ describe("usePathAutocomplete keyboard navigation", () => {
     press(result, "Enter")
     expect(onSelect).toHaveBeenCalledWith("/data/alpha/")
   })
+
+  it("an edit that the deferred input skips keeps a suggestion highlighted", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/al"))
+    // Type and delete a character in one render, so the deferred input never changes.
+    act(() => {
+      result.current.handleInputChange("/data/alp")
+      result.current.handleInputChange("/data/al")
+    })
+    expect(result.current.highlightedIndex).toBe(0)
+  })
 })

@@ -151,7 +151,6 @@ export function usePathAutocomplete(
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
     setDismissed(false);
-    setHighlightedIndex(-1);
   }, []);
 
   const handleSelect = useCallback(
