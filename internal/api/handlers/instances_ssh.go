@@ -160,6 +160,7 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 	withoutCredentials.SSHUsername = ""
 	withoutCredentials.SSHKeyEncrypted = ""
 	withoutCredentials.SSHTier = models.SSHTierSFTP
+	withoutCredentials.SSHHardlink = nil
 	if (instance.UseHardlinks || instance.UseReflinks) && !models.FilesystemCapabilitiesOf(&withoutCredentials).Write {
 		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before removing its SSH credentials")
 		return
@@ -371,11 +372,11 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// storeSSHTier writes the tier a probe found. The probe is the answer the user
-// is shown, so a failed write is logged, not returned: the next connect
-// writes the tier again.
+// storeSSHTier writes the tier and the hardlink flag a probe found. The probe
+// is the answer the user is shown, so a failed write is logged, not returned:
+// the next connect writes them again.
 func (h *InstancesHandler) storeSSHTier(ctx context.Context, instanceID int, capabilities *sshpool.Capabilities) {
-	if err := h.instanceStore.SetSSHTier(ctx, instanceID, capabilities.Tier()); err != nil {
+	if err := h.instanceStore.SetSSHProbe(ctx, instanceID, capabilities.Tier(), capabilities.Hardlink); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to store the SSH tier")
 	}
 }

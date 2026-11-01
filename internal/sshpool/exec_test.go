@@ -172,6 +172,8 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 			_, err := pool.SFTP(t.Context(), inst)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, inst.SSHTier)
+			require.NotNil(t, inst.SSHHardlink, "every connect answers the hardlink flag")
+			assert.True(t, *inst.SSHHardlink, "the test server advertises hardlink@openssh.com")
 
 			_, err = pool.Exec(t.Context(), inst)
 			if tt.want == models.SSHTierExec {

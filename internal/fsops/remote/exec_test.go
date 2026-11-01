@@ -27,9 +27,9 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// SetSSHTier leaves the row alone: each test picks the tier its backend
+// SetSSHProbe leaves the row alone: each test picks the tier its backend
 // reads, and the pool tests cover the write.
-func (fakeCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+func (fakeCreds) SetSSHProbe(context.Context, int, models.SSHTier, bool) error { return nil }
 
 // newExecBackend is newBackend on the exec tier. The fake server runs each
 // command through the local sh, against the files the sftp subsystem serves.

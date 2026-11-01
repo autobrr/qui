@@ -556,10 +556,14 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 			return store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
 		},
 	} {
-		require.NoError(t, store.SetSSHTier(ctx, instance.ID, SSHTierExec))
-		require.NoError(t, change(), name)
+		require.NoError(t, store.SetSSHProbe(ctx, instance.ID, SSHTierExec, true))
 		got, err := store.Get(ctx, instance.ID)
 		require.NoError(t, err)
+		require.NotNil(t, got.SSHHardlink, name)
+		require.NoError(t, change(), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
 		assert.Equal(t, SSHTierSFTP, got.SSHTier, name)
+		assert.Nil(t, got.SSHHardlink, "%s: the hardlink flag is unknown again", name)
 	}
 }

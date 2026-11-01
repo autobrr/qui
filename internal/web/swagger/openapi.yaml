@@ -7587,6 +7587,13 @@ components:
         sshHostKeyPinned:
           type: boolean
           description: True when a host key has been confirmed for the SSH endpoint. No response ever carries the key material itself.
+        sshTier:
+          type: string
+          enum: [sftp, exec]
+          description: What the SSH key lets qui run on the host, as the last probe found. `exec` adds a POSIX shell with GNU find and stat. Absent when no SSH credentials are stored.
+        sshHardlink:
+          type: boolean
+          description: Whether the server advertises the `hardlink@openssh.com` extension, as the last probe found. Absent until a probe answers, and again after the credentials or the host-key pin change. Without it, cross-seed link mode falls back to regular mode on this instance.
         filesystemMode:
           type: string
           enum: [none, local, remote]

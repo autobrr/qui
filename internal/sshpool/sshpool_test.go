@@ -61,12 +61,13 @@ func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 	return f.pin, nil
 }
 
-// SetSSHTier writes the row Get answers with, as the store writes the column.
-func (f fakeCreds) SetSSHTier(_ context.Context, id int, tier models.SSHTier) error {
+// SetSSHProbe writes the row Get answers with, as the store writes the columns.
+func (f fakeCreds) SetSSHProbe(_ context.Context, id int, tier models.SSHTier, hardlink bool) error {
 	if f.inst == nil || f.inst.ID != id {
 		return models.ErrInstanceNotFound
 	}
 	f.inst.SSHTier = tier
+	f.inst.SSHHardlink = &hardlink
 	return nil
 }
 
@@ -318,6 +319,27 @@ func TestMissingSFTPExtensions(t *testing.T) {
 	assert.True(t, report.Capabilities.SFTP)
 	assert.False(t, report.Capabilities.Statvfs)
 	assert.False(t, report.Capabilities.Hardlink)
+}
+
+// Not parallel, for the same reason as TestMissingSFTPExtensions. A pooled
+// connect reads the flag from its own sftp client, so a server without the
+// extension writes false, and a later test on a pinned host repairs the row.
+func TestPoolWritesTheHardlinkFlagFromTheExtensionList(t *testing.T) {
+	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
+	t.Cleanup(func() {
+		require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com"))
+	})
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecSFTPOnly)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	_, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	require.NotNil(t, inst.SSHHardlink)
+	assert.False(t, *inst.SSHHardlink)
 }
 
 func TestCancelledContextUnblocksHandshake(t *testing.T) {
