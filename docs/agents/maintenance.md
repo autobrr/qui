@@ -6,4 +6,4 @@ Dependabot alerts from `documentation/pnpm-lock.yaml` affect only the getqui.com
 
 ## Release and Docker files
 
-The Docker, compose, and release files are at the repo root. Releases build with `.goreleaser.release.yml`, and local builds use `.goreleaser.yml`. Edit both.
+The Docker, compose, and release files are at the repo root. Releases build with `.goreleaser.release.yml`, and local builds use `.goreleaser.yml`. Edit both. Before you change the release signing key or the signing steps in `.github/workflows/release.yml`, read ADR 0036.
