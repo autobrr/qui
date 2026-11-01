@@ -2568,7 +2568,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 	if failureCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+		detailsJSON, _ := json.Marshal(map[string]map[string]int{"paths": failedMovesByPath}) //nolint:errchkjson // string keys and int values cannot fail to encode
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
@@ -2605,7 +2605,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
 	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
-		detailsJSON, _ := json.Marshal(map[string]any{"filesKept": pending.filesKept(), "deleteMode": pending.deleteMode, "isTrigger": pending.trigger})
+		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // string and bool fields cannot fail to encode
+			DeleteMode string `json:"deleteMode"`
+			FilesKept  bool   `json:"filesKept"`
+			IsTrigger  bool   `json:"isTrigger"`
+		}{pending.deleteMode, pending.filesKept(), pending.trigger})
 		torrent := torrentByHash[hash]
 		return &models.AutomationActivity{
 			InstanceID:    instanceID,
@@ -4255,7 +4259,7 @@ func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*mo
 		return nil
 	}
 
-	detailsJSON, _ := json.Marshal(map[string]any{"count": 0})
+	detailsJSON, _ := json.Marshal(map[string]int{"count": 0}) //nolint:errchkjson // string keys and int values cannot fail to encode
 	activity := &models.AutomationActivity{
 		InstanceID: instanceID,
 		Hash:       "",
@@ -4875,7 +4879,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		// Handle preflight failures without spawning a goroutine
 		if exec.failureReason != "" {
 			ruleID := exec.ruleID
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]int{ //nolint:errchkjson // string keys and int values cannot fail to encode
 				"targetInstanceId": exec.action.TargetInstanceID,
 				"count":            1,
 			})
@@ -4931,11 +4935,11 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 			buildActivity := func(outcome, reason string) *models.AutomationActivity {
 				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"targetInstanceId": exec.action.TargetInstanceID,
-					"savePath":         exec.resolvedSavePath,
-					"count":            1,
-				})
+				detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
+					Count            int    `json:"count"`
+					SavePath         string `json:"savePath"`
+					TargetInstanceID int    `json:"targetInstanceId"`
+				}{1, exec.resolvedSavePath, exec.action.TargetInstanceID})
 				return &models.AutomationActivity{
 					InstanceID:    sourceInstanceID,
 					Hash:          exec.hash,
