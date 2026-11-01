@@ -73,7 +73,8 @@ export function usePathAutocomplete(
     return matches.slice(0, MAX_SUGGESTIONS);
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
-  // Update highlighted index when suggestions change
+  // Reset the highlight when the input or the suggestions change. The input is a
+  // dependency because a case-only edit leaves the suggestions unchanged.
   useEffect(() => {
     if (dismissed) {
       setHighlightedIndex(-1);
@@ -84,7 +85,7 @@ export function usePathAutocomplete(
       return;
     }
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
-  }, [suggestions, dismissed]);
+  }, [suggestions, dismissed, deferredInput]);
 
   /** Selects an entry. A directory gets a trailing separator and keeps the dropdown open for the next level; a file closes it. */
   const selectSuggestion = useCallback(

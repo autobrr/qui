@@ -240,4 +240,15 @@ describe("usePathAutocomplete keyboard navigation", () => {
     act(() => result.current.handleInputChange("/data/al"))
     expect(result.current.highlightedIndex).toBe(0)
   })
+
+  it("a case-only input change keeps a suggestion highlighted for Enter", () => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/al"))
+    act(() => result.current.handleInputChange("/data/AL"))
+    expect(result.current.highlightedIndex).toBe(0)
+    press(result, "Enter")
+    expect(onSelect).toHaveBeenCalledWith("/data/alpha/")
+  })
 })
