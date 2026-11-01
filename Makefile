@@ -136,7 +136,7 @@ mutation: mutation-go mutation-web
 # The worktree goes away when the run ends, also on Ctrl-C.
 MUTATION_WORKTREE = mkdir -p "$(abspath $(MUTATION_DIR))" && \
 	run=$$(mktemp -d "$(abspath $(MUTATION_DIR))/run.XXXXXX") && \
-	trap 'git -C "$(CURDIR)" worktree remove --force "$$run/wt" 2>/dev/null; rm -rf "$$run"' EXIT && \
+	trap 'cd "$(CURDIR)"; git worktree remove --force "$$run/wt" 2>/dev/null; rm -rf "$$run"' EXIT && \
 	trap 'exit 130' INT TERM && \
 	git worktree add --quiet --detach "$$run/wt" HEAD
 
