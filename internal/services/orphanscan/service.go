@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net"
 	"os"
@@ -999,6 +1000,23 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// the preview. At the cap, still check directories to set Truncated correctly.
 	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
 		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, result.categoryPaths, protected, gracePeriod, backend)
+		// A torrent can reach an empty folder through a symlink or a bind mount,
+		// which the paths above cannot see. The sftp tier reads no identity, so
+		// it lists by path, and it cannot delete.
+		if len(abandoned) > 0 && models.FilesystemCapabilitiesOf(instance).Identity {
+			reached, err := collectInUseIDs(ctx, backend, instance, reachedDirs(d, result, keys.fileDirs), true)
+			switch {
+			case ctx.Err() != nil:
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			case err != nil:
+				log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: listing no abandoned directory, cannot read the identity of a torrent folder")
+				scanWarnings = append(scanWarnings, fmt.Sprintf("No abandoned directories are listed: could not check which folders torrents use: %v", err))
+				abandoned = nil
+			default:
+				abandoned = dropDirsTorrentsReach(ctx, abandoned, reached, backend)
+			}
+		}
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
 		allOrphans = dedupeOrphans(d, append(allOrphans, abandoned...))
 	}
@@ -1491,13 +1509,26 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// The map protects by path. A torrent added since the scan can reach a
-	// listed file through another path, so the files are also compared by
-	// identity, as the scan compared them. Abandoned directories need no
-	// identities, since they go only when empty.
-	if len(fileEntries) > 0 {
-		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, fileMapResult.torrentPaths)
+	// listed file or folder through another path, so both are also compared by
+	// identity, as the scan compared them. An empty folder holds no file to
+	// compare, so its identity is compared with the folders along each torrent
+	// path. Each half is read only when the run lists something it protects.
+	if len(fileEntries) > 0 || len(dirEntries) > 0 {
+		var files []string
+		if len(fileEntries) > 0 {
+			files = fileMapResult.torrentPaths
+		}
+		inUse, err := collectInUseIDs(ctx, deleteBackend, instance, files, false)
+		if err == nil && len(dirEntries) > 0 {
+			// The file reads above show which folders hold a file on disk,
+			// and those need no identity read.
+			var dirs *inUseIDs
+			if dirs, err = collectInUseIDs(ctx, deleteBackend, instance, reachedDirs(d, fileMapResult, inUse.fileDirs), true); err == nil {
+				maps.Copy(inUse.keys, dirs.keys)
+			}
+		}
 		if err != nil {
-			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent file")
+			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot read the identity of a torrent path")
 			switch {
 			// A redial reaches the instance's current row, so a moved
 			// endpoint is the likelier story than a dropped link.
@@ -1506,7 +1537,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			case errors.Is(err, fsops.ErrConnectionLost):
 				s.failRun(ctx, runID, instanceID, "Deletion stopped before deleting anything: the connection to the remote instance was lost while qui checked which files torrents use. Run a new scan to try again.")
 			default:
-				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which files torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", err))
+				what := "files"
+				if len(dirEntries) > 0 {
+					what = "files or folders"
+				}
+				s.failRun(ctx, runID, instanceID, fmt.Sprintf("Deletion stopped before deleting anything: could not check which %s torrents use: %v. Fix access to that path or remove the torrent, then run a new scan.", what, err))
 			}
 			return
 		}
@@ -1633,7 +1668,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteEmptyDir(ctx, scanRoot, dir.FilePath, deleteBackend)
+		disp, err := safeDeleteEmptyDir(ctx, scanRoot, dir.FilePath, protected, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, dir.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", dir.FilePath).Msg("orphanscan: failed to delete abandoned directory")
@@ -1647,6 +1682,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory no longer exists")
 		case deleteDispositionSkippedNotDirectory:
 			s.updateFileStatus(ctx, dir.ID, "skipped", "path is no longer a directory")
+		case deleteDispositionSkippedDirInUseThroughAlias:
+			s.updateFileStatus(ctx, dir.ID, "skipped", "a torrent now uses this directory through another path")
 		case deleteDispositionSkippedNotEmpty:
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory still holds something this run did not delete")
 		case deleteDispositionDeleted:

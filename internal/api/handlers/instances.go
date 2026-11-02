@@ -337,6 +337,8 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				SSHPort:                  instances[i].SSHPort,
 				SSHUsername:              instances[i].SSHUsername,
 				SSHHostKeyPinned:         instances[i].SSHHostKeyEncrypted != "",
+				SSHTier:                  sshTierField(instances[i]),
+				SSHHardlink:              instances[i].SSHHardlink,
 				FilesystemMode:           string(models.FilesystemAccessMode(instances[i])),
 				Capabilities:             models.FilesystemCapabilitiesOf(instances[i]),
 				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
@@ -394,6 +396,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		SSHPort:                  instance.SSHPort,
 		SSHUsername:              instance.SSHUsername,
 		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		SSHTier:                  sshTierField(instance),
+		SSHHardlink:              instance.SSHHardlink,
 		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
 		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 
@@ -442,6 +446,8 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		SSHPort:                  instance.SSHPort,
 		SSHUsername:              instance.SSHUsername,
 		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		SSHTier:                  sshTierField(instance),
+		SSHHardlink:              instance.SSHHardlink,
 		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
 		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 	}
@@ -570,9 +576,20 @@ type InstanceResponse struct {
 	SSHPort                  int                               `json:"sshPort,omitempty"`
 	SSHUsername              string                            `json:"sshUsername,omitempty"`
 	SSHHostKeyPinned         bool                              `json:"sshHostKeyPinned"`
+	SSHTier                  string                            `json:"sshTier,omitempty"`
+	SSHHardlink              *bool                             `json:"sshHardlink,omitempty"`
 	FilesystemMode           string                            `json:"filesystemMode"`
 	Capabilities             models.FilesystemCapabilities     `json:"capabilities"`
 	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+}
+
+// sshTierField is the probed tier on the wire: only an instance with SSH
+// credentials has one.
+func sshTierField(instance *models.Instance) string {
+	if instance.SSHKeyEncrypted == "" {
+		return ""
+	}
+	return string(instance.SSHTier)
 }
 
 // InstanceReannounceSettingsPayload carries tracker monitoring config.

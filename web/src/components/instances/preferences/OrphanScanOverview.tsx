@@ -6,6 +6,7 @@
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
 import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,10 +22,10 @@ import {
   useTriggerOrphanScan,
   useUpdateOrphanScanSettings
 } from "@/hooks/useOrphanScan"
-import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRun } from "@/types"
-import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { AlertTriangle, ChevronDown as ChevronDownIcon, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -139,17 +140,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
               "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
               run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
             )}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
-                onClick={() => {
-                  copyTextToClipboard(run.errorMessage ?? "")
-                  toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
-                }}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
+              <CopyButton value={run.errorMessage ?? ""} label={t("preferences.orphanScanOverview.errorMessage")} className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100" />
               {run.errorMessage}
             </div>
           )}
@@ -159,17 +150,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
                 <p className="text-xs font-medium text-muted-foreground">
                   {t("preferences.orphanScanOverview.scannedPaths", { total: run.scanPaths.length })}
                 </p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 opacity-60 hover:opacity-100"
-                  onClick={() => {
-                    copyTextToClipboard(run.scanPaths.join("\n"))
-                    toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
+                <CopyButton value={run.scanPaths.join("\n")} label={t("preferences.orphanScanOverview.scanPaths")} className="h-7 w-7 opacity-60 hover:opacity-100" />
               </div>
               {/* Roots are one per distinct save path, so a cross-seed link dir can produce hundreds. */}
               <div className="p-3 rounded-md border bg-muted/40 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-y-auto">

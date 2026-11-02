@@ -101,17 +101,19 @@
     "cancel": "Cancel",
     "close": "Close",
     "create": "Create",
-    "copyPath": "Copy path",
     "scrollToTop": "Scroll to top",
     "search": "Search",
-    "select": "Select"
+    "select": "Select",
+    "copyValue": "Copy {{label}}"
   },
   "placeholders": {
     "search": "Search...",
     "selectItems": "Select items..."
   },
   "feedback": {
-    "noResultsFound": "No results found."
+    "noResultsFound": "No results found.",
+    "copied": "{{label}} copied to clipboard",
+    "copyFailed": "Failed to copy to clipboard"
   },
   "errors": {
     "unknown": "Unknown error",
@@ -245,5 +247,8 @@
     "yearly": "{{price}} / year",
     "monthly": "{{price}} / month",
     "notLicense": "Premium themes are a separate one-time purchase."
+  },
+  "labels": {
+    "path": "Path"
   }
 }

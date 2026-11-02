@@ -505,7 +505,6 @@
       "dryRun": "Zkušební běh",
       "removed": "Odebráno",
       "executed": "Vykonáno",
-      "copyHash": "Kopírovat hash",
       "original": "Původní: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Pravidlo: {{name}}",
@@ -684,8 +683,7 @@
         "exportedTorrents": "Exportováno {{count}} torrentů do CSV",
         "exportFailed": "Nepodařilo se exportovat náhled",
         "deletedActivityEntries": "Smazáno {{count}} aktivit",
-        "deleteActivityFailed": "Nepodařilo se smazat aktivitu",
-        "hashCopied": "Hash zkopírován"
+        "deleteActivityFailed": "Nepodařilo se smazat aktivitu"
       },
       "exported": "Exportováno"
     },
@@ -794,7 +792,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Částečná chyba - zkontrolujte nedávná vyhledávání",
       "partialFailureExpand": "Částečná chyba - rozbalte pro detaily",
-      "copiedToClipboard": "Zkopírováno do schránky",
       "noScansYet": "Žádné vyhledávání nebylo spuštěno. Klikněte na \"Vyhledat\" pro vyhledání sirotků.",
       "statusClean": "Čisté",
       "statusPartial": "Částečné skenování",
@@ -814,7 +811,9 @@
         "scanStartFailed": "Selhala spuštění vyhledávání",
         "scanCanceled": "Vyhledávání zrušeno",
         "cancelFailed": "Selhala zrušení"
-      }
+      },
+      "errorMessage": "Chybová zpráva",
+      "scanPaths": "Cesty ke skenování"
     },
     "orphanScanPreview": {
       "title": "Náhled sirotků",
@@ -970,8 +969,6 @@
       "ratio": "Poměr",
       "added": "Přidáno",
       "original": "Originál: {{domain}}",
-      "hashCopied": "Hash zkopírován",
-      "copyHash": "Kopírovat hash",
       "loading": "Načítá se...",
       "notAvailable": "Podrobnosti spuštění nejsou dostupné (v paměti pouze).",
       "failedToLoad": "Selhalo načítání podrobností spuštění.",
@@ -1035,8 +1032,6 @@
       "tryDifferentSearch": "Zkuste jiný hledaný termín nebo vymažte filtr.",
       "eventsWillAppear": "Události se zde objeví, když jsou detekovány zamrzlé torrenty.",
       "enableMonitoring": "Povolte monitorování pro začátek sledování zamrzlých torrentů.",
-      "hashCopied": "Hash zkopírován",
-      "copyHash": "Kopírovat hash",
       "outcomes": {
         "succeeded": "Úspěšné",
         "failed": "Selhalo",

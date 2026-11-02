@@ -102,7 +102,6 @@
       "proxyUrl": "URL du Proxy",
       "showProxyUrl": "Afficher l'URL du proxy",
       "hideProxyUrl": "Masquer l'URL du proxy",
-      "copyProxyUrl": "Copier l'URL du proxy",
       "done": "Terminé"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "Clé API client supprimée avec succès",
       "deleteFailed": "Échec de la suppression de la clé API client : {{error}}",
       "clientNameRequired": "Le nom du client est requis",
-      "selectInstance": "Veuillez sélectionner une instance qBittorrent",
-      "proxyCopied": "URL du proxy copiée dans le presse-papiers",
-      "copyFailed": "Échec de la copie dans le presse-papiers"
+      "selectInstance": "Veuillez sélectionner une instance qBittorrent"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "Votre nouvelle clé API",
       "warning": "Sauvegardez cette clé maintenant. Vous ne pourrez plus la voir par la suite.",
-      "done": "Terminé"
+      "done": "Terminé",
+      "apiKey": "Clé API"
     },
     "deleteDialog": {
       "title": "Supprimer la clé API ?",
@@ -158,9 +156,7 @@
       "created": "Clé API créée avec succès",
       "createFailed": "Échec de la création de la clé API",
       "deleted": "Clé API supprimée avec succès",
-      "deleteFailed": "Échec de la suppression de la clé API",
-      "copied": "Clé API copiée dans le presse-papiers",
-      "copyFailed": "Échec de la copie dans le presse-papiers"
+      "deleteFailed": "Échec de la suppression de la clé API"
     }
   },
   "externalPrograms": {
@@ -1107,11 +1103,6 @@
       "bind": "Adresse de liaison",
       "configDir": "Répertoire de configuration",
       "dataDir": "Répertoire de données"
-    },
-    "copyTitle": "Copier {{label}}",
-    "toasts": {
-      "copied": "{{label}} copié dans le presse-papiers",
-      "copyFailed": "Échec de la copie de {{label}}"
     }
   }
 }

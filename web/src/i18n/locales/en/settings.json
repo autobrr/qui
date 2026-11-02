@@ -102,7 +102,6 @@
       "proxyUrl": "Proxy URL",
       "showProxyUrl": "Show proxy URL",
       "hideProxyUrl": "Hide proxy URL",
-      "copyProxyUrl": "Copy proxy URL",
       "done": "Done"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "Client API key deleted successfully",
       "deleteFailed": "Failed to delete client API key: {{error}}",
       "clientNameRequired": "Client name is required",
-      "selectInstance": "Please select a qBittorrent instance",
-      "proxyCopied": "Proxy URL copied to clipboard",
-      "copyFailed": "Failed to copy to clipboard"
+      "selectInstance": "Please select a qBittorrent instance"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "Your new API key",
       "warning": "Save this key now. You won't be able to see it again.",
-      "done": "Done"
+      "done": "Done",
+      "apiKey": "API key"
     },
     "deleteDialog": {
       "title": "Delete API Key?",
@@ -158,9 +156,7 @@
       "created": "API key created successfully",
       "createFailed": "Failed to create API key",
       "deleted": "API key deleted successfully",
-      "deleteFailed": "Failed to delete API key",
-      "copied": "API key copied to clipboard",
-      "copyFailed": "Failed to copy to clipboard"
+      "deleteFailed": "Failed to delete API key"
     }
   },
   "externalPrograms": {
@@ -1107,11 +1103,6 @@
       "bind": "Bind Address",
       "configDir": "Config Directory",
       "dataDir": "Data Directory"
-    },
-    "copyTitle": "Copy {{label}}",
-    "toasts": {
-      "copied": "{{label}} copied to clipboard",
-      "copyFailed": "Failed to copy {{label}}"
     }
   }
 }

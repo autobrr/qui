@@ -177,6 +177,9 @@ type fileKeys struct {
 	refs   []aliasRef
 	// incomplete is set once a regular file had no key, so a second path to it could go unmatched.
 	incomplete bool
+	// fileDirs are the folders that hold a torrent file the walk met. Neither
+	// they nor the folders above them can be empty, so reachedDirs skips them.
+	fileDirs map[string]struct{}
 }
 
 type aliasRef struct {
@@ -187,9 +190,10 @@ type aliasRef struct {
 
 func newFileKeys() *fileKeys {
 	return &fileKeys{
-		inUse:  make(map[fsops.FileKey]struct{}),
-		others: make(map[fsops.FileKey]int),
-		linked: make(map[fsops.FileKey]int),
+		inUse:    make(map[fsops.FileKey]struct{}),
+		others:   make(map[fsops.FileKey]int),
+		linked:   make(map[fsops.FileKey]int),
+		fileDirs: make(map[string]struct{}),
 	}
 }
 
@@ -462,6 +466,7 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 		if entry.IsDir || entry.IsSymlink || !protected.torrentFile(entry.Path) {
 			continue
 		}
+		keys.fileDirs[backend.Paths().Dir(entry.Path)] = struct{}{}
 		// Without its identity the file's twin at the target would be listed
 		// with no walk error. Over sftp no file has one, so the walk goes on.
 		if entry.FileIDErr != nil && (instance == nil || models.FilesystemCapabilitiesOf(instance).Identity) {
@@ -565,6 +570,7 @@ func walkScanRootWithUnitFilter(
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
 			}
+			w.keys.fileDirs[w.d.Dir(path)] = struct{}{}
 			if key, ok := w.keys.of(entry, w.instance); ok {
 				w.keys.inUse[key] = struct{}{}
 			}

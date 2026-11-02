@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -124,6 +124,46 @@ test-frontend:
 test-openapi:
 	@echo "Validating OpenAPI specification..."
 	go test -count=1 -v ./internal/web/swagger
+
+# Mutation testing of the source that this branch changes against MUTATION_BASE.
+# A report, not a gate: some surviving mutants change no behaviour.
+MUTATION_BASE ?= origin/develop
+MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
+
+mutation: mutation-go mutation-web
+
+# Each run gets its own worktree of HEAD under MUTATION_DIR, so commit first.
+# The worktree goes away when the run ends, also on Ctrl-C.
+MUTATION_WORKTREE = mkdir -p "$(abspath $(MUTATION_DIR))" && \
+	run=$$(mktemp -d "$(abspath $(MUTATION_DIR))/run.XXXXXX") && \
+	trap 'cd "$(CURDIR)"; git worktree remove --force "$$run/wt" 2>/dev/null; rm -rf "$$run"' EXIT && \
+	trap 'exit 130' INT TERM && \
+	git worktree add --quiet --detach "$$run/wt" HEAD
+
+# gremlins copies the whole module once per worker, and the worktree has no
+# node_modules or build output. --diff matches files only when gremlins runs
+# on the module root, so the coverage run covers every package, and only the
+# changed lines are mutated. gremlins reads each diff hunk as one block of
+# added lines, so git must write the diff with no context lines.
+mutation-go:
+	@git diff --quiet --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '*.go' ':!*_test.go'; \
+		case $$? in 0) echo "No committed Go source changes against $(MUTATION_BASE)."; exit 0;; 1) ;; *) exit 1;; esac; \
+		$(MUTATION_WORKTREE) || exit 1; \
+		mkdir "$$run/tmp"; \
+		cd "$$run/wt" && GOFLAGS=-count=1 TMPDIR="$$run/tmp" \
+			GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.context GIT_CONFIG_VALUE_0=0 \
+			go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash \
+			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .
+
+# Stryker changes the files in place, because a test imports a Go file from
+# outside web/. The worktree keeps those changes out of the main checkout.
+mutation-web:
+	@changed=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts') || exit 1; \
+		files=$$(printf '%s\n' "$$changed" | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
+		if [ -z "$$files" ]; then echo "No committed TypeScript source changes against $(MUTATION_BASE)."; exit 0; fi; \
+		$(MUTATION_WORKTREE) || exit 1; \
+		cd "$$run/wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
+			pnpm exec stryker run --mutate "$$files"
 
 # Format changed code only (fast, for iteration)
 fmt:
@@ -294,6 +334,7 @@ help:
 	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
+	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"

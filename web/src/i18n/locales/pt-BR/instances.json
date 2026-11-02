@@ -505,7 +505,6 @@
       "dryRun": "Simulação (Dry run)",
       "removed": "Removido",
       "executed": "Executado",
-      "copyHash": "Copiar hash",
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regra: {{name}}",
@@ -666,8 +665,7 @@
         "exportedTorrents": "Exportados {{count}} para CSV",
         "exportFailed": "Falha no exporte",
         "deletedActivityEntries": "Apagadas {{count}} entradas",
-        "deleteActivityFailed": "Falha ao excluir histórico",
-        "hashCopied": "Hash copiado"
+        "deleteActivityFailed": "Falha ao excluir histórico"
       },
       "exported": "Exportado"
     },
@@ -767,7 +765,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Falha parcial - verifique as atividades",
       "partialFailureExpand": "Falha parcial - veja detalhes",
-      "copiedToClipboard": "Copiado para área de transferência",
       "noScansYet": "Nenhum escaneamento realizado ainda. Clique em \"Escanear Agora\" para encontrar órfãos.",
       "statusClean": "Limpo",
       "statusPartial": "Verificação parcial",
@@ -787,7 +784,9 @@
         "scanStartFailed": "Falha ao iniciar",
         "scanCanceled": "Escaneamento cancelado",
         "cancelFailed": "Falha ao cancelar"
-      }
+      },
+      "errorMessage": "Mensagem de erro",
+      "scanPaths": "Caminhos de verificação"
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -936,8 +935,6 @@
       "ratio": "Proporção",
       "added": "Adicionado",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash copiado",
-      "copyHash": "Copiar hash",
       "loading": "Carregando...",
       "notAvailable": "Detalhes indisponíveis (apenas mantido em memória).",
       "failedToLoad": "Falha ao carregar detalhes.",
@@ -1003,8 +1000,6 @@
       "tryDifferentSearch": "Altere sua busca.",
       "eventsWillAppear": "Eventos de reanúncio aparecerão aqui.",
       "enableMonitoring": "Ligue para acompanhar o histórico.",
-      "hashCopied": "Copiado",
-      "copyHash": "Copiar hash",
       "form": {
         "instanceMissing": "Instância não encontrada",
         "settingsSaved": "Configurações atualizadas.",

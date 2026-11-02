@@ -102,7 +102,6 @@
       "proxyUrl": "代理 URL",
       "showProxyUrl": "显示代理 URL",
       "hideProxyUrl": "隐藏代理 URL",
-      "copyProxyUrl": "复制代理 URL",
       "done": "完成"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "客户端 API 密钥已删除",
       "deleteFailed": "删除客户端 API 密钥失败：{{error}}",
       "clientNameRequired": "客户端名称为必填项",
-      "selectInstance": "请选择一个 qBittorrent 实例",
-      "proxyCopied": "代理 URL 已复制到剪贴板",
-      "copyFailed": "复制到剪贴板失败"
+      "selectInstance": "请选择一个 qBittorrent 实例"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "您的新 API 密钥",
       "warning": "请立即保存此密钥。之后将无法再次查看。",
-      "done": "完成"
+      "done": "完成",
+      "apiKey": "API 密钥"
     },
     "deleteDialog": {
       "title": "删除 API 密钥？",
@@ -158,9 +156,7 @@
       "created": "API 密钥创建成功",
       "createFailed": "创建 API 密钥失败",
       "deleted": "API 密钥已删除",
-      "deleteFailed": "删除 API 密钥失败",
-      "copied": "API 密钥已复制到剪贴板",
-      "copyFailed": "复制到剪贴板失败"
+      "deleteFailed": "删除 API 密钥失败"
     }
   },
   "externalPrograms": {
@@ -1104,11 +1100,6 @@
       "bind": "绑定地址",
       "configDir": "配置目录",
       "dataDir": "数据目录"
-    },
-    "copyTitle": "复制 {{label}}",
-    "toasts": {
-      "copied": "{{label}} 已复制到剪贴板",
-      "copyFailed": "复制 {{label}} 失败"
     }
   }
 }

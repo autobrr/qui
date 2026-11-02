@@ -866,6 +866,67 @@ func TestFindCandidatesLeavesOmittedListingFieldToFileCheck(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 }
 
+// The listing has a group tag, and the downloaded torrent keeps the info.name
+// of the local torrent, which has none. The group is only in the file names.
+// The download brings no new difference, so the strict verdict holds.
+//
+// regression: #3697
+func TestFindCandidatesKeepsStrictVerdictWhenDownloadNameDropsGroup(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		listing  string
+		download string
+		file     string
+	}{
+		{
+			name:     "anime-style name",
+			listing:  "Example Show AKA Other Title S01 1080p BluRay Dual-Audio Opus 2.0 x265-GRP",
+			download: "Example Show S01 (Blu-ray 1080p x265 10-bit Opus AAC) (Dual Audio)",
+			file:     "[GRP] Example Show - %02d (Blu-ray 1080p x265 10-bit Opus AAC) (Dual Audio).mkv",
+		},
+		{
+			name:     "scene-style name",
+			listing:  "Example Show S01 1080p BluRay x264-GRP",
+			download: "Example Show S01 1080p BluRay x264",
+			file:     "Example.Show.S01E%02d.1080p.BluRay.x264-GRP.mkv",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				instanceID = 1
+				sourceHash = "existing-pack"
+				size       = int64(1_000_000)
+			)
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{Hash: sourceHash, Name: tt.download, Size: size, TotalSize: size, Progress: 1}
+			files := qbt.TorrentFiles{
+				{Name: tt.download + "/" + fmt.Sprintf(tt.file, 1), Size: size / 2},
+				{Name: tt.download + "/" + fmt.Sprintf(tt.file, 2), Size: size / 2},
+			}
+			service := &Service{
+				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{sourceHash: files}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+
+			decision := searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: tt.listing}
+			response, err := service.FindCandidates(t.Context(), &FindCandidatesRequest{
+				TorrentName:       tt.download,
+				TargetRelease:     service.readApplyTarget(tt.download, files, true),
+				TargetInstanceIDs: []int{instanceID},
+				SearchDecision:    decision.bindSource(instanceID, sourceHash),
+			})
+			require.NoError(t, err)
+			require.Len(t, response.Candidates, 1)
+		})
+	}
+}
+
 func TestSearchRecordsOverlappingVariantDifference(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := &rls.Release{
@@ -2626,6 +2687,29 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			listing:  "Kaiju.Squad.S02E06.1080p.WEB.H264",
 			local:    "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
 			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-OTHER",
+		},
+		// regression: #3697
+		{
+			name:     "the download drops the group that the listing has",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju Squad S01 1080p BluRay x264-GRP",
+			local:    "Kaiju Squad S01 1080p BluRay x264",
+			download: "Kaiju Squad S01 1080p BluRay x264",
+			want:     true,
+		},
+		{
+			name:     "the download drops the group and has another resolution",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju Squad S01 1080p BluRay x264-GRP",
+			local:    "Kaiju Squad S01 1080p BluRay x264",
+			download: "Kaiju Squad S01 720p BluRay x264",
+		},
+		{
+			name:     "the download names another group than the listing",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju Squad S01 1080p BluRay x264-GRP",
+			local:    "Kaiju Squad S01 1080p BluRay x264",
+			download: "Kaiju Squad S01 1080p BluRay x264-OTHER",
 		},
 		{
 			name:     "the download names another title of the resolved show",

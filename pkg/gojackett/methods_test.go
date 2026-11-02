@@ -53,6 +53,42 @@ func TestSearchDirectCtxPreservesBodyRateLimitResponse(t *testing.T) {
 	assertStructuredRateLimit(t, err)
 }
 
+func TestSearchDirectCtxKeepsCallerSearchType(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		query string
+		opts  map[string]string
+		want  string
+	}{
+		{name: "movie", query: "The Matrix", opts: map[string]string{"t": "movie"}, want: "movie"},
+		{name: "tvsearch", query: "Severance", opts: map[string]string{"t": "tvsearch"}, want: "tvsearch"},
+		{name: "empty", query: "ubuntu", opts: map[string]string{"t": ""}, want: "search"},
+		{name: "unset", query: "ubuntu", opts: map[string]string{}, want: "search"},
+		{name: "nil", query: "ubuntu", opts: nil, want: "search"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotType := make(chan string, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotType <- r.URL.Query().Get("t")
+				_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
+			}))
+			t.Cleanup(server.Close)
+
+			client := NewClient(Config{Host: server.URL, DirectMode: true})
+			if _, err := client.SearchDirectCtx(context.Background(), tc.query, tc.opts); err != nil {
+				t.Fatalf("SearchDirectCtx() error = %v", err)
+			}
+			if got := <-gotType; got != tc.want {
+				t.Errorf("t = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func assertStructuredRateLimit(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {

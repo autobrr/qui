@@ -445,7 +445,9 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local
 	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
 		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
 	}
-	if comparison.differences&^listed != 0 {
+	// A download name can drop the group that the listing has. A download that
+	// names another group than the listing or the local torrent still fails.
+	if comparison.differences.without(differenceGroupMissing)&^listed != 0 {
 		return false
 	}
 	// A relaxed verdict rests on the group of the listing, so a selected file

@@ -661,8 +661,9 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: false
 #disableSelfUpdate = false
 
-# Tracker icon fetching
-# Disable to prevent qui from requesting tracker favicons from remote trackers.
+# Tracker and peer client icon fetching
+# Disable to stop qui from downloading tracker favicons from tracker sites and
+# peer client logos from their upstream repositories.
 # Default: true
 #trackerIconsFetchEnabled = true
 

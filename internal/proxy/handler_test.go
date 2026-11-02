@@ -499,3 +499,58 @@ func TestFindExistingProxyContentFile(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, goodPath, found)
 }
+
+func TestProxyDropsClientRefererAndOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		header  string
+		value   string
+		relogin bool
+	}{
+		{"referer", "Referer", "foo", false},
+		{"origin", "Origin", "http://other-app.example:6767", false},
+		{"no header", "", "", false},
+		{"referer replayed after re-login", "Referer", "foo", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Like the qBittorrent CSRF check, refuse any Referer or Origin.
+			// With relogin, the first request gets the 403 of an expired session, so the proxy replays it.
+			var requests atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if requests.Add(1) == 1 && tc.relogin {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if r.Header.Get("Referer") != "" || r.Header.Get("Origin") != "" {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				_, _ = io.WriteString(w, "v5.1.0")
+			}))
+			defer upstream.Close()
+
+			handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+			instanceURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			routeCtx := chi.NewRouteContext()
+			routeCtx.URLParams.Add("api-key", "test-key")
+			ctx := context.WithValue(t.Context(), chi.RouteCtxKey, routeCtx)
+			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "test", InstanceID: 1})
+			ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+			ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{instanceID: 1, instanceURL: instanceURL, httpClient: upstream.Client(), session: &stubSessionRefresher{}})
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/proxy/test-key/api/v2/app/version", nil)
+			if tc.header != "" {
+				req.Header.Set(tc.header, tc.value)
+			}
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "v5.1.0", rec.Body.String())
+			if tc.relogin {
+				require.Equal(t, int64(2), requests.Load())
+			}
+		})
+	}
+}

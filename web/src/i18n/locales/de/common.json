@@ -101,17 +101,19 @@
     "cancel": "Abbrechen",
     "close": "Schließen",
     "create": "Erstellen",
-    "copyPath": "Pfad kopieren",
     "scrollToTop": "Nach oben scrollen",
     "search": "Suchen",
-    "select": "Auswählen"
+    "select": "Auswählen",
+    "copyValue": "{{label}} kopieren"
   },
   "placeholders": {
     "search": "Suchen...",
     "selectItems": "Elemente auswählen..."
   },
   "feedback": {
-    "noResultsFound": "Keine Ergebnisse gefunden."
+    "noResultsFound": "Keine Ergebnisse gefunden.",
+    "copied": "{{label}} in die Zwischenablage kopiert",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
   },
   "errors": {
     "unknown": "Unbekannter Fehler",
@@ -245,5 +247,8 @@
     "yearly": "{{price}} / Jahr",
     "monthly": "{{price}} / Monat",
     "notLicense": "Premium-Designs sind ein separater einmaliger Kauf."
+  },
+  "labels": {
+    "path": "Pfad"
   }
 }

@@ -505,7 +505,6 @@
       "dryRun": "Probelauf",
       "removed": "Entfernt",
       "executed": "Ausgeführt",
-      "copyHash": "Hash kopieren",
       "original": "Original: {{domain}}",
       "programLabel": "Programm: {{name}}",
       "ruleLabel": "Regel: {{name}}",
@@ -666,8 +665,7 @@
         "exportedTorrents": "{{count}} Torrents nach CSV exportiert",
         "exportFailed": "Vorschau konnte nicht exportiert werden",
         "deletedActivityEntries": "{{count}} Aktivitätseinträge gelöscht",
-        "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden",
-        "hashCopied": "Hash kopiert"
+        "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden"
       },
       "exported": "Exportiert"
     },
@@ -767,7 +765,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Teilweise fehlgeschlagen – prüfe die letzten Scans",
       "partialFailureExpand": "Teilweise fehlgeschlagen – für Details ausklappen",
-      "copiedToClipboard": "In die Zwischenablage kopiert",
       "noScansYet": "Noch keine Scans durchgeführt. Klicke auf \"Jetzt scannen\", um Orphans zu finden.",
       "statusClean": "Sauber",
       "statusPartial": "Teilweiser Scan",
@@ -787,7 +784,9 @@
         "scanStartFailed": "Scan konnte nicht gestartet werden",
         "scanCanceled": "Scan abgebrochen",
         "cancelFailed": "Abbruch fehlgeschlagen"
-      }
+      },
+      "errorMessage": "Fehlermeldung",
+      "scanPaths": "Scan-Pfade"
     },
     "orphanScanPreview": {
       "title": "Orphan-Vorschau",
@@ -936,8 +935,6 @@
       "ratio": "Ratio",
       "added": "Hinzugefügt",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash kopiert",
-      "copyHash": "Hash kopieren",
       "loading": "Wird geladen...",
       "notAvailable": "Lauf-Details nicht verfügbar (nur im Arbeitsspeicher).",
       "failedToLoad": "Laden der Lauf-Details fehlgeschlagen.",
@@ -1001,8 +998,6 @@
       "tryDifferentSearch": "Versuche einen anderen Suchbegriff oder leere den Filter.",
       "eventsWillAppear": "Ereignisse erscheinen hier, sobald stehengebliebene Torrents erkannt werden.",
       "enableMonitoring": "Aktiviere die Überwachung, um stehengebliebene Torrents zu verfolgen.",
-      "hashCopied": "Hash kopiert",
-      "copyHash": "Hash kopieren",
       "outcomes": {
         "succeeded": "Erfolgreich",
         "failed": "Fehlgeschlagen",
