@@ -1,7 +1,7 @@
 {
   "contextcheck": {
     "internal/api/handlers/auth.go": 1,
-    "internal/api/handlers/instances.go": 6,
+    "internal/api/handlers/instances.go": 5,
     "internal/api/handlers/instances_ssh.go": 4,
     "internal/api/handlers/jackett.go": 2,
     "internal/api/handlers/rss_sse.go": 1,
@@ -16,7 +16,7 @@
     "internal/proxy/handler.go": 5,
     "internal/proxy/middleware.go": 1,
     "internal/qbittorrent/app_info.go": 1,
-    "internal/qbittorrent/pool.go": 6,
+    "internal/qbittorrent/pool.go": 5,
     "internal/qbittorrent/preferences.go": 1,
     "internal/qbittorrent/sync_manager.go": 67,
     "internal/services/arr/service.go": 1,

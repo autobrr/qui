@@ -34,7 +34,7 @@ func newFoldersRig(stubs map[int]*qbtstub.Server) *foldersRig {
 	r := &foldersRig{}
 	clients := make(map[int]*Client, len(stubs))
 	for id, stub := range stubs {
-		transport := peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
+		transport := testHTTPTransport(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path == "/api/v2/app/webapiVersion" {
 				r.versionRequests.Add(1)
 			}
