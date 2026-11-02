@@ -57,7 +57,21 @@ describe("useSSHSetup", () => {
     await act(() => result.current.test())
 
     expect(mocks.testSSH).toHaveBeenCalledWith(7)
+    expect(onChanged).toHaveBeenCalledTimes(1)
     expect(result.current.state).toEqual({ kind: "idle", result: unpinned, error: null })
+  })
+
+  it("a 409 from a running delete is shown, not retried", async () => {
+    mocks.testSSH.mockResolvedValue({ status: "mismatch", hostKey: "BBBB", fingerprint: "SHA256:new", pinnedFingerprint: "SHA256:old" })
+    mocks.replaceSSHHostKey.mockRejectedValue(new APIError("An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings.", 409))
+    const { result } = renderHook(() => useSSHSetup({ instanceId: 7, onChanged }))
+
+    await act(() => result.current.test())
+    await act(() => result.current.pin(true))
+
+    expect(mocks.testSSH).toHaveBeenCalledTimes(1)
+    expect(result.current.state.kind).toBe("idle")
+    expect(result.current.state.kind === "idle" && result.current.state.error).toContain("orphan scan")
   })
 
   it("confirm posts the host key the test returned, refreshes, and tests again", async () => {
@@ -69,7 +83,7 @@ describe("useSSHSetup", () => {
     await act(() => result.current.pin(false))
 
     expect(mocks.confirmSSHHostKey).toHaveBeenCalledWith(7, "AAAA")
-    expect(onChanged).toHaveBeenCalledTimes(1)
+    expect(onChanged).toHaveBeenCalledTimes(3)
     expect(mocks.testSSH).toHaveBeenCalledTimes(2)
     expect(result.current.state.result).toEqual(pinned)
   })
@@ -122,7 +136,7 @@ describe("useSSHSetup", () => {
 
     expect(ok).toBe(true)
     expect(mocks.setSSHCredentials).toHaveBeenCalledWith(7, credentials)
-    expect(onChanged).toHaveBeenCalledTimes(1)
+    expect(onChanged).toHaveBeenCalledTimes(2)
     expect(result.current.state).toEqual(initialSSHSetupState)
   })
 

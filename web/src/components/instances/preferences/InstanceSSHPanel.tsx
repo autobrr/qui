@@ -232,7 +232,7 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
                   placeholder={stored ? t("preferences.ssh.placeholders.privateKeyStored") : t("preferences.ssh.placeholders.privateKey")}
                   rows={5}
                   spellCheck={false}
-                  className="font-mono text-xs"
+                  className={`font-mono text-xs ${blur}`}
                   autoComplete="off"
                   aria-invalid={!!field.state.meta.errors[0]}
                 />

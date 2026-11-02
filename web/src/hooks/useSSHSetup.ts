@@ -45,6 +45,11 @@ export function sshSetupReducer(state: SSHSetupState, action: SSHSetupAction): S
   }
 }
 
+// The pin routes' 409 texts for a key or endpoint that moved under the request.
+function isHostKeyConflict(message: string): boolean {
+  return /host key|endpoint changed|different key/i.test(message)
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -58,14 +63,18 @@ interface UseSSHSetupOptions {
 export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
   const [state, dispatch] = useReducer(sshSetupReducer, initialSSHSetupState)
 
+  // The test route writes the tier it probed, so the row is refreshed before
+  // the result shows: the probe table reads the tier from the instance.
   const test = useCallback(async () => {
     dispatch({ type: "test" })
     try {
-      dispatch({ type: "tested", result: await api.testSSH(instanceId) })
+      const result = await api.testSSH(instanceId)
+      await onChanged()
+      dispatch({ type: "tested", result })
     } catch (error) {
       dispatch({ type: "failed", error: errorText(error) })
     }
-  }, [instanceId])
+  }, [instanceId, onChanged])
 
   const save = useCallback(async (credentials: SSHCredentials) => {
     dispatch({ type: "save" })
@@ -94,9 +103,11 @@ export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
   }, [instanceId, onChanged])
 
   // Confirm pins the key the test presented; replace swaps a pin for it. The
-  // server re-dials and compares, so a 409 (already pinned, endpoint changed,
-  // or the host presented yet another key) is answered by testing again: the
-  // next result shows the state the row is in now.
+  // server re-dials and compares, so a 409 about the key or the endpoint
+  // (already pinned, not pinned, endpoint changed, or the host presented yet
+  // another key) is answered by testing again: the next result shows the
+  // state the row is in now. Any other refusal, such as a running orphan-scan
+  // delete, is shown as it is.
   const pin = useCallback(async (replace: boolean) => {
     const hostKey = state.result?.hostKey
     if (!hostKey) {
@@ -110,7 +121,7 @@ export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
         await api.confirmSSHHostKey(instanceId, hostKey)
       }
     } catch (error) {
-      if (!(error instanceof APIError && error.status === 409)) {
+      if (!(error instanceof APIError && error.status === 409 && isHostKeyConflict(error.message))) {
         dispatch({ type: "failed", error: errorText(error) })
         return
       }
