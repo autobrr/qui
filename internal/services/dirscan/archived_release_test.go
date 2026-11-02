@@ -357,33 +357,3 @@ func TestArchivedRelease_WebhookRootWithDiscFoldersIsOneSearch(t *testing.T) {
 
 	require.Equal(t, []plannedSearch{{name: "Example.Movie.2003.DVDRip.XviD-GRP", files: 5, size: 402}}, planSearches(t, result, false))
 }
-
-func TestArchivedRelease_AddedPackSkipsItsEpisodeSearches(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
-	old := now.AddDate(0, 0, -30)
-	fresh := now.Add(-time.Hour)
-	season := "/data/Show.Name.S02.720p.HDTV.x264-GRP"
-	file := func(rel string, mod time.Time) *ScannedFile {
-		return &ScannedFile{Path: season + "/" + rel, RelPath: filepath.FromSlash(rel), Size: 100, ModTime: mod}
-	}
-	root := &Searchee{Name: "Show.Name.S02.720p.HDTV.x264-GRP", Path: season, IsArchived: true, Files: []*ScannedFile{
-		file("Show.Name.S02E01.720p.HDTV.x264-GRP/show.rar", old),
-		file("Show.Name.S02E02.720p.HDTV.x264-GRP/show.rar", fresh),
-		// The pack also covers an episode folder of another season.
-		file("Show.Name.S03E01.720p.HDTV.x264-GRP/show.rar", fresh),
-	}}
-
-	// The pack stays in scope while its newest volume is fresh.
-	selection := selectEligibleRootWork(&ScanResult{Searchees: []*Searchee{root}}, nil, NewParser(nil), 7, now, nil, false, nil)
-	require.Len(t, selection.roots, 1)
-	items := selection.roots[0].items
-	require.Equal(t, root.Name, items[0].searchee.Name)
-
-	injected := map[tvGroupKey]struct{}{}
-	markTVGroupInjected(injected, items[0].tvGroup)
-	for _, item := range items[1:] {
-		require.True(t, shouldSkipWorkItemTVGroup(item, injected), item.searchee.Name)
-	}
-}

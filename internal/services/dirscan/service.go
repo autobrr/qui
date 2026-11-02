@@ -1145,6 +1145,11 @@ func (s *Service) processRootSearchee(
 		if item.searchee == nil {
 			continue
 		}
+		// An archived episode that an added pack holds in full needs no search.
+		// A pack that holds only some episodes leaves the others to their searches.
+		if item.searchee.IsArchived && item.isEpisode && allFilesMatched(item.searchee, fileUpdates) {
+			continue
+		}
 
 		if isAlreadySeedingByFileID(item.searchee, fileIDIndex) {
 			for _, f := range item.searchee.Files {
@@ -1491,6 +1496,14 @@ func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, 
 		SearchedIndexerIDs: update.searchedIndexerIDs,
 	}
 	return s.store.UpsertFile(ctx, file)
+}
+
+// allFilesMatched reports whether an earlier work item added a torrent that
+// holds every file of the searchee.
+func allFilesMatched(searchee *Searchee, fileUpdates map[string]dirScanFileUpdate) bool {
+	return !slices.ContainsFunc(searchee.Files, func(f *ScannedFile) bool {
+		return fileUpdates[f.Path].status != models.DirScanFileStatusMatched
+	})
 }
 
 func markTVGroupInjected(injectedTVGroups map[tvGroupKey]struct{}, key *tvGroupKey) {
