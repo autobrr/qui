@@ -429,6 +429,18 @@ func TestWebhookTriggerScan_VolumeInDiscFolderScansTheRelease(t *testing.T) {
 	require.Equal(t, 2, run.FilesFound)
 }
 
+// A volume in a configured directory named CD1 never climbs out of that directory.
+func TestNormalizeScanRoot_StaysInsideTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	disc := filepath.Join(root, "CD1")
+	require.NoError(t, os.MkdirAll(disc, 0o755))
+	volume := filepath.Join(disc, "movie.rar")
+	require.NoError(t, os.WriteFile(volume, []byte("volume"), 0o600))
+
+	require.Equal(t, root, normalizeScanRoot(volume, root))
+	require.Equal(t, disc, normalizeScanRoot(volume, disc))
+}
+
 func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 	ctx := t.Context()
 
