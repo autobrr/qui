@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"maps"
 	"slices"
@@ -385,8 +386,9 @@ func TestMixedPrioritiesUnderMissingSavePath(t *testing.T) {
 		return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
 	})
 
-	statErrors := addTorrentsToFileIDIndex(t.Context(), index, files, map[string]string{"aaaa": "/gone"}, backend)
+	statErrors, err := addTorrentsToFileIDIndex(t.Context(), index, files, map[string]string{"aaaa": "/gone"}, backend)
 
+	require.NoError(t, err)
 	require.False(t, index.complete)
 	require.Contains(t, index.incompleteReason, "wanted.mkv")
 	require.Equal(t, 2, statErrors)
@@ -458,12 +460,107 @@ func TestSkippedFileStaysCompleteThroughStatAll(t *testing.T) {
 			files := map[string]qbt.TorrentFiles{"aaaa": {{Name: "gone.mkv", Priority: tt.priority}, {Name: "here.mkv"}}}
 			backend := newAnswerBackend(missingAt(tt.missing, tt.cause))
 
-			statErrors := addTorrentsToFileIDIndex(t.Context(), index, files, map[string]string{"aaaa": "/data"}, backend)
+			statErrors, err := addTorrentsToFileIDIndex(t.Context(), index, files, map[string]string{"aaaa": "/data"}, backend)
 
+			require.NoError(t, err)
 			require.Equal(t, tt.wantComplete, index.complete, index.incompleteReason)
 			require.Equal(t, tt.wantErrors, statErrors)
 			require.Contains(t, index.incompleteReason, tt.wantReason)
 			require.Equal(t, tt.wantIndexed, index.len(), "every present file has the one identity")
+		})
+	}
+}
+
+// A connection lost in the index fails the run, from a stat or its identity read, and other errors stay best effort.
+//
+// regression: #2919
+func TestScanFailsWhenIndexBuildLosesConnection(t *testing.T) {
+	lost := fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
+	saveDir := &fsops.LstatInfo{Path: "/data/torrents", IsDir: true, FileID: remoteID(9)}
+	film := "/data/torrents/film.mkv"
+	fileInfo := func(p string) *fsops.LstatInfo {
+		return &fsops.LstatInfo{Path: p, Size: 1, FileID: remoteID(1)}
+	}
+	for _, tt := range []struct {
+		name   string
+		answer func(p string) (*fsops.LstatInfo, error)
+		wantOK bool
+	}{
+		{
+			name: "save path stat loses the connection",
+			answer: func(p string) (*fsops.LstatInfo, error) {
+				if p == "/data/torrents" {
+					return nil, lost
+				}
+				return fileInfo(p), nil
+			},
+		},
+		{
+			name: "save path identity loses the connection",
+			answer: func(p string) (*fsops.LstatInfo, error) {
+				if p == "/data/torrents" {
+					return &fsops.LstatInfo{Path: p, IsDir: true, FileIDErr: lost}, nil
+				}
+				return fileInfo(p), nil
+			},
+		},
+		{
+			name: "file stat loses the connection",
+			answer: func(p string) (*fsops.LstatInfo, error) {
+				if p == film {
+					return nil, lost
+				}
+				return saveDir, nil
+			},
+		},
+		{
+			name: "file identity loses the connection",
+			answer: func(p string) (*fsops.LstatInfo, error) {
+				if p == film {
+					return &fsops.LstatInfo{Path: p, Size: 1, FileIDErr: lost}, nil
+				}
+				return saveDir, nil
+			},
+		},
+		{
+			name: "another stat error is best effort",
+			answer: func(p string) (*fsops.LstatInfo, error) {
+				if p == film {
+					return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrPermission}
+				}
+				return saveDir, nil
+			},
+			wantOK: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			svc, store, dir := newDirScanTestService(t)
+			runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
+			require.NoError(t, err)
+			svc.torrentFiles = onlyTorrent("/data/torrents", "film.mkv")
+			backend := newAnswerBackend(tt.answer,
+				slashEntry("/data/scan", ".", fs.ModeDir),
+				slashEntry("/data/scan/Film", "Film", fs.ModeDir),
+				slashEntry("/data/scan/Film/film.mkv", "Film/film.mkv", 0),
+			)
+			target := &scanTarget{backend: backend, instance: remoteInstance(models.SSHTierExec)}
+			l := zerolog.Nop()
+
+			result, index, ok := svc.runScanPhase(ctx, dir, target, "/data/scan", runID, &l)
+
+			require.Equal(t, tt.wantOK, ok)
+			run, err := store.GetRun(ctx, runID)
+			require.NoError(t, err)
+			if tt.wantOK {
+				require.Len(t, result.Searchees, 1)
+				require.False(t, index.complete, "a best effort index does not rule out a seeding file")
+				require.NotEqual(t, models.DirScanRunStatusFailed, run.Status)
+				return
+			}
+			require.Nil(t, result)
+			require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+			require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
 		})
 	}
 }

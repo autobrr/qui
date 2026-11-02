@@ -939,11 +939,18 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	// This is best-effort; if it fails, scanning continues without seeding skips,
 	// and files marked already seeding by an earlier run keep that status. Without
 	// identity no file could enter the index, so its stats would only cost time.
+	// A lost connection fails the run, since the walk would hit it next.
 	fileIDIndex := &seedingIndex{}
 	if models.FilesystemCapabilitiesOf(target.instance).Identity {
-		if index, err := s.buildFileIDIndex(ctx, target.instance, target.backend, l); err != nil {
+		index, err := s.buildFileIDIndex(ctx, target.instance, target.backend, l)
+		switch {
+		case errors.Is(err, fsops.ErrConnectionLost):
+			l.Warn().Err(err).Msg("dirscan: lost the connection while building the FileID index")
+			s.markRunFailed(ctx, runID, fmt.Sprintf("seeding index failed: %v", err), dir.TargetInstanceID, l)
+			return nil, nil, false
+		case err != nil:
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else {
+		default:
 			fileIDIndex = index
 			scanner.SetFileIDIndex(index)
 		}

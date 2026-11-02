@@ -119,7 +119,10 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instanc
 		}
 	}
 
-	statErrors := addTorrentsToFileIDIndex(ctx, index, filesByHash, savePaths, backend)
+	statErrors, err := addTorrentsToFileIDIndex(ctx, index, filesByHash, savePaths, backend)
+	if err != nil {
+		return nil, fmt.Errorf("read torrent files: %w", err)
+	}
 
 	if l != nil && !index.complete {
 		l.Info().
@@ -162,7 +165,7 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 }
 
 // missingSavePaths finds save paths that are gone, since an unmapped one otherwise costs a stat per file.
-func missingSavePaths(ctx context.Context, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, backend fsops.Backend) map[string]error {
+func missingSavePaths(ctx context.Context, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, backend fsops.Backend) (map[string]error, error) {
 	distinct := make(map[string]struct{})
 	for hash, files := range filesByHash {
 		if savePath := savePaths[hash]; savePath != "" && len(files) > 0 {
@@ -170,7 +173,7 @@ func missingSavePaths(ctx context.Context, filesByHash map[string]qbt.TorrentFil
 		}
 	}
 	if len(distinct) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	paths := slices.Collect(maps.Keys(distinct))
@@ -179,14 +182,28 @@ func missingSavePaths(ctx context.Context, filesByHash map[string]qbt.TorrentFil
 		// Clean as the file paths are joined, so a save path through a missing folder reads as they do.
 		cleaned[i] = backend.Paths().Clean(savePath)
 	}
-	_, errs := fsops.StatAll(ctx, backend, cleaned)
+	infos, errs := fsops.StatAll(ctx, backend, cleaned)
 	missing := make(map[string]error)
 	for i, err := range errs {
+		if lost := lostConnectionErr(infos[i], err); lost != nil {
+			return nil, lost
+		}
 		if isMissingPath(err) {
 			missing[paths[i]] = err
 		}
 	}
-	return missing
+	return missing, nil
+}
+
+// lostConnectionErr checks FileIDErr too, because a single stat reports a lost identity read only there.
+func lostConnectionErr(info *fsops.LstatInfo, err error) error {
+	if errors.Is(err, fsops.ErrConnectionLost) {
+		return err
+	}
+	if info != nil && errors.Is(info.FileIDErr, fsops.ErrConnectionLost) {
+		return info.FileIDErr
+	}
+	return nil
 }
 
 func isMissingPath(err error) bool {
@@ -200,24 +217,30 @@ type indexedFile struct {
 }
 
 // addTorrentsToFileIDIndex reads every file in one StatAll, since a batch per torrent is a find per torrent.
-func addTorrentsToFileIDIndex(ctx context.Context, index *seedingIndex, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, backend fsops.Backend) (statErrors int) {
-	missing := missingSavePaths(ctx, filesByHash, savePaths, backend)
+func addTorrentsToFileIDIndex(ctx context.Context, index *seedingIndex, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, backend fsops.Backend) (statErrors int, err error) {
+	missing, err := missingSavePaths(ctx, filesByHash, savePaths, backend)
+	if err != nil {
+		return 0, err
+	}
 	paths, owners, statErrors := collectIndexedFiles(index, filesByHash, savePaths, missing, backend.Paths())
 	if len(paths) == 0 {
-		return statErrors
+		return statErrors, nil
 	}
 
 	// Stat, not Lstat: symlinked torrent data must index the target's
 	// identity or symlink-farm setups lose already-seeding detection.
 	infos, errs := fsops.StatAll(ctx, backend, paths)
 	for i, absPath := range paths {
+		if lost := lostConnectionErr(infos[i], errs[i]); lost != nil {
+			return statErrors, lost
+		}
 		if errs[i] != nil {
 			statErrors++
 		}
 		index.addStat(owners[i], absPath, infos[i], errs[i])
 	}
 
-	return statErrors
+	return statErrors, nil
 }
 
 // collectIndexedFiles lists the files to stat, and a file under a missing save path takes that stat's failure without one.

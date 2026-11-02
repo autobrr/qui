@@ -117,8 +117,9 @@ func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 			index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
 			files := qbt.TorrentFiles{{Name: "Show.S01/episode.mkv"}, {Name: "Show.S01/sample/s.mkv"}}
 			savePath := dialectPath(tt.d, "/data/torrents")
-			statErrors := addTorrentsToFileIDIndex(context.Background(), index, map[string]qbt.TorrentFiles{"hash": files}, map[string]string{"hash": savePath}, b)
+			statErrors, err := addTorrentsToFileIDIndex(context.Background(), index, map[string]qbt.TorrentFiles{"hash": files}, map[string]string{"hash": savePath}, b)
 
+			require.NoError(t, err)
 			require.Zero(t, statErrors)
 			require.Equal(t, [][]string{
 				{savePath},
