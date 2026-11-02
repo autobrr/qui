@@ -239,7 +239,9 @@ jobs:
       # team, on the issue that triage created from it, or else on the open
       # discussion when it is ready-for-human.
       - name: Mention rls-review
-        if: steps.app-token.outcome == 'success'
+        # An if with no status function gets an implicit success(), which is
+        # false after a budget stop.
+        if: ${{ !cancelled() && steps.app-token.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -261,7 +263,9 @@ jobs:
           issue=$(gh api "repos/$GITHUB_REPOSITORY/issues?creator=github-actions%5Bbot%5D&state=all&sort=created&direction=desc&per_page=50" \
             --jq "[.[] | select(.pull_request == null and (.body // \"\" | endswith(\"From discussion #$DISCUSSION_NUMBER\")))][0].number // empty")
           if [[ -n "$issue" ]]; then
-            if gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" --paginate --jq '.[].body' | grep -qF "$marker"; then
+            # A failed read stops the step, so it cannot post a second mention.
+            comments=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" --paginate --jq '.[].body')
+            if grep -qF "$marker" <<<"$comments"; then
               echo "Issue #$issue already mentions rls-review."
               exit 0
             fi
