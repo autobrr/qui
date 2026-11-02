@@ -4308,7 +4308,7 @@ func (s *Service) recordDryRunActivities(
 	createdActivities := make([]*models.AutomationActivity, 0)
 
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
-		detailsJSON, _ := json.Marshal(details)
+		detailsJSON, _ := json.Marshal(details) //nolint:errchkjson // callers pass only ints, bools, and string-keyed int maps, which cannot fail to encode
 		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",

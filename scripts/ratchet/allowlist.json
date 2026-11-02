@@ -36,9 +36,6 @@
     "internal/sshpool/pool.go": 1,
     "pkg/prowlarr/client.go": 3
   },
-  "errchkjson": {
-    "internal/services/automations/service.go": 1
-  },
   "gocognit": {
     "cmd/qui/main.go": 2,
     "internal/api/handlers/automations_decode.go": 1,
