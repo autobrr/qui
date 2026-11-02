@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -174,7 +175,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 			trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
 			require.NoError(t, err)
 			enabled := map[int]struct{}{indexer.ID: {}}
-			work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+			work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 			require.Len(t, work.roots, 1)
 
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict, StartPaused: true}

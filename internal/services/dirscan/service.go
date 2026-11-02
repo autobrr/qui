@@ -660,6 +660,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	enabledIndexerIDs := s.enabledIndexerIDSet(ctx, &l)
 
 	workSelection := selectEligibleRootWork(
+		target.backend.Paths(),
 		scanResult,
 		trackedFiles,
 		s.parser,
@@ -1739,7 +1740,7 @@ func (s *Service) processSearchee(
 	searcheeSize := CalculateTotalSize(searchee)
 	minSize, maxSize := CalculateSizeRange(searcheeSize, settings.SizeTolerancePercent)
 
-	meta, arrLookupName := s.buildSearcheeMetadata(searchee)
+	meta, arrLookupName := s.buildSearcheeMetadata(target.backend.Paths(), searchee)
 	contentInfo := determineContentInfo(meta, searchee)
 
 	l.Debug().
@@ -1826,7 +1827,7 @@ func sortedIndexerIDs(ids map[int]struct{}) []int {
 	return out
 }
 
-func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
+func (s *Service) buildSearcheeMetadata(d fsops.PathDialect, searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
 	parsedMeta := s.parser.Parse(searchee.Name)
 	arrLookupName = searchee.Name
 
@@ -1836,7 +1837,7 @@ func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetad
 		return parsedMeta, arrLookupName
 	}
 
-	base := filepath.Base(contentFile.Path)
+	base := d.Base(contentFile.Path)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
 	if name == "" {
 		return parsedMeta, arrLookupName

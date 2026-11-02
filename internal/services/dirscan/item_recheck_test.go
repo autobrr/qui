@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -41,7 +42,7 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
 	require.NoError(t, err)
 	enabled := map[int]struct{}{1: {}}
-	work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 	require.Len(t, work.roots, 2)
 
 	// Another run then finishes one of them.
