@@ -278,8 +278,13 @@ func isArchivedRelease(d fsops.PathDialect, files []*ScannedFile) bool {
 	})
 }
 
-// discFolderName matches a folder that holds one part of a release, such as CD1.
 var discFolderName = regexp.MustCompile(`(?i)^(cd|dis[ck]|dvd)[ ._-]?\d+$`)
+
+// IsDiscFolder reports whether a folder name marks one part of a release, such
+// as CD1 or Disc 2.
+func IsDiscFolder(name string) bool {
+	return discFolderName.MatchString(name)
+}
 
 // archivedRoot returns the scan root as one searchee when the root itself is
 // an archived release, or nil when it is not. Its own top-level files, with the
@@ -291,7 +296,7 @@ func archivedRoot(d fsops.PathDialect, rootPath string, order []*rootEntry, loos
 	topLevel := slices.Clone(looseFiles)
 	for _, top := range order {
 		singleFile := len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path
-		if !top.failed && (singleFile || discFolderName.MatchString(top.searchee.Name)) {
+		if !top.failed && (singleFile || IsDiscFolder(top.searchee.Name)) {
 			topLevel = append(topLevel, top.searchee.Files...)
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
 
@@ -781,7 +782,12 @@ func normalizeScanRoot(path string) string {
 	cleanPath := filepath.Clean(path)
 	info, err := os.Stat(cleanPath)
 	if err == nil && !info.IsDir() {
-		return filepath.Dir(cleanPath)
+		parent := filepath.Dir(cleanPath)
+		// A volume in CD1/ belongs to the release one level up, with CD2/.
+		if crossseed.IsArchiveVolume(cleanPath) && dirscan.IsDiscFolder(filepath.Base(parent)) {
+			return filepath.Dir(parent)
+		}
+		return parent
 	}
 	return cleanPath
 }
