@@ -499,6 +499,83 @@ type tagChange struct {
 	ruleByTag map[string]ruleRef
 }
 
+// applyTagChanges sends the planned tag changes to qBittorrent.
+func (s *Service) applyTagChanges(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) {
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: get client for tags failed")
+		return
+	}
+
+	if client.SupportsSetTags() {
+		s.setTagsByTagSet(ctx, instanceID, tagChanges)
+		return
+	}
+
+	// The Set Tags fallback costs about four requests for each tag set; one
+	// request for each tag stays near the old count on large libraries.
+	log.Debug().Int("instanceID", instanceID).Msg("automations: falling back to add/remove tags (older qBittorrent)")
+	s.editTagsByTag(ctx, instanceID, tagChanges)
+}
+
+// setTagsByTagSet replaces the tags with one Set Tags for each tag set and batch.
+func (s *Service) setTagsByTagSet(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) {
+	// Group by desired tag set for batching
+	setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
+	for hash, change := range tagChanges {
+		key := strings.Join(slices.Sorted(maps.Keys(change.desired)), ",")
+		setTagsBatches[key] = append(setTagsBatches[key], hash)
+	}
+
+	for tagSet, hashes := range setTagsBatches {
+		var tags []string
+		if tagSet != "" {
+			tags = strings.Split(tagSet, ",")
+		}
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.SetTags(ctx, instanceID, batch, tagSet); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags failed")
+			} else {
+				log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags on torrents")
+			}
+		}
+	}
+}
+
+// editTagsByTag sends one Add Tags or Remove Tags for each tag and batch.
+func (s *Service) editTagsByTag(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) {
+	addBatches := make(map[string][]string)    // key = tag, value = hashes
+	removeBatches := make(map[string][]string) // key = tag, value = hashes
+	for hash, change := range tagChanges {
+		for _, tag := range change.toAdd {
+			addBatches[tag] = append(addBatches[tag], hash)
+		}
+		for _, tag := range change.toRemove {
+			removeBatches[tag] = append(removeBatches[tag], hash)
+		}
+	}
+
+	for tag, hashes := range addBatches {
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.AddTags(ctx, instanceID, batch, tag); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: add tags failed")
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: added tag to torrents")
+			}
+		}
+	}
+
+	for tag, hashes := range removeBatches {
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.RemoveTags(ctx, instanceID, batch, tag); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: remove tags failed")
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: removed tag from torrents")
+			}
+		}
+	}
+}
+
 type categoryMove struct {
 	hash          string
 	name          string
@@ -2320,86 +2397,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if tagChanges := plan.tags; len(tagChanges) > 0 {
 		tagRuleCounts := make(map[ruleRef]int)
 
-		// Try SetTags first (more efficient for qBit 5.1+)
-		// Group by desired tag set for batching
-		setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
-
-		for hash, change := range tagChanges {
-			// Build sorted tag list for batching key
-			tags := make([]string, 0, len(change.desired))
-			for t := range change.desired {
-				tags = append(tags, t)
-			}
-			sort.Strings(tags)
-			key := strings.Join(tags, ",")
-			setTagsBatches[key] = append(setTagsBatches[key], hash)
-		}
-
-		// Try SetTags first (qBit 5.1+)
-		useSetTags := true
-		for tagSet, hashes := range setTagsBatches {
-			var tags []string
-			if tagSet != "" {
-				tags = strings.Split(tagSet, ",")
-			}
-			batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-			for _, batch := range batches {
-				err := s.syncManager.SetTorrentTags(ctx, instanceID, batch, tags)
-				if err != nil {
-					// Check if it's an unsupported version error
-					if strings.Contains(err.Error(), "requires qBittorrent") {
-						useSetTags = false
-						break
-					}
-					log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags failed")
-				} else {
-					log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags on torrents")
-				}
-			}
-			if !useSetTags {
-				break
-			}
-		}
-
-		// Fallback to Add/Remove for older clients
-		if !useSetTags {
-			log.Debug().Int("instanceID", instanceID).Msg("automations: falling back to add/remove tags (older qBittorrent)")
-
-			// Group by tags to add/remove
-			addBatches := make(map[string][]string)    // key = tag, value = hashes
-			removeBatches := make(map[string][]string) // key = tag, value = hashes
-
-			for hash, change := range tagChanges {
-				for _, tag := range change.toAdd {
-					addBatches[tag] = append(addBatches[tag], hash)
-				}
-				for _, tag := range change.toRemove {
-					removeBatches[tag] = append(removeBatches[tag], hash)
-				}
-			}
-
-			for tag, hashes := range addBatches {
-				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-				for _, batch := range batches {
-					if err := s.syncManager.AddTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: add tags failed")
-					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: added tag to torrents")
-					}
-				}
-			}
-
-			for tag, hashes := range removeBatches {
-				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-				for _, batch := range batches {
-					if err := s.syncManager.RemoveTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: remove tags failed")
-					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: removed tag from torrents")
-					}
-				}
-			}
-		}
+		s.applyTagChanges(ctx, instanceID, tagChanges)
 
 		// Record tag activity summary
 		// Aggregate counts per tag
@@ -3633,7 +3631,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 // includeCrossSeeds onto the trigger's cross-seed group: the torrents that
 // share a file with it, as category expansion uses. Siblings get their own
 // state entry (seeded with their current tags) so the tag diff loop computes
-// a correct per-sibling desired set - SetTorrentTags replaces a torrent's
+// a correct per-sibling desired set - SetTags replaces a torrent's
 // whole tag list, so deltas must never be shared.
 func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds crossSeedGroups) {
 	// Deterministic trigger order keeps sibling attribution stable when several
