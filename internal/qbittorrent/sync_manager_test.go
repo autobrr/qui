@@ -946,6 +946,50 @@ func TestGetTorrentFilesBatch_DefaultOmitsPerHashFailure(t *testing.T) {
 	require.Equal(t, []cacheCall{{hash: "goodhash"}}, fm.cacheCalls)
 }
 
+// regression: #3738
+func TestGetTorrentFilesBatch_CacheReadErrorFailsBatchWithoutFetching(t *testing.T) {
+	t.Parallel()
+
+	cacheErr := errors.New("sqlite: connection setup timed out")
+	client := &scriptedTorrentFilesClient{responses: map[string][]torrentFilesResponse{}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: cacheErr}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA", "HashB"})
+
+	require.ErrorIs(t, err, cacheErr)
+	require.Nil(t, filesByHash)
+	require.Empty(t, client.calls)
+}
+
+// regression: #3738
+func TestGetTorrentFilesBatch_CacheReadErrorSingleHashFetchesFromClient(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{{Name: "single.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{"HashA": {{files: &files}}},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: errors.New("cache read failed")}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"hasha": files}, filesByHash)
+	require.Equal(t, 1, client.callCount("HashA"))
+}
+
 func TestGetTorrentFilesBatch_DefaultReturnsAndCachesEmptyFileList(t *testing.T) {
 	t.Parallel()
 
@@ -1482,6 +1526,7 @@ type stubFilesManager struct {
 	cached     map[string]qbt.TorrentFiles
 	lastHashes []string
 	cacheCalls []cacheCall
+	batchErr   error
 }
 
 func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.TorrentFiles, error) {
@@ -1490,6 +1535,9 @@ func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.To
 
 func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
+	if fm.batchErr != nil {
+		return nil, nil, fm.batchErr
+	}
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
 	missing := make([]string, 0, len(hashes))

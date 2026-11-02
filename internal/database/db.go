@@ -56,6 +56,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"sort"
@@ -596,6 +597,15 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
+// sqliteReaderPoolSize caps the SQLite read pool. Without a cap, a burst of
+// reads opens one connection each, and each new connection must load the schema
+// within connectionSetupTimeout. GOMAXPROCS follows a container CPU limit. The
+// floor of 8 keeps small machines from queueing reads; the ceiling of 16 matches
+// the qBittorrent file fetch limit and the largest cap that was load tested.
+func sqliteReaderPoolSize() int {
+	return min(max(runtime.GOMAXPROCS(0), 8), 16)
+}
+
 func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
 	return ttlcache.New[string, *sql.Stmt](
 		ttlcache.SetDefaultTTL(5*time.Minute),
@@ -660,8 +670,9 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Configure reader pool for concurrent reads
-	readerPool.SetMaxOpenConns(0) // unlimited connections
-	readerPool.SetMaxIdleConns(5) // keep more idle connections for read concurrency
+	readerPoolSize := sqliteReaderPoolSize()
+	readerPool.SetMaxOpenConns(readerPoolSize)
+	readerPool.SetMaxIdleConns(readerPoolSize)
 	readerPool.SetConnMaxLifetime(0)
 	log.Debug().Msg("Reader pool opened in read-only mode")
 
@@ -775,7 +786,9 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 			return tx.tx.StmtContext(ctx, s), nil
 		}
 		return s, nil
-	} else if tx != nil && tx.isWriteTx {
+	} else if tx != nil {
+		// The transaction holds a connection. Preparing on the pool would need a
+		// second one, so run the query on the transaction and cache it after commit.
 		return nil, errors.New("statement not cached")
 	}
 
@@ -1253,7 +1266,7 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 	isReadOnly := opts != nil && opts.ReadOnly
 
 	if isReadOnly {
-		// Read-only transactions use the reader pool (no lock needed, unlimited concurrency)
+		// Read-only transactions use the reader pool (no lock needed; waits for a free connection when the pool is full)
 		tx, err := db.readerPool.BeginTx(ctx, opts)
 		if err != nil {
 			return nil, err
