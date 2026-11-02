@@ -200,7 +200,7 @@ func (p *pendingLocalReads) hasFills() bool {
 // ends, and returns the reads. A torrent that is still missing then keeps its
 // name read, and so does a torrent whose read qui forgot during the wait.
 func (p *pendingLocalReads) wait(ctx context.Context) localReads {
-	if !p.hasFills() {
+	if len(p.torrents) == 0 {
 		return p.reads
 	}
 	timer := time.NewTimer(localReadWait)
@@ -216,6 +216,8 @@ wait:
 		}
 	}
 
+	// A caller can wait on other instances first, so the remembered reads are
+	// taken again also without fills.
 	p.memo.mu.Lock()
 	defer p.memo.mu.Unlock()
 	for _, torrent := range p.torrents {

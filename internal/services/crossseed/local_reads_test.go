@@ -357,3 +357,34 @@ func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
 		time.Sleep(localReadFillTimeout)
 	})
 }
+
+// regression: #3739
+func TestCheckWebhookDropsRememberedReadForgottenWhileOtherInstanceFills(t *testing.T) {
+	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
+	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
+	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
+	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	synctest.Test(t, func(t *testing.T) {
+		recorder.serve = func(_ context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
+			if slices.Contains(hashes, "slow") {
+				// The user renames a file of folder2 through qui while the
+				// files of the first instance load.
+				time.Sleep(time.Second)
+				svc.forgetLocalRead(second.ID, "folder2")
+				return nil, nil
+			}
+			return map[string]qbt.TorrentFiles{"folder2": seasonFolderFiles()}, nil
+		}
+		size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
+		check := func(instanceIDs ...int) *WebhookCheckResponse {
+			resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{
+				InstanceIDs: instanceIDs, TorrentName: localReadsPack, Size: uint64(size + 500),
+			})
+			require.NoError(t, err)
+			return resp
+		}
+		require.True(t, check(second.ID).CanCrossSeed)
+
+		require.False(t, check(localReadsInstance.ID, second.ID).CanCrossSeed, "the check drops the read that qui forgot during the wait")
+	})
+}
