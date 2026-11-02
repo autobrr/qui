@@ -178,7 +178,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 			require.Len(t, work.roots, 1)
 
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict, StartPaused: true}
-			_, added := svc.processRootSearchee(ctx, dir, root, work.roots[0].items, &seedingIndex{}, trackedFiles,
+			_, added := svc.processRootSearchee(ctx, dir, localScanTarget(), root, work.roots[0].items, &seedingIndex{}, trackedFiles,
 				map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 
 			// Each download is a cache hit that starts a detached touch; join them

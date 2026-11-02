@@ -52,7 +52,7 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 	for _, root := range work.roots {
-		svc.processRootSearchee(ctx, dir, root.root, root.items, &seedingIndex{}, trackedFiles,
+		svc.processRootSearchee(ctx, dir, localScanTarget(), root.root, root.items, &seedingIndex{}, trackedFiles,
 			map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 	}
 

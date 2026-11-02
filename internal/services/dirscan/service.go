@@ -71,7 +71,6 @@ type Service struct {
 	cfg            Config
 	store          *models.DirScanStore
 	crossSeedStore *models.CrossSeedStore
-	instanceStore  *models.InstanceStore
 	torrentFiles   torrentFilesReader
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
@@ -185,7 +184,6 @@ func NewService(
 		cfg:                       cfg,
 		store:                     store,
 		crossSeedStore:            crossSeedStore,
-		instanceStore:             instanceStore,
 		torrentFiles:              syncManagerTorrentFiles{syncManager},
 		jackettService:            jackettService,
 		arrService:                arrService,
@@ -627,7 +625,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	dir, ok := s.validateDirectory(ctx, directoryID, runID, &l)
+	dir, target, ok := s.validateDirectory(ctx, directoryID, runID, &l)
 	if !ok {
 		return
 	}
@@ -647,7 +645,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, scanRoot, runID, &l)
+	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, target, scanRoot, runID, &l)
 	if !ok {
 		return
 	}
@@ -696,7 +694,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, target, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
 	completed := s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
 	// Only a run that walked the whole directory can judge what is missing from it.
 	// A webhook or manual run narrowed to a subfolder refreshes just that subfolder's
@@ -891,58 +889,56 @@ func (s *Service) handleCancellation(ctx context.Context, runID int64, l *zerolo
 	return true
 }
 
+// scanTarget is a run's backend and the row it was chosen from, both from one read.
+type scanTarget struct {
+	backend  fsops.Backend
+	instance *models.Instance
+}
+
 // validateDirectory validates the directory configuration and target instance.
-// Returns the directory and true if valid, or nil and false if invalid.
-func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID int64, l *zerolog.Logger) (*models.DirScanDirectory, bool) {
+// Returns the directory, its scan target and true if valid, or false if invalid.
+func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID int64, l *zerolog.Logger) (*models.DirScanDirectory, *scanTarget, bool) {
 	dir, err := s.store.GetDirectory(ctx, directoryID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get directory")
 		s.markRunFailed(ctx, runID, err.Error(), 0, l)
-		return nil, false
+		return nil, nil, false
 	}
 
-	instance, err := s.instanceStore.Get(ctx, dir.TargetInstanceID)
-	if err != nil {
-		l.Error().Err(err).Msg("dirscan: failed to get target instance")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
-		return nil, false
-	}
-
-	if !instance.HasLocalFilesystemAccess {
-		errMsg := "target instance does not have local filesystem access"
-		l.Error().Msg("dirscan: " + errMsg)
-		s.markRunFailed(ctx, runID, errMsg, dir.TargetInstanceID, l)
-		return nil, false
-	}
-
-	return dir, true
-}
-
-// runScanPhase executes the directory scanning phase.
-// Returns the raw scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
 	if s.backendPool == nil {
 		l.Error().Msg("dirscan: backend pool not configured")
 		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
-	// validateDirectory admitted the instance on local access from an earlier
-	// read. If local access was turned off since, the scan must not walk the
-	// SSH host at the local path.
-	backend, err := s.backendPool.LocalBackend(ctx, dir.TargetInstanceID)
-	if err != nil {
-		l.Warn().Err(err).Msg("dirscan: no filesystem backend, failing scan")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("no filesystem backend: %v", err), dir.TargetInstanceID, l)
+
+	backend, instance, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		l.Error().Err(err).Msg("dirscan: failed to get target instance")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
 
-	scanner := NewScanner(backend)
+	// Injection refuses a remote instance too, and #2919 lifts both together.
+	if err != nil || models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
+		errMsg := "target instance does not have local filesystem access"
+		l.Error().Msg("dirscan: " + errMsg)
+		s.markRunFailed(ctx, runID, errMsg, dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	return dir, &scanTarget{backend: backend, instance: instance}, true
+}
+
+// runScanPhase executes the directory scanning phase.
+// Returns the raw scan result and true if successful, or nil and false on failure.
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, target *scanTarget, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
+	scanner := NewScanner(target.backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips,
 	// and files marked already seeding by an earlier run keep that status.
 	fileIDIndex := &seedingIndex{}
-	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
+	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, target.backend, l); err != nil {
 		l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
 	} else {
 		fileIDIndex = index
@@ -978,6 +974,7 @@ func effectiveMaxSearcheeAgeDays(settings *models.DirScanSettings, triggeredBy s
 func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
+	target *scanTarget,
 	workSelection scanWorkSelection,
 	fileIDIndex *seedingIndex,
 	trackedFiles *trackedFilesIndex,
@@ -1031,6 +1028,7 @@ func (s *Service) runSearchAndInjectPhase(
 		matchesFound, torrentsAdded = s.processRootSearchee(
 			ctx,
 			dir,
+			target,
 			selected.root,
 			selected.items,
 			fileIDIndex,
@@ -1059,6 +1057,7 @@ type dirScanFileUpdate struct {
 func (s *Service) processRootSearchee(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
+	target *scanTarget,
 	searchee *Searchee,
 	workItems []searcheeWorkItem,
 	fileIDIndex *seedingIndex,
@@ -1164,7 +1163,7 @@ func (s *Service) processRootSearchee(
 		stillPending := func() bool {
 			return !s.itemFinishedByAnotherRun(ctx, dir.ID, item, trackedFiles, enabledIndexerIDs, l)
 		}
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
+		matches, outcome := s.processSearchee(ctx, dir, target, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1724,6 +1723,7 @@ func tryMatchResultsPerIndexer(
 func (s *Service) processSearchee(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
+	target *scanTarget,
 	searchee *Searchee,
 	settings *models.DirScanSettings,
 	matcher *Matcher,

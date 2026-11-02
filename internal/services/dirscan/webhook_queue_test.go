@@ -96,7 +96,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 }
 
 // waitForRunFailed waits until the run fails and returns it. The test service
-// has no filesystem backend, so each run that starts fails at the walk.
+// has no filesystem backend, so each run that starts fails at validation.
 func waitForRunFailed(t *testing.T, store *models.DirScanStore, runID int64) *models.DirScanRun {
 	t.Helper()
 	var run *models.DirScanRun

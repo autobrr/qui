@@ -228,11 +228,10 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 			}))
 			runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 			require.NoError(t, err)
-			svc.backendPool = testBackendPool(&models.Instance{ID: dir.TargetInstanceID, HasLocalFilesystemAccess: true})
 			svc.torrentFiles = tt.qbt
 			l := zerolog.Nop()
 
-			scanResult, index, ok := svc.runScanPhase(ctx, dir, dir.Path, runID, &l)
+			scanResult, index, ok := svc.runScanPhase(ctx, dir, localScanTarget(), dir.Path, runID, &l)
 			require.True(t, ok)
 			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, index, &l)
 			require.NoError(t, err)

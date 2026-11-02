@@ -69,7 +69,7 @@ func runIntervalSearcheeIfPending(ctx context.Context, svc *Service, name string
 		Files: []*ScannedFile{{Path: "/data/" + name + "/video.mkv", RelPath: "video.mkv", Size: 1000}},
 	}
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
-	_, outcome := svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, stillPending, &l)
+	_, outcome := svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, stillPending, &l)
 	return outcome
 }
 
