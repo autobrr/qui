@@ -4,9 +4,11 @@
 package automations
 
 import (
+	"slices"
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -63,6 +65,14 @@ func TestApplyTagChanges(t *testing.T) {
 			require.Equal(t, []string{"keep", "new1"}, stub.Tags(hashA))
 			require.Equal(t, []string{"new1", "new2"}, stub.Tags(hashB))
 			require.Eventually(t, func() bool { return stub.Syncs() > syncs }, 5*time.Second, 10*time.Millisecond)
+			// The list reads this cache, so the sync must put the new tags in it.
+			require.Eventually(t, func() bool {
+				cached := map[string][]string{}
+				for _, torrent := range client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{}) {
+					cached[torrent.Hash] = slices.Sorted(slices.Values(splitTags(torrent.Tags)))
+				}
+				return slices.Equal(cached[hashA], []string{"keep", "new1"}) && slices.Equal(cached[hashB], []string{"new1", "new2"})
+			}, 5*time.Second, 10*time.Millisecond)
 		})
 	}
 }
