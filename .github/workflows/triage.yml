@@ -266,7 +266,7 @@ jobs:
           # shellcheck disable=SC2016 # GraphQL variables, not shell vars
           discussion=$(gh api graphql \
             -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F n="$DISCUSSION_NUMBER" \
-            -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){discussion(number:$n){id closed labels(first:100){nodes{name}} comments(first:100){nodes{author{login} body}}}}}' \
+            -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){discussion(number:$n){id closed labels(first:100){nodes{name}}}}}' \
             --jq '.data.repository.discussion')
           if ! jq -e '[.labels.nodes[].name] | index("rls")' <<<"$discussion" >/dev/null; then
             echo "No rls label."
@@ -294,7 +294,13 @@ jobs:
             echo "No issue, and the discussion is not open and ready-for-human only."
             exit 0
           fi
-          if jq -e --arg m "$marker" --arg app "$APP_SLUG" 'any(.comments.nodes[]; .author.login == $app and (.body | contains($m)))' <<<"$discussion" >/dev/null; then
+          # Read every page, so the marker counts also after 100 comments.
+          # shellcheck disable=SC2016 # GraphQL variables, not shell vars
+          comments=$(gh api graphql --paginate \
+            -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F n="$DISCUSSION_NUMBER" \
+            -f query='query($owner:String!,$name:String!,$n:Int!,$endCursor:String){repository(owner:$owner,name:$name){discussion(number:$n){comments(first:100,after:$endCursor){pageInfo{hasNextPage endCursor} nodes{author{login} body}}}}}' \
+            --jq ".data.repository.discussion.comments.nodes[] | select(.author.login == \"$APP_SLUG\") | .body")
+          if grep -qF "$marker" <<<"$comments"; then
             echo "The discussion already mentions rls-review."
             exit 0
           fi
