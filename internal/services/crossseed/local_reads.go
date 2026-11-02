@@ -81,13 +81,15 @@ func (e localReadEntry) matches(t localTorrent) bool {
 }
 
 // pendingLocalReads is a request for the reads of one instance. The reads
-// that are remembered are in reads at once; wait adds the ones that fills read.
+// that are remembered are in reads at once; wait takes them all again from the
+// memo, with the ones that fills read.
 type pendingLocalReads struct {
 	memo       *localReadMemo
 	instanceID int
 	reads      localReads
-	waiting    []localTorrent
-	fills      map[chan struct{}]struct{}
+	// torrents are the torrents with a remembered read or a fill.
+	torrents []localTorrent
+	fills    map[chan struct{}]struct{}
 }
 
 // localReads holds the Read releases that a local read took from files,
@@ -147,6 +149,7 @@ func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrent
 		switch {
 		case ok && entry.fromFiles:
 			pending.reads[cacheKeyForTorrentFiles(instanceID, torrent.hash)] = entry
+			pending.torrents = append(pending.torrents, torrent)
 			if now.After(entry.expires) && filling == nil {
 				if refreshDone == nil {
 					refreshDone = make(chan struct{})
@@ -185,7 +188,7 @@ func (p *pendingLocalReads) addFill(torrent localTorrent, fill chan struct{}) {
 		p.fills = make(map[chan struct{}]struct{})
 	}
 	p.fills[fill] = struct{}{}
-	p.waiting = append(p.waiting, torrent)
+	p.torrents = append(p.torrents, torrent)
 }
 
 // hasFills reports whether wait has fills to wait for.
@@ -195,7 +198,7 @@ func (p *pendingLocalReads) hasFills() bool {
 
 // wait waits for the fills of the request, at most localReadWait or until ctx
 // ends, and returns the reads. A torrent that is still missing then keeps its
-// name read.
+// name read, and so does a torrent whose read qui forgot during the wait.
 func (p *pendingLocalReads) wait(ctx context.Context) localReads {
 	if !p.hasFills() {
 		return p.reads
@@ -215,10 +218,12 @@ wait:
 
 	p.memo.mu.Lock()
 	defer p.memo.mu.Unlock()
-	for _, torrent := range p.waiting {
-		entry, ok := p.memo.entries[localReadKey{instanceID: p.instanceID, hash: torrent.hash}]
-		if ok && entry.fromFiles {
-			p.reads[cacheKeyForTorrentFiles(p.instanceID, torrent.hash)] = entry
+	for _, torrent := range p.torrents {
+		key := cacheKeyForTorrentFiles(p.instanceID, torrent.hash)
+		if entry, ok := p.memo.entries[localReadKey{instanceID: p.instanceID, hash: torrent.hash}]; ok && entry.fromFiles {
+			p.reads[key] = entry
+		} else {
+			delete(p.reads, key)
 		}
 	}
 	return p.reads

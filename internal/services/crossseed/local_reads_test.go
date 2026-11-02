@@ -259,3 +259,27 @@ func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
 		time.Sleep(localReadFillTimeout)
 	})
 }
+
+// regression: #3739
+func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
+	folder, other := seasonFolderTorrent("folder"), seasonFolderTorrent("other")
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{
+		folder.Hash: seasonFolderFiles(), other.Hash: seasonFolderFiles(),
+	})
+	require.True(t, checkPack(t, svc).CanCrossSeed)
+
+	recorder.cached[localReadsInstance.ID] = buildCrossInstanceViews(localReadsInstance, []qbt.Torrent{folder, other})
+	recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
+		// The user renames a file of the folder through qui while the other
+		// torrent loads its files.
+		svc.forgetLocalRead(localReadsInstance.ID, folder.Hash)
+		return recorder.fakeSyncManager.GetTorrentFilesBatch(ctx, localReadsInstance.ID, hashes)
+	}
+	resp := checkPack(t, svc)
+
+	hashes := make([]string, 0, len(resp.Matches))
+	for _, match := range resp.Matches {
+		hashes = append(hashes, match.TorrentHash)
+	}
+	require.Equal(t, []string{"other"}, hashes, "the check drops the read that qui forgot during the wait")
+}
