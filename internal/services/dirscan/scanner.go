@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -277,16 +278,21 @@ func isArchivedRelease(d fsops.PathDialect, files []*ScannedFile) bool {
 	})
 }
 
+// discFolderName matches a folder that holds one part of a release, such as CD1.
+var discFolderName = regexp.MustCompile(`(?i)^(cd|dis[ck]|dvd)[ ._-]?\d+$`)
+
 // archivedRoot returns the scan root as one searchee when the root itself is
-// an archived release, or nil when it is not. Its own top-level files must also
-// pass the test, so that a parent folder of releases, such as a merged webhook
-// root or a show folder, is not read as one release. The root searchee takes
-// copies of the files with paths relative to the root.
+// an archived release, or nil when it is not. Its own top-level files, with the
+// files of its disc folders such as CD1/, must also pass the test, so that a
+// parent folder of releases, such as a merged webhook root or a show folder, is
+// not read as one release. The root searchee takes copies of the files with
+// paths relative to the root.
 func archivedRoot(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile) *Searchee {
 	topLevel := slices.Clone(looseFiles)
 	for _, top := range order {
-		if !top.failed && len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path {
-			topLevel = append(topLevel, top.searchee.Files[0])
+		singleFile := len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path
+		if !top.failed && (singleFile || discFolderName.MatchString(top.searchee.Name)) {
+			topLevel = append(topLevel, top.searchee.Files...)
 		}
 	}
 	if !isArchivedRelease(d, topLevel) {

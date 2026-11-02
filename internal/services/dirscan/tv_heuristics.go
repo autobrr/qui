@@ -63,6 +63,7 @@ func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 func buildArchivedWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkItem {
 	pack := searcheeWorkItem{searchee: searchee}
 
+	// The episodes share the TV group of the pack, so an added pack skips their searches.
 	var episodes []searcheeWorkItem
 	byFolder := make(map[string]*Searchee)
 	for _, f := range searchee.Files {
@@ -73,9 +74,13 @@ func buildArchivedWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 		ep, seen := byFolder[folder]
 		if !seen {
 			if meta := parser.Parse(folder); meta.Season != nil && meta.Episode != nil {
+				key := tvGroupKey{normalizedTitle: stringutils.NormalizeForMatching(meta.Title), season: *meta.Season}
+				if pack.tvGroup == nil {
+					pack.tvGroup = &key
+				}
 				// f.Path ends with the folder, a separator, and rest.
 				ep = &Searchee{Name: folder, Path: f.Path[:len(f.Path)-len(rest)-1], IsArchived: true}
-				episodes = append(episodes, searcheeWorkItem{searchee: ep, isEpisode: true})
+				episodes = append(episodes, searcheeWorkItem{searchee: ep, tvGroup: &key, isEpisode: true})
 			}
 			byFolder[folder] = ep
 		}

@@ -320,7 +320,8 @@ func workItemIsStale(item searcheeWorkItem, cutoff time.Time, skipIndividualEpis
 	// searched, and a fresh episode gets its own episode search. With individual
 	// episodes skipped, the pack is the only search a fresh episode has, so the
 	// pack stays eligible as long as its newest episode is fresh.
-	if item.tvGroup != nil && len(contentFiles) > 1 && !skipIndividualEpisodes {
+	// An archived release reads only its newest volume.
+	if item.tvGroup != nil && !item.searchee.IsArchived && len(contentFiles) > 1 && !skipIndividualEpisodes {
 		for _, f := range contentFiles {
 			if f == nil {
 				continue
