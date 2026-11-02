@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"context"
 	"encoding/json"
 	"maps"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // newStepRig boots a Service against a stub qBittorrent that serves the torrents. Each
@@ -237,4 +239,39 @@ func TestPlanSteps_RefusedPauseBatchWritesNoFailedRow(t *testing.T) {
 	require.JSONEq(t, `{"count":1}`, views[0].Details)
 	require.Len(t, views[0].Items, 1)
 	require.Equal(t, "a", views[0].Items[0].Hash)
+}
+
+type recordingNotifier struct{ events []notifications.Event }
+
+func (n *recordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	n.events = append(n.events, event)
+}
+
+// A cross-seed with no category rule of its own can join two categories in one run. Its
+// rule counts it once in the notification.
+func TestPlanSteps_CategoryNotificationCountsEachTorrentOnce(t *testing.T) {
+	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
+		"a": {"tags": "x", "content_path": "/data/shared"},
+		"b": {"tags": "y", "content_path": "/data/shared"},
+		"c": {"content_path": "/data/shared"},
+	}, nil)
+	svc.crossMatcher = parityCrossMatcher{sameContent: map[string][]string{"a": {"b", "c"}, "b": {"a", "c"}, "c": {"a", "b"}}}
+	notifier := &recordingNotifier{}
+	svc.notifier = notifier
+	categoryRule := func(id int, tag string) *models.Automation {
+		rule := stepRule(id, &models.ActionConditions{Category: &models.CategoryAction{
+			Enabled: true, Category: tag + "-cat", IncludeCrossSeeds: true, Condition: tagCondition(tag),
+		}})
+		rule.Notify = true
+		return rule
+	}
+
+	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{categoryRule(1, "x"), categoryRule(2, "y")}, false)
+	require.NoError(t, err)
+	require.Len(t, notifier.events, 1)
+	applied := make(map[int]int)
+	for _, rule := range notifier.events[0].Automations.Rules {
+		applied[rule.RuleID] = rule.Applied
+	}
+	require.Equal(t, map[int]int{1: 2, 2: 1}, applied)
 }

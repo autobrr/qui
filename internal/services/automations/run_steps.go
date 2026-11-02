@@ -175,7 +175,8 @@ func (r *stepRun) speedLimits(ctx context.Context, plan *runPlan) {
 	for limit, hashes := range download {
 		limits[fmt.Sprintf("download:%d", limit)] = len(hashes)
 	}
-	uploadHashes, downloadHashes := flattenHashes(upload), flattenHashes(download)
+	uploadHashes, uploadWrites := flattenHashes(upload)
+	downloadHashes, downloadWrites := flattenHashes(download)
 	rules := make(map[ruleRef]int)
 	for _, counts := range []map[ruleRef]int{
 		buildRuleCountsFromHashes(uploadHashes, plan.uploadLimits.rules),
@@ -188,7 +189,7 @@ func (r *stepRun) speedLimits(ctx context.Context, plan *runPlan) {
 	r.record(ctx, stepActivity{
 		action:  models.ActivityActionSpeedLimitsChanged,
 		details: map[string]map[string]int{"limits": limits},
-		count:   len(uploadHashes) + len(downloadHashes),
+		count:   uploadWrites + downloadWrites,
 		rules:   rules,
 		hashes:  slices.Concat(uploadHashes, downloadHashes),
 		items: func() []ActivityRunTorrent {
@@ -265,11 +266,11 @@ func (r *stepRun) shareLimits(ctx context.Context, plan *runPlan) {
 	for key, hashes := range accepted {
 		limits[fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)] += len(hashes)
 	}
-	hashes := flattenHashes(accepted)
+	hashes, writes := flattenHashes(accepted)
 	r.record(ctx, stepActivity{
 		action:  models.ActivityActionShareLimitsChanged,
 		details: map[string]map[string]int{"limits": limits},
-		count:   len(hashes),
+		count:   writes,
 		rules:   buildRuleCountsFromHashMaps(hashes, ruleMaps...),
 		hashes:  hashes,
 		items: func() []ActivityRunTorrent {
@@ -382,11 +383,11 @@ func (r *stepRun) category(ctx context.Context, plan *runPlan) {
 	if len(accepted) == 0 {
 		return
 	}
-	hashes := flattenHashes(accepted)
+	hashes, writes := flattenHashes(accepted)
 	r.record(ctx, stepActivity{
 		action:  models.ActivityActionCategoryChanged,
 		details: map[string]map[string]int{"categories": countByTarget(accepted)},
-		count:   len(hashes),
+		count:   writes,
 		rules:   buildRuleCountsFromHashes(hashes, plan.category.rules),
 		hashes:  hashes,
 		items:   func() []ActivityRunTorrent { return buildCategoryRunItems(accepted, r.torrentByHash, r.s.syncManager) },
@@ -413,36 +414,38 @@ func (r *stepRun) move(ctx context.Context, plan *runPlan) {
 		}
 	}
 	if len(accepted) > 0 {
-		hashes := flattenHashes(accepted)
+		hashes, writes := flattenHashes(accepted)
 		r.record(ctx, stepActivity{
 			action:  models.ActivityActionMoved,
 			details: map[string]map[string]int{"paths": countByTarget(accepted)},
-			count:   len(hashes),
+			count:   writes,
 			rules:   buildRuleCountsFromHashes(hashes, plan.move.rules),
 			hashes:  hashes,
 			items:   func() []ActivityRunTorrent { return buildMoveRunItems(accepted, r.torrentByHash, r.s.syncManager) },
 		})
 	}
 	if len(refused) > 0 {
-		hashes := flattenHashes(refused)
+		hashes, writes := flattenHashes(refused)
 		r.record(ctx, stepActivity{
 			action:  models.ActivityActionMoved,
 			outcome: models.ActivityOutcomeFailed,
 			details: map[string]map[string]int{"paths": countByTarget(refused)},
-			count:   len(hashes),
+			count:   writes,
 			rules:   buildRuleCountsFromHashes(hashes, plan.move.rules),
 			hashes:  hashes,
 		})
 	}
 }
 
-// flattenHashes returns the torrents of all targets.
-func flattenHashes[K comparable](byTarget map[K][]string) []string {
-	var out []string
+// flattenHashes returns each torrent of the targets once, and the number of writes. A
+// cross-seed can join two category targets in one run: its rule counts it once, and the
+// Activity counts both writes.
+func flattenHashes[K comparable](byTarget map[K][]string) (unique []string, writes int) {
+	var all []string
 	for _, hashes := range byTarget {
-		out = append(out, hashes...)
+		all = append(all, hashes...)
 	}
-	return out
+	return dedupeHashes(all), len(all)
 }
 
 // countByTarget returns the number of torrents of each target.
