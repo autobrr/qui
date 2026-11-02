@@ -1090,6 +1090,8 @@ func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
 
 	for i, err := range errs {
 		require.NoErrorf(t, err, "transaction %d", i)
+		_, found := db.readerStmts.Get(db.bindQuery(fmt.Sprintf("SELECT %d", i)))
+		require.Truef(t, found, "commit must cache the statement of transaction %d", i)
 	}
 }
 
