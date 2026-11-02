@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -356,4 +357,37 @@ func TestArchivedRelease_WebhookRootWithDiscFoldersIsOneSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []plannedSearch{{name: "Example.Movie.2003.DVDRip.XviD-GRP", files: 5, size: 402}}, planSearches(t, result, false))
+}
+
+func TestArchivedRelease_WebhookRootOfASeasonPackSearchesThePack(t *testing.T) {
+	svc, store, dir := newDirScanTestService(t)
+	svc.backendPool = fsops.NewPool(&fakeInstanceStore{instance: &models.Instance{ID: dir.TargetInstanceID, HasLocalFilesystemAccess: true}}, local.NewBackend())
+	root := filepath.Join(dir.Path, "Show.Name.S02.720p.HDTV.x264-GRP")
+	for _, ep := range []string{"Show.Name.S02E01.720p.HDTV.x264-GRP", "Show.Name.S02E02.720p.HDTV.x264-GRP"} {
+		writeTestFile(t, filepath.Join(root, ep, "show.rar"), 100)
+		writeTestFile(t, filepath.Join(root, ep, "show.r00"), 60)
+	}
+	writeTestFile(t, filepath.Join(root, "show.name.s02.nfo"), 1)
+
+	runID, err := store.CreateRun(t.Context(), dir.ID, triggeredByWebhook, root)
+	require.NoError(t, err)
+	logger := zerolog.Nop()
+	result, _, ok := svc.runScanPhase(t.Context(), dir, root, runID, &logger)
+	require.True(t, ok)
+
+	// The same searches as a full scan of the parent folder plans.
+	require.Equal(t, []plannedSearch{
+		{name: "Show.Name.S02.720p.HDTV.x264-GRP", files: 5, size: 321},
+		{name: "Show.Name.S02E01.720p.HDTV.x264-GRP", files: 2, size: 160, episode: true},
+		{name: "Show.Name.S02E02.720p.HDTV.x264-GRP", files: 2, size: 160, episode: true},
+	}, planSearches(t, result, false))
+	require.Equal(t, []plannedSearch{{name: "Show.Name.S02.720p.HDTV.x264-GRP", files: 5, size: 321}}, planSearches(t, result, true))
+}
+
+func TestReadsAsSeasonPack(t *testing.T) {
+	parser := NewParser(nil)
+	require.True(t, readsAsSeasonPack(parser, "Show.Name.S02.720p.HDTV.x264-GRP"))
+	require.False(t, readsAsSeasonPack(parser, "Show.Name.S02E01.720p.HDTV.x264-GRP"))
+	require.False(t, readsAsSeasonPack(parser, "Show.Name"))
+	require.False(t, readsAsSeasonPack(parser, "games"))
 }

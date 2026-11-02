@@ -79,6 +79,9 @@ type Scanner struct {
 	// as a webhook scan. Such a root can itself be an archived release. The
 	// directory root never is, since it holds one release per top-level folder.
 	rootMayBeRelease bool
+	// rootIsSeasonPack is set when the name of such a root reads as a season
+	// pack. Its episode folders are then part of the root, as in a full scan.
+	rootIsSeasonPack bool
 }
 
 // NewScanner creates a new directory scanner.
@@ -174,7 +177,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 func (s *Scanner) buildResult(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile) *ScanResult {
 	result := &ScanResult{}
 	if s.rootMayBeRelease {
-		if root := archivedRoot(d, rootPath, order, looseFiles); root != nil {
+		if root := archivedRoot(d, rootPath, order, looseFiles, s.rootIsSeasonPack); root != nil {
 			s.addSearchee(result, root)
 			return result
 		}
@@ -290,18 +293,21 @@ func IsDiscFolder(name string) bool {
 // an archived release, or nil when it is not. Its own top-level files, with the
 // files of its disc folders such as CD1/, must also pass the test, so that a
 // parent folder of releases, such as a merged webhook root or a show folder, is
-// not read as one release. The root searchee takes copies of the files with
+// not read as one release. A season pack skips that test, since its episode
+// folders are part of it. The root searchee takes copies of the files with
 // paths relative to the root.
-func archivedRoot(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile) *Searchee {
-	topLevel := slices.Clone(looseFiles)
-	for _, top := range order {
-		singleFile := len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path
-		if !top.failed && (singleFile || IsDiscFolder(top.searchee.Name)) {
-			topLevel = append(topLevel, top.searchee.Files...)
+func archivedRoot(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile, seasonPack bool) *Searchee {
+	if !seasonPack {
+		topLevel := slices.Clone(looseFiles)
+		for _, top := range order {
+			singleFile := len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path
+			if !top.failed && (singleFile || IsDiscFolder(top.searchee.Name)) {
+				topLevel = append(topLevel, top.searchee.Files...)
+			}
 		}
-	}
-	if !isArchivedRelease(d, topLevel) {
-		return nil
+		if !isArchivedRelease(d, topLevel) {
+			return nil
+		}
 	}
 
 	files := looseFiles

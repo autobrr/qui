@@ -193,7 +193,7 @@ Extras belong to releases and affect partial-match behavior. If a torrent includ
 
 An archived release stores its payload in archive volumes, for example a RAR set. A folder is an archived release when its largest file is an archive volume. Samples, proofs, and extras do not count for this test. Library Scan uses the same test.
 
-Dir Scan keeps all files of an archived release and searches it under its folder name. The sample video does not change the search name. If the subfolders of an archived release have TV episode names, Dir Scan also searches each subfolder as its own release.
+Dir Scan keeps all files of an archived release and searches it under its folder name. The sample video does not change the search name. If the subfolders of an archived release have TV episode names, Dir Scan also searches each subfolder as its own release. If the folder name has a season and no episode, for example `Show.Name.S02.720p-GRP`, a webhook scan of the folder searches the same items.
 
 The match is full when each file of the torrent is on disk. Extra local files, for example `Thumbs.db` or a Synology `@eaDir/` folder, do not make the result partial.
 

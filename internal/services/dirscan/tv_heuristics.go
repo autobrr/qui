@@ -98,6 +98,13 @@ func buildArchivedWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 	return append([]searcheeWorkItem{pack}, episodes...)
 }
 
+// readsAsSeasonPack reports whether a folder name reads as a season with no
+// episode, such as Show.S02-GRP.
+func readsAsSeasonPack(parser *Parser, name string) bool {
+	meta := parser.Parse(name)
+	return meta.Season != nil && meta.Episode == nil
+}
+
 type tvGroup struct {
 	displayTitle    string
 	normalizedTitle string

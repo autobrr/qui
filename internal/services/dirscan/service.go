@@ -938,6 +938,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 
 	scanner := NewScanner(backend)
 	scanner.rootMayBeRelease = backend.Paths().Clean(scanRoot) != backend.Paths().Clean(dir.Path)
+	scanner.rootIsSeasonPack = readsAsSeasonPack(s.parser, backend.Paths().Base(scanRoot))
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips,
