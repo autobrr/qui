@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -327,5 +328,32 @@ func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
 
 		require.True(t, checkPack(t, svc).CanCrossSeed, "after the minute the check reads the files again")
 		require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+	})
+}
+
+// regression: #3739
+func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
+	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
+	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
+	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
+	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	synctest.Test(t, func(t *testing.T) {
+		recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
+			if slices.Contains(hashes, "slow") {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return map[string]qbt.TorrentFiles{"folder2": seasonFolderFiles()}, nil
+		}
+
+		size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
+		resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{
+			InstanceIDs: []int{localReadsInstance.ID, second.ID}, TorrentName: localReadsPack, Size: uint64(size + 500),
+		})
+
+		require.NoError(t, err)
+		require.True(t, resp.CanCrossSeed, "a hanging first instance does not use up the wait of the second")
+		// The bubble ends only after the fills stop at their own deadline.
+		time.Sleep(localReadFillTimeout)
 	})
 }
