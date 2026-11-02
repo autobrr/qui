@@ -202,7 +202,7 @@ func buildWorkItemDropDecision(
 		return decision
 	}
 
-	contentFiles := filterContentFiles(item.searchee.Files)
+	contentFiles := filterContentFiles(item.searchee)
 	decision.name = item.searchee.Name
 	decision.path = item.searchee.Path
 	decision.contentFiles = len(contentFiles)
@@ -311,7 +311,7 @@ func workItemIsStale(item searcheeWorkItem, cutoff time.Time, skipIndividualEpis
 		return false
 	}
 
-	contentFiles := filterContentFiles(item.searchee.Files)
+	contentFiles := filterContentFiles(item.searchee)
 	if len(contentFiles) == 0 {
 		return false
 	}

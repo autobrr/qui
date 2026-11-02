@@ -194,9 +194,10 @@ func (m *Matcher) matchArchived(searchee *Searchee, torrentFiles []TorrentFile, 
 	m.matchByMode(others, otherTorrentFiles, result)
 }
 
-// archivePathKey normalizes each segment of a slash path like a file name.
+// archivePathKey normalizes each segment of a slash path like a file name. It
+// lowercases first, so that movie.RAR and movie.rar give the same key.
 func archivePathKey(slashPath string) string {
-	segments := strings.Split(slashPath, "/")
+	segments := strings.Split(strings.ToLower(slashPath), "/")
 	for i, segment := range segments {
 		segments[i] = normalizeFileName(segment)
 	}

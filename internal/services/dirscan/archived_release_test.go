@@ -139,6 +139,8 @@ func TestArchivedRelease_AgeCutoffReadsTheVolumes(t *testing.T) {
 			{Path: dir + "/game.rar", RelPath: "game.rar", Size: 100, ModTime: old},
 			{Path: dir + "/game.r00", RelPath: "game.r00", Size: 100, ModTime: newestVolume},
 			{Path: dir + "/game.nfo", RelPath: "game.nfo", Size: 1, ModTime: fresh},
+			// A fresh sample does not keep an old release in scope.
+			{Path: dir + "/Sample/game.mkv", RelPath: filepath.Join("Sample", "game.mkv"), Size: 5, ModTime: fresh},
 		}}
 	}
 	result := &ScanResult{Searchees: []*Searchee{
@@ -243,6 +245,13 @@ func TestArchivedRelease_MatchVerdicts(t *testing.T) {
 			searchee: archivedSearchee(diskFile("movie.rar", 100), diskFile("movie.r00", 100), diskFile("movie.nfo", 2)),
 			torrent:  torrent(TorrentFile{Path: "Example.Movie.2003.DVDRip.XviD-GRP/movie.rar", Size: 100}, TorrentFile{Path: "Example.Movie.2003.DVDRip.XviD-GRP/movie.r00", Size: 100}, TorrentFile{Path: "Example.Movie.2003.DVDRip.XviD-GRP/movie.nfo", Size: 2}),
 			perfect:  true, matched: 3, accept: true,
+		},
+		{
+			name:     "volumes pair when only the case of the extension differs",
+			mode:     MatchModeStrict,
+			searchee: archivedSearchee(diskFile("movie.RAR", 100), diskFile("movie.R00", 100)),
+			torrent:  torrent(TorrentFile{Path: "Example.Movie.2003.DVDRip.XviD-GRP/movie.rar", Size: 100}, TorrentFile{Path: "Example.Movie.2003.DVDRip.XviD-GRP/movie.r00", Size: 100}),
+			perfect:  true, matched: 2, accept: true,
 		},
 		{
 			name:     "flexible mode never pairs renamed volumes by size",
@@ -362,6 +371,8 @@ func TestArchivedRelease_AddedPackSkipsItsEpisodeSearches(t *testing.T) {
 	root := &Searchee{Name: "Show.Name.S02.720p.HDTV.x264-GRP", Path: season, IsArchived: true, Files: []*ScannedFile{
 		file("Show.Name.S02E01.720p.HDTV.x264-GRP/show.rar", old),
 		file("Show.Name.S02E02.720p.HDTV.x264-GRP/show.rar", fresh),
+		// The pack also covers an episode folder of another season.
+		file("Show.Name.S03E01.720p.HDTV.x264-GRP/show.rar", fresh),
 	}}
 
 	// The pack stays in scope while its newest volume is fresh.
