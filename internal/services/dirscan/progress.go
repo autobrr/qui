@@ -17,10 +17,11 @@ import (
 type trackedFilesIndex struct {
 	byPath   map[string]*models.DirScanFile
 	byFileID map[fsops.FileKey]*models.DirScanFile
+	instance *models.Instance
 }
 
 func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) (fsops.FileKey, bool) {
-	return fsops.FileKeyOf(id, nil)
+	return fsops.FileKeyOf(id, idx.instance)
 }
 
 // keyOfStored decodes a dir_scan_files.file_id value. A row from before the
@@ -29,7 +30,7 @@ func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
 	return idx.keyOf(hardlink.FileIDFromBytes(stored))
 }
 
-func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
+func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, instance *models.Instance) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil {
 		return nil, nil
 	}
@@ -39,6 +40,7 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 	idx := &trackedFilesIndex{
 		byPath:   make(map[string]*models.DirScanFile),
 		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
+		instance: instance,
 	}
 
 	offset := 0
@@ -72,6 +74,7 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 func (s *Service) refreshTrackedFilesFromScan(
 	ctx context.Context,
 	directoryID int,
+	instance *models.Instance,
 	scanResult *ScanResult,
 	fileIDIndex *seedingIndex,
 	l *zerolog.Logger,
@@ -80,7 +83,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 		return nil, nil
 	}
 
-	idx, err := s.loadTrackedFilesIndex(ctx, directoryID)
+	idx, err := s.loadTrackedFilesIndex(ctx, directoryID, instance)
 	if err != nil {
 		return nil, err
 	}

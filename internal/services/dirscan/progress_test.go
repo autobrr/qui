@@ -165,7 +165,7 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 			svc := &Service{torrentFiles: stubTorrentFiles{files: lists}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
 
-			index, err := svc.buildFileIDIndex(t.Context(), 1, backend, nil)
+			index, err := svc.buildFileIDIndex(t.Context(), &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, backend, nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, index.complete)
 			require.Equal(t, tt.indexed, index.len())
@@ -233,7 +233,7 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 
 			scanResult, index, ok := svc.runScanPhase(ctx, dir, localScanTarget(), dir.Path, runID, &l)
 			require.True(t, ok)
-			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, index, &l)
+			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, index, &l)
 			require.NoError(t, err)
 
 			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
@@ -288,7 +288,7 @@ func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 			}}}
 			l := zerolog.Nop()
 
-			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, tt.seeding, &l)
+			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, tt.seeding, &l)
 			require.NoError(t, err)
 
 			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)

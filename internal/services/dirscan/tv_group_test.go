@@ -172,7 +172,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 
 			l := zerolog.New(io.Discard)
 			scanResult := &ScanResult{Searchees: []*Searchee{root}}
-			trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+			trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 			require.NoError(t, err)
 			enabled := map[int]struct{}{indexer.ID: {}}
 			work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)

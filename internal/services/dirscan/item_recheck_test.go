@@ -39,7 +39,7 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	l := zerolog.New(io.Discard)
 
 	// The run takes its snapshot while both items are pending.
-	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 	require.NoError(t, err)
 	enabled := map[int]struct{}{1: {}}
 	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)

@@ -650,7 +650,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, scanResult, fileIDIndex, &l)
+	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, target.instance, scanResult, fileIDIndex, &l)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to persist scan progress")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("persist scan progress: %v", err), dir.TargetInstanceID, &l)
@@ -937,13 +937,16 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips,
-	// and files marked already seeding by an earlier run keep that status.
+	// and files marked already seeding by an earlier run keep that status. Without
+	// identity no file could enter the index, so its stats would only cost time.
 	fileIDIndex := &seedingIndex{}
-	if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, target.backend, l); err != nil {
-		l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-	} else {
-		fileIDIndex = index
-		scanner.SetFileIDIndex(index)
+	if models.FilesystemCapabilitiesOf(target.instance).Identity {
+		if index, err := s.buildFileIDIndex(ctx, target.instance, target.backend, l); err != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+		} else {
+			fileIDIndex = index
+			scanner.SetFileIDIndex(index)
+		}
 	}
 
 	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)

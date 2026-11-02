@@ -24,6 +24,7 @@ import (
 // see the exact bytes the caller built.
 type slashBackend struct {
 	fsops.Backend
+	d       fsops.PathDialect
 	walk    []fsops.WalkEntry
 	stated  []string
 	batches [][]string
@@ -33,7 +34,12 @@ func newSlashBackend(walk ...fsops.WalkEntry) *slashBackend {
 	return &slashBackend{Backend: localbackend.NewBackend(), walk: walk}
 }
 
-func (b *slashBackend) Paths() fsops.PathDialect { return fsops.SlashPaths }
+func (b *slashBackend) Paths() fsops.PathDialect {
+	if b.d != nil {
+		return b.d
+	}
+	return fsops.SlashPaths
+}
 
 func (b *slashBackend) WalkDir(context.Context, string, fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
 	ch := make(chan fsops.WalkEntry, len(b.walk))
@@ -103,18 +109,25 @@ func TestScanDirectoryUsesBackendDialect(t *testing.T) {
 func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 
-	b := newSlashBackend()
-	index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
-	files := qbt.TorrentFiles{{Name: "Show.S01/episode.mkv"}, {Name: "Show.S01/sample/s.mkv"}}
-	statErrors := addTorrentFilesToFileIDIndex(context.Background(), index, "hash", "/data/torrents", files, b)
+	for _, tt := range dialects() {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b := newSlashBackend()
+			b.d = tt.d
+			index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
+			files := qbt.TorrentFiles{{Name: "Show.S01/episode.mkv"}, {Name: "Show.S01/sample/s.mkv"}}
+			savePath := dialectPath(tt.d, "/data/torrents")
+			statErrors := addTorrentsToFileIDIndex(context.Background(), index, map[string]qbt.TorrentFiles{"hash": files}, map[string]string{"hash": savePath}, b)
 
-	require.Zero(t, statErrors)
-	require.Equal(t, []string{
-		"/data/torrents/Show.S01/episode.mkv",
-		"/data/torrents/Show.S01/sample/s.mkv",
-	}, b.stated)
-	// The fake reports no identity, so nothing is indexed; the paths are the point.
-	require.Empty(t, index.byKey)
+			require.Zero(t, statErrors)
+			require.Equal(t, [][]string{
+				{savePath},
+				{dialectPath(tt.d, "/data/torrents/Show.S01/episode.mkv"), dialectPath(tt.d, "/data/torrents/Show.S01/sample/s.mkv")},
+			}, b.batches)
+			// The fake reports no identity, so nothing is indexed. The paths are the point.
+			require.Empty(t, index.byKey)
+		})
+	}
 }
 
 // backslashPaths is Windows grammar on any GOOS, so a host filepath left on a backend path fails on Linux too.
