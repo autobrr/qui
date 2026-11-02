@@ -26,6 +26,7 @@ export interface UseTorrentTableColumnsParams {
   formatTimestamp: (timestamp: number, relative?: boolean) => string
   instanceMaxRatio?: number
   supportsTrackerHealth: boolean
+  supportsLiveReannounce: boolean
   isUnifiedView: boolean
   isCrossInstanceEndpoint?: boolean
   desktopViewMode: string
@@ -60,6 +61,7 @@ export function useTorrentTableColumns({
   formatTimestamp,
   instanceMaxRatio,
   supportsTrackerHealth,
+  supportsLiveReannounce,
   isUnifiedView,
   isCrossInstanceEndpoint,
   desktopViewMode,
@@ -85,11 +87,12 @@ export function useTorrentTableColumns({
       formatTimestamp: (timestamp: number) => formatTimestamp(timestamp, true),
       instanceMaxRatio,
       supportsTrackerHealth,
+      supportsLiveReannounce,
       showInstanceColumn: isUnifiedView && isCrossInstanceEndpoint,
       viewMode: desktopViewMode as TableViewMode,
       trackerCustomizationLookup,
     }, t),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, isTorrentSelected, handleCheckboxPointerDown, handleCheckboxChange, instanceMaxRatio, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, isTorrentSelected, handleCheckboxPointerDown, handleCheckboxChange, instanceMaxRatio, supportsTrackerHealth, supportsLiveReannounce, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
   )
 
   const torrentIdentityCounts = useMemo(() => {

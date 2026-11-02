@@ -63,8 +63,11 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 vi.mock("./details", () => ({
-  GeneralTabHorizontal: ({ torrent, properties }: { torrent: Torrent; properties: TorrentProperties }) => (
-    <div data-testid="general">{`${torrent.progress} ${properties.seeds}/${properties.seeds_total}`}</div>
+  GeneralTabHorizontal: ({ torrent, properties, reannounceIn }: { torrent: Torrent; properties: TorrentProperties; reannounceIn?: string }) => (
+    <>
+      <div data-testid="general">{`${torrent.progress} ${properties.seeds}/${properties.seeds_total}`}</div>
+      {reannounceIn !== undefined && <div data-testid="reannounce">{reannounceIn}</div>}
+    </>
   ),
   CrossSeedTable: () => null,
   PeersTable: ({ peers }: { peers?: SortedPeer[] }) => <div data-testid="peers">{peers?.length}</div>,
@@ -225,5 +228,85 @@ describe("TorrentDetailsPanel mobile layout", () => {
     expect(onNavigateToTorrent).toHaveBeenCalledWith(2, "b")
     expect(getByRole("checkbox").getAttribute("aria-checked")).toBe("true")
     mocks.matches = kept
+  })
+})
+
+describe("TorrentDetailsPanel Reannounce In row", () => {
+  const keptGeneral = mocks.tabs.general
+  const keptCapabilities = mocks.capabilities
+
+  // The hook hands the panel the live row and the properties with the row merged in.
+  function setGeneral(state: string, reannounce: number) {
+    mocks.tabs.general = {
+      data: { row: { progress: 1, state } as Torrent, properties: { seeds: 1, seeds_total: 2, reannounce } as TorrentProperties },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  // The value next to the label in the mobile layout, or null when the row is absent.
+  function mobileReannounce(container: HTMLElement): string | null {
+    const label = Array.from(container.querySelectorAll("span")).find(span => span.textContent === "Reannounce")
+    return label ? label.nextElementSibling?.textContent ?? "" : null
+  }
+
+  afterEach(() => {
+    mocks.tabs.general = keptGeneral
+    mocks.capabilities = keptCapabilities
+  })
+
+  it("shows the time until the next announce when the instance sends it in the list", async () => {
+    mocks.capabilities = { data: { supportsLiveReannounce: true } }
+    setGeneral("uploading", 840)
+    const { findByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+    expect((await findByTestId("reannounce")).textContent).toBe("14m")
+    unmount()
+
+    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    await findByText("Reannounce")
+    expect(mobileReannounce(container)).toBe("14m")
+  })
+
+  it("has no row when the instance does not send the value in the list", async () => {
+    mocks.capabilities = { data: { supportsLiveReannounce: false } }
+    setGeneral("uploading", 840)
+    const { findByTestId, queryByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+    await findByTestId("general")
+    expect(queryByTestId("reannounce")).toBeNull()
+    unmount()
+
+    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    await findByText("Time Active")
+    expect(mobileReannounce(container)).toBeNull()
+  })
+
+  it("shows a dash for a stopped torrent", async () => {
+    mocks.capabilities = { data: { supportsLiveReannounce: true } }
+    setGeneral("stoppedUP", 0)
+    const { findByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+    expect((await findByTestId("reannounce")).textContent).toBe("—")
+    unmount()
+
+    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    await findByText("Reannounce")
+    expect(mobileReannounce(container)).toBe("—")
+  })
+
+  it("shows the new value after the live row changes", async () => {
+    mocks.capabilities = { data: { supportsLiveReannounce: true } }
+    setGeneral("uploading", 840)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const torrent = makeTorrent({ hash: "a", progress: 0 })
+    const panel = () => (
+      <QueryClientProvider client={client}>
+        <TorrentDetailsPanel instanceId={1} torrent={torrent} onClose={vi.fn()} initialTab="general" layout="horizontal" />
+      </QueryClientProvider>
+    )
+    const { findByTestId, rerender } = render(panel())
+    expect((await findByTestId("reannounce")).textContent).toBe("14m")
+
+    setGeneral("uploading", 0)
+    rerender(panel())
+    expect((await findByTestId("reannounce")).textContent).toBe("now")
   })
 })

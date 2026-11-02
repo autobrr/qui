@@ -119,7 +119,7 @@ describe("useTorrentDetailTab general", () => {
   it("merges the live row over the fields that load one time", async () => {
     const { result } = renderTab("general")
     await waitFor(() => expect(result.current.data?.properties).toBeDefined())
-    sendRow({ dlspeed: 500, upspeed: 70, num_seeds: 3, num_complete: 9, num_leechs: 2, num_incomplete: 4, ratio: 1.5, downloaded: 1000, uploaded: 1500, time_active: 100, seeding_time: 50 })
+    sendRow({ dlspeed: 500, upspeed: 70, num_seeds: 3, num_complete: 9, num_leechs: 2, num_incomplete: 4, ratio: 1.5, downloaded: 1000, uploaded: 1500, time_active: 100, seeding_time: 50, reannounce: 840 })
 
     expect(result.current.data?.properties).toEqual({
       ...loadedProperties,
@@ -134,6 +134,7 @@ describe("useTorrentDetailTab general", () => {
       total_uploaded: 1500,
       time_elapsed: 100,
       seeding_time: 50,
+      reannounce: 840,
     })
     expect(result.current.data?.row?.dlspeed).toBe(500)
   })
