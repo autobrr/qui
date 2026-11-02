@@ -421,6 +421,7 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 		b.i64(t.NumIncomplete)
 		b.i64(t.ConnectionsCount)
 		b.i64(t.PiecesHave)
+		b.i64(t.Reannounce)
 	}
 	return b.sum()
 }

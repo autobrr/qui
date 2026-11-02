@@ -238,6 +238,21 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
+	// Reannounce is nil when the instance does not send reannounce in the
+	// torrent list (before Web API 2.10.0), where the decoded 0 would read as "now".
+	Reannounce *int64 `json:"reannounce,omitempty"`
+}
+
+// newTorrentView builds the list/SSE row for t. liveReannounce is
+// Client.SupportsLiveReannounce of the instance that owns t. Reannounce is a
+// copy: a pointer into t would keep the whole source slice alive behind each
+// page that the SSE stream detaches.
+func newTorrentView(t *qbt.Torrent, health TrackerHealth, liveReannounce bool) TorrentView {
+	tv := TorrentView{Torrent: t, TrackerHealth: health}
+	if liveReannounce {
+		tv.Reannounce = new(t.Reannounce)
+	}
+	return tv
 }
 
 // CrossInstanceTorrentView extends TorrentView with cross-instance metadata.
@@ -1658,11 +1673,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
+		liveReannounce := client.SupportsLiveReannounce()
 		for i := range paginatedTorrents {
-			paginatedViews[i] = TorrentView{
-				Torrent:       &paginatedTorrents[i],
-				TrackerHealth: cachedHealth.Health(paginatedTorrents[i].Hash),
-			}
+			paginatedViews[i] = newTorrentView(&paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash), liveReannounce)
 		}
 	}
 
@@ -1759,10 +1772,11 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
+	liveReannounce := client.SupportsLiveReannounce()
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
-			TorrentView:  &TorrentView{Torrent: &torrents[i], TrackerHealth: cachedHealth.Health(torrents[i].Hash)},
+			TorrentView:  new(newTorrentView(&torrents[i], cachedHealth.Health(torrents[i].Hash), liveReannounce)),
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}

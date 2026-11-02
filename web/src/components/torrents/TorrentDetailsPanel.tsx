@@ -29,6 +29,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { formatReannounceIn } from "@/lib/torrent-state-utils"
 import { breakableName, cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeer, Torrent, TorrentFile, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -195,6 +196,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!liveTorrent) return torrent
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
+  // The row has no reannounce before qBittorrent 5.0, and the General tab then shows no Reannounce row.
+  const reannounceIn = displayTorrent?.reannounce !== undefined
+    ? formatReannounceIn(displayTorrent.state, displayTorrent.reannounce, t)
+    : undefined
 
   const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")
 
@@ -1097,6 +1102,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <MobileInfoGroup title={t("detailsPanel.sections.timeInformation")}>
                     <MobileInfoRow label={t("generalTab.timeActive")}>{formatDuration(properties.time_elapsed || 0)}</MobileInfoRow>
                     <MobileInfoRow label={t("generalTab.seedingTime")}>{formatDuration(properties.seeding_time || 0)}</MobileInfoRow>
+                    {reannounceIn !== undefined && <MobileInfoRow label={t("tableColumns.reannounce")}>{reannounceIn}</MobileInfoRow>}
                     <MobileInfoRow label={t("detailsPanel.labels.added")}>{formatTimestamp(properties.addition_date, true)}</MobileInfoRow>
                     {properties.completion_date && properties.completion_date !== -1 && (
                       <MobileInfoRow label={t("detailsPanel.labels.completed")}>{formatTimestamp(properties.completion_date, true)}</MobileInfoRow>
@@ -1411,6 +1417,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               displayComment={displayComment}
               displayCreatedBy={displayCreatedBy}
               queueingEnabled={queueLimits.enabled}
+              reannounceIn={reannounceIn}
             />
           </TabsContent>
 
