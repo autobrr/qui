@@ -182,11 +182,12 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 	return nil
 }
 
-// followSymlink returns what the symlink at p points to. A link that leads
-// nowhere, dangling or in a loop, returns nil, since no torrent can use a file
-// through it.
+// followSymlink returns what the symlink at p points to. A dangling link, or a
+// loop reported as ELOOP, returns nil, since no torrent can use a file through it.
 // Any other failure is returned, as for a regular entry whose identity cannot
-// be read, because the target could be a torrent's file.
+// be read, because the target could be a torrent's file. That includes the code
+// Windows reports for a link it cannot resolve, loop or not, because keeping one
+// unit costs far less here than stopping the run does in collectInUseIDs.
 func followSymlink(ctx context.Context, p string, backend fsops.Backend) (*fsops.LstatInfo, error) {
 	info, err := backend.Stat(ctx, p)
 	if err != nil {
@@ -221,9 +222,11 @@ type inUseIDs struct {
 }
 
 // collectInUseIDs reads the identity of each torrent file or folder through
-// backend, following links, as qBittorrent does. A path that is not on disk, or that
-// runs into a symlink loop, protects nothing, since qBittorrent cannot read it
-// either. A path qui may not look up is skipped, as the scan skips a denied
+// backend, following links, as qBittorrent does. A path that is not on disk
+// protects nothing, since qBittorrent cannot read it either. A path whose link
+// cannot be resolved is treated like a missing one, because qBittorrent on the
+// same host reads the same path, and is logged because that is assumed, not
+// known. A path qui may not look up is skipped, as the scan skips a denied
 // subtree, unless failDenied is set. Any other failure is returned, a denied
 // identity read included, because a file the run cannot identify could be one
 // of the targets. Set failDenied for torrent folders: a denied one could be an
@@ -240,19 +243,20 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 	}
 	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique)), fileDirs: make(map[string]struct{})}
 	infos, errs := fsops.StatAll(ctx, backend, unique)
-	denied, firstDenied := 0, ""
+	var denied, unresolvable skippedPaths
 	for i := range unique {
 		if err := errs[i]; err != nil {
-			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				continue
+			}
+			if isUnresolvableLinkError(err) {
+				unresolvable.add(unique[i])
 				continue
 			}
 			// A backend that wraps both errors lost the link, which says
 			// nothing about the file's permissions.
 			if !failDenied && errors.Is(err, fs.ErrPermission) && !errors.Is(err, fsops.ErrConnectionLost) {
-				if denied == 0 {
-					firstDenied = unique[i]
-				}
-				denied++
+				denied.add(unique[i])
 				continue
 			}
 			return nil, err
@@ -270,10 +274,28 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		}
 		ids.keys[key] = struct{}{}
 	}
-	if denied > 0 {
-		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent paths qui may not look up")
-	}
+	unresolvable.warn("orphanscan: skipping torrent paths whose links cannot be resolved")
+	denied.warn("orphanscan: skipping torrent paths qui may not look up")
 	return ids, nil
+}
+
+// skippedPaths counts the paths one collectInUseIDs call skips for one reason.
+type skippedPaths struct {
+	count int
+	first string
+}
+
+func (s *skippedPaths) add(p string) {
+	if s.count == 0 {
+		s.first = p
+	}
+	s.count++
+}
+
+func (s *skippedPaths) warn(msg string) {
+	if s.count > 0 {
+		log.Warn().Int("count", s.count).Str("first", s.first).Msg(msg)
+	}
 }
 
 // holds reports whether a torrent file shares the identity of info, a regular
