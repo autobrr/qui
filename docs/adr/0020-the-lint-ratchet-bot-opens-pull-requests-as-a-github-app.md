@@ -25,4 +25,4 @@ Ratchet runs spend from the same monthly limit as triage. A month with many ratc
 
 The private key of the app is in the `claude` environment. If someone leaks it, revoke the key on the app settings page and make a new one.
 
-Triage also uses the app for one comment. A team mention from `GITHUB_TOKEN` notifies nobody, so after the triage agent finishes, a workflow step mentions the rls-review team as the app. The agent never holds that token. ADR 0017 rejected an app for triage because it adds a private key. This use adds none, because the key already exists for the ratchet.
+Triage also uses the app for one comment. A team mention from `GITHUB_TOKEN` notifies nobody, so after the triage job ends, a second job mentions the rls-review team as the app. As with the ratchet, the job that runs the agent never gets the key or the token. The second job has no checkout and runs no npm package, so code from the agent run cannot reach the key. ADR 0017 rejected an app for triage because it adds a private key. Here the key already exists for the ratchet, and only the second job reads it.
