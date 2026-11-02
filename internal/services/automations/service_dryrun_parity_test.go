@@ -93,6 +93,10 @@ type stubQbt struct {
 	localFS  bool // the instance has local filesystem access
 	// torrentsAfterAdd replaces torrents on torrents/add, so an export's verification finds the torrent.
 	torrentsAfterAdd string
+	// refuse makes the stub answer a write with 409 Conflict, as qBittorrent does when it refuses a request.
+	refuse func(path string, form url.Values) bool
+	// webAPIVersion replaces the default Web API version 2.10.0.
+	webAPIVersion string
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -110,7 +114,13 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v2/auth/login":
 		_, _ = w.Write([]byte("Ok."))
 	case "/api/v2/app/webapiVersion":
-		_, _ = w.Write([]byte("2.10.0"))
+		s.mu.Lock()
+		version := s.webAPIVersion
+		s.mu.Unlock()
+		if version == "" {
+			version = "2.10.0"
+		}
+		_, _ = w.Write([]byte(version))
 	case "/api/v2/sync/maindata":
 		s.mu.Lock()
 		torrents := s.torrents
@@ -136,6 +146,11 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		path := strings.TrimPrefix(r.URL.Path, "/api/v2/")
 		s.mu.Lock()
+		if s.refuse != nil && s.refuse(path, r.Form) {
+			s.mu.Unlock()
+			http.Error(w, "refused", http.StatusConflict)
+			return
+		}
 		s.writes = append(s.writes, stubWrite{path: path, form: r.Form})
 		if path == "torrents/add" && s.torrentsAfterAdd != "" {
 			s.torrents = s.torrentsAfterAdd
