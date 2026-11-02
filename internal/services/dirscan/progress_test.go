@@ -63,7 +63,7 @@ func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
 	})
 }
 
-// regression: #TBD
+// regression: #3736
 func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	t.Parallel()
 
@@ -107,13 +107,13 @@ func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	}
 }
 
-// regression: #TBD
+// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansSQLite(t *testing.T) {
 	t.Parallel()
 	runTrackedFileRescanTest(t, testdb.NewMigratedSQLite(t, "dirscan-rescan"))
 }
 
-// regression: #TBD
+// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansPostgresIntegration(t *testing.T) {
 	runTrackedFileRescanTest(t, testdb.NewMigratedPostgres(t, "dirscan-rescan"))
 }
