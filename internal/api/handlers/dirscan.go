@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
 
@@ -777,11 +778,18 @@ func (p *webhookTriggerScanPayload) isSimpleMode() bool {
 	return p.Path != ""
 }
 
-func normalizeScanRoot(path string) string {
+func normalizeScanRoot(path, dirPath string) string {
 	cleanPath := filepath.Clean(path)
 	info, err := os.Stat(cleanPath)
 	if err == nil && !info.IsDir() {
-		return filepath.Dir(cleanPath)
+		parent := filepath.Dir(cleanPath)
+		// A volume in CD1/ belongs to the release one level up, with CD2/,
+		// when that folder is still inside the directory.
+		if release := filepath.Dir(parent); crossseed.IsArchiveVolume(cleanPath) &&
+			dirscan.IsDiscFolder(filepath.Base(parent)) && pathMatchesDirectory(release, dirPath) {
+			return release
+		}
+		return parent
 	}
 	return cleanPath
 }
@@ -920,7 +928,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	scanRoot := normalizeScanRoot(cleanPath)
+	scanRoot := normalizeScanRoot(cleanPath, filepath.Clean(bestMatch.Path))
 	runID, err := h.service.StartWebhookScan(r.Context(), bestMatch.ID, scanRoot)
 	if err != nil {
 		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Msg("dirscan: webhook failed to start scan")

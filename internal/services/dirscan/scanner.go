@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -53,6 +55,9 @@ type Searchee struct {
 	Path   string         // Absolute path to the searchee root
 	Files  []*ScannedFile // Files in this searchee
 	IsDisc bool           // True if this is a disc-layout folder
+	// IsArchived marks an archived release: its payload is in archive volumes,
+	// so it keeps every file and is searched under its folder name.
+	IsArchived bool
 }
 
 // ScanResult holds the results of a directory scan.
@@ -69,6 +74,11 @@ type Scanner struct {
 
 	// Identities of files already seeding, for skipping them.
 	seenFileIDs *seedingIndex
+
+	// rootMayBeRelease is set for a scan of a subfolder of the directory, such
+	// as a webhook scan. Such a root can itself be an archived release. The
+	// directory root never is, since it holds one release per top-level folder.
+	rootMayBeRelease bool
 }
 
 // NewScanner creates a new directory scanner.
@@ -113,6 +123,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 
 	var order []*rootEntry
 	byName := map[string]*rootEntry{} // nil for a name that is not a searchee
+	var looseFiles []*ScannedFile     // root-level files that are not media, for an archived root
 	for entry := range ch {
 		if entry.Path == rootPath {
 			if err := checkScanRoot(&entry, rootPath); err != nil {
@@ -133,6 +144,8 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 			byName[name] = top
 			if top != nil {
 				order = append(order, top)
+			} else if s.rootMayBeRelease && entry.Err == nil && entry.Mode.IsRegular() {
+				looseFiles = append(looseFiles, scannedFile(&entry, strings.Clone(name)))
 			}
 		}
 		switch {
@@ -154,27 +167,54 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 		return nil, fmt.Errorf("scan directory: %w", err)
 	}
 
+	return s.buildResult(d, rootPath, order, looseFiles), nil
+}
+
+// buildResult turns the top-level entries of a finished walk into searchees.
+func (s *Scanner) buildResult(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile) *ScanResult {
 	result := &ScanResult{}
+	if s.rootMayBeRelease {
+		if root := archivedRoot(d, rootPath, order, looseFiles); root != nil {
+			s.addSearchee(result, root)
+			return result
+		}
+	}
 	for _, top := range order {
 		if top.failed {
 			continue
 		}
 		searchee := top.searchee
-		// A folder holds its other files only until the walk has shown
-		// whether it is a disc layout, since the marker can come after them.
-		// The clone frees the slots they took.
-		if !searchee.IsDisc {
-			searchee.Files = slices.Clone(slices.DeleteFunc(searchee.Files, func(f *ScannedFile) bool {
-				return !isMediaFile(d.Base(f.Path))
-			}))
-		}
+		keepFiles(d, searchee)
 		if len(searchee.Files) == 0 {
 			continue
 		}
 		s.addSearchee(result, searchee)
 	}
+	return result
+}
 
-	return result, nil
+// keepFiles drops the files that a folder searchee does not search. A folder
+// holds its other files only until the walk has shown whether it is a disc
+// layout or an archived release, since the marker or the largest volume can
+// come after them. Both keep every file. The clone frees the slots that the
+// dropped files took.
+func keepFiles(d fsops.PathDialect, searchee *Searchee) {
+	if searchee.IsDisc {
+		return
+	}
+	// A folder with no archive volume is never archived. This check is cheaper
+	// than the full test, which most media folders would otherwise pay.
+	hasVolume := slices.ContainsFunc(searchee.Files, func(f *ScannedFile) bool {
+		name := d.Base(f.Path)
+		return !isMediaFile(name) && crossseed.IsArchiveVolume(name)
+	})
+	searchee.IsArchived = hasVolume && isArchivedRelease(d, searchee.Files)
+	if searchee.IsArchived {
+		return
+	}
+	searchee.Files = slices.Clone(slices.DeleteFunc(searchee.Files, func(f *ScannedFile) bool {
+		return !isMediaFile(d.Base(f.Path))
+	}))
 }
 
 // newRootEntry starts a top-level entry from the first walk entry under its
@@ -210,15 +250,79 @@ func (top *rootEntry) add(entry *fsops.WalkEntry, rest string, d fsops.PathDiale
 	if !entry.Mode.IsRegular() {
 		return
 	}
-	top.searchee.Files = append(top.searchee.Files, &ScannedFile{
+	top.searchee.Files = append(top.searchee.Files, scannedFile(entry, rest))
+}
+
+func scannedFile(entry *fsops.WalkEntry, relPath string) *ScannedFile {
+	return &ScannedFile{
 		Path:      entry.Path,
-		RelPath:   rest,
+		RelPath:   relPath,
 		Size:      entry.Size,
 		ModTime:   entry.ModTime,
 		FileID:    entry.FileID,
 		LinkCount: entry.Nlinks,
 		HasLinks:  entry.Nlinks > 1,
+	}
+}
+
+// isArchivedRelease applies the archived-release test of Library Scan to the
+// files of a searchee. The test reads slash paths, so a Windows path gives the
+// same answer.
+func isArchivedRelease(d fsops.PathDialect, files []*ScannedFile) bool {
+	return crossseed.IsArchivedRelease(func(yield func(string, int64) bool) {
+		for _, f := range files {
+			if !yield(d.ToSlash(f.RelPath), f.Size) {
+				return
+			}
+		}
 	})
+}
+
+var discFolderName = regexp.MustCompile(`(?i)^(cd|dis[ck]|dvd)[ ._-]?\d+$`)
+
+// IsDiscFolder reports whether a folder name marks one part of a release, such
+// as CD1 or Disc 2.
+func IsDiscFolder(name string) bool {
+	return discFolderName.MatchString(name)
+}
+
+// archivedRoot returns the scan root as one searchee when the root itself is
+// an archived release, or nil when it is not. Its own top-level files, with the
+// files of its disc folders such as CD1/, must also pass the test, so that a
+// parent folder of releases, such as a merged webhook root or a show folder, is
+// not read as one release. The root searchee takes copies of the files with
+// paths relative to the root.
+func archivedRoot(d fsops.PathDialect, rootPath string, order []*rootEntry, looseFiles []*ScannedFile) *Searchee {
+	topLevel := slices.Clone(looseFiles)
+	for _, top := range order {
+		singleFile := len(top.searchee.Files) == 1 && top.searchee.Files[0].Path == top.searchee.Path
+		if !top.failed && (singleFile || IsDiscFolder(top.searchee.Name)) {
+			topLevel = append(topLevel, top.searchee.Files...)
+		}
+	}
+	if !isArchivedRelease(d, topLevel) {
+		return nil
+	}
+
+	files := looseFiles
+	for _, top := range order {
+		if top.failed {
+			continue
+		}
+		for _, f := range top.searchee.Files {
+			rel, err := d.Rel(rootPath, f.Path)
+			if err != nil {
+				continue
+			}
+			cp := *f
+			cp.RelPath = rel
+			files = append(files, &cp)
+		}
+	}
+	if !isArchivedRelease(d, files) {
+		return nil
+	}
+	return &Searchee{Name: d.Base(rootPath), Path: rootPath, Files: files, IsArchived: true}
 }
 
 // checkScanRoot fails the scan when the walk could not read the root or the

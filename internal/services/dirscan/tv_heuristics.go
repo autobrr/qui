@@ -24,6 +24,9 @@ type tvGroupKey struct {
 }
 
 func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkItem {
+	if searchee.IsArchived {
+		return buildArchivedWorkItems(searchee, parser)
+	}
 	tvGroups := groupTVEpisodes(searchee, parser)
 	if len(tvGroups) == 0 {
 		return []searcheeWorkItem{{searchee: searchee}}
@@ -51,6 +54,48 @@ func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 	}
 
 	return items
+}
+
+// buildArchivedWorkItems searches an archived release under its folder name.
+// The video file names of an archived release are samples, so they are never
+// grouped as episodes. When subfolders read as TV episodes, each one is also
+// searched as its own release, and the folder is the pack search.
+func buildArchivedWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkItem {
+	pack := searcheeWorkItem{searchee: searchee}
+
+	var episodes []searcheeWorkItem
+	byFolder := make(map[string]*Searchee)
+	for _, f := range searchee.Files {
+		folder, rest, nested := strings.Cut(filepath.ToSlash(f.RelPath), "/")
+		if !nested {
+			continue
+		}
+		ep, seen := byFolder[folder]
+		if !seen {
+			if meta := parser.Parse(folder); meta.Season != nil && meta.Episode != nil {
+				// f.Path ends with the folder, a separator, and rest.
+				ep = &Searchee{Name: folder, Path: f.Path[:len(f.Path)-len(rest)-1], IsArchived: true}
+				episodes = append(episodes, searcheeWorkItem{searchee: ep, isEpisode: true})
+			}
+			byFolder[folder] = ep
+		}
+		if ep == nil {
+			continue
+		}
+		sf := *f
+		sf.RelPath = f.RelPath[len(folder)+1:]
+		ep.Files = append(ep.Files, &sf)
+	}
+
+	if len(episodes) == 0 {
+		// A single archived release follows the name rule that Library Scan uses
+		// for "Skip individual episodes".
+		if meta := parser.Parse(searchee.Name); meta.Episode != nil {
+			pack.isEpisode = true
+		}
+		return []searcheeWorkItem{pack}
+	}
+	return append([]searcheeWorkItem{pack}, episodes...)
 }
 
 type tvGroup struct {

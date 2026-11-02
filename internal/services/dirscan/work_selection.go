@@ -82,7 +82,8 @@ func selectEligibleRootWork(
 			// the option avoided this scan, not as a running total of episodes.
 			// Same rule as SkipIndividualEpisodes in crossseed/service.go: an episode
 			// that cannot join a season pack search is dropped, never searched alone.
-			// Change both together.
+			// An archived release is an episode when its name reads as one, as a
+			// torrent name does there (buildArchivedWorkItems). Change both together.
 			if skipIndividualEpisodes && item.isEpisode {
 				selection.skippedEpisodes++
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
@@ -201,7 +202,7 @@ func buildWorkItemDropDecision(
 		return decision
 	}
 
-	contentFiles := filterContentFiles(item.searchee.Files)
+	contentFiles := filterContentFiles(item.searchee)
 	decision.name = item.searchee.Name
 	decision.path = item.searchee.Path
 	decision.contentFiles = len(contentFiles)
@@ -310,7 +311,7 @@ func workItemIsStale(item searcheeWorkItem, cutoff time.Time, skipIndividualEpis
 		return false
 	}
 
-	contentFiles := filterContentFiles(item.searchee.Files)
+	contentFiles := filterContentFiles(item.searchee)
 	if len(contentFiles) == 0 {
 		return false
 	}

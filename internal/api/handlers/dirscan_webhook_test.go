@@ -383,6 +383,64 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	require.Equal(t, 1, run.FilesFound)
 }
 
+// A webhook path to a volume in CD1/ scans the whole release, with CD2/.
+func TestWebhookTriggerScan_VolumeInDiscFolderScansTheRelease(t *testing.T) {
+	ctx := t.Context()
+
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook-disc")
+	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	localAccess := true
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	require.NoError(t, err)
+
+	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, instanceStore,
+		nil, nil, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()), nil)
+	hub, events := newActivityHub(t)
+	service.SetActivityPublisher(hub)
+	handler := NewDirScanHandler(service, instanceStore)
+
+	root := t.TempDir()
+	release := filepath.Join(root, "Example.Movie.2003.DVDRip.XviD-GRP")
+	for _, cd := range []string{"CD1", "CD2"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(release, cd), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(release, cd, "movie.rar"), []byte("volume"), 0o600))
+	}
+	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path: root, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/dir-scan/webhook/scan",
+		dirScanWebhookJSONBody(t, webhookPayloadSimple{Path: filepath.Join(release, "CD1", "movie.rar")}))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.WebhookTriggerScan(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp dirScanTriggerResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, release, resp.ScanRoot)
+
+	waitDirScanIdle(t, service, events, created.ID)
+	run, err := models.NewDirScanStore(db).GetRun(ctx, resp.RunID)
+	require.NoError(t, err)
+	require.Equal(t, 2, run.FilesFound)
+}
+
+// A volume in a configured directory named CD1 never climbs out of that directory.
+func TestNormalizeScanRoot_StaysInsideTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	disc := filepath.Join(root, "CD1")
+	require.NoError(t, os.MkdirAll(disc, 0o755))
+	volume := filepath.Join(disc, "movie.rar")
+	require.NoError(t, os.WriteFile(volume, []byte("volume"), 0o600))
+
+	require.Equal(t, root, normalizeScanRoot(volume, root))
+	require.Equal(t, disc, normalizeScanRoot(volume, disc))
+}
+
 func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 	ctx := t.Context()
 

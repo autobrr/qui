@@ -185,7 +185,21 @@ If you remove a torrent from qBittorrent, its files leave the index. For example
 
 **Extras:** `.nfo`, `.sfv`, `.srt`, `.sub`, `.idx`, `.ass`, `.ssa`
 
-Extras belong to releases and affect partial-match behavior. If a torrent includes an `.nfo` file that does not exist on disk, the result is a partial match, not a full match.
+**Archives:** `.rar`, `.r00`–`.z99`, `.zip`, `.7z`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.bz2`
+
+Extras belong to releases and affect partial-match behavior. If a torrent includes an `.nfo` file that does not exist on disk, the result is a partial match, not a full match. For a media folder, a local file that is not in the torrent also makes the result partial.
+
+### Archived releases
+
+An archived release stores its payload in archive volumes, for example a RAR set. A folder is an archived release when its largest file is an archive volume. Samples, proofs, and extras do not count for this test. Library Scan uses the same test.
+
+Dir Scan keeps all files of an archived release and searches it under its folder name. The sample video does not change the search name. If the subfolders of an archived release have TV episode names, Dir Scan also searches each subfolder as its own release.
+
+The match is full when each file of the torrent is on disk. Extra local files, for example `Thumbs.db` or a Synology `@eaDir/` folder, do not make the result partial.
+
+- Archive volumes must keep their scene names, in both match modes. Dir Scan pairs each volume by its path in the release, not by its size.
+- A folder that holds both the volumes and the extracted file does not match. Keep only one form.
+- A media folder that is not an archived release still ignores archive files. A loose archive file in the scan root is not scanned.
 
 ### Disc layouts
 
@@ -198,7 +212,7 @@ qui treats folders that contain `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures 
 - **Special entries on every platform**, including sockets, FIFOs (named pipes) and devices.
 - **Windows junctions**. A junction is not scanned as a media file even when its name ends in a media extension such as `.mkv`.
 - **Files with permission errors** (qui continues the scan and skips the file)
-- **Non-media files** outside disc layouts
+- **Non-media files** outside disc layouts and archived releases
 
 On Windows, recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible when their metadata is accessible. Other files with unknown reparse tags remain excluded. [Orphan Scan](../orphan-scan.md#abandoned-directories) explains these Windows terms.
 
@@ -212,7 +226,7 @@ Open **Dir Scan > Settings**:
 | Size Tolerance (%) | Allows small differences in total torrent size when qui filters candidates before file matching. |
 | Minimum Piece Ratio (%) | Sets the minimum percentage of torrent data that must exist on disk for partial matches. |
 | Max searchees per run | Limits how many eligible searchees each run processes. Set `0` for unlimited. Useful for progress across restarts. |
-| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual and scheduled scans. Webhook scans ignore this cutoff. Set `0` to disable. |
+| Only process items changed within the last (days) | Excludes stale work items before search. Uses video, audio, and archive volume mtimes only for manual and scheduled scans. Webhook scans ignore this cutoff. Set `0` to disable. |
 | Allow partial matches | Adds torrents even if they have extra or missing files compared to disk. |
 | Download missing files | Downloads files missing from disk for partial matches. Hardlink and reflink modes require this setting for season packs and partial releases. Enabled by default. |
 | Skip piece boundary safety check | Allows partial matches where missing-file downloads can modify pieces that contain existing content. |
@@ -241,11 +255,11 @@ The setting counts top-level folders, not episodes. It does **not** cap the tota
 
 This setting reduces tracker and API load. It excludes stale content before searches start.
 
-- If you scan movies or music, items stay in scope only when their newest video or audio file falls within the cutoff.
+- If you scan movies or music, items stay in scope only when their newest video or audio file falls within the cutoff. For an archived release, the newest archive volume decides.
 - For TV, qui evaluates work items at the season and episode level. A single fresh episode does not pull an entire older show into scope.
 - If all episode files in a season work item fall within the cutoff, qui keeps the season-pack search. Otherwise, qui falls back to fresh episode-level work only. If you enable [Skip individual episodes](#skip-individual-episodes), no episode-level fallback occurs. The season pack stays in scope as long as its newest episode falls within the cutoff.
 - qui computes the cutoff as `now - N days` (for example, `7` means "older than 7 days").
-- The timestamp is the filesystem **modified time (mtime)** from video and audio files only. It ignores subtitle and extra mtimes, release dates, and qBittorrent add times.
+- The timestamp is the filesystem **modified time (mtime)** from video, audio, and archive volume files only. It ignores subtitle and extra mtimes, release dates, and qBittorrent add times.
 - Webhook scans ignore the cutoff and use the webhook path as the freshness signal.
 - `0` disables age filtering.
 
