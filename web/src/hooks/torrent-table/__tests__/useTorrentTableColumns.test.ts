@@ -25,7 +25,6 @@ function makeParams(overrides: Partial<UseTorrentTableColumnsParams> = {}): UseT
     formatTimestamp: (n: number) => String(n),
     instanceMaxRatio: undefined,
     supportsTrackerHealth: false,
-    supportsLiveReannounce: true,
     isUnifiedView: false,
     isCrossInstanceEndpoint: false,
     desktopViewMode: "normal",

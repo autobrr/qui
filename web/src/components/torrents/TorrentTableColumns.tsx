@@ -298,7 +298,6 @@ interface CreateColumnsParams {
   formatTimestamp?: (timestamp: number) => string
   instanceMaxRatio?: number
   supportsTrackerHealth?: boolean
-  supportsLiveReannounce?: boolean
   showInstanceColumn?: boolean
   viewMode?: TableViewMode
   trackerCustomizationLookup?: TrackerCustomizationLookup
@@ -312,7 +311,6 @@ export const createColumns = ({
   formatTimestamp = formatStoredTimestamp,
   instanceMaxRatio,
   supportsTrackerHealth = true,
-  supportsLiveReannounce = true,
   showInstanceColumn = false,
   viewMode = "normal",
   trackerCustomizationLookup,
@@ -991,7 +989,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {supportsLiveReannounce ? formatReannounceIn(row.original.state, row.original.reannounce, t) : "—"}
+            {formatReannounceIn(row.original.state, row.original.reannounce, t)}
           </div>
         )
       },

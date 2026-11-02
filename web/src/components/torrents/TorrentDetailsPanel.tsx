@@ -196,9 +196,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!liveTorrent) return torrent
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
-  // Only qBittorrent 5.0+ sends reannounce in the live row. Before that, the General tab has no row.
-  const reannounceIn = capabilities?.supportsLiveReannounce && properties && displayTorrent
-    ? formatReannounceIn(displayTorrent.state, properties.reannounce, t)
+  // The row has no reannounce before qBittorrent 5.0, and the General tab then shows no Reannounce row.
+  const reannounceIn = displayTorrent?.reannounce !== undefined
+    ? formatReannounceIn(displayTorrent.state, displayTorrent.reannounce, t)
     : undefined
 
   const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")

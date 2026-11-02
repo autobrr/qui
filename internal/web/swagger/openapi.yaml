@@ -7895,9 +7895,6 @@ components:
         supportsShareLimitsMode:
           type: boolean
           description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
-        supportsLiveReannounce:
-          type: boolean
-          description: Whether the torrent list carries the seconds until the next announce in the reannounce field (WebAPI 2.10.0+, qBittorrent 5.0+).
         webAPIVersion:
           type: string
           nullable: true

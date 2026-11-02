@@ -520,8 +520,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     capabilitySupport: capabilities?.supportsTrackerHealth,
     responseSupport: trackerHealthSupported,
   })
-  // The all-instances view has no capabilities of one instance, so it shows the value of each row.
-  const supportsLiveReannounce = isAllInstancesView || (capabilities?.supportsLiveReannounce ?? false)
   const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
@@ -607,7 +605,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     formatTimestamp,
     instanceMaxRatio,
     supportsTrackerHealth,
-    supportsLiveReannounce,
     isUnifiedView,
     isCrossInstanceEndpoint,
     desktopViewMode,

@@ -17,8 +17,8 @@ export function getStateLabel(state: string, t: TFunction): string {
 // formatReannounceIn gives the time until qBittorrent next announces the
 // torrent. qBittorrent sends 0 for a stopped torrent, so a stopped torrent
 // shows a dash, not "now".
-export function formatReannounceIn(state: string, seconds: number, t: TFunction): string {
-  if (state === "stoppedDL" || state === "stoppedUP") return "—"
+export function formatReannounceIn(state: string, seconds: number | undefined, t: TFunction): string {
+  if (seconds === undefined || state === "stoppedDL" || state === "stoppedUP") return "—"
 
   // Negative values mean "never" or "not applicable"
   if (seconds < 0) return "-"

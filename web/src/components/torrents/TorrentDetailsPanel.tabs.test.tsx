@@ -233,15 +233,25 @@ describe("TorrentDetailsPanel mobile layout", () => {
 
 describe("TorrentDetailsPanel Reannounce In row", () => {
   const keptGeneral = mocks.tabs.general
-  const keptCapabilities = mocks.capabilities
 
-  // The hook hands the panel the live row and the properties with the row merged in.
-  function setGeneral(state: string, reannounce: number) {
+  // The server leaves reannounce out of the rows of an instance before qBittorrent 5.0.
+  // qBittorrent still sends it one time in the properties.
+  function setGeneral(state: string, reannounce: number | undefined) {
     mocks.tabs.general = {
-      data: { row: { progress: 1, state } as Torrent, properties: { seeds: 1, seeds_total: 2, reannounce } as TorrentProperties },
+      data: { row: { progress: 1, state, reannounce } as Torrent, properties: { seeds: 1, seeds_total: 2, reannounce: 600 } as TorrentProperties },
       isLoading: false,
       error: null,
     }
+  }
+
+  const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  function panel(queryClient: QueryClient, layout: "horizontal" | "mobile", reannounce: number | undefined) {
+    const torrent = makeTorrent({ hash: "a", progress: 0, reannounce })
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TorrentDetailsPanel instanceId={1} torrent={torrent} onClose={vi.fn()} initialTab="general" layout={layout} />
+      </QueryClientProvider>
+    )
   }
 
   // The value next to the label in the mobile layout, or null when the row is absent.
@@ -252,61 +262,50 @@ describe("TorrentDetailsPanel Reannounce In row", () => {
 
   afterEach(() => {
     mocks.tabs.general = keptGeneral
-    mocks.capabilities = keptCapabilities
   })
 
-  it("shows the time until the next announce when the instance sends it in the list", async () => {
-    mocks.capabilities = { data: { supportsLiveReannounce: true } }
+  it("shows the time until the next announce when the row carries it", async () => {
     setGeneral("uploading", 840)
-    const { findByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+    const { findByTestId, unmount } = render(panel(client(), "horizontal", 840))
     expect((await findByTestId("reannounce")).textContent).toBe("14m")
     unmount()
 
-    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    const { findByText, container } = render(panel(client(), "mobile", 840))
     await findByText("Reannounce")
     expect(mobileReannounce(container)).toBe("14m")
   })
 
-  it("has no row when the instance does not send the value in the list", async () => {
-    mocks.capabilities = { data: { supportsLiveReannounce: false } }
-    setGeneral("uploading", 840)
-    const { findByTestId, queryByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+  it("has no row when the row does not carry the value", async () => {
+    setGeneral("uploading", undefined)
+    const { findByTestId, queryByTestId, unmount } = render(panel(client(), "horizontal", undefined))
     await findByTestId("general")
     expect(queryByTestId("reannounce")).toBeNull()
     unmount()
 
-    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    const { findByText, container } = render(panel(client(), "mobile", undefined))
     await findByText("Time Active")
     expect(mobileReannounce(container)).toBeNull()
   })
 
   it("shows a dash for a stopped torrent", async () => {
-    mocks.capabilities = { data: { supportsLiveReannounce: true } }
     setGeneral("stoppedUP", 0)
-    const { findByTestId, unmount } = renderPanel({ initialTab: "general", layout: "horizontal" })
+    const { findByTestId, unmount } = render(panel(client(), "horizontal", 0))
     expect((await findByTestId("reannounce")).textContent).toBe("—")
     unmount()
 
-    const { findByText, container } = renderPanel({ initialTab: "general", layout: "mobile" })
+    const { findByText, container } = render(panel(client(), "mobile", 0))
     await findByText("Reannounce")
     expect(mobileReannounce(container)).toBe("—")
   })
 
   it("shows the new value after the live row changes", async () => {
-    mocks.capabilities = { data: { supportsLiveReannounce: true } }
     setGeneral("uploading", 840)
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const torrent = makeTorrent({ hash: "a", progress: 0 })
-    const panel = () => (
-      <QueryClientProvider client={client}>
-        <TorrentDetailsPanel instanceId={1} torrent={torrent} onClose={vi.fn()} initialTab="general" layout="horizontal" />
-      </QueryClientProvider>
-    )
-    const { findByTestId, rerender } = render(panel())
+    const queryClient = client()
+    const { findByTestId, rerender } = render(panel(queryClient, "horizontal", 840))
     expect((await findByTestId("reannounce")).textContent).toBe("14m")
 
     setGeneral("uploading", 0)
-    rerender(panel())
+    rerender(panel(queryClient, "horizontal", 840))
     expect((await findByTestId("reannounce")).textContent).toBe("now")
   })
 })

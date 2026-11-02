@@ -30,7 +30,6 @@ type InstanceCapabilitiesResponse struct {
 	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
 	SupportsShareLimitsAction   bool   `json:"supportsShareLimitsAction"`
 	SupportsShareLimitsMode     bool   `json:"supportsShareLimitsMode"`
-	SupportsLiveReannounce      bool   `json:"supportsLiveReannounce"`
 	WebAPIVersion               string `json:"webAPIVersion,omitempty"`
 }
 
@@ -56,7 +55,6 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
 		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
 		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),
-		SupportsLiveReannounce:      client.SupportsLiveReannounce(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {

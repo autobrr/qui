@@ -193,7 +193,6 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
     total_uploaded: row.uploaded,
     time_elapsed: row.time_active,
     seeding_time: row.seeding_time,
-    reannounce: row.reannounce,
   }
 }
 

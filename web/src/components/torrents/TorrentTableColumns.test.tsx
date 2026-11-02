@@ -34,26 +34,26 @@ describe("icon columns", () => {
 describe("reannounce column", () => {
   afterEach(cleanup)
 
-  function reannounceCell(supportsLiveReannounce: boolean, state: string, reannounce: number): string {
-    const column = createColumns({ incognitoMode: false, supportsLiveReannounce }, i18n.getFixedT(null, "torrents"))
+  function reannounceCell(state: string, reannounce: number | undefined): string {
+    const column = createColumns({ incognitoMode: false }, i18n.getFixedT(null, "torrents"))
       .find(col => "accessorKey" in col && col.accessorKey === "reannounce")!
     const cell = column.cell as (ctx: { row: { original: Torrent } }) => ReactElement
     return render(cell({ row: { original: { state, reannounce } as Torrent } })).container.textContent ?? ""
   }
 
-  it("shows a dash when the instance does not send reannounce in the list", () => {
-    expect(reannounceCell(false, "uploading", 600)).toBe("—")
+  it("shows a dash when the row does not carry reannounce", () => {
+    expect(reannounceCell("uploading", undefined)).toBe("—")
   })
 
   it("shows a dash for a stopped torrent", () => {
-    expect(reannounceCell(true, "stoppedUP", 0)).toBe("—")
+    expect(reannounceCell("stoppedUP", 0)).toBe("—")
   })
 
   it("shows now for 0 on an active torrent", () => {
-    expect(reannounceCell(true, "uploading", 0)).toBe("now")
+    expect(reannounceCell("uploading", 0)).toBe("now")
   })
 
   it("shows minutes for an active torrent", () => {
-    expect(reannounceCell(true, "stalledUP", 840)).toBe("14m")
+    expect(reannounceCell("stalledUP", 840)).toBe("14m")
   })
 })
