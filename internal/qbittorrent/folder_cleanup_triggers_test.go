@@ -874,3 +874,28 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	}
 	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }
+
+// regression: #3739
+func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"delete", "deleteWithFiles"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.add(r.perRelease(hashA, "tv"))
+			var mu sync.Mutex
+			var got []string
+			r.sm.SetFilesChangedHandler(func(_ int, hash string) {
+				mu.Lock()
+				defer mu.Unlock()
+				got = append(got, hash)
+			})
+
+			require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, action))
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, []string{hashA}, got, "a delete through qui drops the remembered cross-seed read")
+		})
+	}
+}

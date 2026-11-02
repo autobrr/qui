@@ -70,6 +70,7 @@ var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minu
 
 type filesCacheContextKey struct{}
 type filesCacheMaxAgeContextKey struct{}
+type fileFetchLimitContextKey struct{}
 type postAddBulkActionRetryContextKey struct{}
 type postAddFileFetchRetryContextKey struct{}
 
@@ -115,6 +116,13 @@ func WithFilesCacheMaxAge(ctx context.Context, maxAge time.Duration) context.Con
 	return context.WithValue(ctx, filesCacheMaxAgeContextKey{}, maxAge)
 }
 
+// WithFileFetchLimit returns a context under which [SyncManager.GetTorrentFilesBatch]
+// holds at most limit of the file-fetch slots of the instance at once, so a
+// background reader leaves the other slots to cross-seed adds.
+func WithFileFetchLimit(ctx context.Context, limit int) context.Context {
+	return context.WithValue(ctx, fileFetchLimitContextKey{}, limit)
+}
+
 // WithPostAddBulkActionRetry lets a bulk action wait longer for a torrent that
 // was just added and may not be visible in qBittorrent sync data yet.
 func WithPostAddBulkActionRetry(ctx context.Context) context.Context {
@@ -136,6 +144,11 @@ func forceFilesRefresh(ctx context.Context) bool {
 
 func filesCacheMaxAge(ctx context.Context) time.Duration {
 	value, _ := ctx.Value(filesCacheMaxAgeContextKey{}).(time.Duration)
+	return value
+}
+
+func fileFetchLimit(ctx context.Context) int {
+	value, _ := ctx.Value(fileFetchLimitContextKey{}).(int)
 	return value
 }
 
@@ -378,6 +391,9 @@ type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
 	filesManager atomic.Value // stores FilesManager interface value
+	// filesChangedHandler runs after qui renames the files of a torrent or
+	// drops its file list from the file cache.
+	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -516,6 +532,19 @@ func (sm *SyncManager) getSyncEventSink() SyncEventSink {
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
+}
+
+// SetFilesChangedHandler registers a callback that runs after qui renames a
+// file or a folder inside a torrent, and after [SyncManager.InvalidateFileCache],
+// which bulk deletes and the proxy call for renames, moves, and deletes.
+func (sm *SyncManager) SetFilesChangedHandler(handler func(instanceID int, hash string)) {
+	sm.filesChangedHandler.Store(&handler)
+}
+
+func (sm *SyncManager) notifyFilesChanged(instanceID int, hash string) {
+	if handler := sm.filesChangedHandler.Load(); handler != nil {
+		(*handler)(instanceID, hash)
+	}
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -1198,6 +1227,9 @@ func (sm *SyncManager) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 
 // InvalidateFileCache invalidates the file cache for a torrent
 func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
+	// Notify after the cached list is gone, so a read that starts on the
+	// notify cannot load the old list.
+	defer sm.notifyFilesChanged(instanceID, hash)
 	fm := sm.getFilesManager()
 	if fm == nil {
 		return nil // No files manager configured, nothing to do
@@ -2159,12 +2191,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		if err == nil {
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range canonicalHashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
+			for _, hash := range canonicalHashes {
+				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
 		}
@@ -2175,12 +2205,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			folders.Queue()
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range canonicalHashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
+			for _, hash := range canonicalHashes {
+				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
 		}
@@ -2659,7 +2687,11 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(fileFetchConcurrency(len(hashesToFetch)))
+	limit := fileFetchConcurrency(len(hashesToFetch))
+	if ctxLimit := fileFetchLimit(ctx); ctxLimit > 0 {
+		limit = min(limit, ctxLimit)
+	}
+	g.SetLimit(limit)
 
 	var mu sync.Mutex
 	var fetchErrors []error
@@ -2714,11 +2746,10 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return filesByHash, err
-	}
+	waitErr := g.Wait()
 
-	// Cache all newly fetched files in batch.
+	// Cache all newly fetched files in batch, also after a cancel: the next
+	// caller then does not fetch them again. The save outlives the caller.
 	// Fresh fetches share the cloned slice between caller and cache (one clone total).
 	// Cache hits (handled earlier) return isolated clones.
 	// IMPORTANT: Callers must treat qbt.TorrentFiles as read-only to avoid cache corruption.
@@ -2730,7 +2761,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 		}
 		if len(fetchedFiles) > 0 {
-			if err := fm.CacheFilesBatch(ctx, instanceID, fetchedFiles); err != nil {
+			if err := fm.CacheFilesBatch(context.WithoutCancel(ctx), instanceID, fetchedFiles); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", instanceID).
@@ -2738,6 +2769,9 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 					Msg("Failed to cache torrent files batch after fetch")
 			}
 		}
+	}
+	if waitErr != nil {
+		return filesByHash, waitErr
 	}
 
 	if len(fetchErrors) > 0 {
@@ -6093,6 +6127,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 		}
 	}
 
+	sm.notifyFilesChanged(instanceID, hash)
 	sm.syncAfterModification(instanceID, client, "rename_torrent_file")
 
 	return nil
@@ -6133,6 +6168,7 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 		}
 	}
 
+	sm.notifyFilesChanged(instanceID, hash)
 	sm.syncAfterModification(instanceID, client, "rename_torrent_folder")
 
 	return nil

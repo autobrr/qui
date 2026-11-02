@@ -411,6 +411,8 @@ type Service struct {
 
 	// Cached torrent file metadata for repeated analyze/search calls.
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
+	// localReadMemo remembers the file-based reads of local torrents.
+	localReadMemo localReadMemo
 
 	// Cached deduplication results to avoid recomputing on every search run.
 	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
@@ -586,6 +588,9 @@ func NewService(
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
+	if syncManager != nil {
+		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
+	}
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
 		instanceStore:   instanceStore,
@@ -1626,6 +1631,7 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	if err != nil {
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
+	s.forgetLocalReads()
 
 	s.signalAutomationWake()
 	s.partialPool.wake(partialPoolWake{})
@@ -11652,20 +11658,65 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	m := s.matcher()
 	announcedGroup := m.normalizedGroupSiteIdentity(incomingRelease)
 
-	// Search each instance for matching torrents
+	// Apply webhook source filters if configured
+	hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
+		len(settings.WebhookSourceTags) > 0 ||
+		len(settings.WebhookSourceExcludeCategories) > 0 ||
+		len(settings.WebhookSourceExcludeTags) > 0
+
+	// Start the file reads of all instances before the first wait, so a slow
+	// instance does not use up the wait of the others. The waits share one
+	// budget, so the check answers inside the time that autobrr waits. Each
+	// open check holds its own copy of a torrent list, so the check keeps the
+	// lists only when no instance waits for a file read.
+	pendingReads := make(map[int]*pendingLocalReads, len(instances))
+	views := make(map[int][]qbittorrent.CrossInstanceTorrentView, len(instances))
+	waits := false
 	for _, instance := range instances {
-		// Get all torrents from this instance using cached sync data
 		torrentsView, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents from instance")
 			continue
 		}
+		// An errored source with recovery off is no match, so its files are not read.
+		pendingReads[instance.ID] = s.requestLocalReads(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
+			for torrent := range viewTorrents(torrentsView) {
+				if !s.shouldSkipErroredTorrent(torrent.State) &&
+					(!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
+					return
+				}
+			}
+		})
+		views[instance.ID] = torrentsView
+		waits = waits || pendingReads[instance.ID].hasFills()
+	}
+	if waits {
+		clear(views)
+	}
+	readsCtx, cancelReads := context.WithTimeout(ctx, localReadWait)
+	defer cancelReads()
 
-		// Apply webhook source filters if configured
-		hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
-			len(settings.WebhookSourceTags) > 0 ||
-			len(settings.WebhookSourceExcludeCategories) > 0 ||
-			len(settings.WebhookSourceExcludeTags) > 0
+	// Search each instance for matching torrents
+	for _, instance := range instances {
+		pending, ok := pendingReads[instance.ID]
+		if !ok {
+			continue
+		}
+		sourceReads := pending.wait(readsCtx)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		torrentsView, ok := views[instance.ID]
+		delete(views, instance.ID)
+		if !ok {
+			// Get all torrents from this instance using cached sync data
+			var err error
+			torrentsView, err = s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents from instance")
+				continue
+			}
+		}
 
 		// Log webhook filter settings once per instance
 		log.Debug().
@@ -11694,16 +11745,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
-		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
-			for torrent := range viewTorrents(torrentsView) {
-				if (!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
-					return
-				}
-			}
-		})
-
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			// Guard against nil torrentView or nil torrentView.Torrent
 			if torrentView.Torrent == nil {
 				continue
