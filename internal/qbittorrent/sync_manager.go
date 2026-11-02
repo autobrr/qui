@@ -1322,10 +1322,8 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 			defer cancel()
 			if err := client.syncManager.Sync(ctx); err != nil {
 				log.Debug().Err(err).Msg("validateTorrentsExist: forced sync failed")
-			} else {
-				if client.hasAnyTorrent(hashes) {
-					return nil
-				}
+			} else if client.hasAnyTorrent(hashes) {
+				return nil
 			}
 		}
 		return fmt.Errorf("no valid torrents found to %s", operation)
