@@ -18,7 +18,7 @@
     "internal/qbittorrent/app_info.go": 1,
     "internal/qbittorrent/pool.go": 6,
     "internal/qbittorrent/preferences.go": 1,
-    "internal/qbittorrent/sync_manager.go": 67,
+    "internal/qbittorrent/sync_manager.go": 64,
     "internal/services/arr/service.go": 1,
     "internal/services/automations/service.go": 5,
     "internal/services/crossseed/ensemble_season.go": 5,
