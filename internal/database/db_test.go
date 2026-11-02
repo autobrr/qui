@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -992,6 +993,16 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 	require.NoError(t, txWrite.Commit())
 }
 
+// regression: #3738
+func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
+	for _, tc := range []struct{ procs, want int }{{2, 8}, {12, 12}, {32, 16}} {
+		prev := runtime.GOMAXPROCS(tc.procs)
+		got := sqliteReaderPoolSize()
+		runtime.GOMAXPROCS(prev)
+		require.Equal(t, tc.want, got, "GOMAXPROCS=%d", tc.procs)
+	}
+}
+
 // A burst of reads larger than the read pool waits for a free connection
 // instead of opening one connection per read.
 // regression: #3738
@@ -1003,9 +1014,14 @@ func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	readers := limit * 2
 
 	release := make(chan struct{})
+	releaseReaders := sync.OnceFunc(func() { close(release) })
 	var acquired atomic.Int32
 	errs := make([]error, readers)
 	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		releaseReaders()
+		wg.Wait()
+	})
 	for i := range readers {
 		wg.Go(func() {
 			rows, err := db.QueryContext(ctx, "SELECT 1")
@@ -1027,7 +1043,7 @@ func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	}, 5*time.Second, 5*time.Millisecond, "the reads past the limit must wait for a connection")
 	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
 
-	close(release)
+	releaseReaders()
 	wg.Wait()
 	for _, err := range errs {
 		require.NoError(t, err)
