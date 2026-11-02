@@ -2631,6 +2631,7 @@ func (sm *SyncManager) GetTorrentPieceStates(ctx context.Context, instanceID int
 //     visibility window, then returns joined terminal per-hash errors alongside any partial results.
 //   - Cached entries are returned first; only cache misses are fetched concurrently. Empty/whitespace hashes
 //     are ignored defensively.
+//   - A cache read error fails a batch of two or more torrents. A single torrent falls back to qBittorrent.
 func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	attempts := 1
 	interval := time.Duration(0)
@@ -2665,6 +2666,11 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 
 	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
 		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx)); cacheErr != nil {
+			// A failed cache read must not turn into one qBittorrent request per
+			// torrent. A single torrent still costs one request, so it falls back.
+			if len(normalized.canonical) > 1 {
+				return nil, fmt.Errorf("load cached torrent files: %w", cacheErr)
+			}
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).

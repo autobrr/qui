@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -989,6 +990,91 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 
 	// Commit the write transaction
 	require.NoError(t, txWrite.Commit())
+}
+
+// A burst of reads larger than the read pool waits for a free connection
+// instead of opening one connection per read.
+// regression: #3738
+func TestReaderPoolCapsOpenConnections(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	limit := sqliteReaderPoolSize()
+	readers := limit * 2
+
+	release := make(chan struct{})
+	var acquired atomic.Int32
+	errs := make([]error, readers)
+	var wg sync.WaitGroup
+	for i := range readers {
+		wg.Go(func() {
+			rows, err := db.QueryContext(ctx, "SELECT 1")
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer rows.Close()
+			acquired.Add(1)
+			<-release
+			for rows.Next() {
+			}
+			errs[i] = rows.Err()
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		return int(acquired.Load()) == limit && db.readerPool.Stats().WaitCount >= int64(readers-limit)
+	}, 5*time.Second, 5*time.Millisecond, "the reads past the limit must wait for a connection")
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+
+	close(release)
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int32(readers), acquired.Load())
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+}
+
+// A read-only transaction runs a query that has no prepared statement yet on its
+// own connection. It must not wait for a second read connection: with every
+// connection held by such a transaction, that wait would last until the deadline.
+// regression: #3738
+func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	limit := sqliteReaderPoolSize()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	var begun sync.WaitGroup
+	begun.Add(limit)
+	errs := make([]error, limit)
+	var wg sync.WaitGroup
+	for i := range limit {
+		wg.Go(func() {
+			tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			begun.Done()
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			begun.Wait()
+
+			var n int
+			if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT %d", i)).Scan(&n); err != nil {
+				_ = tx.Rollback()
+				errs[i] = err
+				return
+			}
+			errs[i] = tx.Commit()
+		})
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "transaction %d", i)
+	}
 }
 
 // Concurrent misses on one query must converge on a single cached statement;
