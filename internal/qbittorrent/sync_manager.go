@@ -244,11 +244,13 @@ type TorrentView struct {
 }
 
 // newTorrentView builds the list/SSE row for t. liveReannounce is
-// Client.SupportsLiveReannounce of the instance that owns t.
+// Client.SupportsLiveReannounce of the instance that owns t. Reannounce is a
+// copy: a pointer into t would keep the whole source slice alive behind each
+// page that the SSE stream detaches.
 func newTorrentView(t *qbt.Torrent, health TrackerHealth, liveReannounce bool) TorrentView {
 	tv := TorrentView{Torrent: t, TrackerHealth: health}
 	if liveReannounce {
-		tv.Reannounce = &t.Reannounce
+		tv.Reannounce = new(t.Reannounce)
 	}
 	return tv
 }

@@ -72,3 +72,14 @@ func TestTorrentViewJSONReannounceFollowsInstance(t *testing.T) {
 		})
 	}
 }
+
+// The SSE stream keeps page-sized copies of the rows. A pointer into the source
+// torrent would keep the whole library array alive behind each page.
+func TestNewTorrentViewCopiesReannounce(t *testing.T) {
+	t.Parallel()
+
+	torrent := &qbt.Torrent{Hash: "aaa", Reannounce: 840}
+	tv := newTorrentView(torrent, "", true)
+	require.NotSame(t, &torrent.Reannounce, tv.Reannounce)
+	require.Equal(t, int64(840), *tv.Reannounce)
+}

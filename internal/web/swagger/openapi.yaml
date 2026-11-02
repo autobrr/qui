@@ -7964,6 +7964,10 @@ components:
           type: integer
         completedOn:
           type: integer
+        reannounce:
+          type: integer
+          format: int64
+          description: Seconds until qBittorrent next announces the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
         savePath:
           type: string
 
