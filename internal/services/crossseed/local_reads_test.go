@@ -283,3 +283,49 @@ func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 	}
 	require.Equal(t, []string{"other"}, hashes, "the check drops the read that qui forgot during the wait")
 }
+
+// regression: #3739
+func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
+	folder := seasonFolderTorrent("folder")
+	// The release cache starts goroutines that outlive a synctest bubble.
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
+	synctest.Test(t, func(t *testing.T) {
+		files := seasonFolderFiles()
+		recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
+			return map[string]qbt.TorrentFiles{folder.Hash: files}, nil
+		}
+		require.True(t, checkPack(t, svc).CanCrossSeed)
+
+		// The user renames the files in qBittorrent, outside qui.
+		files = corpusPackFiles("Season 3", "Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+		time.Sleep(localReadTTL - time.Minute)
+		require.True(t, checkPack(t, svc).CanCrossSeed, "inside the hour the check uses the remembered read")
+		time.Sleep(2 * time.Minute)
+		require.True(t, checkPack(t, svc).CanCrossSeed, "the first check after the hour keeps the old read while the refresh runs")
+		synctest.Wait()
+
+		require.False(t, checkPack(t, svc).CanCrossSeed, "the next check uses the refreshed read")
+		require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+	})
+}
+
+// regression: #3739
+func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
+	folder := seasonFolderTorrent("folder")
+	// The release cache starts goroutines that outlive a synctest bubble.
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
+	synctest.Test(t, func(t *testing.T) {
+		var files qbt.TorrentFiles
+		recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
+			return map[string]qbt.TorrentFiles{folder.Hash: files}, nil
+		}
+		require.False(t, checkPack(t, svc).CanCrossSeed, "qBittorrent lists no files for the folder")
+
+		files = seasonFolderFiles()
+		require.False(t, checkPack(t, svc).CanCrossSeed, "inside the minute the check does not read the files again")
+		time.Sleep(localReadFailureTTL + time.Second)
+
+		require.True(t, checkPack(t, svc).CanCrossSeed, "after the minute the check reads the files again")
+		require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+	})
+}
