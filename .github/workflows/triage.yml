@@ -134,6 +134,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
+        with:
+          # The agent can read each file in the checkout. Keep the token out
+          # of .git/config.
+          persist-credentials: false
 
       # Claude Code scrubs credentials from the commands it starts only with
       # bubblewrap, and Ubuntu 24.04 blocks the user namespaces that
@@ -157,8 +161,8 @@ jobs:
           # Bound how many times Claude can invoke the write helper per run, so a
           # prompt-injection in discussion content cannot spam mutations. The
           # longest playbook path (promote to issue) takes 5 calls. Claude Code
-          # applies the cap only when it scrubs the subprocess environment. The
-          # scrub keeps GitHub tokens, so gh still works.
+          # applies the cap only when it scrubs the subprocess environment. gh
+          # still works, because run.mjs moves the token to the gh config file.
           CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 8}'
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
           # When this is empty, the script signs in with federation. The IDs
