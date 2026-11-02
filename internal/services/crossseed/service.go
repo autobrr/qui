@@ -411,6 +411,8 @@ type Service struct {
 
 	// Cached torrent file metadata for repeated analyze/search calls.
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
+	// localReadMemo remembers the file-based reads of local torrents.
+	localReadMemo localReadMemo
 
 	// Cached deduplication results to avoid recomputing on every search run.
 	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
@@ -586,6 +588,9 @@ func NewService(
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
+	if syncManager != nil {
+		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
+	}
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
 		instanceStore:   instanceStore,
@@ -1626,6 +1631,7 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	if err != nil {
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
+	s.forgetLocalReads()
 
 	s.signalAutomationWake()
 	s.partialPool.wake(partialPoolWake{})
@@ -11694,16 +11700,36 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
-		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
+		// An errored source with recovery off is no match, so its files are not read.
+		pending := s.requestLocalReads(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
 			for torrent := range viewTorrents(torrentsView) {
-				if (!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
+				if !s.shouldSkipErroredTorrent(torrent.State) &&
+					(!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
 					return
 				}
 			}
 		})
+		sourceReads := pending.reads
+		if pending.hasFills() {
+			// Each open check holds its own copy of the torrent list, so the
+			// check drops it while the file reads run and takes a new one after.
+			torrentsView = nil
+			sourceReads = pending.wait(ctx)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			torrentsView, err = s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents from instance")
+				continue
+			}
+		}
 
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			// Guard against nil torrentView or nil torrentView.Torrent
 			if torrentView.Torrent == nil {
 				continue

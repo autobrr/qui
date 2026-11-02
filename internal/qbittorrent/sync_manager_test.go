@@ -3578,3 +3578,59 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 		require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
 	})
 }
+
+// blockingTorrentFilesClient returns the files of done at once and makes every
+// other hash wait until its context ends.
+type blockingTorrentFilesClient struct {
+	done  string
+	files qbt.TorrentFiles
+	after func()
+}
+
+func (*blockingTorrentFilesClient) getTorrentsByHashes([]string) []qbt.Torrent { return nil }
+
+func (c *blockingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	if hash != c.done {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	files := slices.Clone(c.files)
+	c.after()
+	return &files, nil
+}
+
+// regression: #3739
+func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	files := qbt.TorrentFiles{{Name: "done.mkv", Size: 1}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return &blockingTorrentFilesClient{done: "done", files: files, after: cancel}, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	_, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"slow", "done"})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, files, fm.cached["done"], "the list that came back before the cancel is in the file cache")
+}
+
+// regression: #3739
+func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	var got []string
+	sm.SetFilesChangedHandler(func(instanceID int, hash string) {
+		got = append(got, fmt.Sprintf("%d|%s", instanceID, hash))
+	})
+
+	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+
+	require.Equal(t, []string{"3|abc"}, got, "a proxy rename drops the remembered cross-seed read")
+}
