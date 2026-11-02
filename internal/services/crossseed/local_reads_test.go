@@ -218,3 +218,44 @@ func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
 		time.Sleep(localReadFillTimeout)
 	})
 }
+
+func TestCheckWebhookDropsReadOfTorrentRenamedDuringWait(t *testing.T) {
+	folder := seasonFolderTorrent("folder")
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	renamed := folder
+	renamed.Name = "Season 3"
+	recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
+		// The user renames the torrent while its files load.
+		recorder.cached[localReadsInstance.ID] = buildCrossInstanceViews(localReadsInstance, []qbt.Torrent{renamed})
+		return recorder.fakeSyncManager.GetTorrentFilesBatch(ctx, localReadsInstance.ID, hashes)
+	}
+
+	resp := checkPack(t, svc)
+
+	require.Empty(t, resp.Matches, "the read of the old name does not apply to the new name")
+}
+
+func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
+	folder := seasonFolderTorrent("folder")
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
+	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
+	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
+	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	synctest.Test(t, func(t *testing.T) {
+		recorder.serve = func(ctx context.Context, _ []string) (map[string]qbt.TorrentFiles, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+
+		start := time.Now()
+		size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
+		_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{
+			InstanceIDs: []int{localReadsInstance.ID, second.ID}, TorrentName: localReadsPack, Size: uint64(size + 500),
+		})
+
+		require.NoError(t, err)
+		require.LessOrEqual(t, time.Since(start), localReadWait, "the check answers inside the 120 s that autobrr waits")
+		// The bubble ends only after the fills stop at their own deadline.
+		time.Sleep(localReadFillTimeout)
+	})
+}

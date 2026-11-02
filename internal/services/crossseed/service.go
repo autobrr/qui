@@ -11658,6 +11658,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	m := s.matcher()
 	announcedGroup := m.normalizedGroupSiteIdentity(incomingRelease)
 
+	// The waits for file reads of all instances share one budget, so the check
+	// answers inside the time that autobrr waits.
+	readsCtx, cancelReads := context.WithTimeout(ctx, localReadWait)
+	defer cancelReads()
+
 	// Search each instance for matching torrents
 	for _, instance := range instances {
 		// Get all torrents from this instance using cached sync data
@@ -11714,7 +11719,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			// Each open check holds its own copy of the torrent list, so the
 			// check drops it while the file reads run and takes a new one after.
 			torrentsView = nil
-			sourceReads = pending.wait(ctx)
+			sourceReads = pending.wait(readsCtx)
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}

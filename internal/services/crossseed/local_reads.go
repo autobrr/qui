@@ -92,13 +92,14 @@ type pendingLocalReads struct {
 
 // localReads holds the Read releases that a local read took from files,
 // keyed by cacheKeyForTorrentFiles.
-type localReads map[string]namedRelease
+type localReads map[string]localReadEntry
 
 // read returns the Read release of a local torrent: from its files when the
-// local read had them, else from its name.
+// local read had them for the same name and category, else from its name. A
+// caller can take a new torrent list after the local read.
 func (r localReads) read(m matcher, instanceID int, torrent *qbt.Torrent) namedRelease {
-	if read, ok := r[cacheKeyForTorrentFiles(instanceID, torrent.Hash)]; ok {
-		return read
+	if entry, ok := r[cacheKeyForTorrentFiles(instanceID, torrent.Hash)]; ok && entry.name == torrent.Name && entry.category == torrent.Category {
+		return entry.read
 	}
 	return m.readName(torrent.Name)
 }
@@ -145,7 +146,7 @@ func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrent
 		filling := memo.filling[key]
 		switch {
 		case ok && entry.fromFiles:
-			pending.reads[cacheKeyForTorrentFiles(instanceID, torrent.hash)] = entry.read
+			pending.reads[cacheKeyForTorrentFiles(instanceID, torrent.hash)] = entry
 			if now.After(entry.expires) && filling == nil {
 				if refreshDone == nil {
 					refreshDone = make(chan struct{})
@@ -216,8 +217,8 @@ wait:
 	defer p.memo.mu.Unlock()
 	for _, torrent := range p.waiting {
 		entry, ok := p.memo.entries[localReadKey{instanceID: p.instanceID, hash: torrent.hash}]
-		if ok && entry.fromFiles && entry.matches(torrent) {
-			p.reads[cacheKeyForTorrentFiles(p.instanceID, torrent.hash)] = entry.read
+		if ok && entry.fromFiles {
+			p.reads[cacheKeyForTorrentFiles(p.instanceID, torrent.hash)] = entry
 		}
 	}
 	return p.reads

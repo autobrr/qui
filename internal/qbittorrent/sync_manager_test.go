@@ -1521,7 +1521,8 @@ func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[
 	return nil
 }
 
-func (*stubFilesManager) InvalidateCache(context.Context, int, string) error {
+func (fm *stubFilesManager) InvalidateCache(_ context.Context, _ int, hash string) error {
+	delete(fm.cached, hash)
 	return nil
 }
 
@@ -3633,4 +3634,20 @@ func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
 	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
 
 	require.Equal(t, []string{"3|abc"}, got, "a proxy rename drops the remembered cross-seed read")
+}
+
+func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	fm := &stubFilesManager{cached: map[string]qbt.TorrentFiles{"abc": {{Name: "Show.S01E01.mkv"}}}}
+	sm.SetFilesManager(fm)
+	var cachedAtNotify bool
+	sm.SetFilesChangedHandler(func(int, string) {
+		_, cachedAtNotify = fm.cached["abc"]
+	})
+
+	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+
+	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
 }

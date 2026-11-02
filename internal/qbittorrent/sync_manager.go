@@ -1227,7 +1227,9 @@ func (sm *SyncManager) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 
 // InvalidateFileCache invalidates the file cache for a torrent
 func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
-	sm.notifyFilesChanged(instanceID, hash)
+	// Notify after the cached list is gone, so a read that starts on the
+	// notify cannot load the old list.
+	defer sm.notifyFilesChanged(instanceID, hash)
 	fm := sm.getFilesManager()
 	if fm == nil {
 		return nil // No files manager configured, nothing to do
