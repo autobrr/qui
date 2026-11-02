@@ -607,6 +607,19 @@ func (c *Client) SupportsTestEmail() bool {
 	return c.supportsTestEmail
 }
 
+// hasAnyTorrent reports whether at least one of hashes is in the cache. It stops
+// at the first hit and copies no torrents.
+func (c *Client) hasAnyTorrent(hashes []string) bool {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
+		return false
+	}
+	return slices.ContainsFunc(hashes, func(hash string) bool {
+		_, ok := syncManager.GetTorrent(hash)
+		return ok
+	})
+}
+
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	syncManager := c.GetSyncManager()
