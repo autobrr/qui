@@ -138,7 +138,9 @@ import type {
   User,
   VersionInfo,
   WarningResponse,
-  WebSeed
+  WebSeed,
+  SSHCredentials,
+  SSHTestResponse
 } from "@/types"
 import type {
   ArrInstance,
@@ -788,6 +790,27 @@ class ApiClient {
 
   async testConnection(id: number): Promise<{ connected: boolean; message: string }> {
     return this.request(`/instances/${id}/test`, { method: "POST" })
+  }
+
+  // SSH access. The credential routes answer 204; ssh-test answers 200 with a status.
+  async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async clearSSHCredentials(id: number): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "DELETE" })
+  }
+
+  async testSSH(id: number): Promise<SSHTestResponse> {
+    return this.request<SSHTestResponse>(`/instances/${id}/ssh-test`, { method: "POST" })
+  }
+
+  async confirmSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async replaceSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key/replace`, { method: "POST", body: JSON.stringify({ hostKey }) })
   }
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {

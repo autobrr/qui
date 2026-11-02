@@ -18,7 +18,6 @@ Frontend rules for work under `web/`. Locale and translation rules live in `web/
 - When you touch UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks, run `pnpm check:i18n`. `web/package.json` has a `check:i18n:*` script for most single checks and each non-English locale.
 - When `check:i18n` flags a key, delete the key from every locale in the same change, or teach the scanner to see the reference if the UI does use it.
 - A data-only file that holds key properties but never calls `useTranslation` names its namespace with a `// i18n-namespace: <ns>` comment after its imports. A key written as `"ns:key"` names its own namespace and needs no directive: `resolveNamespaceAndKey` in `web/scripts/check-i18n-keys-lib.mjs` splits it.
-- No UI text names SSH until #2917 ships. Before you add remote-instance text, read rollout step 4 in `docs/remote-backend-design.md`.
 
 ## Code Review Rules
 
