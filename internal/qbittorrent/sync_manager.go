@@ -536,7 +536,7 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 
 // SetFilesChangedHandler registers a callback that runs after qui renames a
 // file or a folder inside a torrent, and after [SyncManager.InvalidateFileCache],
-// which the proxy calls for renames, moves, and deletes.
+// which bulk deletes and the proxy call for renames, moves, and deletes.
 func (sm *SyncManager) SetFilesChangedHandler(handler func(instanceID int, hash string)) {
 	sm.filesChangedHandler.Store(&handler)
 }
@@ -2191,12 +2191,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		if err == nil {
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range canonicalHashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
+			for _, hash := range canonicalHashes {
+				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
 		}
@@ -2207,12 +2205,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			folders.Queue()
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range canonicalHashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
+			for _, hash := range canonicalHashes {
+				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
 		}
