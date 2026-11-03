@@ -1259,17 +1259,21 @@ describe("useTorrentsList", () => {
   })
 
   describe("a Web API version in the torrent list", () => {
-    // The capabilities query of instance 1, loaded at 2.15.1, beside the list.
+    // The capabilities query of instance 1 beside the list. qBittorrent runs
+    // 2.15.1 for the first request and 2.9.3 after it.
     function renderWithCapabilities() {
-      const getCapabilities = vi.fn().mockResolvedValue({ webAPIVersion: "2.15.1" })
-      const rendered = renderHook(() => {
-        useQuery({ queryKey: ["instance-capabilities", 1], queryFn: getCapabilities })
-        return useTorrentsList(1, { pollingEnabled: false })
-      }, { wrapper: makeWrapper() })
+      const getCapabilities = vi.fn()
+        .mockResolvedValueOnce({ webAPIVersion: "2.15.1" })
+        .mockResolvedValue({ webAPIVersion: "2.9.3" })
+      const rendered = renderHook(() => ({
+        capabilities: useQuery({ queryKey: ["instance-capabilities", 1], queryFn: getCapabilities }).data,
+        list: useTorrentsList(1, { pollingEnabled: false }),
+      }), { wrapper: makeWrapper() })
       return { getCapabilities, ...rendered }
     }
 
     // On a later page, a stream frame reaches only the stream listener.
+    // regression: #3760
     it("starts a capabilities request from a stream frame only when the version changes", async () => {
       streamState = { ...DISCONNECTED, connected: true, initialized: true }
       mockedApi.getTorrents.mockImplementation((_instanceId, params) => Promise.resolve(makeResponse({
@@ -1283,7 +1287,7 @@ describe("useTorrentsList", () => {
         await vi.advanceTimersByTimeAsync(600)
       })
       act(() => {
-        result.current.loadMore()
+        result.current.list.loadMore()
       })
       await flush()
       expect(mockedApi.getTorrents).toHaveBeenLastCalledWith(1, expect.objectContaining({ page: 1 }), expect.anything())
@@ -1294,21 +1298,25 @@ describe("useTorrentsList", () => {
       })
       await flush()
       expect(getCapabilities).toHaveBeenCalledTimes(1)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.15.1")
 
       act(() => {
         capturedOnMessage?.({ type: "init", data: makeResponse({ webAPIVersions: { 1: "2.9.3" } }) })
       })
       await flush()
       expect(getCapabilities).toHaveBeenCalledTimes(2)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.9.3")
     })
 
+    // regression: #3760
     it("starts a capabilities request from a REST page when the version changes", async () => {
       mockedApi.getTorrents.mockResolvedValue(makeResponse({ webAPIVersions: { 1: "2.9.3" } }))
-      const { getCapabilities } = renderWithCapabilities()
+      const { getCapabilities, result } = renderWithCapabilities()
       await flush()
 
       expect(mockedApi.getTorrents).toHaveBeenCalled()
       expect(getCapabilities).toHaveBeenCalledTimes(2)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.9.3")
     })
   })
 

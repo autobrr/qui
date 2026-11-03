@@ -108,6 +108,9 @@ type Server struct {
 	WebAPIVersion string
 	// WebAPIVersionStatus, when set, makes app/webapiVersion answer with it.
 	WebAPIVersionStatus int
+	// HangWebAPIVersion makes app/webapiVersion answer only when the request
+	// ends, so the caller times out.
+	HangWebAPIVersion bool
 	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
 	// qBittorrent does. Without it, each sync is a full update.
 	PartialUpdates bool
@@ -424,6 +427,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "Ok.")
 	case "app/webapiVersion":
 		s.versionReads++
+		if s.HangWebAPIVersion {
+			<-r.Context().Done()
+			return
+		}
 		if s.WebAPIVersionStatus != 0 {
 			w.WriteHeader(s.WebAPIVersionStatus)
 			return

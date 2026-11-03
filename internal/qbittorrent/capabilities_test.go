@@ -228,6 +228,7 @@ func newSyncedStubClient(t *testing.T, version string) (*Client, *qbtstub.Server
 // A restarted qBittorrent sends a full update. qui reads the version before
 // the stream, automations or the torrent list read the new list, so an
 // upgrade or a downgrade takes effect without a qui restart.
+// regression: #3760
 func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +254,7 @@ func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 
 // A failed version read on a full update leaves the version unknown, and the
 // sync still succeeds.
+// regression: #3760
 func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
 	client, stub, sm, sink := newSyncedStubClient(t, "2.15.1")
@@ -266,6 +268,23 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 	resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
 	require.NoError(t, err)
 	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
+}
+
+// A version read that times out on a full update also leaves the version
+// unknown. A health check keeps the old version on a timeout, but a full update
+// can come from a restarted qBittorrent with another version.
+// regression: #3760
+func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testing.T) {
+	t.Parallel()
+	client, stub, _, _ := newSyncedStubClient(t, "2.15.1")
+
+	// go-qbittorrent calls this hook before a full update enters the cache.
+	stub.HangWebAPIVersion = true
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	require.NoError(t, client.refreshCapabilitiesBeforeFullUpdate(ctx, nil))
+	require.Empty(t, client.GetWebAPIVersion())
+	require.False(t, client.Supports(CapLiveReannounce))
 }
 
 // A partial update sends no version request: only a restart can change the
