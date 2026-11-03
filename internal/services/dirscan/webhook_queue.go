@@ -9,6 +9,18 @@ import (
 	"strings"
 )
 
+// PathWithinDirectory reports whether target is at or under dirPath, reading both
+// in dirPath's grammar, and returns them cleaned. A remote directory is slash
+// paths on every host, which the host's filepath would rewrite on Windows.
+func PathWithinDirectory(dirPath, target string) (cleanDir, cleanTarget string, ok bool) {
+	if strings.HasPrefix(dirPath, "/") {
+		cleanDir, cleanTarget = path.Clean(dirPath), path.Clean(target)
+		return cleanDir, cleanTarget, isSlashPathWithin(cleanDir, cleanTarget)
+	}
+	cleanDir, cleanTarget = filepath.Clean(dirPath), filepath.Clean(target)
+	return cleanDir, cleanTarget, isPathWithin(cleanDir, cleanTarget)
+}
+
 func mergeWebhookScanRoots(directoryPath, existing, next string) string {
 	if strings.HasPrefix(directoryPath, "/") {
 		return mergeSlashWebhookScanRoots(directoryPath, existing, next)

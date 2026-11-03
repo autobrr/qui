@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -834,28 +832,6 @@ func (p *webhookTriggerScanPayload) isSimpleMode() bool {
 	return p.Path != ""
 }
 
-func normalizeScanRoot(path string) string {
-	cleanPath := filepath.Clean(path)
-	info, err := os.Stat(cleanPath)
-	if err == nil && !info.IsDir() {
-		return filepath.Dir(cleanPath)
-	}
-	return cleanPath
-}
-
-func pathMatchesDirectory(cleanPath, dirPath string) bool {
-	if cleanPath == dirPath {
-		return true
-	}
-
-	rel, err := filepath.Rel(dirPath, cleanPath)
-	if err != nil {
-		return false
-	}
-
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
 func normalizeAllowedDownloadClients(allowed []string) []string {
 	filteredAllowed := make([]string, 0, len(allowed))
 	seen := make(map[string]struct{}, len(allowed))
@@ -924,9 +900,6 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Clean and normalize the path
-	cleanPath := filepath.Clean(resolvedPath)
-
 	dirs, err := h.service.ListDirectories(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("dirscan: webhook failed to list directories")
@@ -936,21 +909,24 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 
 	// Find the best matching directory using longest-prefix match
 	var bestMatch *models.DirScanDirectory
+	var cleanPath string
 	bestLen := 0
 	ambiguous := false
 	for _, dir := range dirs {
 		if !dir.Enabled {
 			continue
 		}
-		dirPath := filepath.Clean(dir.Path)
-		if pathMatchesDirectory(cleanPath, dirPath) {
-			if len(dirPath) > bestLen {
-				bestMatch = dir
-				bestLen = len(dirPath)
-				ambiguous = false
-			} else if len(dirPath) == bestLen {
-				ambiguous = true
-			}
+		dirPath, candidatePath, ok := dirscan.PathWithinDirectory(dir.Path, resolvedPath)
+		if !ok {
+			continue
+		}
+		if len(dirPath) > bestLen {
+			bestMatch = dir
+			cleanPath = candidatePath
+			bestLen = len(dirPath)
+			ambiguous = false
+		} else if len(dirPath) == bestLen {
+			ambiguous = true
 		}
 	}
 
@@ -977,7 +953,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	scanRoot := normalizeScanRoot(cleanPath)
+	scanRoot := h.service.WebhookScanRoot(r.Context(), bestMatch, cleanPath)
 	runID, err := h.service.StartWebhookScan(r.Context(), bestMatch.ID, scanRoot)
 	if err != nil {
 		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Msg("dirscan: webhook failed to start scan")

@@ -446,6 +446,25 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 	return runID, nil
 }
 
+// WebhookScanRoot is where a webhook for cleanPath in dir scans: the path, or
+// the folder of a file. A path the directory's backend can't read scans as
+// given, and the run reports what is wrong with it. A dead host can hold the
+// webhook for one dial.
+func (s *Service) WebhookScanRoot(ctx context.Context, dir *models.DirScanDirectory, cleanPath string) string {
+	if s.backendPool == nil {
+		return cleanPath
+	}
+	backend, _, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil {
+		return cleanPath
+	}
+	info, err := backend.Stat(ctx, cleanPath)
+	if err != nil || info.IsDir {
+		return cleanPath
+	}
+	return backend.Paths().Dir(cleanPath)
+}
+
 // StartWebhookScan starts a webhook-triggered subtree scan for a directory.
 func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoot string) (int64, error) {
 	if s == nil || s.store == nil {

@@ -4,11 +4,18 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -71,16 +78,16 @@ func newDirScanRemoteFixture(t *testing.T) *dirScanRemoteFixture {
 	}
 }
 
-func (f *dirScanRemoteFixture) send(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
+func (f *dirScanRemoteFixture) send(t *testing.T, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	resp := httptest.NewRecorder()
-	f.router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body)))
+	f.router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), method, target, strings.NewReader(body)))
 	return resp
 }
 
-func (f *dirScanRemoteFixture) directory(t *testing.T, path string, instance *models.Instance) *models.DirScanDirectory {
+func (f *dirScanRemoteFixture) directory(t *testing.T, dirPath string, instance *models.Instance) *models.DirScanDirectory {
 	t.Helper()
-	dir, err := f.store.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
+	dir, err := f.store.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: dirPath, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
 	require.NoError(t, err)
 	return dir
 }
@@ -122,9 +129,9 @@ func TestDirScanRemotePathMustBeAbsolute(t *testing.T) {
 	f := newDirScanRemoteFixture(t)
 	const notAbsolute = `{"error":"Path must be absolute on a remote instance"}`
 
-	create := func(t *testing.T, path string, instance *models.Instance) *httptest.ResponseRecorder {
+	create := func(t *testing.T, dirPath string, instance *models.Instance) *httptest.ResponseRecorder {
 		t.Helper()
-		return f.send(t, http.MethodPost, "/api/dir-scan/directories", fmt.Sprintf(`{"path":%q,"targetInstanceId":%d}`, path, instance.ID))
+		return f.send(t, http.MethodPost, "/api/dir-scan/directories", fmt.Sprintf(`{"path":%q,"targetInstanceId":%d}`, dirPath, instance.ID))
 	}
 	patch := func(t *testing.T, dir *models.DirScanDirectory, body string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -172,6 +179,133 @@ func TestDirScanRemotePathMustBeAbsolute(t *testing.T) {
 			require.Equal(t, tt.want, resp.Code, resp.Body.String())
 			if tt.want == http.StatusBadRequest {
 				require.JSONEq(t, notAbsolute, resp.Body.String())
+			}
+		})
+	}
+}
+
+// webhookHost is an instance's own backend: slash paths, and files by path. Any other read is an empty walk's
+// business, since the run a webhook starts is not what these tests look at.
+type webhookHost struct {
+	fsops.Backend
+	files  map[string]bool
+	mu     sync.Mutex
+	stated []string
+}
+
+func (h *webhookHost) Paths() fsops.PathDialect { return fsops.SlashPaths }
+
+func (h *webhookHost) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.stated = append(h.stated, p)
+	isDir, ok := h.files[p]
+	if !ok {
+		return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+	}
+	return &fsops.LstatInfo{Path: p, IsDir: isDir}, nil
+}
+
+func (h *webhookHost) WalkDir(_ context.Context, root string, _ fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch := make(chan fsops.WalkEntry, 1)
+	ch <- fsops.WalkEntry{Path: root, RelPath: ".", Mode: fs.ModeDir, IsDir: true}
+	close(ch)
+	return ch, nil
+}
+
+// webhookRun posts a webhook payload at a remote directory and waits for the scan it starts.
+func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
+	t.Helper()
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "dirscan-remote-webhook")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "remote", "http://localhost:8080", "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	require.NoError(t, instances.SetSSHCredentials(ctx, instance.ID, "box.example", 22, "qui", sshtest.PrivateKey("")))
+	require.NoError(t, instances.SetHostKeyPin(ctx, instance.ID, "box.example", 22, sshtest.NewSigner().PublicKey().Marshal()))
+
+	store := models.NewDirScanStore(db)
+	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
+	service := dirscan.NewService(dirscan.DefaultConfig(), store, nil, nil, nil, nil, nil, nil, pool, nil)
+	hub, events := newActivityHub(t)
+	service.SetActivityPublisher(hub)
+	handler := NewDirScanHandler(service, instances)
+	dir, err := service.CreateDirectory(ctx, &models.DirScanDirectory{Path: dirPath, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	handler.WebhookTriggerScan(rec, httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/dir-scan/webhook/scan", dirScanWebhookJSONBody(t, payload)))
+	if rec.Code != http.StatusAccepted {
+		return rec, nil
+	}
+	var resp dirScanTriggerResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	waitDirScanIdle(t, service, events, dir.ID)
+	return rec, &resp
+}
+
+func TestWebhookTriggerScan_RemoteFilePathScansParent(t *testing.T) {
+	const dirPath = "/data/lib"
+	files := map[string]bool{
+		"/data/lib/Show":          true,
+		"/data/lib/Show/ep01.mkv": false,
+	}
+	for _, tt := range []struct {
+		name    string
+		payload any
+		want    string
+	}{
+		{name: "a file scans its folder", payload: webhookPayloadSimple{Path: "/data/lib/Show/ep01.mkv"}, want: "/data/lib/Show"},
+		{name: "a folder scans itself", payload: webhookPayloadSimple{Path: "/data/lib/Show"}, want: "/data/lib/Show"},
+		{name: "a path the host can't stat scans as given", payload: webhookPayloadSimple{Path: "/data/lib/Gone/ep01.mkv"}, want: "/data/lib/Gone/ep01.mkv"},
+		{name: "an arr payload", payload: webhookPayloadArr{Series: webhookPayloadSeries{Path: "/data/lib/Show/"}}, want: "/data/lib/Show"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, resp := webhookRun(t, &webhookHost{files: files}, dirPath, tt.payload)
+			require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+			require.Equal(t, tt.want, resp.ScanRoot)
+			require.Equal(t, dirPath, resp.DirectoryPath)
+		})
+	}
+}
+
+// A path on the qui host says nothing about the instance's host, whichever way the two disagree.
+func TestWebhookTriggerScan_RemotePathIgnoresQuiHost(t *testing.T) {
+	onQuiHost := filepath.ToSlash(filepath.Join(t.TempDir(), "same-name.mkv"))
+	require.NoError(t, os.WriteFile(filepath.FromSlash(onQuiHost), []byte("x"), 0o600))
+	// Only a slash directory reaches the slash grammar, and a Windows temp dir does not start with one.
+	if !strings.HasPrefix(onQuiHost, "/") {
+		t.Skip("the qui host's temp dir has no slash path on this host")
+	}
+	parent := path.Dir(onQuiHost)
+
+	host := &webhookHost{files: map[string]bool{onQuiHost: true}}
+	rec, resp := webhookRun(t, host, parent, webhookPayloadSimple{Path: onQuiHost})
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+	require.Equal(t, onQuiHost, resp.ScanRoot, "a folder on the instance's host, though a file here")
+	require.Contains(t, host.stated, onQuiHost)
+}
+
+func TestWebhookRoutingKeepsSlashPaths(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		dir      string
+		path     string
+		wantCode int
+		wantRoot string
+	}{
+		{name: "a child keeps its slashes", dir: "/data/lib", path: "/data/lib/Show/Season 01", wantCode: http.StatusAccepted, wantRoot: "/data/lib/Show/Season 01"},
+		{name: "a backslash in a name stays", dir: "/data/lib", path: `/data/lib/Show\Odd`, wantCode: http.StatusAccepted, wantRoot: `/data/lib/Show\Odd`},
+		{name: "a sibling does not route", dir: "/data/lib", path: "/data/library/Show", wantCode: http.StatusNotFound},
+		{name: "a dot dot does not route", dir: "/data/lib", path: "/data/lib/../other", wantCode: http.StatusNotFound},
+		{name: "a Windows path does not route", dir: "/data/lib", path: `D:\data\lib\Show`, wantCode: http.StatusNotFound},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, resp := webhookRun(t, &webhookHost{files: map[string]bool{tt.path: true}}, tt.dir, webhookPayloadSimple{Path: tt.path})
+			require.Equal(t, tt.wantCode, rec.Code, rec.Body.String())
+			if tt.wantCode == http.StatusAccepted {
+				require.Equal(t, tt.wantRoot, resp.ScanRoot)
 			}
 		})
 	}
