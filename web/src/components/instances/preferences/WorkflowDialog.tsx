@@ -9,13 +9,12 @@ import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
   CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
-  FIELD_REQUIREMENTS,
   SCORE_FIELDS,
   SORT_FIELDS,
   STATE_VALUE_REQUIREMENTS,
   getCapabilityReason,
+  getDisabledFields,
   type Capabilities,
-  type DisabledField,
   type DisabledStateValue
 } from "@/components/query-builder/constants"
 import {
@@ -227,12 +226,6 @@ function formatDryRunEventSummary(
     default:
       return t("preferences.workflowDialog.dryRun.summary.completed")
   }
-}
-
-function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
-  return Object.entries(FIELD_REQUIREMENTS)
-    .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
@@ -584,10 +577,6 @@ const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
-  const simpleSortDisabledFields = useMemo(() => {
-    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
-    return SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason }))
-  }, [t])
   const scoreMultiplierDisabledFields = useMemo(() => {
     const reason = t("preferences.workflowDialog.priority.notSupportedForScoreMultiplier")
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
@@ -680,7 +669,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   })
   const hasNotificationTargets = (notificationTargets ?? []).length > 0
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
@@ -694,12 +682,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
-      trackerHealth: supportsTrackerHealth,
+      supportsLiveReannounce: capabilities?.supportsLiveReannounce ?? false,
+      supportsListFieldsV5: capabilities?.supportsListFieldsV5 ?? false,
+      supportsTrackerHealth: capabilities?.supportsTrackerHealth ?? false,
+      supportsListCreatedBy: capabilities?.supportsListCreatedBy ?? false,
       read: canRead,
       trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, canRead, hasTrustedIdentity]
+    [capabilities, canRead, hasTrustedIdentity]
   )
+  // A field the instance does not send cannot sort either. The first reason wins, so a field
+  // that cannot sort at all keeps the sort reason.
+  const simpleSortDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
+    return [
+      ...SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason })),
+      ...getDisabledFields(fieldCapabilities, isRemoteInstance, t),
+    ]
+  }, [t, fieldCapabilities, isRemoteInstance])
 
   // Callback for path autocomplete suggestion selection
   const handleFreeSpacePathSelect = useCallback((path: string) => {

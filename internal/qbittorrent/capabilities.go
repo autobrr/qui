@@ -51,6 +51,8 @@ const (
 	// CapListFieldsV5 is popularity, private and comment in the torrent list.
 	// Before that, qBittorrent leaves them out.
 	CapListFieldsV5
+	// CapListCreatedBy is created_by in the torrent list.
+	CapListCreatedBy
 	// CapPartialCategoryEdit is an editCategory that keeps the options it
 	// leaves out. Before that, an edit replaces them all.
 	CapPartialCategoryEdit
@@ -96,7 +98,8 @@ var capabilityVersions = map[Capability]versionRange{
 	CapShareLimitsAction:          since("2.15.1"),
 	CapShareLimitsMode:            since("2.16.0"),
 	CapLiveReannounce:             since("2.10.0"), // qBittorrent 5.0
-	CapListFieldsV5:               since("2.10.0"), // qBittorrent 5.0
+	CapListFieldsV5:               since("2.11.2"), // qBittorrent 5.0.0rc1. 5.0.0beta1 (2.10.4) sends comment, but not popularity or private
+	CapListCreatedBy:              since("2.15.1"), // qBittorrent 5.2
 	CapPartialCategoryEdit:        since("2.16.1"), // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 	CapProcessInfo:                since("2.15.1"),
 	CapExportOmitsTrackers:        {lowest: semver.MustParse("2.9.1"), highest: semver.MustParse("2.9.3")},

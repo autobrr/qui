@@ -557,6 +557,9 @@ export const CAPABILITIES: InstanceCapabilities = {
   supportsSetRSSFeedURL: false,
   supportsShareLimitsAction: true,
   supportsShareLimitsMode: true,
+  supportsLiveReannounce: true,
+  supportsListFieldsV5: true,
+  supportsListCreatedBy: false,
   webAPIVersion: "2.11.4",
 }
 
