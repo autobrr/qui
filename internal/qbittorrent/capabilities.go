@@ -3,7 +3,11 @@
 
 package qbittorrent
 
-import "github.com/Masterminds/semver/v3"
+import (
+	"context"
+
+	"github.com/Masterminds/semver/v3"
+)
 
 // Capability is something an instance can do or send because of its
 // qBittorrent version. Client.Supports answers for one.
@@ -100,4 +104,16 @@ func versionSupports(version *semver.Version, capability Capability) bool {
 		return false
 	}
 	return !version.LessThan(r.lowest) && (r.highest == nil || !version.GreaterThan(r.highest))
+}
+
+// WebAPIVersionsChanged reports whether an instance in versions now has another
+// Web API version, "" while unknown. An instance with no client counts as
+// unchanged.
+func (sm *SyncManager) WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool {
+	for id, version := range versions {
+		if client, err := sm.clientPool.GetClientOffline(ctx, id); err == nil && client.GetWebAPIVersion() != version {
+			return true
+		}
+	}
+	return false
 }

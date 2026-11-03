@@ -156,6 +156,16 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	return g.resendBaselineLocked(snapshot, meta)
 }
 
+// baselineVersions is the Web API version of each instance in the last frame.
+func (g *subscriptionGroup) baselineVersions() map[int]string {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+	if g.baselineSnapshot == nil {
+		return nil
+	}
+	return g.baselineSnapshot.WebAPIVersions
+}
+
 // buildIdlePayload sends the last frame of a cross-instance view again, as a delta
 // with no changed rows. It returns nil when the view must be rebuilt: the group
 // has no baseline yet, or the last rebuild failed.

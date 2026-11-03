@@ -181,6 +181,7 @@ type syncProvider interface {
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
+	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
 }
 
 // instanceStore is the subset of *models.InstanceStore that the StreamManager
@@ -1661,6 +1662,9 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 
 		var payload *StreamPayload
 		switch {
+		// A version read after the last frame changes the rows and the version
+		// list of the view, so it rebuilds.
+		case m.syncManager.WebAPIVersionsChanged(m.ctx, group.baselineVersions()):
 		// A cross-instance view carries no server state, so it rebuilds.
 		case (meta.serverState != nil || meta.idle) && !opts.isMultiInstance():
 			// The same bound as a rebuild, so a stalled task count request
