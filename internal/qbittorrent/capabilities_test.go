@@ -276,7 +276,7 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 // regression: #3760
 func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
-	client, stub, _, _ := newSyncedStubClient(t, "2.15.1")
+	client, stub := newStubClient(t, "2.15.1")
 
 	// go-qbittorrent calls this hook before a full update enters the cache.
 	stub.HangWebAPIVersion = true
