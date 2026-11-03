@@ -286,31 +286,43 @@ func (c *AppConfig) watchConfig() {
 	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
-
-		c.configMu.Lock()
-		defer c.configMu.Unlock()
-
-		previousAuthSettings := authReloadSettings{
-			authDisabled:               c.Config.AuthDisabled,
-			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
-			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
-			oidcEnabled:                c.Config.OIDCEnabled,
-			oidcAllowedSubject:         c.Config.OIDCAllowedSubject,
-			oidcAllowedEmail:           c.Config.OIDCAllowedEmail,
-			corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
-		}
-
-		// Reload configuration
-		if err := c.viper.Unmarshal(c.Config); err != nil {
-			log.Error().Err(err).Msg("Failed to reload configuration")
-			return
-		}
-		c.hydrateConfigFromViper()
-
-		// Apply dynamic changes
-		c.applyDynamicChanges(previousAuthSettings)
+		// An editor can save in several writes, and a part-written file can
+		// clear keys such as oidcAllowedSubject. Read the file once it is quiet.
+		time.Sleep(configReloadDelay)
+		c.reload()
 	})
 	c.viper.WatchConfig()
+}
+
+const configReloadDelay = 200 * time.Millisecond
+
+func (c *AppConfig) reload() {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+
+	// The watcher read the file before the delay. Read the file as it is now.
+	if err := c.viper.ReadInConfig(); err != nil {
+		log.Error().Err(err).Msg("Failed to read configuration file")
+		return
+	}
+
+	previousAuthSettings := authReloadSettings{
+		authDisabled:               c.Config.AuthDisabled,
+		iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+		authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+		oidcEnabled:                c.Config.OIDCEnabled,
+		oidcAllowedSubject:         c.Config.OIDCAllowedSubject,
+		oidcAllowedEmail:           c.Config.OIDCAllowedEmail,
+		corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
+	}
+
+	if err := c.viper.Unmarshal(c.Config); err != nil {
+		log.Error().Err(err).Msg("Failed to reload configuration")
+		return
+	}
+	c.hydrateConfigFromViper()
+
+	c.applyDynamicChanges(previousAuthSettings)
 }
 
 type authReloadSettings struct {
