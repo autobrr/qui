@@ -225,5 +225,8 @@ export interface InstanceCapabilities {
   supportsSetRSSFeedURL: boolean
   supportsShareLimitsAction: boolean
   supportsShareLimitsMode?: boolean
+  supportsLiveReannounce: boolean
+  supportsListFieldsV5: boolean
+  supportsListCreatedBy: boolean
   webAPIVersion?: string
 }

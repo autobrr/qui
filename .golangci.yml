@@ -98,6 +98,12 @@ linters:
         - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
+        - pattern: ^qbittorrent\.Client\.(AddTags|RemoveTags|SetTags|SetCategory|SetLocation|SetAutoManagement|SetForceStart|SetComment|SetTorrentShareLimit|SetTorrentUploadLimit|SetTorrentDownloadLimit|RenameTorrent|SetTorrentName|RenameFile|RenameFolder|EditTracker|AddTrackers|RemoveTrackers|SetFilePriority|AddPeersForTorrents)(Ctx)?$
+          pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
+          msg: edit torrents through the SyncManager edit methods in internal/qbittorrent/sync_manager.go
+        - pattern: ^qbittorrent\.Client\.GetWebAPIVersion(Ctx)?$
+          pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
+          msg: ask Client.Supports; the version table is in internal/qbittorrent/capabilities.go
         - pattern: ^qbittorrent\.Category(Save|Download)Path$
           pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
           msg: read category folders through SyncManager.InstanceFolders
@@ -146,6 +152,21 @@ linters:
         linters:
           - forbidigo
         text: preference catalog
+
+      # Only the edit path in the sync manager edits torrents. The rule does not
+      # catch a call through an interface, and it does not guard the sync manager
+      # file itself: a new edit method there must go through editTorrents.
+      - path: internal/qbittorrent/sync_manager\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: SyncManager edit methods
+
+      # Only the qBittorrent package reads the Web API version. The capabilities
+      # handler reports it to the UI.
+      - path: internal/qbittorrent/|internal/api/handlers/capabilities\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Client\.Supports
 
       # Only the Instance folders module resolves category folders.
       - path: internal/qbittorrent/(instance_folders|category_paths)(_test)?\.go$

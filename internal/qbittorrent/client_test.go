@@ -18,6 +18,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
@@ -260,38 +262,6 @@ func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
 	}
 }
 
-func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		version  string
-		expected bool
-	}{
-		{
-			name:     "legacy optional setting",
-			version:  "2.14.1",
-			expected: false,
-		},
-		{
-			name:     "subcategories unconditional",
-			version:  "2.15.0",
-			expected: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			client := &Client{}
-			client.applyCapabilitiesLocked(tc.version)
-
-			require.Equal(t, tc.expected, client.SubcategoriesAlwaysEnabled())
-		})
-	}
-}
-
 func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncStarted := make(chan struct{})
 	releaseSync := make(chan struct{})
@@ -320,9 +290,9 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
 	client := &Client{
-		Client:          qbtClient,
-		syncManager:     qbtClient.NewSyncManager(syncOpts),
-		supportsSetTags: true,
+		Client:      qbtClient,
+		syncManager: qbtClient.NewSyncManager(syncOpts),
+		version:     semver.MustParse("2.16.0"),
 	}
 
 	getterDone := make(chan struct{})
@@ -360,7 +330,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 			probeDone := make(chan struct{})
 			go func() {
 				client.mu.RLock()
-				_ = client.supportsSetTags
+				_ = client.version
 				client.mu.RUnlock()
 				close(probeDone)
 			}()
@@ -389,7 +359,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 
 	readDone := make(chan bool, 1)
 	go func() {
-		readDone <- client.SupportsSetTags()
+		readDone <- client.Supports(CapSetTags)
 	}()
 
 	select {
@@ -555,7 +525,7 @@ func TestRefreshCapabilitiesRejectsInvalidWebAPIVersionMarker(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid qBittorrent WebAPI version")
-	require.False(t, client.SupportsSetTags())
+	require.False(t, client.Supports(CapSetTags))
 	require.Empty(t, client.GetWebAPIVersion())
 }
 

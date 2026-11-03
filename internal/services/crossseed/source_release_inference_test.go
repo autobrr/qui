@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -408,12 +410,27 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 // fileRequestRecorder records the hashes whose file lists a test asks for.
 type fileRequestRecorder struct {
 	*fakeSyncManager
+	mu        sync.Mutex
 	requested []string
+	// serve, when set, answers in place of the file lists of the fake.
+	serve func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
 func (r *fileRequestRecorder) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	r.mu.Lock()
 	r.requested = append(r.requested, hashes...)
+	serve := r.serve
+	r.mu.Unlock()
+	if serve != nil {
+		return serve(ctx, hashes)
+	}
 	return r.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+}
+
+func (r *fileRequestRecorder) requests() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.requested)
 }
 
 func TestReadLocalTorrentsReadsOnlyNamesThatNeedFiles(t *testing.T) {
@@ -442,7 +459,7 @@ func TestReadLocalTorrentsReadsOnlyNamesThatNeedFiles(t *testing.T) {
 
 	reads := svc.readLocalTorrents(t.Context(), instance.ID, viewTorrents(buildCrossInstanceViews(instance, torrents)))
 
-	require.ElementsMatch(t, []string{"folder", "batch", "unread"}, recorder.requested)
+	require.ElementsMatch(t, []string{"folder", "batch", "unread"}, recorder.requests())
 	require.Equal(t, 1, settingsLoads, "the batch loads the category mapping rules once")
 	folder := reads.read(svc.matcher(), instance.ID, &torrents[0])
 	require.Equal(t, "Kaiju Squad", folder.release.Title)

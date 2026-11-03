@@ -35,6 +35,7 @@ vi.mock("@/hooks/useInstances", () => ({
 
 vi.mock("@/hooks/useInstanceCapabilities", () => ({
   useInstanceCapabilities: vi.fn(),
+  refreshChangedCapabilities: vi.fn(),
 }))
 
 // The same stream stand-in as the list hook tests: the REST path runs, and the
