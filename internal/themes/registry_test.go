@@ -4,7 +4,7 @@
 package themes
 
 import (
-	"slices"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -38,7 +38,7 @@ func TestRegistryIDsPinned(t *testing.T) {
 	require.Empty(t, want, "missing free themes")
 
 	t.Run("licensed", func(t *testing.T) {
-		if !slices.ContainsFunc(All(), func(theme Theme) bool { return theme.Premium }) {
+		if paths, _ := fs.Glob(assetsFS, "assets/premium/*.css"); len(paths) == 0 {
 			t.Skip("licensed folder is empty: run make themes-fetch to pin the licensed ids")
 		}
 		// A subset: a new licensed theme needs no entry here, but these ids must stay.
@@ -83,6 +83,11 @@ func TestParseIDHeader(t *testing.T) {
 	require.Equal(t, "Terracotta", renamed.Name)
 
 	require.Equal(t, "tokyo-night", parse("/* @name: Tokyo Night\n */\n", "tokyo_night", true).ID)
+	require.Equal(t, "nord", parse("/* @id: nord */\n", "x", true).ID)
+
+	// An empty @id line, or "@id:" inside another header value, keeps the name slug.
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @id:\n * @description: Cold\n */\n", "x", true).ID)
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @description: Use @id: other\n */\n", "x", true).ID)
 }
 
 func TestGenerateID(t *testing.T) {

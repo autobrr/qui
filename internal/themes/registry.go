@@ -39,7 +39,7 @@ type Preview struct {
 
 var (
 	nameRe        = regexp.MustCompile(`@name:\s*(.+?)\s*(?:\n|\*)`)
-	idRe          = regexp.MustCompile(`@id:\s*(.+?)\s*(?:\n|\*)`)
+	idRe          = regexp.MustCompile(`(?m)^[\s/*]*@id:[ \t]*([^\s*]+)`)
 	descriptionRe = regexp.MustCompile(`@description:\s*(.+?)\s*(?:\n|\*)`)
 	premiumRe     = regexp.MustCompile(`@premium:\s*true`)
 	slugRe        = regexp.MustCompile(`[^a-z0-9]+`)
