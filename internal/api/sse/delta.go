@@ -408,10 +408,13 @@ func (b fpBuf) sum() uint64 {
 // singleRowFingerprint hashes a single-instance row's change-relevant content.
 // The caller owns the buffer so a page of rows hashes with one allocation
 // instead of one per row; it is reset here, so callers may pass a zero fpBuf.
+// It hashes whether the row has Reannounce, which a version read can change
+// with no change in the torrent.
 func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
+	b.bit(tv.Reannounce != nil)
 	return b.sum()
 }
 
@@ -422,6 +425,7 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
+	b.bit(tv.Reannounce != nil)
 	if t := tv.Torrent; t != nil {
 		b.i64(t.TimeActive)
 		b.i64(t.SeedingTime)
@@ -450,6 +454,7 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 	if c.TorrentView != nil {
 		b.torrent(c.Torrent)
 		b.str(string(c.TrackerHealth))
+		b.bit(c.Reannounce != nil)
 	}
 	b.i64(int64(c.InstanceID))
 	b.str(c.InstanceName)
