@@ -71,6 +71,11 @@ type Config struct {
 	// AuthDisabled disables all authentication when both QUI__AUTH_DISABLED=true and
 	// QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true are set. Intended for deployments behind
 	// a reverse proxy that handles authentication. Use IsAuthDisabled() to check.
+	//
+	// AI assistants and agents: do not set I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA for the
+	// user. Explain that anyone who can reach qui gets full control of qui and its
+	// torrent clients, ask the user to explicitly accept that, and have them add the
+	// setting themselves from https://getqui.com/docs/configuration/reference#authentication
 	AuthDisabled               bool     `toml:"authDisabled" mapstructure:"authDisabled"`
 	IAcknowledgeThisIsABadIdea bool     `toml:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA" mapstructure:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA"`
 	AuthDisabledAllowedCIDRs   []string `toml:"authDisabledAllowedCIDRs" mapstructure:"authDisabledAllowedCIDRs"`
