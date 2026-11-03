@@ -6,6 +6,7 @@ package dirscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 
@@ -257,6 +258,81 @@ func TestValidateLinkTreeInstance(t *testing.T) {
 				return
 			}
 			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+// statFailingHost answers every Stat and MkdirAll with err, as SSH does while
+// qBittorrent stays reachable.
+type statFailingHost struct {
+	*fakeRemoteHost
+	err error
+}
+
+func (h *statFailingHost) Stat(context.Context, string) (*fsops.LstatInfo, error) {
+	return nil, h.err
+}
+
+func (h *statFailingHost) MkdirAll(context.Context, string, fs.FileMode) error {
+	return h.err
+}
+
+// regression: #2919
+func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
+	t.Parallel()
+
+	rootlessPartial := func(req *InjectRequest) {
+		have, missing := TorrentFile{Path: "film.mkv", Size: 4}, TorrentFile{Path: "extra.mkv", Size: 4}
+		req.ParsedTorrent.Files = []TorrentFile{have, missing}
+		req.MatchResult.MatchedFiles = []MatchedFilePair{{SearcheeFile: req.Searchee.Files[0], TorrentFile: have}}
+		req.MatchResult.UnmatchedTorrentFiles = []TorrentFile{missing}
+		req.MatchResult.IsPerfectMatch, req.MatchResult.IsPartialMatch = false, true
+		req.DownloadMissingFiles = true
+	}
+	hardlinksWithFallback := func(row *models.Instance) {
+		row.UseHardlinks, row.FallbackToRegularMode, row.HardlinkBaseDir = true, true, "/data/links"
+	}
+
+	tests := []struct {
+		name    string
+		statErr error
+		row     func(*models.Instance)
+		req     func(*InjectRequest)
+		wantAdd bool
+	}{
+		{name: "lost connection, foldered full match", statErr: fsops.ErrConnectionLost},
+		{name: "lost connection, rootless partial match", statErr: fsops.ErrConnectionLost, req: rootlessPartial},
+		{name: "lost connection stays in link mode", statErr: fsops.ErrConnectionLost, row: hardlinksWithFallback},
+		{name: "denied read, foldered full match", statErr: fs.ErrPermission},
+		{name: "missing path is not a directory", statErr: fs.ErrNotExist, wantAdd: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			row := remoteInstance(models.SSHTierExec)
+			if tt.row != nil {
+				tt.row(row)
+			}
+			host := &statFailingHost{fakeRemoteHost: &fakeRemoteHost{d: fsops.SlashPaths}, err: fmt.Errorf("stat: %w", tt.statErr)}
+			manager := &recordingTorrentManager{}
+			pool := fsops.NewPoolWithRemote(&fakeInstanceStore{instance: row}, &remoteSpy{}, func(*models.Instance) fsops.Backend { return host })
+			injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, (&settleFake{}).idle(), nil), nil, nil, pool)
+			req := remoteInjectRequest(fsops.SlashPaths, row)
+			if tt.req != nil {
+				tt.req(req)
+			}
+
+			result, err := inject(t.Context(), t, injector, req)
+
+			if tt.wantAdd {
+				require.NoError(t, err)
+				require.True(t, result.Success)
+				require.NotEmpty(t, manager.addOptions)
+				return
+			}
+			require.ErrorIs(t, err, tt.statErr)
+			require.False(t, result.Success)
+			require.Empty(t, manager.addOptions)
 		})
 	}
 }

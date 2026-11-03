@@ -5,7 +5,11 @@ package dirscan
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"strings"
+	"syscall"
 
 	"github.com/rs/zerolog/log"
 
@@ -109,14 +113,18 @@ func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir b
 	return plan
 }
 
-// searcheePathIsDir reports whether the searchee path is an existing directory. A missing path
-// or unavailable backend is treated as not-a-directory so alignment stays conservative.
-func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) bool {
-	if backend == nil {
-		return false
-	}
+// searcheeIsDir reports whether the searchee path is a directory. A missing path is not one. Any
+// other failure is returned: on a remote instance SSH can fail while qBittorrent still answers,
+// and a guessed layout adds the torrent where its files are not.
+func searcheeIsDir(ctx context.Context, backend fsops.Backend, path string) (bool, error) {
 	info, err := backend.Stat(ctx, path)
-	return err == nil && info.IsDir
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read searchee: %w", err)
+	}
+	return info.IsDir, nil
 }
 
 // align renames the just-added torrent to match the on-disk files. It returns the hash that

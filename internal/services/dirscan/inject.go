@@ -201,8 +201,16 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
-	alignPlan := buildAlignmentPlan(backend.Paths(), req, searcheePathIsDir(ctx, backend, req.Searchee.Path))
 	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
+	var alignPlan alignmentPlan
+	if regularFullMatch {
+		isDir, err := searcheeIsDir(ctx, backend, req.Searchee.Path)
+		if err != nil {
+			result.ErrorMessage = err.Error()
+			return result, err
+		}
+		alignPlan = buildAlignmentPlan(backend.Paths(), req, isDir)
+	}
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.
@@ -344,7 +352,8 @@ func (i *Injector) prepareInjection(
 	}
 
 	if !instance.UseReflinks && !instance.UseHardlinks {
-		return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
+		savePath, err = i.calculateSavePath(ctx, backend, req)
+		return savePath, injectModeRegular, nil, err
 	}
 
 	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, backend, req)
@@ -355,12 +364,15 @@ func (i *Injector) prepareInjection(
 		return plan.RootDir, linkMode, created, nil
 	}
 
-	if !instance.FallbackToRegularMode {
+	// A lost connection says nothing about links on that host, so it isn't a
+	// reason to leave link mode.
+	if !instance.FallbackToRegularMode || errors.Is(linkErr, fsops.ErrConnectionLost) {
 		return "", "", nil, linkErr
 	}
 
 	i.logLinkTreeFallback(instance, linkErr)
-	return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
+	savePath, err = i.calculateSavePath(ctx, backend, req)
+	return savePath, injectModeRegular, nil, err
 }
 
 func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
@@ -402,7 +414,7 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 }
 
 // calculateSavePath determines the save path for the torrent.
-func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) string {
+func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) (string, error) {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
@@ -412,7 +424,11 @@ func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend,
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
-		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent) {
+		useSearchee, err := shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent)
+		if err != nil {
+			return "", err
+		}
+		if useSearchee {
 			savePath = req.Searchee.Path
 		}
 	}
@@ -422,24 +438,22 @@ func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend,
 		savePath = applyPathMapping(savePath, backend.Paths().Dir(req.Searchee.Path), req.QbitPathPrefix)
 	}
 
-	return savePath
+	return savePath, nil
 }
 
-func shouldUseSearcheeDirectory(ctx context.Context, backend fsops.Backend, searcheePath string, parsed *ParsedTorrent) bool {
-	if searcheePath == "" || parsed == nil || backend == nil {
-		return false
-	}
-
-	fi, err := backend.Stat(ctx, searcheePath)
-	if err != nil || !fi.IsDir {
-		return false
+func shouldUseSearcheeDirectory(ctx context.Context, backend fsops.Backend, searcheePath string, parsed *ParsedTorrent) (bool, error) {
+	if searcheePath == "" || parsed == nil {
+		return false, nil
 	}
 
 	candidateFiles := make([]hardlinktree.TorrentFile, 0, len(parsed.Files))
 	for _, f := range parsed.Files {
 		candidateFiles = append(candidateFiles, hardlinktree.TorrentFile{Path: f.Path, Size: f.Size})
 	}
-	return !hardlinktree.HasCommonRootFolder(candidateFiles)
+	if hardlinktree.HasCommonRootFolder(candidateFiles) {
+		return false, nil
+	}
+	return searcheeIsDir(ctx, backend, searcheePath)
 }
 
 // applyPathMapping replaces the original path prefix with the qBittorrent path prefix.
