@@ -111,6 +111,7 @@ describe("ThemeToggle with the qui API", () => {
     expect(await openMenuNames()).toEqual(defaultMenu)
   })
 
+  // regression: #3790
   it("keeps a hidden custom theme in use after a reload", async () => {
     // The boot paint already applied the custom theme, so registering the
     // custom list applies nothing and sends no theme change.
