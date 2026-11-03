@@ -59,10 +59,13 @@ func (hostPaths) ToSlash(p string) string   { return filepath.ToSlash(p) }
 func (hostPaths) Separator() string         { return string(filepath.Separator) }
 
 // shareRootWithSeparator gives a UNC share root one spelling: filepath.Rel never
-// returns for \\host\share against \\host\share\ (Go 1.27.3).
+// returns for \\host\share against \\host\share\ (Go 1.27.3). A volume the
+// separator would change, such as \\host with no share, stays as it is.
 func shareRootWithSeparator(p string) string {
-	if vol := filepath.VolumeName(p); len(vol) > 2 && filepath.Clean(p) == vol {
-		return vol + string(filepath.Separator)
+	vol := filepath.VolumeName(p)
+	withSeparator := vol + string(filepath.Separator)
+	if filepath.Clean(p) == vol && filepath.VolumeName(withSeparator) == vol {
+		return withSeparator
 	}
 	return p
 }
