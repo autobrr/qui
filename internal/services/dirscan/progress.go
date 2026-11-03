@@ -27,7 +27,8 @@ type trackedFilesIndex struct {
 // endpointTag names the endpoint a stored identity was read through, since the
 // same device and inode on another server is another file. It lives in the row
 // so a run that overlaps an SSH edit, which still writes the old identity, needs
-// no cleanup. A new tag costs a row only its rename detection until its next walk.
+// no cleanup. A new tag costs a row its rename detection until its next walk. On a
+// host with no identity, an already_seeding row stays so until Reset Scan Progress.
 func endpointTag(instance *models.Instance) []byte {
 	if instance == nil {
 		return nil

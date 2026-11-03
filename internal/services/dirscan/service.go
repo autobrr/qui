@@ -446,6 +446,19 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 	return runID, nil
 }
 
+// DirectoryPaths is the grammar of dir's paths. An instance with no backend reads
+// as the host's, and the run reports what is wrong with it.
+func (s *Service) DirectoryPaths(ctx context.Context, dir *models.DirScanDirectory) fsops.PathDialect {
+	if s.backendPool == nil {
+		return fsops.HostPaths
+	}
+	backend, _, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil {
+		return fsops.HostPaths
+	}
+	return backend.Paths()
+}
+
 // WebhookScanRoot is where a webhook for cleanPath in dir scans: the path, or
 // the folder of a file. A path the directory's backend can't read scans as
 // given, and the run reports what is wrong with it. A dead host can hold the
@@ -489,7 +502,7 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 		if run.TriggeredBy != triggeredByWebhook || run.Status != models.DirScanRunStatusQueued {
 			continue
 		}
-		if mergedRoot := mergeWebhookScanRoots(dir.Path, run.ScanRoot, scanRoot); mergedRoot != run.ScanRoot {
+		if mergedRoot := mergeWebhookScanRoots(s.DirectoryPaths(ctx, dir), dir.Path, run.ScanRoot, scanRoot); mergedRoot != run.ScanRoot {
 			if err := s.store.UpdateRunScanRoot(ctx, run.ID, mergedRoot); err != nil {
 				return 0, fmt.Errorf("merge queued webhook scan root: %w", err)
 			}

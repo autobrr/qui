@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -18,17 +19,31 @@ import (
 func TestMergeWebhookScanRoots(t *testing.T) {
 	dir := "/data/media/tv"
 
-	require.Equal(t, dir, mergeWebhookScanRoots(dir, "", dir))
+	d := fsops.SlashPaths
+	require.Equal(t, dir, mergeWebhookScanRoots(d, dir, "", dir))
 	require.Equal(t, path.Join(dir, "Show"), mergeWebhookScanRoots(
+		d,
 		dir,
 		path.Join(dir, "Show", "Season 01"),
 		path.Join(dir, "Show", "Season 02"),
 	))
 	require.Equal(t, dir, mergeWebhookScanRoots(
+		d,
 		dir,
 		path.Join(dir, "Show A", "Season 01"),
 		path.Join(dir, "Show B", "Season 01"),
 	))
+}
+
+// regression: #2919
+func TestMergeWebhookScanRootsKeepsABackslashInASlashName(t *testing.T) {
+	t.Parallel()
+
+	const dir, root = "/data/lib", `/data/lib/x\..\..\..\etc`
+	_, target, ok := PathWithinDirectory(fsops.SlashPaths, dir, root)
+	require.True(t, ok)
+	require.Equal(t, root, mergeWebhookScanRoots(fsops.SlashPaths, dir, target, target))
+	require.Equal(t, dir, mergeWebhookScanRoots(fsops.SlashPaths, dir, target, "/data/lib/other"))
 }
 
 func newDirScanTestService(t *testing.T) (*Service, *models.DirScanStore, *models.DirScanDirectory) {
@@ -154,27 +169,28 @@ func TestPathWithinDirectory(t *testing.T) {
 	root := string(filepath.Separator)
 	tests := []struct {
 		name        string
+		d           fsops.PathDialect
 		dir, target string
 		wantDir     string
 		wantTarget  string
 		want        bool
 	}{
-		{name: "same path matches", dir: "/data/media/tv", target: "/data/media/tv", wantDir: "/data/media/tv", wantTarget: "/data/media/tv", want: true},
-		{name: "child path matches", dir: "/data/media/tv", target: "/data/media/tv/Show Name", wantDir: "/data/media/tv", wantTarget: "/data/media/tv/Show Name", want: true},
-		{name: "sibling path does not match", dir: "/data/media/tv", target: "/data/media/tv-shows", wantDir: "/data/media/tv", wantTarget: "/data/media/tv-shows"},
-		{name: "filesystem root matches descendants", dir: "/", target: "/data/media", wantDir: "/", wantTarget: "/data/media", want: true},
-		{name: "a dot dot climbs out", dir: "/data/media/tv", target: "/data/media/tv/../movies", wantDir: "/data/media/tv", wantTarget: "/data/media/movies"},
-		{name: "unclean paths are cleaned", dir: "/data//media/tv/", target: "/data/media/tv/./Show/", wantDir: "/data/media/tv", wantTarget: "/data/media/tv/Show", want: true},
-		{name: "a backslash stays part of a slash name", dir: "/data", target: `/data/a\b`, wantDir: "/data", wantTarget: `/data/a\b`, want: true},
-		{name: "a relative target is not within", dir: "/data", target: "data/x", wantDir: "/data", wantTarget: "data/x"},
-		{name: "host grammar for any other directory", dir: filepath.Join("relative", "tv"), target: filepath.Join("relative", "tv", "Show"), wantDir: filepath.Join("relative", "tv"), wantTarget: filepath.Join("relative", "tv", "Show"), want: true},
-		{name: "host grammar sibling", dir: filepath.Join("relative", "tv"), target: filepath.Join("relative", "tv-shows"), wantDir: filepath.Join("relative", "tv"), wantTarget: filepath.Join("relative", "tv-shows")},
-		{name: "host root", dir: root, target: filepath.Join(root, "data"), wantDir: filepath.Clean(root), want: true},
+		{name: "same path matches", d: fsops.SlashPaths, dir: "/data/media/tv", target: "/data/media/tv", wantDir: "/data/media/tv", wantTarget: "/data/media/tv", want: true},
+		{name: "child path matches", d: fsops.SlashPaths, dir: "/data/media/tv", target: "/data/media/tv/Show Name", wantDir: "/data/media/tv", wantTarget: "/data/media/tv/Show Name", want: true},
+		{name: "sibling path does not match", d: fsops.SlashPaths, dir: "/data/media/tv", target: "/data/media/tv-shows", wantDir: "/data/media/tv", wantTarget: "/data/media/tv-shows"},
+		{name: "filesystem root matches descendants", d: fsops.SlashPaths, dir: "/", target: "/data/media", wantDir: "/", wantTarget: "/data/media", want: true},
+		{name: "a dot dot climbs out", d: fsops.SlashPaths, dir: "/data/media/tv", target: "/data/media/tv/../movies", wantDir: "/data/media/tv", wantTarget: "/data/media/movies"},
+		{name: "unclean paths are cleaned", d: fsops.SlashPaths, dir: "/data//media/tv/", target: "/data/media/tv/./Show/", wantDir: "/data/media/tv", wantTarget: "/data/media/tv/Show", want: true},
+		{name: "a backslash stays part of a slash name", d: fsops.SlashPaths, dir: "/data", target: `/data/a\b`, wantDir: "/data", wantTarget: `/data/a\b`, want: true},
+		{name: "a relative target is not within", d: fsops.SlashPaths, dir: "/data", target: "data/x", wantDir: "/data", wantTarget: "data/x"},
+		{name: "host grammar for any other directory", d: fsops.HostPaths, dir: filepath.Join("relative", "tv"), target: filepath.Join("relative", "tv", "Show"), wantDir: filepath.Join("relative", "tv"), wantTarget: filepath.Join("relative", "tv", "Show"), want: true},
+		{name: "host grammar sibling", d: fsops.HostPaths, dir: filepath.Join("relative", "tv"), target: filepath.Join("relative", "tv-shows"), wantDir: filepath.Join("relative", "tv"), wantTarget: filepath.Join("relative", "tv-shows")},
+		{name: "host root", d: fsops.HostPaths, dir: root, target: filepath.Join(root, "data"), wantDir: filepath.Clean(root), want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir, target, ok := PathWithinDirectory(tt.dir, tt.target)
+			dir, target, ok := PathWithinDirectory(tt.d, tt.dir, tt.target)
 			require.Equal(t, tt.want, ok)
 			require.Equal(t, tt.wantDir, dir)
 			if tt.wantTarget != "" {

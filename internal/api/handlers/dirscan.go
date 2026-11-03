@@ -237,7 +237,7 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 		return nil, false
 	}
 	if remotePathIsRelative(instance, *payload.Path) {
-		RespondError(w, http.StatusBadRequest, errRemotePathNotAbsolute)
+		RespondError(w, http.StatusBadRequest, msgRemotePathNotAbsolute)
 		return nil, false
 	}
 
@@ -699,7 +699,7 @@ func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.R
 	return instance, nil
 }
 
-const errRemotePathNotAbsolute = "Path must be absolute on a remote instance"
+const msgRemotePathNotAbsolute = "Path must be absolute on a remote instance"
 
 // remotePathIsRelative is a path a remote instance can't take, since find only
 // takes absolute ones and an sftp server resolves the rest against the login folder.
@@ -747,7 +747,7 @@ func (h *DirScanHandler) validateUpdatedPathAndTarget(w http.ResponseWriter, r *
 		path = *payload.Path
 	}
 	if remotePathIsRelative(instance, path) {
-		RespondError(w, http.StatusBadRequest, errRemotePathNotAbsolute)
+		RespondError(w, http.StatusBadRequest, msgRemotePathNotAbsolute)
 		return false
 	}
 	return true
@@ -916,7 +916,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		if !dir.Enabled {
 			continue
 		}
-		dirPath, candidatePath, ok := dirscan.PathWithinDirectory(dir.Path, resolvedPath)
+		dirPath, candidatePath, ok := dirscan.PathWithinDirectory(h.service.DirectoryPaths(r.Context(), dir), dir.Path, resolvedPath)
 		if !ok {
 			continue
 		}
