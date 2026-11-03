@@ -226,6 +226,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",
+      "qbittorrent50": "Requereix qBittorrent 5.0+",
+      "qbittorrent52": "Requereix qBittorrent 5.2+",
       "localFilesystemAccess": "Requereix accés al sistema de fitxers local",
       "remoteInstance": "No disponible en instàncies remotes"
     },

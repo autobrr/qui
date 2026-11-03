@@ -263,12 +263,12 @@ Label is the name of the field in the rule builder. With `EQUAL` and `NOT_EQUAL`
 | `AUTO_MANAGED` | Auto-managed | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
 | `AVAILABILITY` | Availability | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `CATEGORY` | Category | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
-| `COMMENT` | Comment | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `COMMENT` | Comment | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  | qBittorrent 5.0+ |
 | `COMPLETED` | Completed | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `COMPLETION_ON` | Completed Age | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `CONTENT_PATH` | Content Path | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
 | `CONTENT_TYPE` | Content Type | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` | `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, `unknown` |  |
-| `CREATED_BY` | Created By | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `CREATED_BY` | Created By | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  | qBittorrent 5.2+ |
 | `CROSS_SEED_TAGS` | Cross-seed Tags | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
 | `DL_LIMIT` | Download Limit | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `DL_SPEED` | Download Speed | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
@@ -303,13 +303,13 @@ Label is the name of the field in the rule builder. With `EQUAL` and `NOT_EQUAL`
 | `NUM_INCOMPLETE` | Total Leechers | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `NUM_LEECHS` | Active Leechers | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `NUM_SEEDS` | Active Seeders | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
-| `POPULARITY` | Popularity | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `POPULARITY` | Popularity | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  | qBittorrent 5.0+ |
 | `PRIORITY` | Queue Priority | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
-| `PRIVATE` | Private | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `PRIVATE` | Private | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` | qBittorrent 5.0+ |
 | `PROGRESS` | Progress | number (0 to 1) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `RATIO` | Ratio | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `RATIO_LIMIT` | Ratio Limit | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
-| `REANNOUNCE` | Reannounce In | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `REANNOUNCE` | Reannounce In | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  | qBittorrent 5.0+ |
 | `RLS_AUDIO` | Audio (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
 | `RLS_CHANNELS` | Channels (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
 | `RLS_CODEC` | Codec (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
