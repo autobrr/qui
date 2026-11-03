@@ -41,6 +41,7 @@ import {
 } from "@/lib/tag-editor"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useInstancesSupport } from "@/hooks/useInstanceCapabilities"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1775,8 +1776,8 @@ interface ShareLimitDialogProps {
   torrents?: TorrentLimitSnapshot[]
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
-  supportsShareLimitsAction?: boolean
-  supportsShareLimitsMode?: boolean
+  // The instances that the action reaches, from actionTargetInstanceIds. Undefined means every active instance.
+  instanceIds: number[] | undefined
 }
 
 export const ShareLimitDialog = memo(function ShareLimitDialog({
@@ -1786,10 +1787,13 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   torrents,
   onConfirm,
   isPending = false,
-  supportsShareLimitsAction = false,
-  supportsShareLimitsMode = false,
+  instanceIds,
 }: ShareLimitDialogProps) {
   const { t } = useTranslation("torrents")
+  // The selection bar mounts this closed dialog on each select-all: read capabilities only while it is open.
+  const capabilityInstanceIds = open ? instanceIds : []
+  const supportsShareLimitsAction = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsAction")
+  const supportsShareLimitsMode = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsMode")
   const [form, setForm] = useState(() => buildShareLimitFormState(torrents))
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
