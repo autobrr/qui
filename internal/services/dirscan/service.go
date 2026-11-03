@@ -941,7 +941,8 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	// identity no file could enter the index, so its stats would only cost time.
 	// A lost connection fails the run, since the walk would hit it next.
 	fileIDIndex := &seedingIndex{}
-	if models.FilesystemCapabilitiesOf(target.instance).Identity {
+	hasIdentity := models.FilesystemCapabilitiesOf(target.instance).Identity
+	if hasIdentity {
 		index, err := s.buildFileIDIndex(ctx, target.instance, target.backend, l)
 		switch {
 		case errors.Is(err, fsops.ErrConnectionLost):
@@ -963,7 +964,25 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		return nil, nil, false
 	}
 
+	if hasIdentity {
+		if missing := countFilesWithoutIdentity(scanResult); missing > 0 {
+			l.Info().Int("files", missing).Msg("dirscan: scanned files have no identity, so they cannot be seen as already seeding or renamed")
+		}
+	}
+
 	return scanResult, fileIDIndex, true
+}
+
+func countFilesWithoutIdentity(result *ScanResult) int {
+	missing := 0
+	for _, searchee := range result.Searchees {
+		for _, f := range searchee.Files {
+			if f.FileID.IsZero() {
+				missing++
+			}
+		}
+	}
+	return missing
 }
 
 func maxSearcheeAgeDaysFromSettings(settings *models.DirScanSettings) int {
