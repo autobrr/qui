@@ -35,6 +35,10 @@ const (
 	// A failed discovery answers every request for this long, so reloading the
 	// login page does not send a request to a provider that is down each time.
 	oidcDiscoveryCooldown = 10 * time.Second
+	// Stays under the 1s backlog timeout of the /auth throttle. A request that
+	// waited for the whole attempt would hold the group's single slot, and
+	// password logins would fail with 429 while the provider hangs.
+	oidcDiscoveryWait = 500 * time.Millisecond
 )
 
 var (
@@ -190,6 +194,13 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 	return handler, nil
 }
 
+// client waits at most oidcDiscoveryWait. A slower attempt keeps running, and a later request gets its result.
+func (h *OIDCHandler) client(ctx context.Context) (*oidcClient, error) {
+	ctx, cancel := context.WithTimeout(ctx, oidcDiscoveryWait)
+	defer cancel()
+	return h.discovery.get(ctx)
+}
+
 func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
 	cfg := h.config
 	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
@@ -343,7 +354,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
 	}
 
-	client, err := h.discovery.get(r.Context())
+	client, err := h.client(r.Context())
 	if err != nil {
 		RespondError(w, http.StatusServiceUnavailable, errOIDCProviderUnavailable.Error())
 		return
@@ -547,7 +558,7 @@ type oidcUnavailableResponse struct {
 
 // GetConfigResponse returns errOIDCProviderUnavailable while provider discovery has not succeeded.
 func (h *OIDCHandler) GetConfigResponse(ctx context.Context) (OIDCConfigResponse, string, string, error) {
-	client, err := h.discovery.get(ctx)
+	client, err := h.client(ctx)
 	if err != nil {
 		return OIDCConfigResponse{}, "", "", fmt.Errorf("%w: %w", errOIDCProviderUnavailable, err)
 	}

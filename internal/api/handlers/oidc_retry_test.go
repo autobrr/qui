@@ -31,12 +31,7 @@ func stubOIDCNewProvider(t *testing.T, fn func(context.Context, string) (*oidc.P
 	t.Cleanup(func() { oidcNewProvider = original })
 }
 
-// regression: #3404
-func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
-	stubOIDCNewProvider(t, func(context.Context, string) (*oidc.Provider, error) {
-		return nil, errors.New("connection refused")
-	})
-
+func newOIDCOnlyConfig() *domain.Config {
 	// Test-only OIDC client config values.
 	cfg := &domain.Config{
 		OIDCEnabled:             true,
@@ -46,8 +41,16 @@ func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
 		OIDCDisableBuiltInLogin: true,
 	}
 	cfg.OIDCClientSecret = "placeholder"
+	return cfg
+}
 
-	handler, err := NewOIDCHandler(cfg, scs.New())
+// regression: #3404
+func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
+	stubOIDCNewProvider(t, func(context.Context, string) (*oidc.Provider, error) {
+		return nil, errors.New("connection refused")
+	})
+
+	handler, err := NewOIDCHandler(newOIDCOnlyConfig(), scs.New())
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
@@ -59,6 +62,34 @@ func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.True(t, body.DisableBuiltInLogin)
 	assert.NotContains(t, rec.Body.String(), "connection refused")
+}
+
+// regression: #3404
+func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
+	// Outside the bubble: the memstore cleanup goroutine ticks forever.
+	sessionManager := scs.New()
+	synctest.Test(t, func(t *testing.T) {
+		stubOIDCNewProvider(t, func(ctx context.Context, _ string) (*oidc.Provider, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		})
+		handler, err := NewOIDCHandler(newOIDCOnlyConfig(), sessionManager)
+		require.NoError(t, err)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
+		ctx, err := sessionManager.Load(req.Context(), "")
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+
+		start := time.Now()
+		handler.getConfig(rec, req.WithContext(ctx))
+		assert.Equal(t, oidcDiscoveryWait, time.Since(start))
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+		// Let the attempt finish before the stub cleanup restores oidcNewProvider.
+		_, err = handler.discovery.get(context.Background())
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
 }
 
 func TestOIDCDiscoveryRetriesOnDemandAfterCooldown(t *testing.T) {
