@@ -5,9 +5,15 @@ package handlers
 
 import (
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -90,6 +96,96 @@ func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
 		_, err = handler.discovery.get(context.Background())
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
+}
+
+// regression: #3404
+func TestOIDCCallbackKeepsStateWhileProviderIsUnavailable(t *testing.T) {
+	stubOIDCNewProvider(t, func(context.Context, string) (*oidc.Provider, error) {
+		return nil, errors.New("connection refused")
+	})
+	handler, err := NewOIDCHandler(newOIDCOnlyConfig(), scs.New())
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/callback?state=synthetic-state&code=synthetic-code", nil)
+	ctx, err := handler.sessionManager.Load(req.Context(), "")
+	require.NoError(t, err)
+	handler.sessionManager.Put(ctx, "oidc_state", "synthetic-state")
+	handler.sessionManager.Put(ctx, "oidc_pkce_verifier", "synthetic-verifier")
+
+	rec := httptest.NewRecorder()
+	handler.handleCallback(rec, req.WithContext(ctx))
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "synthetic-state", handler.sessionManager.GetString(ctx, "oidc_state"))
+	assert.Equal(t, "synthetic-verifier", handler.sessionManager.GetString(ctx, "oidc_pkce_verifier"))
+}
+
+// discoverOIDCProvider cancels its context, and go-oidc fetches signing keys on the first Verify.
+func TestDiscoveredVerifierFetchesKeysAfterDiscoveryContextEnds(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	var jwksFetches atomic.Int32
+	var provider *httptest.Server
+	provider = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body any
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			body = map[string]string{
+				"issuer":                 provider.URL,
+				"authorization_endpoint": provider.URL + "/authorize",
+				"token_endpoint":         provider.URL + "/token",
+				"jwks_uri":               provider.URL + "/jwks",
+			}
+		case "/jwks":
+			jwksFetches.Add(1)
+			body = map[string]any{"keys": []map[string]string{{
+				"kty": "RSA",
+				"kid": "test-key",
+				"alg": "RS256",
+				"use": "sig",
+				"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+			}}}
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		assert.NoError(t, json.NewEncoder(w).Encode(body))
+	}))
+	t.Cleanup(provider.Close)
+
+	handler := newTestOIDCHandler(t, provider.URL)
+	client, err := handler.discovery.get(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int32(0), jwksFetches.Load())
+
+	now := time.Now()
+	idToken := signTestIDToken(t, key, map[string]any{
+		"iss": provider.URL,
+		"aud": "client-id",
+		"sub": "synthetic-user",
+		"iat": now.Unix(),
+		"exp": now.Add(time.Hour).Unix(),
+	})
+	_, err = client.verifier.Verify(t.Context(), idToken)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), jwksFetches.Load())
+}
+
+func signTestIDToken(t *testing.T, key *rsa.PrivateKey, claims map[string]any) string {
+	t.Helper()
+	encode := func(v any) string {
+		raw, err := json.Marshal(v)
+		require.NoError(t, err)
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	signingInput := encode(map[string]string{"alg": "RS256", "kid": "test-key", "typ": "JWT"}) + "." + encode(claims)
+	digest := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	require.NoError(t, err)
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
 
 func TestOIDCDiscoveryRetriesOnDemandAfterCooldown(t *testing.T) {

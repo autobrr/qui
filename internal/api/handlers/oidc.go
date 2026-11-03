@@ -317,6 +317,14 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	log.Debug().Msg("handling OIDC callback")
 
+	// Runs before the one-time state and PKCE verifier are consumed, so after a qui
+	// restart the user can reload this callback once discovery succeeds.
+	client, err := h.client(r.Context())
+	if err != nil {
+		RespondError(w, http.StatusServiceUnavailable, errOIDCProviderUnavailable.Error())
+		return
+	}
+
 	// Get and validate state parameter
 	expectedState := h.sessionManager.GetString(r.Context(), "oidc_state")
 	if expectedState == "" {
@@ -352,12 +360,6 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	var exchangeOpts []oauth2.AuthCodeOption
 	if pkceVerifier != "" {
 		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
-	}
-
-	client, err := h.client(r.Context())
-	if err != nil {
-		RespondError(w, http.StatusServiceUnavailable, errOIDCProviderUnavailable.Error())
-		return
 	}
 
 	oauth2Token, err := client.oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
