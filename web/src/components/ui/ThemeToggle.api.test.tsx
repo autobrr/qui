@@ -8,21 +8,28 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { registerCustomThemes } from "@/config/themes"
 import { _resetClientSettingsForTests } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
 
 // The theme menu against a fake qui API: the real theme registry, built-in
 // and custom theme queries, and license check. Only applying a theme is stubbed.
 
-vi.mock("@/utils/theme", () => ({
-  getCurrentThemeMode: () => "dark",
-  getCurrentTheme: () => ({ id: "minimal" }),
-  getThemeVariation: () => null,
-  getAppliedCustomThemeCss: () => null,
-  setTheme: vi.fn(() => Promise.resolve()),
-  setThemeMode: vi.fn(),
-  setThemeVariation: vi.fn(),
-}))
+const applied = vi.hoisted(() => ({ customCss: null as string | null }))
+
+vi.mock("@/utils/theme", async () => {
+  const { getThemeById } = await import("@/config/themes")
+  return {
+    getCurrentThemeMode: () => "dark",
+    // The stored theme when the registry resolves it, as in utils/theme.
+    getCurrentTheme: () => getThemeById(localStorage.getItem("color-theme") ?? "") ?? { id: "minimal" },
+    getThemeVariation: () => null,
+    getAppliedCustomThemeCss: () => applied.customCss,
+    setTheme: vi.fn(() => Promise.resolve()),
+    setThemeMode: vi.fn(),
+    setThemeVariation: vi.fn(),
+  }
+})
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -47,6 +54,8 @@ function lockedStub(id: string) {
 
 beforeEach(() => {
   localStorage.clear()
+  applied.customCss = null
+  registerCustomThemes([])
   _resetClientSettingsForTests()
   server.use(
     http.get("*/api/themes", () => HttpResponse.json({
@@ -98,6 +107,16 @@ describe("ThemeToggle with the qui API", () => {
 
   it("ignores a hidden id that matches no theme", async () => {
     localStorage.setItem("qui-theme-visibility", JSON.stringify({ "custom:removed": false }))
+
+    expect(await openMenuNames()).toEqual(defaultMenu)
+  })
+
+  it("keeps a hidden custom theme in use after a reload", async () => {
+    // The boot paint already applied the custom theme, so registering the
+    // custom list applies nothing and sends no theme change.
+    localStorage.setItem("color-theme", "custom:local")
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ "custom:local": false }))
+    applied.customCss = css("Local")
 
     expect(await openMenuNames()).toEqual(defaultMenu)
   })

@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, getThemeById } from "@/config/themes";
+import { themes, getThemeById, type Theme } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Lock, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -36,7 +36,7 @@ import { useThemeVisibility } from "@/hooks/useThemeVisibility";
 const THEME_CHANGE_EVENT = "themechange";
 
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
@@ -58,13 +58,17 @@ const useThemeChange = () => {
     };
   }, [checkTheme]);
 
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes]);
+
   return { currentMode, currentTheme, isDark };
 };
 
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
-  const { currentMode, currentTheme, isDark } = useThemeChange();
   const { customThemes } = useCustomThemes();
+  const { currentMode, currentTheme, isDark } = useThemeChange(customThemes);
   const [open, setOpen] = useState(false);
   const [visibility] = useThemeVisibility();
 
