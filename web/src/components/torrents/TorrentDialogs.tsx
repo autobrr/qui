@@ -1790,8 +1790,10 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   instanceIds,
 }: ShareLimitDialogProps) {
   const { t } = useTranslation("torrents")
-  const supportsShareLimitsAction = useInstancesSupport(instanceIds, "supportsShareLimitsAction")
-  const supportsShareLimitsMode = useInstancesSupport(instanceIds, "supportsShareLimitsMode")
+  // The selection bar mounts this closed dialog on each select-all: read capabilities only while it is open.
+  const capabilityInstanceIds = open ? instanceIds : []
+  const supportsShareLimitsAction = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsAction")
+  const supportsShareLimitsMode = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsMode")
   const [form, setForm] = useState(() => buildShareLimitFormState(torrents))
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
