@@ -37,6 +37,9 @@ const (
 // nothing rechecks or resumes it automatically.
 var errSettleQueueFull = errors.New("recheck and resume queue full, manual intervention required")
 
+// errLeftLocalMode means a run that walked local paths would read them on another host.
+var errLeftLocalMode = errors.New("instance does not have local filesystem access")
+
 // errRemoteTargetChanged means the remote instance has another mode or server than the one the run walked.
 var errRemoteTargetChanged = errors.New("remote instance changed since the scan read it")
 
@@ -46,7 +49,6 @@ type Injector struct {
 	aligner                   *crossseed.Aligner
 	adder                     *crossseed.Adder
 	torrentChecker            TorrentChecker
-	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
 	backendPool               *fsops.Pool
 }
@@ -61,10 +63,6 @@ type TorrentChecker interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 }
 
-type InstanceProvider interface {
-	Get(ctx context.Context, id int) (*models.Instance, error)
-}
-
 type trackerCustomizationProvider interface {
 	List(ctx context.Context) ([]*models.TrackerCustomization, error)
 }
@@ -75,7 +73,6 @@ func NewInjector(
 	aligner *crossseed.Aligner,
 	adder *crossseed.Adder,
 	torrentChecker TorrentChecker,
-	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
 	backendPool *fsops.Pool,
 ) *Injector {
@@ -84,7 +81,6 @@ func NewInjector(
 		aligner:                   aligner,
 		adder:                     adder,
 		torrentChecker:            torrentChecker,
-		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		backendPool:               backendPool,
 	}
@@ -174,23 +170,13 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	if err := i.validateInjectRequest(req); err != nil {
 		return result, err
 	}
-	if i.instanceStore == nil {
-		return result, errors.New("instance store is nil")
-	}
 	if i.adder == nil {
 		return result, errors.New("torrent adder is nil")
 	}
 
-	instance, err := i.instanceStore.Get(ctx, req.InstanceID)
-	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("failed to load instance: %v", err)
-		return result, fmt.Errorf("get instance: %w", err)
-	}
-
-	// Every read below takes this one backend. A scan admits the instance on
-	// local access minutes before it injects, and a fresh resolve per read
-	// could land on the SSH host if local access was turned off since.
-	backend, err := i.localBackend(ctx, instance.ID)
+	// Every read below takes this one backend, whose row resolveTarget compared
+	// with the run's: the searchee's paths only mean something on that server.
+	backend, instance, err := i.resolveTarget(ctx, req)
 	if err != nil {
 		result.ErrorMessage = err.Error()
 		return result, err
@@ -306,6 +292,9 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	if req == nil {
 		return errors.New("inject request is nil")
 	}
+	if req.ScanInstance == nil {
+		return errors.New("inject request missing scan instance")
+	}
 	if req.ParsedTorrent == nil || len(req.TorrentBytes) == 0 {
 		return errors.New("inject request missing torrent bytes or parsed torrent")
 	}
@@ -318,16 +307,30 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	return nil
 }
 
-// localBackend is the backend every read and write of one injection uses.
-func (i *Injector) localBackend(ctx context.Context, instanceID int) (fsops.Backend, error) {
+// resolveTarget is the backend every read and write of one injection uses, and
+// its row. An instance that left the mode or server the run walked refuses this
+// add, and the run goes on to its next match.
+func (i *Injector) resolveTarget(ctx context.Context, req *InjectRequest) (fsops.Backend, *models.Instance, error) {
 	if i.backendPool == nil {
-		return nil, errors.New("filesystem backend pool not configured")
+		return nil, nil, errors.New("filesystem backend pool not configured")
 	}
-	backend, err := i.backendPool.LocalBackend(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get filesystem backend: %w", err)
+	backend, instance, err := i.backendPool.Require(ctx, req.InstanceID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		return nil, nil, fmt.Errorf("get filesystem backend: %w", err)
 	}
-	return backend, nil
+	walked := fsops.WalkedEndpoint(req.ScanInstance)
+	if err == nil && fsops.WalkedEndpoint(instance) == walked {
+		return backend, instance, nil
+	}
+	if walked != "" {
+		return nil, nil, fmt.Errorf("get filesystem backend: instance %d: %w", req.InstanceID, errRemoteTargetChanged)
+	}
+	// ErrNotCapable only comes from an instance with no filesystem access.
+	mode := models.FilesystemModeNone
+	if err == nil {
+		mode = models.FilesystemAccessMode(instance)
+	}
+	return nil, nil, fmt.Errorf("get filesystem backend: instance %d is in %s filesystem mode: %w", req.InstanceID, mode, errLeftLocalMode)
 }
 
 func (i *Injector) prepareInjection(
@@ -580,10 +583,7 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	// Dirscan builds its link destinations with host filepath and walks through
-	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
-	// until #2919 moves it to the backend path dialect.
-	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
+	if !models.FilesystemCapabilitiesOf(instance).Write {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
 	if instance.HardlinkBaseDir == "" {

@@ -78,11 +78,12 @@ func TestInjectRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 			fx.instance.UseHardlinks = test.useHardlinks
 			pool, spy := remotePool()
 			adder := &failingTorrentAdder{err: errors.New("add failed")}
-			injector := NewInjector(nil, crossseed.NewAligner(adder), testAdder(adder, nil, nil), nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
+			injector := NewInjector(nil, crossseed.NewAligner(adder), testAdder(adder, nil, nil), nil, nil, pool)
 
 			_, err := inject(t.Context(), t, injector, fx.req)
 
-			require.ErrorIs(t, err, fsops.ErrNotLocal)
+			require.ErrorIs(t, err, errLeftLocalMode)
+			require.EqualError(t, err, "get filesystem backend: instance 1 is in remote filesystem mode: instance does not have local filesystem access")
 			require.False(t, adder.called, "nothing may be added over paths qui checked on another host")
 			require.Zero(t, spy.calls.Load(), "the injection must not read the SSH host")
 		})

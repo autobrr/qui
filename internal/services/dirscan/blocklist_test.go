@@ -136,7 +136,7 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 				store:          models.NewDirScanStore(db),
 				adder:          adder,
 				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
-				injector:       NewInjector(nil, crossseed.NewAligner(manager), adder, qbit, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
+				injector:       NewInjector(nil, crossseed.NewAligner(manager), adder, qbit, nil, testBackendPool(instance)),
 			}
 			if tt.link != nil && tt.existing {
 				// The search precheck before the download checks the target only.

@@ -172,7 +172,6 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		&models.InstanceStore{},
 		&qbittorrent.SyncManager{},
 		nil,
 		nil,

@@ -155,7 +155,6 @@ func NewService(
 	cfg Config,
 	store *models.DirScanStore,
 	crossSeedStore *models.CrossSeedStore,
-	instanceStore *models.InstanceStore,
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
 	arrService *arr.Service, // optional, for external ID lookup
@@ -178,7 +177,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,
