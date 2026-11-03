@@ -90,6 +90,7 @@ msi:
     wxs: ./distrib/windows/qui.wxs
     extra_files:
       - internal/tray/qui.ico
+      - THIRD_PARTY_NOTICES
     name: qui_{{ .Version }}_windows_x86_64
 
 release:
