@@ -46,8 +46,8 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
-import { cn, formatBytes } from "@/lib/utils"
-import type { Category, Torrent, TorrentFilters } from "@/types"
+import { cn, formatBytes, takeTurns } from "@/lib/utils"
+import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   AlertCircle,
@@ -87,7 +87,7 @@ import {
 import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
-import { getTorrentTargetInstanceId } from "@/lib/torrent-action-targets"
+import { type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -355,15 +355,22 @@ const FilterSidebarComponent = ({
         expr: "",
       }
 
-      // Fetch more torrents to find all unique tracker URLs
-      let trackerTorrents: Torrent[] | undefined
+      // Fetch more torrents to find all unique tracker URLs. The Unified view asks
+      // each instance in scope and takes turns, so one instance cannot fill the sample.
+      let trackerTorrents: TorrentActionTarget[]
       if (isConcreteInstanceScope) {
         trackerTorrents = (await api.getTorrents(instanceId, { filters: trackerFilters, limit: 100 })).torrents
+          .map(torrent => ({ instanceId, hash: torrent.hash }))
       } else {
-        trackerTorrents = (await api.getCrossInstanceTorrents({ filters: trackerFilters, limit: 100, instanceIds })).crossInstanceTorrents
+        const scopeIds = instanceIds ?? instances?.filter(instance => instance.isActive).map(instance => instance.id) ?? []
+        trackerTorrents = takeTurns(await Promise.all(scopeIds.map(id =>
+          api.getTorrents(id, { filters: trackerFilters, limit: 50 })
+            .then(response => response.torrents.map(torrent => ({ instanceId: id, hash: torrent.hash })))
+            .catch(() => [])
+        )))
       }
 
-      if (trackerTorrents && trackerTorrents.length > 0) {
+      if (trackerTorrents.length > 0) {
         // Collect unique URLs from multiple torrents
         const allUrls = new Set<string>()
 
@@ -393,7 +400,7 @@ const FilterSidebarComponent = ({
         for (let i = 0; i < torrentsToCheck.length; i += concurrencyLimit) {
           const batch = torrentsToCheck.slice(i, i + concurrencyLimit)
           const batchPromises = batch.map(t =>
-            api.getTorrentTrackers(getTorrentTargetInstanceId(t, instanceId), t.hash).catch(() => [])
+            api.getTorrentTrackers(t.instanceId, t.hash).catch(() => [])
           )
           const batchResults = await Promise.all(batchPromises)
 
@@ -415,7 +422,7 @@ const FilterSidebarComponent = ({
     } finally {
       setLoadingTrackerURLs(false)
     }
-  }, [instanceId, instanceIds, isConcreteInstanceScope, supportsTrackerHealth, t])
+  }, [instanceId, instanceIds, instances, isConcreteInstanceScope, supportsTrackerHealth, t])
 
   // Mutation for editing trackers
   const editTrackersMutation = useMutation({

@@ -280,6 +280,10 @@ describe("actionTargetInstanceIds", () => {
     expect(actionTargetInstanceIds({ kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [] }, 4)).toEqual([4])
   })
 
+  it("reaches each instance of the ticked rows when the cross-seed filter lists other instances on a single-instance page", () => {
+    expect(actionTargetInstanceIds(ticks([{ instanceId: 4, hash: "a" }, { instanceId: 7, hash: "a" }]), 4)).toEqual([4, 7])
+  })
+
   it("reaches each instance of the ticked rows in the Unified view", () => {
     expect(actionTargetInstanceIds(ticks([{ instanceId: 1, hash: "a" }, { instanceId: 2, hash: "b" }, { instanceId: 1, hash: "c" }]), 0)).toEqual([1, 2])
   })
