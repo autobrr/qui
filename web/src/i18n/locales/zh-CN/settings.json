@@ -425,7 +425,9 @@
       "notLoadedAnd": "并运行",
       "free": "免费",
       "locked": "已锁定",
-      "lock": "锁定"
+      "lock": "锁定",
+      "showTheme": "显示",
+      "hideTheme": "隐藏"
     },
     "toasts": {
       "premiumRequired": "需要许可证",

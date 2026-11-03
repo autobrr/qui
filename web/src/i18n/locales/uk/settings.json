@@ -431,7 +431,9 @@
       "notLoadedAnd": "і запустити",
       "free": "Безкоштовно",
       "locked": "Заблоковано",
-      "lock": "Заблокувати"
+      "lock": "Заблокувати",
+      "showTheme": "Показати",
+      "hideTheme": "Приховати"
     },
     "toasts": {
       "premiumRequired": "Потрібна ліцензія",

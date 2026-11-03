@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -38,6 +39,7 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -84,7 +86,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
 
@@ -104,6 +106,10 @@ const useThemeChange = () => {
     }
   }, [checkTheme])
 
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes])
+
   return { currentMode, currentTheme }
 }
 
@@ -118,11 +124,12 @@ export function MobileFooterNav() {
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
-  const { currentMode, currentTheme } = useThemeChange()
   const { customThemes } = useCustomThemes()
+  const { currentMode, currentTheme } = useThemeChange(customThemes)
+  const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
-  const themeCatalog = buildThemeCatalog(themes, customThemes)
+  const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 

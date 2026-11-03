@@ -427,7 +427,9 @@
       "notLoadedAnd": "i executa",
       "free": "Gratuït",
       "locked": "Bloquejat",
-      "lock": "Bloqueja"
+      "lock": "Bloqueja",
+      "showTheme": "Mostra",
+      "hideTheme": "Amaga"
     },
     "toasts": {
       "premiumRequired": "Cal una llicència",

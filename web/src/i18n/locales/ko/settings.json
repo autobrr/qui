@@ -425,7 +425,9 @@
       "notLoadedAnd": "한 후 실행",
       "free": "무료",
       "locked": "잠김",
-      "lock": "잠금"
+      "lock": "잠금",
+      "showTheme": "표시",
+      "hideTheme": "숨기기"
     },
     "toasts": {
       "premiumRequired": "라이선스가 필요합니다",

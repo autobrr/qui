@@ -427,7 +427,9 @@
       "notLoadedAnd": "und führe aus",
       "free": "Kostenlos",
       "locked": "Gesperrt",
-      "lock": "Sperren"
+      "lock": "Sperren",
+      "showTheme": "Anzeigen",
+      "hideTheme": "Ausblenden"
     },
     "toasts": {
       "premiumRequired": "Lizenz erforderlich",

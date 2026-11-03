@@ -429,7 +429,9 @@
       "notLoadedAnd": "a spusťte",
       "free": "Zdarma",
       "locked": "Zamčený",
-      "lock": "Zamknout"
+      "lock": "Zamknout",
+      "showTheme": "Zobrazit",
+      "hideTheme": "Skrýt"
     },
     "toasts": {
       "premiumRequired": "Vyžaduje se licence",

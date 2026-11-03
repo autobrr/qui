@@ -427,7 +427,9 @@
       "notLoadedAnd": "ed esegui",
       "free": "Gratuito",
       "locked": "Bloccato",
-      "lock": "Blocca"
+      "lock": "Blocca",
+      "showTheme": "Mostra",
+      "hideTheme": "Nascondi"
     },
     "toasts": {
       "premiumRequired": "Licenza richiesta",
