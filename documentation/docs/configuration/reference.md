@@ -91,6 +91,8 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `oidcClientSecret` | `QUI__OIDC_CLIENT_SECRET` / `QUI__OIDC_CLIENT_SECRET_FILE` | string | empty | OIDC client secret. Restart required. |
 | `oidcRedirectUrl` | `QUI__OIDC_REDIRECT_URL` | string | empty | Must match the provider redirect URI. If you use a reverse proxy, include `baseUrl`. Restart required. |
 | `oidcDisableBuiltInLogin` | `QUI__OIDC_DISABLE_BUILT_IN_LOGIN` | bool | `false` | If OIDC is enabled, this hides the local username and password form. Restart required. |
+| `oidcAllowedSubject` | `QUI__OIDC_ALLOWED_SUBJECT` | string | empty | Only the OIDC account with this subject identifier (`sub`) can log in. The match is exact. Set this key or `oidcAllowedEmail`, not both. Applies on save, without a restart. See [OIDC](./oidc.md). |
+| `oidcAllowedEmail` | `QUI__OIDC_ALLOWED_EMAIL` | string | empty | Only an OIDC account with this email can log in, and only when the provider marks the email as verified. The match ignores letter case. Set this key or `oidcAllowedSubject`, not both. Applies on save, without a restart. See [OIDC](./oidc.md). |
 
 ## Authentication
 

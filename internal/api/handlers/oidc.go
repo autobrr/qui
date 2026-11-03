@@ -51,13 +51,30 @@ type OIDCHandler struct {
 
 // OIDCClaims represents the claims returned from the OIDC provider
 type OIDCClaims struct {
-	Email             string `json:"email"`
-	PreferredUsername string `json:"preferred_username"`
-	Name              string `json:"name"`
-	GivenName         string `json:"given_name"`
-	Nickname          string `json:"nickname"`
-	Sub               string `json:"sub"`
-	Picture           string `json:"picture"`
+	Email             string   `json:"email"`
+	EmailVerified     oidcBool `json:"email_verified"`
+	PreferredUsername string   `json:"preferred_username"`
+	Name              string   `json:"name"`
+	GivenName         string   `json:"given_name"`
+	Nickname          string   `json:"nickname"`
+	Sub               string   `json:"sub"`
+	Picture           string   `json:"picture"`
+}
+
+// oidcBool decodes a boolean claim that some providers send as the string "true".
+type oidcBool bool
+
+func (b *oidcBool) UnmarshalJSON(data []byte) error {
+	*b = string(data) == "true" || string(data) == `"true"`
+	return nil
+}
+
+// VerifiedEmail returns the email only when the provider marks it as verified.
+func (c OIDCClaims) VerifiedEmail() string {
+	if !c.EmailVerified {
+		return ""
+	}
+	return c.Email
 }
 
 // OIDCConfigResponse represents the OIDC configuration response
@@ -289,14 +306,27 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try to get additional claims from userinfo endpoint
-	userInfo, err := h.provider.UserInfo(r.Context(), oauth2.StaticTokenSource(oauth2Token))
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get userinfo")
+	userInfo, userInfoErr := h.provider.UserInfo(r.Context(), oauth2.StaticTokenSource(oauth2Token))
+	if userInfoErr != nil {
+		log.Error().Err(userInfoErr).Msg("failed to get userinfo")
+	}
+
+	// OIDC Core 5.3.4: user info for another subject must not be used, or its
+	// verified email could pass oidcAllowedEmail for this login.
+	if userInfo != nil && userInfo.Subject != claims.Sub {
+		log.Warn().Str("sub", claims.Sub).Str("userinfo_sub", userInfo.Subject).Msg("userinfo subject does not match ID token subject, ignoring userinfo")
+		userInfo = nil
 	}
 
 	if userInfo != nil {
+		// Take the user-info email and its verified flag together, never an
+		// unverified user-info email with the verified flag of the ID token.
+		if userInfo.Email != "" {
+			claims.Email = userInfo.Email
+			claims.EmailVerified = oidcBool(userInfo.EmailVerified)
+		}
+
 		var userInfoClaims struct {
-			Email             string `json:"email"`
 			PreferredUsername string `json:"preferred_username"`
 			Name              string `json:"name"`
 			Nickname          string `json:"nickname"`
@@ -306,16 +336,13 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 			log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
 		} else {
 			log.Trace().
-				Str("userinfo_email", userInfoClaims.Email).
+				Str("userinfo_email", userInfo.Email).
 				Str("userinfo_username", userInfoClaims.PreferredUsername).
 				Str("userinfo_name", userInfoClaims.Name).
 				Str("userinfo_nickname", userInfoClaims.Nickname).
 				Msg("successfully parsed claims from userinfo endpoint")
 
 			// Merge userinfo claims with ID token claims
-			if userInfoClaims.Email != "" {
-				claims.Email = userInfoClaims.Email
-			}
 			if userInfoClaims.PreferredUsername != "" {
 				claims.PreferredUsername = userInfoClaims.PreferredUsername
 			}
@@ -355,6 +382,24 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Str("sub", claims.Sub).
 		Msg("successfully processed OIDC claims")
 
+	if !h.config.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
+		// Only the email check depends on user info. The error is logged above
+		// and can hold the provider response body, so it stays out of the reply.
+		if userInfoErr != nil && h.config.OIDCAllowedEmail != "" {
+			RespondError(w, http.StatusBadGateway, "could not verify user: failed to get userinfo")
+			return
+		}
+
+		log.Warn().
+			Str("sub", claims.Sub).
+			Str("email", claims.Email).
+			Bool("email_verified", bool(claims.EmailVerified)).
+			Str("remote_addr", r.RemoteAddr).
+			Msg("OIDC user is not allowed to log in")
+		RespondError(w, http.StatusForbidden, "user is not allowed to log in")
+		return
+	}
+
 	// Create new session
 	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msgf("Auth: Failed to renew session token for username: [%s] ip: %s", username, r.RemoteAddr)
@@ -367,6 +412,8 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "username", username)
 	h.sessionManager.Put(r.Context(), "created", time.Now().Unix())
 	h.sessionManager.Put(r.Context(), "auth_method", "oidc")
+	h.sessionManager.Put(r.Context(), "oidc_subject", claims.Sub)
+	h.sessionManager.Put(r.Context(), "oidc_verified_email", claims.VerifiedEmail())
 	h.sessionManager.Put(r.Context(), "profile_picture", claims.Picture)
 	h.sessionManager.RememberMe(r.Context(), true)
 

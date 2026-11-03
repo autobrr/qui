@@ -167,6 +167,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Allowed Hosts**: The optional list of hostnames and IP addresses a request may use to reach qui. Empty means every host. _Avoid_: Host allowlist, host filter.
 - **Received Host**: The `Host` header, or the HTTP/2 `:authority`, as the main listener sees it. Never `X-Forwarded-Host`. _Avoid_: Forwarded host, original host.
 
+## Authentication
+
+- **Allowed OIDC user**: The one identity that can log in to qui through OIDC, named by its subject identifier or by its verified email. When it is not set, every identity that the provider authenticates for qui can log in. _Avoid_: OIDC allowlist, allowed users.
+
 ## Updating qui
 
 - **Self-update**: qui replaces its own binary with a verified release, then restarts. _Avoid_: Upgrade, auto-update.
