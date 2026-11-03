@@ -132,26 +132,19 @@ jobs:
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
 
-      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
-      - name: Check for premium themes token
-        id: themes
-        env:
-          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
-        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch premium themes
-        if: steps.themes.outputs.enabled == 'true'
+      # A failed fetch fails the job, so a release never ships without the community themes.
+      - name: Fetch community themes
         uses: actions/checkout@v7.0.1
         with:
-          repository: autobrr/qui-premium-themes
-          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          repository: autobrr/qui-community-themes
+          ref: main
           path: .themes-temp
           sparse-checkout: themes
           persist-credentials: false
 
-      - name: Copy premium themes
-        if: steps.themes.outputs.enabled == 'true'
-        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
+      # Files that start with "_" (the template) are not themes.
+      - name: Copy community themes
+        run: cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -318,26 +311,19 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
-      - name: Check for premium themes token
-        id: themes
-        env:
-          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
-        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch premium themes
-        if: steps.themes.outputs.enabled == 'true'
+      # A failed fetch fails the job, so a release never ships without the community themes.
+      - name: Fetch community themes
         uses: actions/checkout@v7.0.1
         with:
-          repository: autobrr/qui-premium-themes
-          token: ${{ secrets.THEMES_REPO_TOKEN }}
+          repository: autobrr/qui-community-themes
+          ref: main
           path: .themes-temp
           sparse-checkout: themes
           persist-credentials: false
 
-      - name: Copy premium themes
-        if: steps.themes.outputs.enabled == 'true'
-        run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
+      # Files that start with "_" (the template) are not themes.
+      - name: Copy community themes
+        run: cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/
 
       - name: Extract metadata
         id: meta

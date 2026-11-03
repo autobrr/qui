@@ -268,9 +268,7 @@ export function ThemeSelector() {
             </Badge>
             <p className="text-xs text-muted-foreground">
               {t("themes.selector.notLoadedDescription")}{" "}
-              <code className="rounded bg-muted px-1 py-0.5">THEMES_REPO_TOKEN</code>{" "}
-              {t("themes.selector.notLoadedAnd")}{" "}
-              <code className="rounded bg-muted px-1 py-0.5">make themes-fetch</code>.
+              <code className="rounded bg-muted px-1 py-0.5">make build</code>.
             </p>
           </div>
         )}
