@@ -50,6 +50,7 @@ func TestClientSupports(t *testing.T) {
 		{CapExportOmitsTrackers, []string{"2.9.0", "2.9.4", "2.11.4"}, []string{"2.9.1", "2.9.3"}},
 		{CapCategorySavePathNesting, []string{"2.9.3"}, []string{"2.10.0"}},
 		{CapLiveReannounce, []string{"2.9.3"}, []string{"2.10.0"}},
+		{CapListFieldsV5, []string{"2.9.3"}, []string{"2.10.0"}},
 		{CapTorrentCreation, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapPathAutocomplete, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapTestEmail, []string{"2.11.1"}, []string{"2.11.2"}},

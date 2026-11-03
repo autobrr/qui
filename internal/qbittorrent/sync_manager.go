@@ -238,19 +238,72 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
-	// Reannounce is nil when the instance does not send reannounce in the
-	// torrent list (before Web API 2.10.0), where the decoded 0 would read as "now".
-	Reannounce *int64 `json:"reannounce,omitempty"`
+	// Reannounce, Popularity and Private are nil when the instance does not
+	// send them in the torrent list (before Web API 2.10.0, and Private also
+	// for a torrent without metadata). The decoded zero would read as "now",
+	// 0.00 and "No".
+	Reannounce *int64   `json:"reannounce,omitempty"`
+	Popularity *float64 `json:"popularity,omitempty"`
+	Private    *bool    `json:"private,omitempty"`
 }
 
-// newTorrentView builds the list/SSE row for t. liveReannounce is
-// Client.SupportsLiveReannounce of the instance that owns t. Reannounce is a
-// copy: a pointer into t would keep the whole source slice alive behind each
-// page that the SSE stream detaches.
-func newTorrentView(t *qbt.Torrent, health TrackerHealth, liveReannounce bool) TorrentView {
+// PrivateUnknown reports whether qBittorrent sent no private value for t, so
+// t.Private holds the false that go-qbittorrent decodes. qBittorrent sends
+// private and has_metadata from 5.0, and sends private only for a torrent with
+// metadata: a magnet link has none until its metadata arrives.
+func PrivateUnknown(t *qbt.Torrent) bool {
+	return t.HasMetadata == nil || !*t.HasMetadata
+}
+
+// rowValues holds copies of the optional values of one row, so that a row does
+// not point into the torrent. The SSE stream copies them again for the page
+// that it keeps.
+type rowValues struct {
+	reannounce int64
+	popularity float64
+	private    bool
+}
+
+// rowBuilder builds the list/SSE rows of one instance. The optional values of
+// all its rows share one allocation.
+type rowBuilder struct {
+	reannounce, popularity bool // the instance sends them in the torrent list
+	values                 []rowValues
+}
+
+// newRowBuilder returns a builder for n rows of the instance of c.
+func (c *Client) newRowBuilder(n int) rowBuilder {
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
+	if b.reannounce || b.popularity {
+		b.values = make([]rowValues, n)
+	}
+	return b
+}
+
+// view builds row i for t. A builder without values, for an instance that
+// sends neither Reannounce nor Popularity, allocates for a row with a known
+// Private.
+func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
 	tv := TorrentView{Torrent: t, TrackerHealth: health}
-	if liveReannounce {
-		tv.Reannounce = new(t.Reannounce)
+	privateKnown := !PrivateUnknown(t)
+	if !b.reannounce && !b.popularity && !privateKnown {
+		return tv
+	}
+	var v *rowValues
+	if b.values != nil {
+		v = &b.values[i]
+	} else {
+		v = new(rowValues)
+	}
+	*v = rowValues{reannounce: t.Reannounce, popularity: t.Popularity, private: t.Private}
+	if b.reannounce {
+		tv.Reannounce = &v.reannounce
+	}
+	if b.popularity {
+		tv.Popularity = &v.popularity
+	}
+	if privateKnown {
+		tv.Private = &v.private
 	}
 	return tv
 }
@@ -1676,9 +1729,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		liveReannounce := client.Supports(CapLiveReannounce)
+		rows := client.newRowBuilder(len(paginatedTorrents))
 		for i := range paginatedTorrents {
-			paginatedViews[i] = newTorrentView(&paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash), liveReannounce)
+			paginatedViews[i] = rows.view(i, &paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 
@@ -1776,11 +1829,11 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
-	liveReannounce := client.Supports(CapLiveReannounce)
+	rows := client.newRowBuilder(len(torrents))
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
-			TorrentView:  new(newTorrentView(&torrents[i], cachedHealth.Health(torrents[i].Hash), liveReannounce)),
+			TorrentView:  new(rows.view(i, &torrents[i], cachedHealth.Health(torrents[i].Hash))),
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
