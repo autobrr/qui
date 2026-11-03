@@ -273,7 +273,7 @@ type rowBuilder struct {
 
 // newRowBuilder returns a builder for n rows of the instance of c.
 func (c *Client) newRowBuilder(n int) rowBuilder {
-	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapPopularity)}
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
 	if b.reannounce || b.popularity {
 		b.values = make([]rowValues, n)
 	}
