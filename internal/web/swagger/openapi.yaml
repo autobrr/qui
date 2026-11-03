@@ -7987,6 +7987,12 @@ components:
           type: integer
           format: int64
           description: Seconds until qBittorrent next announces the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
+        popularity:
+          type: number
+          description: Popularity of the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
+        private:
+          type: boolean
+          description: Whether the torrent is private. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list, and for a torrent without metadata, such as a magnet link.
         savePath:
           type: string
 

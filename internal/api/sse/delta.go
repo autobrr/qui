@@ -248,13 +248,36 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	}
 }
 
+// optionalValues holds a row's own copies of Reannounce, Popularity and
+// Private. The row builder stores them for all rows in one allocation.
+type optionalValues struct {
+	reannounce int64
+	popularity float64
+	private    bool
+}
+
+func (v *optionalValues) own(tv *qbittorrent.TorrentView) {
+	if tv.Reannounce != nil {
+		v.reannounce, tv.Reannounce = *tv.Reannounce, &v.reannounce
+	}
+	if tv.Popularity != nil {
+		v.popularity, tv.Popularity = *tv.Popularity, &v.popularity
+	}
+	if tv.Private != nil {
+		v.private, tv.Private = *tv.Private, &v.private
+	}
+}
+
 // Page rows can point into a full library allocation. Retain only the page.
 func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 	snapshot.Torrents = slices.Clone(snapshot.Torrents)
 	snapshot.CrossInstanceTorrents = slices.Clone(snapshot.CrossInstanceTorrents)
 	torrents := make([]qbt.Torrent, len(snapshot.Torrents)+len(snapshot.CrossInstanceTorrents))
+	values := make([]optionalValues, len(torrents))
 	for i := range snapshot.Torrents {
-		if row := &snapshot.Torrents[i]; row.Torrent != nil {
+		row := &snapshot.Torrents[i]
+		values[i].own(row)
+		if row.Torrent != nil {
 			torrents[i] = *row.Torrent
 			row.Torrent = &torrents[i]
 		}
@@ -266,8 +289,9 @@ func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 			continue
 		}
 		views[i] = *row.TorrentView
+		idx := len(snapshot.Torrents) + i
+		values[idx].own(&views[i])
 		if row.Torrent != nil {
-			idx := len(snapshot.Torrents) + i
 			torrents[idx] = *row.Torrent
 			views[i].Torrent = &torrents[idx]
 		}
@@ -399,6 +423,15 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	}
 }
 
+// optional appends whether the row has each optional value. A version read, or
+// metadata that arrives for a magnet link, can add or remove one with no other
+// change in the torrent.
+func (b *fpBuf) optional(tv *qbittorrent.TorrentView) {
+	b.bit(tv.Reannounce != nil)
+	b.bit(tv.Popularity != nil)
+	b.bit(tv.Private != nil)
+}
+
 func (b fpBuf) sum() uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write(b)
@@ -408,13 +441,13 @@ func (b fpBuf) sum() uint64 {
 // singleRowFingerprint hashes a single-instance row's change-relevant content.
 // The caller owns the buffer so a page of rows hashes with one allocation
 // instead of one per row; it is reset here, so callers may pass a zero fpBuf.
-// It hashes whether the row has Reannounce, which a version read can change
-// with no change in the torrent.
+// It hashes whether the row has each optional value (Reannounce, Popularity,
+// Private), which a version read can change with no change in the torrent.
 func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
-	b.bit(tv.Reannounce != nil)
+	b.optional(&tv)
 	return b.sum()
 }
 
@@ -425,7 +458,7 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
-	b.bit(tv.Reannounce != nil)
+	b.optional(&tv)
 	if t := tv.Torrent; t != nil {
 		b.i64(t.TimeActive)
 		b.i64(t.SeedingTime)
@@ -454,7 +487,7 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 	if c.TorrentView != nil {
 		b.torrent(c.Torrent)
 		b.str(string(c.TrackerHealth))
-		b.bit(c.Reannounce != nil)
+		b.optional(c.TorrentView)
 	}
 	b.i64(int64(c.InstanceID))
 	b.str(c.InstanceName)

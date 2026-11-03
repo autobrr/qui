@@ -58,6 +58,11 @@ type Torrent struct {
 	// names the torrent in a request.
 	InfohashV1 string
 	InfohashV2 string
+	// Popularity and Private are sent from qBittorrent 5.0. NoMetadata is a
+	// magnet link that has no metadata yet, which sends no private value.
+	Popularity float64
+	Private    bool
+	NoMetadata bool
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -465,10 +470,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if t.Incomplete {
 				progress = 0.5
 			}
-			torrents[h] = map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
+			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
 				"tags": strings.Join(t.Tags, ", ")}
+			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
+				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
+				if t.NoMetadata {
+					row["private"] = nil
+				} else {
+					row["private"] = t.Private
+				}
+			}
+			torrents[h] = row
 		}
 		categories := map[string]any{}
 		for name := range s.categories {

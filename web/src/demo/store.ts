@@ -669,7 +669,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
     hash: t.hash,
     infohash_v1: t.infohash_v1,
     infohash_v2: t.infohash_v2,
-    is_private: t.private,
+    is_private: t.private ?? false,
     last_seen: t.seen_complete || -1,
     name: t.name,
     nb_connections: peerCount,
