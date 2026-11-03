@@ -100,6 +100,15 @@ jobs:
         working-directory: web
         run: CI= pnpm run build
 
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+
+      - name: Write the notices file
+        run: go run ./scripts/notices
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4.7.0
         with:

@@ -67,6 +67,11 @@ archives:
     # Only the Windows zip holds qui-tray.exe. A Self-update takes both exes
     # from that one zip, so the archives stay combined.
     allow_different_binary_count: true
+    files:
+      - LICENSE
+      - README.md
+      # Before a local build, run: go run ./scripts/notices
+      - THIRD_PARTY_NOTICES
     format_overrides:
       - goos: windows
         formats: ['zip']
