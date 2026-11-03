@@ -35,31 +35,26 @@ type InstanceCapabilitiesResponse struct {
 
 // NewInstanceCapabilitiesResponse creates a response payload from a qBittorrent client.
 func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) InstanceCapabilitiesResponse {
-	capabilities := InstanceCapabilitiesResponse{
-		SupportsTorrentCreation:     client.SupportsTorrentCreation(),
-		SupportsTorrentExport:       client.SupportsTorrentExport(),
-		SupportsSetTags:             client.SupportsSetTags(),
-		SupportsSetComment:          client.SupportsSetComment(),
-		SupportsTrackerHealth:       client.SupportsTrackerHealth(),
-		SupportsTrackerEditing:      client.SupportsTrackerEditing(),
-		SupportsRenameTorrent:       client.SupportsRenameTorrent(),
-		SupportsRenameFile:          client.SupportsRenameFile(),
-		SupportsRenameFolder:        client.SupportsRenameFolder(),
-		SupportsFilePriority:        client.SupportsFilePriority(),
-		SupportsSubcategories:       client.SupportsSubcategories(),
-		SubcategoriesAlwaysEnabled:  client.SubcategoriesAlwaysEnabled(),
-		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
-		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
-		SupportsTestEmail:           client.SupportsTestEmail(),
+	return InstanceCapabilitiesResponse{
+		SupportsTorrentCreation:     client.Supports(internalqbittorrent.CapTorrentCreation),
+		SupportsTorrentExport:       client.Supports(internalqbittorrent.CapTorrentExport),
+		SupportsSetTags:             client.Supports(internalqbittorrent.CapSetTags),
+		SupportsSetComment:          client.Supports(internalqbittorrent.CapSetComment),
+		SupportsTrackerHealth:       client.Supports(internalqbittorrent.CapTrackerHealth),
+		SupportsTrackerEditing:      client.Supports(internalqbittorrent.CapTrackerEditing),
+		SupportsRenameTorrent:       client.Supports(internalqbittorrent.CapRenameTorrent),
+		SupportsRenameFile:          client.Supports(internalqbittorrent.CapRenameFile),
+		SupportsRenameFolder:        client.Supports(internalqbittorrent.CapRenameFolder),
+		SupportsFilePriority:        client.Supports(internalqbittorrent.CapFilePriority),
+		SupportsSubcategories:       client.Supports(internalqbittorrent.CapSubcategories),
+		SubcategoriesAlwaysEnabled:  client.Supports(internalqbittorrent.CapSubcategoriesAlwaysEnabled),
+		SupportsTorrentTmpPath:      client.Supports(internalqbittorrent.CapTorrentTmpPath),
+		SupportsPathAutocomplete:    client.Supports(internalqbittorrent.CapPathAutocomplete),
+		SupportsTestEmail:           client.Supports(internalqbittorrent.CapTestEmail),
 		SupportsFreeSpacePathSource: runtime.GOOS != "windows",
-		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
-		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
-		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),
+		SupportsSetRSSFeedURL:       client.Supports(internalqbittorrent.CapSetRSSFeedURL),
+		SupportsShareLimitsAction:   client.Supports(internalqbittorrent.CapShareLimitsAction),
+		SupportsShareLimitsMode:     client.Supports(internalqbittorrent.CapShareLimitsMode),
+		WebAPIVersion:               client.GetWebAPIVersion(),
 	}
-
-	if version := client.GetWebAPIVersion(); version != "" {
-		capabilities.WebAPIVersion = version
-	}
-
-	return capabilities
 }

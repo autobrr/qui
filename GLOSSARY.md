@@ -156,6 +156,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
 - **Preference catalog**: The qui list of qBittorrent preferences that says, for each key, where qui shows it and whether a user can change it. _Avoid_: Preference schema, field registry.
 - **Network binding**: The network interface and the IP address that qBittorrent uses for peer connections. _Avoid_: Bind interface, outgoing interface.
+- **Capability**: something an instance can do or send because of its qBittorrent version, for example editing trackers or sending Popularity in the torrent list. A field that the instance does not send is unknown, not zero. _Avoid_: support flag, feature flag.
 
 ## Allowed Hosts
 
