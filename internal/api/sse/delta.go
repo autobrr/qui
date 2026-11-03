@@ -248,13 +248,36 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	}
 }
 
+// optionalValues holds a row's own copies of Reannounce, Popularity and
+// Private. The row builder stores them for all rows in one allocation.
+type optionalValues struct {
+	reannounce int64
+	popularity float64
+	private    bool
+}
+
+func (v *optionalValues) own(tv *qbittorrent.TorrentView) {
+	if tv.Reannounce != nil {
+		v.reannounce, tv.Reannounce = *tv.Reannounce, &v.reannounce
+	}
+	if tv.Popularity != nil {
+		v.popularity, tv.Popularity = *tv.Popularity, &v.popularity
+	}
+	if tv.Private != nil {
+		v.private, tv.Private = *tv.Private, &v.private
+	}
+}
+
 // Page rows can point into a full library allocation. Retain only the page.
 func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 	snapshot.Torrents = slices.Clone(snapshot.Torrents)
 	snapshot.CrossInstanceTorrents = slices.Clone(snapshot.CrossInstanceTorrents)
 	torrents := make([]qbt.Torrent, len(snapshot.Torrents)+len(snapshot.CrossInstanceTorrents))
+	values := make([]optionalValues, len(torrents))
 	for i := range snapshot.Torrents {
-		if row := &snapshot.Torrents[i]; row.Torrent != nil {
+		row := &snapshot.Torrents[i]
+		values[i].own(row)
+		if row.Torrent != nil {
 			torrents[i] = *row.Torrent
 			row.Torrent = &torrents[i]
 		}
@@ -266,8 +289,9 @@ func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 			continue
 		}
 		views[i] = *row.TorrentView
+		idx := len(snapshot.Torrents) + i
+		values[idx].own(&views[i])
 		if row.Torrent != nil {
-			idx := len(snapshot.Torrents) + i
 			torrents[idx] = *row.Torrent
 			views[i].Torrent = &torrents[idx]
 		}

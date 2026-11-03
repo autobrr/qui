@@ -255,9 +255,9 @@ func PrivateUnknown(t *qbt.Torrent) bool {
 	return t.HasMetadata == nil || !*t.HasMetadata
 }
 
-// rowValues holds copies of the optional values of one row. A pointer into
-// the torrent would keep the whole source slice alive behind each page that
-// the SSE stream detaches.
+// rowValues holds copies of the optional values of one row, so that a row does
+// not point into the torrent. The SSE stream copies them again for the page
+// that it keeps.
 type rowValues struct {
 	reannounce int64
 	popularity float64

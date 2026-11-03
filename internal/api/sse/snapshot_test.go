@@ -13,11 +13,26 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
+func pointOptional(tv *qbittorrent.TorrentView, v *optionalValues) {
+	tv.Reannounce, tv.Popularity, tv.Private = &v.reannounce, &v.popularity, &v.private
+}
+
+// requireOwnsOptional fails when a retained row shares an optional value with
+// the source row.
+func requireOwnsOptional(t *testing.T, source, retained *qbittorrent.TorrentView) {
+	t.Helper()
+	require.NotSame(t, source.Reannounce, retained.Reannounce)
+	require.NotSame(t, source.Popularity, retained.Popularity)
+	require.NotSame(t, source.Private, retained.Private)
+}
+
 // Each page row points into the full filtered library returned by qBittorrent.
 func snapshotPage(librarySize, pageSize int, cross bool) *qbittorrent.TorrentResponse {
 	library := make([]qbt.Torrent, librarySize)
+	values := make([]optionalValues, librarySize)
 	for i := range library {
 		library[i] = qbt.Torrent{Hash: fmt.Sprintf("%040x", i), Name: "Synthetic torrent", State: qbt.TorrentStateStalledUp, Size: 1 << 30}
+		values[i] = optionalValues{reannounce: 60, popularity: 1.5, private: true}
 	}
 	response := &qbittorrent.TorrentResponse{Total: librarySize}
 	if cross {
@@ -25,6 +40,7 @@ func snapshotPage(librarySize, pageSize int, cross bool) *qbittorrent.TorrentRes
 		views := make([]qbittorrent.TorrentView, librarySize)
 		for i := range library {
 			views[i].Torrent = &library[i]
+			pointOptional(&views[i], &values[i])
 			all[i] = qbittorrent.CrossInstanceTorrentView{TorrentView: &views[i], InstanceID: 1}
 		}
 		response.CrossInstanceTorrents = all[:pageSize]
@@ -32,11 +48,13 @@ func snapshotPage(librarySize, pageSize int, cross bool) *qbittorrent.TorrentRes
 		response.Torrents = make([]qbittorrent.TorrentView, pageSize)
 		for i := range response.Torrents {
 			response.Torrents[i].Torrent = &library[i]
+			pointOptional(&response.Torrents[i], &values[i])
 		}
 	}
 	return response
 }
 
+// regression: #3771
 func TestBaselineOwnsPageRows(t *testing.T) {
 	for _, cross := range []bool{false, true} {
 		for _, init := range []bool{false, true} {
@@ -58,8 +76,10 @@ func TestBaselineOwnsPageRows(t *testing.T) {
 					require.NotSame(t, &response.CrossInstanceTorrents[0], &retained.CrossInstanceTorrents[0])
 					require.NotSame(t, response.CrossInstanceTorrents[0].TorrentView, retained.CrossInstanceTorrents[0].TorrentView)
 					require.NotSame(t, response.CrossInstanceTorrents[0].Torrent, retained.CrossInstanceTorrents[0].Torrent)
+					requireOwnsOptional(t, response.CrossInstanceTorrents[0].TorrentView, retained.CrossInstanceTorrents[0].TorrentView)
 				} else {
 					require.NotSame(t, response.Torrents[0].Torrent, retained.Torrents[0].Torrent)
+					requireOwnsOptional(t, &response.Torrents[0], &retained.Torrents[0])
 				}
 			})
 		}
