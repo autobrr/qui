@@ -3,13 +3,23 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, type QueryClient } from "@tanstack/react-query"
+import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { InstanceCapabilities, TorrentResponse } from "@/types"
+import type { InstanceCapabilities, InstanceResponse, TorrentResponse } from "@/types"
 
 type UseInstanceCapabilitiesOptions = {
   enabled?: boolean
+}
+
+// The capabilities query of one instance. Every reader shares this key, so
+// mounting another reader sends no new request.
+export function instanceCapabilitiesQuery(instanceId: number) {
+  return {
+    queryKey: ["instance-capabilities", instanceId],
+    queryFn: () => api.getInstanceCapabilities(instanceId),
+    staleTime: 60_000,
+  }
 }
 
 export function useInstanceCapabilities(
@@ -19,10 +29,8 @@ export function useInstanceCapabilities(
   const shouldEnable = options.enabled ?? true
 
   return useQuery<InstanceCapabilities>({
-    queryKey: ["instance-capabilities", instanceId],
-    queryFn: () => api.getInstanceCapabilities(instanceId!),
+    ...instanceCapabilitiesQuery(instanceId!),
     enabled: shouldEnable && instanceId !== null && instanceId !== undefined,
-    staleTime: 60_000,
     refetchInterval: (query) => {
       const data = query.state.data as InstanceCapabilities | undefined
       if (!data?.webAPIVersion) {
@@ -30,6 +38,32 @@ export function useInstanceCapabilities(
       }
       return false
     },
+  })
+}
+
+export type CapabilityFlag = {
+  [K in keyof InstanceCapabilities]-?: InstanceCapabilities[K] extends boolean | undefined ? K : never
+}[keyof InstanceCapabilities]
+
+// useInstancesSupport answers no until each instance has answered. Undefined
+// instanceIds means every active instance. A torrent row mounts it, so it sends
+// a request only for an instance with no capabilities loaded, and it never
+// loads the instance list.
+export function useInstancesSupport(
+  instanceIds: readonly number[] | undefined,
+  capability: CapabilityFlag
+): boolean {
+  const { data: activeInstanceIds } = useQuery({
+    queryKey: ["instances"],
+    queryFn: () => api.getInstances(),
+    enabled: false,
+    select: (instances: InstanceResponse[]) => instances.filter(instance => instance.isActive).map(instance => instance.id),
+  })
+  const ids = instanceIds ?? activeInstanceIds ?? []
+
+  return useQueries({
+    queries: ids.map(id => ({ ...instanceCapabilitiesQuery(id), refetchOnMount: false })),
+    combine: results => results.length > 0 && results.every(result => result.data?.[capability] === true),
   })
 }
 

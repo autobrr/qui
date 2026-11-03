@@ -26,7 +26,7 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
+import { actionTargetInstanceIds, actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Category } from "@/types"
@@ -87,6 +87,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
   const supportsCrossSeedDeleteTools = actionInstanceId >= 0
   const supportsCrossSeedBlocklist = actionInstanceId >= 0
+  const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, actionInstanceId), [actionTarget, actionInstanceId])
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId, {
@@ -614,8 +615,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         torrents={selectedTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
-        supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
-        supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
+        instanceIds={actionInstanceIds}
       />
 
       <SpeedLimitsDialog

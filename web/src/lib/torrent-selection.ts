@@ -238,6 +238,19 @@ export function buildActionTarget(
   }
 }
 
+// The instances that an action on the target reaches. On a single instance it
+// is that instance. In the Unified view a select-all reaches the instance
+// subset, and undefined means every active instance.
+export function actionTargetInstanceIds(target: ActionTarget, instanceId: number): number[] | undefined {
+  if (instanceId > 0) {
+    return [instanceId]
+  }
+  if (target.kind === "selectAll") {
+    return target.selectAll.instanceIds
+  }
+  return [...new Set((target.targets ?? []).map(t => t.instanceId))]
+}
+
 // The request fields of an Action target, for a bulk action and the tag editor baseline.
 export function actionTargetRequest(target: ActionTarget) {
   if (target.kind === "selectAll") {

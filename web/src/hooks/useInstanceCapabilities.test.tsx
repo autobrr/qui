@@ -13,7 +13,7 @@ import type { InstanceCapabilities } from "@/types"
 const getInstanceCapabilities = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/api", () => ({ api: { getInstanceCapabilities } }))
 
-import { refreshChangedCapabilities, useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { refreshChangedCapabilities, useInstanceCapabilities, useInstancesSupport } from "@/hooks/useInstanceCapabilities"
 
 afterEach(() => {
   cleanup()
@@ -39,5 +39,58 @@ describe("refreshChangedCapabilities", () => {
 
     expect(queryClient.isFetching()).toBe(0)
     expect(getInstanceCapabilities).toHaveBeenCalledTimes(1)
+  })
+})
+
+// regression: #3764
+describe("useInstancesSupport", () => {
+  function mountSupport(answers: Record<number, Promise<Partial<InstanceCapabilities>>>, instanceIds: number[] | undefined, activeIds: number[] = []) {
+    getInstanceCapabilities.mockImplementation((id: number) => answers[id])
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData(["instances"], activeIds.map(id => ({ id, isActive: true })))
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const answered = (id: number) => expect(queryClient.getQueryData(["instance-capabilities", id])).toBeDefined()
+    return { answered, ...renderHook(() => useInstancesSupport(instanceIds, "supportsShareLimitsAction"), { wrapper }) }
+  }
+
+  it("answers yes when every instance supports the capability", async () => {
+    const { result } = mountSupport({
+      1: Promise.resolve({ supportsShareLimitsAction: true }),
+      2: Promise.resolve({ supportsShareLimitsAction: true }),
+    }, [1, 2])
+
+    await waitFor(() => expect(result.current).toBe(true))
+  })
+
+  it("answers no when one instance does not support the capability", async () => {
+    const { answered, result } = mountSupport({
+      1: Promise.resolve({ supportsShareLimitsAction: true }),
+      2: Promise.resolve({ supportsShareLimitsAction: false }),
+    }, [1, 2])
+
+    await waitFor(() => { answered(1); answered(2) })
+    expect(result.current).toBe(false)
+  })
+
+  it("answers no while one instance has not answered", async () => {
+    const { answered, result } = mountSupport({
+      1: Promise.resolve({ supportsShareLimitsAction: true }),
+      2: new Promise(() => {}),
+    }, [1, 2])
+
+    await waitFor(() => answered(1))
+    expect(result.current).toBe(false)
+  })
+
+  it("asks every active instance when no instance subset is set", async () => {
+    const { answered, result } = mountSupport({
+      1: Promise.resolve({ supportsShareLimitsAction: true }),
+      3: Promise.resolve({ supportsShareLimitsAction: false }),
+    }, undefined, [1, 3])
+
+    await waitFor(() => { answered(1); answered(3) })
+    expect(result.current).toBe(false)
   })
 })
