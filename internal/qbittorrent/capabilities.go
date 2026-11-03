@@ -59,7 +59,8 @@ const (
 	// CapProcessInfo is app/processInfo, which has the launch time.
 	CapProcessInfo
 	// CapExportOmitsTrackers marks the qBittorrent 4.6.x builds that export a
-	// .torrent file without its trackers.
+	// .torrent file without its trackers. No capture confirms the bug: the
+	// 4.6.0 and 4.6.7 feature probes in go-qbittorrent keep the tracker.
 	CapExportOmitsTrackers
 )
 
