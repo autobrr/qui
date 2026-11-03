@@ -1820,7 +1820,7 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	matches, retry := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	matches, retry := s.tryMatchResults(ctx, dir, target, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
 	return matches, searcheeOutcome{searched: searchComplete && !retry, retry: retry}
 }
 
@@ -2205,6 +2205,7 @@ func (s *Service) searchForSearchee(
 func (s *Service) tryMatchResults(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
+	target *scanTarget,
 	searchee *Searchee,
 	searcheeMeta *SearcheeMetadata,
 	response *jackett.SearchResponse,
@@ -2226,7 +2227,7 @@ func (s *Service) tryMatchResults(
 			return false
 		},
 		func(result *jackett.SearchResult) *searcheeMatch {
-			match, retryResult := s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+			match, retryResult := s.tryMatchAndInject(ctx, dir, target, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
 			retry = retry || retryResult
 			return match
 		},
@@ -2295,6 +2296,7 @@ func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int,
 func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
+	target *scanTarget,
 	searchee *Searchee,
 	searcheeMeta *SearcheeMetadata,
 	result *jackett.SearchResult,
@@ -2352,6 +2354,7 @@ func (s *Service) tryMatchAndInject(
 
 	injectReq := &InjectRequest{
 		InstanceID:           dir.TargetInstanceID,
+		ScanInstance:         target.instance,
 		Check:                check,
 		TorrentBytes:         torrentData,
 		ParsedTorrent:        parsed,

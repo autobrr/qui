@@ -106,6 +106,9 @@ type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.
 	InstanceID int
 
+	// ScanInstance is the row the run walked the searchee through.
+	ScanInstance *models.Instance
+
 	// Check is the Pre-add check that cleared the torrent for InstanceID.
 	Check crossseed.PreAddCheck
 
