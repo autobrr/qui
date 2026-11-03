@@ -990,3 +990,35 @@ func TestBaseURLNormalization(t *testing.T) {
 		assert.Equal(t, want, cfg.Config.BaseURL, "input %q", input)
 	}
 }
+
+func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	cfg := &AppConfig{
+		Config: &domain.Config{
+			LogLevel:           "info",
+			OIDCEnabled:        true,
+			OIDCAllowedSubject: "intruder",
+			OIDCAllowedEmail:   "me@example.com",
+			CORSAllowedOrigins: []string{"https://new.example"},
+		},
+		version:    "test",
+		logManager: NewLogManager("test"),
+	}
+
+	var listenerCalls atomic.Int32
+	cfg.RegisterReloadListener(func(_ *domain.Config) {
+		listenerCalls.Add(1)
+	})
+
+	cfg.applyDynamicChanges(authReloadSettings{oidcAllowedSubject: "abc-123", oidcEnabled: true})
+
+	assert.Equal(t, "abc-123", cfg.Config.OIDCAllowedSubject)
+	assert.Empty(t, cfg.Config.OIDCAllowedEmail)
+	// The rest of the reload still applies.
+	assert.Equal(t, []string{"https://new.example"}, cfg.Config.CORSAllowedOrigins)
+	assert.Equal(t, int32(1), listenerCalls.Load())
+}

@@ -87,6 +87,31 @@ type Config struct {
 	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
 	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
+	OIDCAllowedSubject      string `toml:"oidcAllowedSubject" mapstructure:"oidcAllowedSubject"`
+	OIDCAllowedEmail        string `toml:"oidcAllowedEmail" mapstructure:"oidcAllowedEmail"`
+}
+
+// IsOIDCUserAllowed reports whether the OIDC user with the given subject and
+// provider-verified email may log in. Each setting is matched only against its
+// own claim, so a subject that looks like the allowed email never matches it.
+// Every user is allowed when neither setting is set.
+func (c *Config) IsOIDCUserAllowed(subject, verifiedEmail string) bool {
+	switch {
+	case c.OIDCAllowedSubject != "":
+		return subject == c.OIDCAllowedSubject
+	case c.OIDCAllowedEmail != "":
+		return strings.EqualFold(verifiedEmail, c.OIDCAllowedEmail)
+	default:
+		return true
+	}
+}
+
+// ValidateOIDCAllowedUser rejects a config that names the allowed OIDC user twice.
+func (c *Config) ValidateOIDCAllowedUser() error {
+	if c.OIDCAllowedSubject != "" && c.OIDCAllowedEmail != "" {
+		return errors.New("set only one of oidcAllowedSubject and oidcAllowedEmail")
+	}
+	return nil
 }
 
 // SecureSessionCookie reports whether the session cookie needs the Secure

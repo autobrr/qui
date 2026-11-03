@@ -13,7 +13,16 @@ If your provider advertises PKCE (`S256`) support, qui uses it for the authoriza
 To make sure that PKCE is active, inspect `/api/auth/oidc/config`. The `authorizationUrl` must include both `code_challenge=` and `code_challenge_method=S256`.
 qui does not emit a dedicated "PKCE enabled" log line, so check the authorization URL directly.
 
-qui accepts every identity that the provider permits for the qui client. qui has one user and no identity allowlist of its own. Restrict the client on the provider side, for example with a group or user assignment, so that only you can sign in.
+By default, qui accepts every identity that the provider permits for the qui client. To let only your own account log in, set one of these two keys:
+
+- `oidcAllowedSubject` (`QUI__OIDC_ALLOWED_SUBJECT`): Only the account with this subject identifier (`sub`) can log in. The match is exact and includes letter case.
+- `oidcAllowedEmail` (`QUI__OIDC_ALLOWED_EMAIL`): Only an account with this email can log in. The match ignores letter case. qui accepts the email only when the provider marks it as verified.
+
+Do not set both keys. If you set both, qui does not start. The subject identifier is unique in the provider. If your provider lets two accounts have the same email, both accounts can log in with `oidcAllowedEmail`. If you set neither key, qui logs a warning at startup.
+
+To find your subject identifier, set `oidcAllowedSubject` to any value and log in. qui refuses the login and writes the `sub` of your account to the log.
+
+qui reads a change to these keys when you save `config.toml`. You do not have to restart qui. If an open OIDC session no longer matches, it ends at its next request, and the browser goes to the login page. Password sessions and API keys do not change.
 
 An `https://` redirect URL marks the session cookie as Secure, so the browser sends it only over HTTPS. See [Sessions](./reference.md#sessions).
 
@@ -29,6 +38,8 @@ For the full mapping (TOML keys + environment variables + defaults), see [Config
 | `QUI__OIDC_CLIENT_SECRET_FILE` | Path to a file that contains the client secret. This setting overrides `QUI__OIDC_CLIENT_SECRET` |
 | `QUI__OIDC_REDIRECT_URL` | Must match the redirect URI allowed by the provider |
 | `QUI__OIDC_DISABLE_BUILT_IN_LOGIN` | When OIDC is enabled, set to `true` to hide the local username/password form |
+| `QUI__OIDC_ALLOWED_SUBJECT` | Only the account with this subject identifier (`sub`) can log in |
+| `QUI__OIDC_ALLOWED_EMAIL` | Only an account with this verified email can log in |
 
 ## Redirect URL format
 
