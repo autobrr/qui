@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => {
   const makeTheme = (
     id: string,
     name: string,
-    options: Pick<Theme, "isPremium" | "isCustom"> = {}
+    options: Pick<Theme, "isPremium" | "isCustom" | "locked"> = {}
   ): Theme => ({
     id,
     name,
@@ -25,7 +25,8 @@ const fixture = vi.hoisted(() => {
 
   return {
     builtInThemes: [
-      makeTheme("premium", "Premium theme", { isPremium: true }),
+      makeTheme("licensed", "Licensed theme", { isPremium: true }),
+      makeTheme("locked", "Locked theme", { isPremium: true, locked: true }),
       makeTheme("free", "Free theme"),
     ],
     customThemes: [
@@ -106,12 +107,27 @@ describe("ThemeSelector", () => {
     const catalog = screen.getByRole("list", { name: "themes.selector.title" })
     const cards = within(catalog).getAllByRole("listitem")
 
-    expect(cards).toHaveLength(3)
+    expect(cards).toHaveLength(4)
     expect(cards.map((card) => card.textContent)).toEqual([
       expect.stringContaining("Free theme"),
-      expect.stringContaining("Premium theme"),
+      expect.stringContaining("Licensed theme"),
+      expect.stringContaining("Locked theme"),
       expect.stringContaining("Custom theme"),
     ])
     expect(screen.getByText("themes.custom.title")).toBeTruthy()
+  })
+
+  it("marks a locked theme with a lock, not a premium badge", () => {
+    render(<ThemeSelector />)
+
+    const catalog = screen.getByRole("list", { name: "themes.selector.title" })
+    const [lockedCard] = within(catalog)
+      .getAllByRole("listitem")
+      .filter((card) => card.textContent?.includes("Locked theme"))
+
+    expect(lockedCard.textContent).toContain("themes.selector.locked")
+    for (const card of within(catalog).getAllByRole("listitem")) {
+      expect(card.textContent).not.toMatch(/premium/i)
+    }
   })
 })

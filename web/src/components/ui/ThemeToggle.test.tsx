@@ -62,8 +62,6 @@ vi.mock("@/config/themes", () => ({
   themes: fixture.builtInThemes,
   getThemeById: (id: string) =>
     [...fixture.builtInThemes, ...fixture.customThemes].find((theme) => theme.id === id),
-  isThemePremium: (id: string) =>
-    fixture.builtInThemes.find((theme) => theme.id === id)?.isPremium ?? false,
 }))
 
 vi.mock("@/utils/theme", () => ({
@@ -148,7 +146,6 @@ describe("ThemeToggle", () => {
     const variationRow = otherItem.querySelector("[data-slot=\"theme-variations\"]")
     expect(variationRow).not.toBeNull()
     expect(variationRow?.querySelectorAll("[style]")).toHaveLength(1)
-    expect(screen.queryByText("themeToggle.premium")).toBeNull()
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
 

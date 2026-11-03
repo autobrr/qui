@@ -12,7 +12,7 @@
     "externalPrograms": "外部程序",
     "notifications": "通知",
     "dateTime": "时间与语言",
-    "premiumThemes": "高级主题",
+    "premiumThemes": "主题",
     "security": "安全",
     "logs": "日志"
   },
@@ -418,38 +418,36 @@
     "selector": {
       "title": "主题选择",
       "loadingDescription": "正在加载可用主题...",
-      "description": "从可用主题中选择。高级主题需要有效的许可证。",
-      "verificationUnavailable": "许可证验证不可用。高级主题切换暂时禁用。",
-      "notLoaded": "高级主题未加载",
+      "description": "从可用主题中选择。部分主题需要有效的许可证。",
+      "verificationUnavailable": "许可证验证不可用。切换到需要许可证的主题暂时禁用。",
+      "notLoaded": "需要许可证的主题未加载",
       "notLoadedDescription": "配置",
       "notLoadedAnd": "并运行",
-      "premium": "高级",
-      "pro": "Pro",
       "free": "免费",
       "locked": "已锁定",
       "lock": "锁定"
     },
     "toasts": {
-      "premiumRequired": "需要高级许可证",
-      "premiumRequiredDescription": "添加有效的高级许可证以解锁高级主题。"
+      "premiumRequired": "需要许可证",
+      "premiumRequiredDescription": "添加有效的许可证以解锁所有主题。"
     },
     "license": {
       "loadingTitle": "许可证管理",
       "loadingDescription": "正在加载主题许可证...",
       "managementTitle": "许可证管理",
-      "managementDescription": "管理您的主题许可证和高级访问权限",
+      "managementDescription": "管理您的主题许可证",
       "providers": {
         "licensePortal": "许可证门户"
       },
       "status": {
-        "unlockTitle": "解锁高级主题",
+        "unlockTitle": "解锁所有主题",
         "unlockDescription": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
-        "activeTitle": "高级访问已激活",
-        "activeDescription": "您可以访问所有当前和未来的高级主题",
+        "activeTitle": "许可证已激活",
+        "activeDescription": "您可以使用所有当前和未来的主题",
         "activationRequiredTitle": "需要激活许可证",
         "activationRequiredDescription": "您的许可证需要在此设备上激活",
         "offlineTitle": "无法连接许可证服务",
-        "offlineDescription": "qui 已有 7 天无法连接许可证服务，因此高级主题已锁定。qui 会在启动时及每天检查一次。许可证服务响应后，主题会再次解锁。您无需重新激活许可证。"
+        "offlineDescription": "qui 已有 7 天无法连接许可证服务，因此需要许可证的主题已锁定。qui 会在启动时及每天检查一次。许可证服务响应后，主题会再次解锁。您无需重新激活许可证。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 购买，然后在此输入您的许可证密钥。如果丢失了密钥，可通过",
@@ -501,7 +499,7 @@
         "addLicense": "添加许可证",
         "remove": "移除",
         "removing": "移除中...",
-        "getPremium": "获取高级版",
+        "getPremium": "获取许可证",
         "reactivate": "重新激活许可证",
         "activating": "激活中...",
         "copyLicenseKey": "复制许可证密钥",
@@ -517,17 +515,17 @@
         "recoverPrefix": "如有需要，您可以稍后从"
       },
       "addDialog": {
-        "title": "添加高级许可证",
-        "description": "输入您的高级主题许可证密钥以解锁所有高级主题。",
+        "title": "添加许可证",
+        "description": "输入您的许可证密钥以解锁所有主题。",
         "label": "许可证密钥",
-        "placeholder": "输入您的高级主题许可证密钥",
+        "placeholder": "输入您的许可证密钥",
         "recoverKey": "找回密钥？",
         "validation": {
           "required": "许可证密钥为必填项"
         }
       },
       "paymentDialog": {
-        "title": "获取高级许可证",
+        "title": "获取许可证",
         "description": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
         "steps": {
           "choosePaymentMethod": {
@@ -559,10 +557,10 @@
       "copiedVerify": "验证命令已复制",
       "failedCopyVerify": "复制验证命令失败",
       "toasts": {
-        "activationSuccessPremium": "高级访问已激活！感谢您的支持！",
-        "paymentCompleted": "支付完成。请添加您的高级许可证密钥以完成设置。",
+        "activationSuccessPremium": "许可证已激活！感谢您的支持！",
+        "paymentCompleted": "支付完成。请添加您的许可证密钥以完成设置。",
         "paymentNotCompleted": "支付未成功完成。",
-        "returnedFromCheckout": "已从结账返回。准备好后请添加您的高级许可证密钥。",
+        "returnedFromCheckout": "已从结账返回。准备好后请添加您的许可证密钥。",
         "keyCopied": "许可证密钥已复制到剪贴板",
         "copyFailed": "复制许可证密钥失败",
         "removedFromMachine": "许可证已从此设备移除"
@@ -571,9 +569,9 @@
     "custom": {
       "badge": "自定义",
       "title": "自定义主题",
-      "lockedTitle": "自定义主题是高级功能",
-      "lockedDescription": "解锁高级版即可从磁盘目录加载你自己的主题 CSS 文件。",
-      "unlockCta": "解锁高级版",
+      "lockedTitle": "自定义主题需要许可证",
+      "lockedDescription": "获取许可证即可从磁盘目录加载你自己的主题 CSS 文件。",
+      "unlockCta": "获取许可证",
       "refresh": "刷新",
       "detectedCount": "找到的主题：{{total}}",
       "parseErrorsTitle": "无法解析以下文件：",

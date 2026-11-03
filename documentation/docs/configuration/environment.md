@@ -66,7 +66,7 @@ QUI__BACKUP_DIR=...      # Optional: custom backup directory (default: <dataDir>
 QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
 ```
 
-`QUI__CUSTOM_THEMES_DIR` sets where qui reads [custom themes](../features/custom-themes.md) from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker), and qui creates it automatically. Loading custom themes requires premium access.
+`QUI__CUSTOM_THEMES_DIR` sets where qui reads [custom themes](../features/custom-themes.md) from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker), and qui creates it automatically. Loading custom themes requires a license.
 
 ### UI preferences
 
