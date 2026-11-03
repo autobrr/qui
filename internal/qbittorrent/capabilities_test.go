@@ -12,7 +12,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // newStubClient returns a client of a qbtstub that reports version, with the
@@ -190,4 +192,139 @@ func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
 	stub.WebAPIVersionStatus = http.StatusBadGateway
 	_, err = sm.OmitsTrackersOnExport(t.Context(), 1)
 	require.Error(t, err)
+}
+
+// versionSink records, for each sync update, whether the client had the
+// flags of the new version when the stream and automations got the update,
+// and each sync error.
+type versionSink struct {
+	client         *Client
+	liveReannounce []bool
+	errs           []error
+}
+
+func (s *versionSink) HandleMainData(int, *qbt.MainData) {
+	s.liveReannounce = append(s.liveReannounce, s.client.Supports(CapLiveReannounce))
+}
+func (*versionSink) HandleTrackerHealthUpdated(int)     {}
+func (s *versionSink) HandleSyncError(_ int, err error) { s.errs = append(s.errs, err) }
+
+// newSyncedStubClient returns a pooled client of a qbtstub with one torrent,
+// a sync manager over it, and a sink that records each update.
+func newSyncedStubClient(t *testing.T, version string) (*Client, *qbtstub.Server, *SyncManager, *versionSink) {
+	t.Helper()
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.WebAPIVersion = version
+	stub.Add(qbtstub.Torrent{Hash: hashA, Name: "Show.S01E01-GRP", SavePath: root, Files: []string{"Show.S01E01.mkv"}})
+	client, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(client.optimisticUpdates.Close)
+	sink := &versionSink{client: client}
+	client.SetSyncEventSink(sink)
+	return client, stub, NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil), sink
+}
+
+// A restarted qBittorrent sends a full update. qui reads the version before
+// the stream, automations or the torrent list read the new list, so an
+// upgrade or a downgrade takes effect without a qui restart.
+// regression: #3760
+func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ from, to string }{{"2.15.1", "2.9.3"}, {"2.9.3", "2.15.1"}} {
+		t.Run(tc.from+" to "+tc.to, func(t *testing.T) {
+			t.Parallel()
+			client, stub, sm, sink := newSyncedStubClient(t, tc.from)
+			require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+
+			stub.WebAPIVersion = tc.to
+			require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+
+			live := tc.to == "2.15.1"
+			require.Equal(t, []bool{!live, live}, sink.liveReannounce)
+			resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+			require.NoError(t, err)
+			require.Equal(t, map[int]string{1: tc.to}, resp.WebAPIVersions)
+			require.Len(t, resp.Torrents, 1)
+			require.Equal(t, live, resp.Torrents[0].Reannounce != nil)
+		})
+	}
+}
+
+// A failed version read on a full update leaves the version unknown, and the
+// sync still succeeds.
+// regression: #3760
+func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.T) {
+	t.Parallel()
+	client, stub, sm, sink := newSyncedStubClient(t, "2.15.1")
+
+	stub.WebAPIVersionStatus = http.StatusBadGateway
+	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.Equal(t, []bool{false}, sink.liveReannounce)
+	require.Empty(t, client.GetWebAPIVersion())
+	require.Empty(t, sink.errs, "the sync succeeded, so the stream gets no error")
+
+	resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+	require.NoError(t, err)
+	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
+}
+
+// A version read that times out on a full update also leaves the version
+// unknown. A health check keeps the old version on a timeout, but a full update
+// can come from a restarted qBittorrent with another version.
+// regression: #3760
+func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testing.T) {
+	t.Parallel()
+	client, stub := newStubClient(t, "2.15.1")
+
+	// go-qbittorrent calls this hook before a full update enters the cache.
+	stub.HangWebAPIVersion = true
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	require.NoError(t, client.refreshCapabilitiesBeforeFullUpdate(ctx, nil))
+	require.Empty(t, client.GetWebAPIVersion())
+	require.False(t, client.Supports(CapLiveReannounce))
+}
+
+// A partial update sends no version request: only a restart can change the
+// version, and qBittorrent sends a full update after each one.
+func TestPartialSyncUpdateSendsNoVersionRequest(t *testing.T) {
+	t.Parallel()
+	client, stub, _, _ := newSyncedStubClient(t, "2.15.1")
+	stub.PartialUpdates = true
+
+	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	reads := stub.VersionReads()
+	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.Equal(t, 2, stub.Syncs())
+	require.Equal(t, reads, stub.VersionReads())
+}
+
+// The Unified view carries the version of each instance, so the page can ask
+// the one that changed for its capabilities again.
+func TestUnifiedViewCarriesTheVersionOfEachInstance(t *testing.T) {
+	t.Parallel()
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-unified-versions"), make([]byte, 32))
+	require.NoError(t, err)
+
+	clients := map[int]*Client{}
+	want := map[int]string{}
+	for _, version := range []string{"2.9.3", "2.15.1"} {
+		instance, err := store.Create(t.Context(), version, "http://127.0.0.1:8080", "", "", nil, nil, false, nil)
+		require.NoError(t, err)
+		stub := qbtstub.New(t, "/data")
+		stub.WebAPIVersion = version
+		client, err := NewClientWithTimeout(instance.ID, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+		require.NoError(t, err)
+		t.Cleanup(client.optimisticUpdates.Close)
+		require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+		clients[instance.ID] = client
+		want[instance.ID] = version
+	}
+	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, "", "", "", FilterOptions{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, want, resp.WebAPIVersions)
 }

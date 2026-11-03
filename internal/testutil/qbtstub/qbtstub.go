@@ -108,12 +108,19 @@ type Server struct {
 	WebAPIVersion string
 	// WebAPIVersionStatus, when set, makes app/webapiVersion answer with it.
 	WebAPIVersionStatus int
+	// HangWebAPIVersion makes app/webapiVersion answer only when the request
+	// ends, so the caller times out.
+	HangWebAPIVersion bool
+	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
+	// qBittorrent does. Without it, each sync is a full update.
+	PartialUpdates bool
 
-	writes    map[string]int
-	conflicts map[string]int
-	bodies    map[string]string
-	requests  int
-	syncs     int
+	writes       map[string]int
+	conflicts    map[string]int
+	bodies       map[string]string
+	requests     int
+	syncs        int
+	versionReads int
 }
 
 // New starts a stub whose default save path is savePath.
@@ -226,6 +233,13 @@ func (s *Server) Syncs() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.syncs
+}
+
+// VersionReads counts the app/webapiVersion requests qBittorrent received.
+func (s *Server) VersionReads() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.versionReads
 }
 
 // Tags returns the sorted tags of a torrent.
@@ -412,6 +426,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "auth/login":
 		_, _ = io.WriteString(w, "Ok.")
 	case "app/webapiVersion":
+		s.versionReads++
+		if s.HangWebAPIVersion {
+			<-r.Context().Done()
+			return
+		}
 		if s.WebAPIVersionStatus != 0 {
 			w.WriteHeader(s.WebAPIVersionStatus)
 			return
@@ -455,7 +474,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		for name := range s.categories {
 			categories[name] = s.categoryJSON(name)
 		}
-		writeJSON(w, map[string]any{"rid": s.rid, "full_update": true, "torrents": torrents, "categories": categories,
+		full := !s.PartialUpdates || param("rid") == "0"
+		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected"}})
 	case "torrents/files":
 		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {

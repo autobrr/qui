@@ -233,3 +233,22 @@ func TestFingerprintDistinguishesNaNRows(t *testing.T) {
 	b := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
 	require.NotEqual(t, a, b)
 }
+
+// A version read can turn the live reannounce on or off with no change in the
+// torrent. The row then gains or loses Reannounce In, so the stream resends it.
+// regression: #3760
+func TestFingerprintTracksReannouncePresence(t *testing.T) {
+	torrent := &qbt.Torrent{Name: "A", Reannounce: 30}
+	without := qbittorrent.TorrentView{Torrent: torrent}
+	with := qbittorrent.TorrentView{Torrent: torrent, Reannounce: new(int64(30))}
+
+	for name, fp := range map[string]func(*fpBuf, qbittorrent.TorrentView) uint64{
+		"list": singleRowFingerprint,
+		"one":  oneRowFingerprint,
+		"cross": func(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
+			return crossRowFingerprint(b, qbittorrent.CrossInstanceTorrentView{TorrentView: &tv, InstanceID: 1})
+		},
+	} {
+		require.NotEqual(t, fp(new(fpBuf), without), fp(new(fpBuf), with), name)
+	}
+}

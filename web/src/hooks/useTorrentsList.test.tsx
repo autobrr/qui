@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { focusManager, QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { act, cleanup, render, renderHook } from "@testing-library/react"
 import { startTransition, Suspense, useEffect } from "react"
 import type { ReactNode } from "react"
@@ -35,7 +35,8 @@ vi.mock("@/hooks/useInstances", () => ({
   useInstances: vi.fn(),
 }))
 
-vi.mock("@/hooks/useInstanceCapabilities", () => ({
+vi.mock("@/hooks/useInstanceCapabilities", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useInstanceCapabilities")>()),
   useInstanceCapabilities: vi.fn(),
 }))
 
@@ -1255,6 +1256,68 @@ describe("useTorrentsList", () => {
     expect(result.current.capabilities).toBeUndefined()
     expect(result.current.supportsTorrentCreation).toBe(false)
     expect(mockedApi.getCrossInstanceTorrents).toHaveBeenCalled()
+  })
+
+  describe("a Web API version in the torrent list", () => {
+    // The capabilities query of instance 1 beside the list. qBittorrent runs
+    // 2.15.1 for the first request and 2.9.3 after it.
+    function renderWithCapabilities() {
+      const getCapabilities = vi.fn()
+        .mockResolvedValueOnce({ webAPIVersion: "2.15.1" })
+        .mockResolvedValue({ webAPIVersion: "2.9.3" })
+      const rendered = renderHook(() => ({
+        capabilities: useQuery({ queryKey: ["instance-capabilities", 1], queryFn: getCapabilities }).data,
+        list: useTorrentsList(1, { pollingEnabled: false }),
+      }), { wrapper: makeWrapper() })
+      return { getCapabilities, ...rendered }
+    }
+
+    // On a later page, a stream frame reaches only the stream listener.
+    // regression: #3760
+    it("starts a capabilities request from a stream frame only when the version changes", async () => {
+      streamState = { ...DISCONNECTED, connected: true, initialized: true }
+      mockedApi.getTorrents.mockImplementation((_instanceId, params) => Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: params.page === 0 ? "a" : "b" })],
+        total: 2,
+        hasMore: params.page === 0,
+      })))
+      const { getCapabilities, result } = renderWithCapabilities()
+      await flush()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+      act(() => {
+        result.current.list.loadMore()
+      })
+      await flush()
+      expect(mockedApi.getTorrents).toHaveBeenLastCalledWith(1, expect.objectContaining({ page: 1 }), expect.anything())
+      expect(getCapabilities).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        capturedOnMessage?.({ type: "init", data: makeResponse({ webAPIVersions: { 1: "2.15.1" } }) })
+      })
+      await flush()
+      expect(getCapabilities).toHaveBeenCalledTimes(1)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.15.1")
+
+      act(() => {
+        capturedOnMessage?.({ type: "init", data: makeResponse({ webAPIVersions: { 1: "2.9.3" } }) })
+      })
+      await flush()
+      expect(getCapabilities).toHaveBeenCalledTimes(2)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.9.3")
+    })
+
+    // regression: #3760
+    it("starts a capabilities request from a REST page when the version changes", async () => {
+      mockedApi.getTorrents.mockResolvedValue(makeResponse({ webAPIVersions: { 1: "2.9.3" } }))
+      const { getCapabilities, result } = renderWithCapabilities()
+      await flush()
+
+      expect(mockedApi.getTorrents).toHaveBeenCalled()
+      expect(getCapabilities).toHaveBeenCalledTimes(2)
+      expect(result.current.capabilities?.webAPIVersion).toBe("2.9.3")
+    })
   })
 
   it("merges a streamed snapshot and disables polling while connected", async () => {

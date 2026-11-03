@@ -185,6 +185,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.OnUpdate = client.handleSyncUpdate
 
 	syncOpts.OnError = client.handleSyncManagerError
+	syncOpts.BeforeFullUpdate = client.refreshCapabilitiesBeforeFullUpdate
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 	// The tracker manager did not exist during the capability refresh above.
@@ -362,15 +363,7 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 		return err
 	}
 
-	c.mu.Lock()
-	previous := c.version
-	c.version = version
-	c.mu.Unlock()
-
-	if tm := c.trackerManager(); tm != nil {
-		tm.SetUseIncludeTrackers(versionSupports(version, CapTrackerHealth))
-	}
-
+	previous := c.setVersion(version)
 	if previous != nil && version != nil && !previous.Equal(version) {
 		log.Info().
 			Int("instanceID", c.instanceID).
@@ -380,6 +373,19 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// setVersion stores version, nil while unknown, and returns the previous one.
+func (c *Client) setVersion(version *semver.Version) *semver.Version {
+	c.mu.Lock()
+	previous := c.version
+	c.version = version
+	c.mu.Unlock()
+
+	if tm := c.trackerManager(); tm != nil {
+		tm.SetUseIncludeTrackers(versionSupports(version, CapTrackerHealth))
+	}
+	return previous
 }
 
 func (c *Client) fetchWebAPIVersion(ctx context.Context) (*semver.Version, error) {
@@ -397,6 +403,26 @@ func (c *Client) fetchWebAPIVersion(ctx context.Context) (*semver.Version, error
 		return nil, fmt.Errorf("%w %q: %w", errInvalidWebAPIVersion, truncateWebAPIVersion(raw), err)
 	}
 	return version, nil
+}
+
+// refreshCapabilitiesBeforeFullUpdate reads the Web API version before a full
+// sync update reaches any consumer. qBittorrent sends one after each restart,
+// so an upgrade or a downgrade takes effect before the new list does. A failed
+// read leaves the version unknown and does not fail the sync, which succeeded:
+// OnError would mark the instance down and send the stream an error.
+func (c *Client) refreshCapabilitiesBeforeFullUpdate(ctx context.Context, _ *qbt.MainData) error {
+	err := c.RefreshCapabilities(ctx)
+	// A stopped sync, as at shutdown, is no failure of the instance.
+	if err == nil || isContextStopped(err) {
+		return nil
+	}
+	// RefreshCapabilities keeps the version on a timeout, for a health check.
+	// A full update can come from a restarted qBittorrent with another version.
+	if IsDeadlineExpired(err) {
+		c.setVersion(nil)
+	}
+	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Failed to read the qBittorrent version on a full sync update")
+	return nil
 }
 
 // EnsureCapabilities reads the Web API version only when it is unknown. A
