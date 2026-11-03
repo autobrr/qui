@@ -18,7 +18,7 @@
     "internal/qbittorrent/app_info.go": 1,
     "internal/qbittorrent/pool.go": 6,
     "internal/qbittorrent/preferences.go": 1,
-    "internal/qbittorrent/sync_manager.go": 67,
+    "internal/qbittorrent/sync_manager.go": 21,
     "internal/services/arr/service.go": 1,
     "internal/services/automations/service.go": 5,
     "internal/services/crossseed/ensemble_season.go": 5,
@@ -35,9 +35,6 @@
     "internal/services/trackericons/service.go": 1,
     "internal/sshpool/pool.go": 1,
     "pkg/prowlarr/client.go": 3
-  },
-  "errchkjson": {
-    "internal/services/automations/service.go": 6
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
@@ -76,7 +73,7 @@
     "internal/services/automations/grouping.go": 1,
     "internal/services/automations/hardlink_index.go": 1,
     "internal/services/automations/processor.go": 5,
-    "internal/services/automations/service.go": 6,
+    "internal/services/automations/service.go": 5,
     "internal/services/automations/validate.go": 1,
     "internal/services/crossseed/align.go": 3,
     "internal/services/crossseed/batch_matching.go": 3,

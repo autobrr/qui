@@ -35,6 +35,9 @@ export interface CrossSeedInstanceResult {
   success: boolean
   status: string
   message?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
   matchedTorrent?: {
     hash: string
     name: string
@@ -205,6 +208,9 @@ export interface CrossSeedRunResult {
   message?: string
   matchedTorrentHash?: string
   matchedTorrentName?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
 
 export interface CrossSeedRun {
@@ -408,6 +414,9 @@ export interface CrossSeedSearchResult {
   status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
+  /** The Cross-seed instance that a routed add goes to. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
 
 export interface CrossSeedSearchRun {
@@ -452,13 +461,44 @@ export interface SeasonPackRun {
   id: number
   torrentName: string
   phase: "check" | "apply" | "resume"
-  status: "ready" | "skipped" | "applied" | "failed"
+  status: "ready" | "ready_no_threshold" | "skipped" | "applied" | "failed"
   reason: string
   message: string
   instanceId?: number
+  /** The instance that gets the add: the Cross-seed instance of a routed apply, or instanceId. */
+  addedInstanceId?: number
   matchedEpisodes: number
   totalEpisodes: number
   coverage: number
   linkMode?: string
   createdAt: string
+}
+
+/** One base folder of a Source instance and where its Cross-seed instance sees it. An empty mappedPath means the same path. */
+export interface CrossSeedRouteRow {
+  baseDir: string
+  mappedPath: string
+}
+
+/** A saved route from a Source instance to its Cross-seed instance. */
+export interface CrossSeedRoute {
+  sourceInstanceId: number
+  crossSeedInstanceId: number
+  rows: CrossSeedRouteRow[]
+}
+
+/** The route read of one Source instance: one row for each base folder, with the rule status. */
+export interface CrossSeedRouteStatus extends CrossSeedRoute {
+  /** routedTorrents is null when the Cross-seed instance is unavailable. */
+  rows: (CrossSeedRouteRow & { routedTorrents: number | null })[]
+  /** The route rule that the saved route breaks. Absent when it passes. */
+  brokenRule?: string
+}
+
+export type CrossSeedRouteTestRowResult = "sees" | "seesFolderNotMarker" | "cannotSeeFolder" | "cannotWrite"
+
+/** The Test route result: one entry for each base folder, or crossSeedUnavailable with no rows. */
+export interface CrossSeedRouteTestResult {
+  crossSeedUnavailable?: string
+  rows: { baseDir: string; listedPath: string; result: CrossSeedRouteTestRowResult; error?: string }[]
 }

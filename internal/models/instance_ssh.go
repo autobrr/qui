@@ -69,7 +69,7 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 		UPDATE instances
 		SET ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_key_encrypted = ?,
 		    ssh_host_key_encrypted = CASE WHEN ssh_host = ? AND ssh_port = ? THEN ssh_host_key_encrypted ELSE '' END,
-		    ssh_tier = ?
+		    ssh_tier = ?, ssh_hardlink = NULL
 		WHERE id = ?
 	`
 	// A new key may run a different shell: the tier is unknown until a
@@ -148,7 +148,7 @@ func SSHEndpointChanged(inst *Instance, host string, port int) bool {
 func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int) error {
 	query := `
 		UPDATE instances
-		SET ssh_username = '', ssh_key_encrypted = '', ssh_tier = ?
+		SET ssh_username = '', ssh_key_encrypted = '', ssh_tier = ?, ssh_hardlink = NULL
 		WHERE id = ?
 	`
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, string(SSHTierSFTP), instanceID)
@@ -238,7 +238,7 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 	// answers, so the row says sftp and fails closed meanwhile.
 	query := `
 		UPDATE instances
-		SET ssh_host_key_encrypted = ?, ssh_tier = ?
+		SET ssh_host_key_encrypted = ?, ssh_tier = ?, ssh_hardlink = NULL
 		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted ` + pinnedTerm
 
 	err = s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, string(SSHTierSFTP), instanceID, host, port)
@@ -305,7 +305,21 @@ func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, que
 	return nil
 }
 
-// SetSSHTier records the tier the last probe of the host found.
-func (s *InstanceStore) SetSSHTier(ctx context.Context, instanceID int, tier SSHTier) error {
-	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, `UPDATE instances SET ssh_tier = ? WHERE id = ?`, string(tier), instanceID)
+// SetSSHProbe records what a probe of the host found: the tier, and whether
+// the server advertises hardlink@openssh.com. An empty tier is a probe whose
+// exec half got no answer: the stored tier stays, only the flag is written.
+// probed is the row the probe dialed with; a row whose endpoint, key or pin
+// changed since keeps the reset those changes wrote, and the next probe
+// answers for the new settings.
+func (s *InstanceStore) SetSSHProbe(ctx context.Context, probed *Instance, tier SSHTier, hardlink bool) error {
+	query := `
+		UPDATE instances
+		SET ssh_tier = COALESCE(NULLIF(?, ''), ssh_tier), ssh_hardlink = ?
+		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_key_encrypted = ? AND ssh_host_key_encrypted = ?
+	`
+	err := s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, string(tier), hardlink, probed.ID, probed.SSHHost, probed.SSHPort, probed.SSHKeyEncrypted, probed.SSHHostKeyEncrypted)
+	if errors.Is(err, ErrSSHEndpointChanged) {
+		return nil
+	}
+	return err
 }

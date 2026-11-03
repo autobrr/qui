@@ -1162,3 +1162,27 @@ func TestSyncUpdateMovesCountsGenerationOnlyForCountedChanges(t *testing.T) {
 	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true, Tags: true}})
 	require.Equal(t, uint64(1), client.countsGen.Load(), "a tag change invalidates the cached counts")
 }
+
+func TestClientSupportsLiveReannounceCapability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		{name: "qBittorrent 4.6.7 has no reannounce in the torrent list", version: "2.9.3", expected: false},
+		{name: "qBittorrent 5.0 sends reannounce in the torrent list", version: "2.10.0", expected: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := &Client{}
+			client.applyCapabilitiesLocked(tc.version)
+
+			require.Equal(t, tc.expected, client.SupportsLiveReannounce())
+		})
+	}
+}

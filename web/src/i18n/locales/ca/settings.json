@@ -102,7 +102,6 @@
       "proxyUrl": "URL del proxy",
       "showProxyUrl": "Mostra l'URL del proxy",
       "hideProxyUrl": "Amaga l'URL del proxy",
-      "copyProxyUrl": "Copia l'URL del proxy",
       "done": "Fet"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "S'ha eliminat la clau API de client correctament",
       "deleteFailed": "No s'ha pogut eliminar la clau API de client: {{error}}",
       "clientNameRequired": "El nom del client és obligatori",
-      "selectInstance": "Selecciona una instància de qBittorrent",
-      "proxyCopied": "S'ha copiat l'URL del proxy al porta-retalls",
-      "copyFailed": "No s'ha pogut copiar al porta-retalls"
+      "selectInstance": "Selecciona una instància de qBittorrent"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "La teva clau API nova",
       "warning": "Desa aquesta clau ara. No la podràs tornar a veure.",
-      "done": "Fet"
+      "done": "Fet",
+      "apiKey": "Clau API"
     },
     "deleteDialog": {
       "title": "Vols eliminar la clau API?",
@@ -158,9 +156,7 @@
       "created": "S'ha creat la clau API correctament",
       "createFailed": "No s'ha pogut crear la clau API",
       "deleted": "S'ha eliminat la clau API correctament",
-      "deleteFailed": "No s'ha pogut eliminar la clau API",
-      "copied": "S'ha copiat la clau API al porta-retalls",
-      "copyFailed": "No s'ha pogut copiar al porta-retalls"
+      "deleteFailed": "No s'ha pogut eliminar la clau API"
     }
   },
   "externalPrograms": {
@@ -1107,11 +1103,6 @@
       "bind": "Adreça d'escolta",
       "configDir": "Directori de configuració",
       "dataDir": "Directori de dades"
-    },
-    "copyTitle": "Copia {{label}}",
-    "toasts": {
-      "copied": "S'ha copiat {{label}} al porta-retalls",
-      "copyFailed": "No s'ha pogut copiar {{label}}"
     }
   }
 }

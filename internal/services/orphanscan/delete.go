@@ -33,6 +33,7 @@ const (
 	deleteDispositionSkippedIgnored
 	deleteDispositionSkippedNotEmpty
 	deleteDispositionSkippedNotDirectory
+	deleteDispositionSkippedDirInUseThroughAlias
 )
 
 // withinScanRoot checks that target is an absolute path strictly below scanRoot.
@@ -204,23 +205,30 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 	return nil
 }
 
-// inUseIDs holds the identity of every torrent file on disk at delete time.
-// The file map protects by path, so without these a torrent that reaches a
-// listed file through a second path since the scan, such as a bind mount, a
-// symlinked folder or a hardlink, would lose it. The scan keeps such a file by
-// identity, and the delete keeps it the same way.
+// inUseIDs holds the identity of every torrent file on disk at delete time, and
+// of the folders along the torrents' paths when a run lists folders. The file
+// map protects by path, so without these a torrent that reaches a listed file
+// or folder through a second path, such as a bind mount, a symlinked folder or
+// a hardlink, would lose it. One set holds both, which is safe only because
+// holds asks about regular files: a symlink to a reached folder inside a disc
+// unit must not keep the unit (#3612).
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
+	// fileDirs are the folders that hold a torrent file found on disk, as
+	// reachedDirs takes them.
+	fileDirs map[string]struct{}
 }
 
-// collectInUseIDs reads the identity of each torrent path through backend,
-// following links, as qBittorrent does. A path that is not on disk, or that
+// collectInUseIDs reads the identity of each torrent file or folder through
+// backend, following links, as qBittorrent does. A path that is not on disk, or that
 // runs into a symlink loop, protects nothing, since qBittorrent cannot read it
 // either. A path qui may not look up is skipped, as the scan skips a denied
-// subtree. Any other failure is returned, a denied identity read included,
-// because a file the run cannot identify could be one of the targets.
-func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string) (*inUseIDs, error) {
+// subtree, unless failDenied is set. Any other failure is returned, a denied
+// identity read included, because a file the run cannot identify could be one
+// of the targets. Set failDenied for torrent folders: a denied one could be an
+// alias that qBittorrent can follow to a listed folder.
+func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string, failDenied bool) (*inUseIDs, error) {
 	// Cross-seeds share files, so the same path comes once per torrent.
 	seen := make(map[string]struct{}, len(paths))
 	unique := make([]string, 0, len(paths))
@@ -230,7 +238,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			unique = append(unique, p)
 		}
 	}
-	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique))}
+	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique)), fileDirs: make(map[string]struct{})}
 	infos, errs := fsops.StatAll(ctx, backend, unique)
 	denied, firstDenied := 0, ""
 	for i := range unique {
@@ -240,7 +248,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			}
 			// A backend that wraps both errors lost the link, which says
 			// nothing about the file's permissions.
-			if errors.Is(err, fs.ErrPermission) && !errors.Is(err, fsops.ErrConnectionLost) {
+			if !failDenied && errors.Is(err, fs.ErrPermission) && !errors.Is(err, fsops.ErrConnectionLost) {
 				if denied == 0 {
 					firstDenied = unique[i]
 				}
@@ -250,8 +258,11 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			return nil, err
 		}
 		info := infos[i]
-		if !info.Mode.IsRegular() {
+		if !info.Mode.IsRegular() && !info.IsDir {
 			continue
+		}
+		if info.Mode.IsRegular() {
+			ids.fileDirs[backend.Paths().Dir(unique[i])] = struct{}{}
 		}
 		key, err := fileKey(info, instance)
 		if err != nil {
@@ -260,7 +271,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		ids.keys[key] = struct{}{}
 	}
 	if denied > 0 {
-		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent files qui may not look up")
+		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent paths qui may not look up")
 	}
 	return ids, nil
 }
@@ -269,7 +280,16 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 // file read with Lstat. Like the scan (#3487), a target with more than one
 // link is kept when one of them is a torrent's.
 func (ids *inUseIDs) holds(info *fsops.LstatInfo) (bool, error) {
-	if ids == nil || !info.Mode.IsRegular() {
+	if !info.Mode.IsRegular() {
+		return false, nil
+	}
+	return ids.reaches(info)
+}
+
+// reaches reports whether a torrent's path leads to info, a folder read with
+// Lstat, under any spelling.
+func (ids *inUseIDs) reaches(info *fsops.LstatInfo) (bool, error) {
+	if ids == nil {
 		return false, nil
 	}
 	key, err := fileKey(info, ids.instance)
@@ -363,8 +383,9 @@ func safeDeleteDirectory(ctx context.Context, target string, protected *protecte
 // empty now, or is no longer a directory, is reported as skipped rather than
 // failed: a file inside it that the run kept is the usual reason, and nothing
 // went wrong. Remove still refuses a non-empty directory, so the check before it
-// only decides how the outcome is reported.
-func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) (deleteDisposition, error) {
+// only decides how the outcome is reported. A directory a torrent reaches under
+// another path stays, since a torrent that has not written yet leaves it empty.
+func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, protected *protectedPaths, backend fsops.Backend) (deleteDisposition, error) {
 	if err := withinScanRoot(backend.Paths(), scanRoot, target); err != nil {
 		return 0, err
 	}
@@ -378,6 +399,13 @@ func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fs
 	}
 	if !info.IsDir {
 		return deleteDispositionSkippedNotDirectory, nil
+	}
+	reached, err := protected.inUse.reaches(info)
+	if err != nil {
+		return 0, err
+	}
+	if reached {
+		return deleteDispositionSkippedDirInUseThroughAlias, nil
 	}
 
 	entries, err := backend.ReadDir(ctx, target)

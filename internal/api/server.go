@@ -42,6 +42,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/sshpool"
@@ -75,6 +76,7 @@ type Server struct {
 	restarter                        *update.Restarter
 	selfUpdater                      *update.Updater
 	trackerIconService               *trackericons.Service
+	peerClientIconService            *peerclienticons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
 	filesManager                     *filesmanager.Service
@@ -130,6 +132,7 @@ type Dependencies struct {
 	Restarter                        *update.Restarter
 	SelfUpdater                      *update.Updater
 	TrackerIconService               *trackericons.Service
+	PeerClientIconService            *peerclienticons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
 	CrossSeedService                 *crossseed.Service
@@ -206,6 +209,7 @@ func NewServer(deps *Dependencies) *Server {
 		restarter:                        deps.Restarter,
 		selfUpdater:                      deps.SelfUpdater,
 		trackerIconService:               deps.TrackerIconService,
+		peerClientIconService:            deps.PeerClientIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
 		filesManager:                     deps.FilesManager,
@@ -389,6 +393,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
+	peerClientIconHandler := handlers.NewPeerClientIconHandler(s.peerClientIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
@@ -488,6 +493,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Use(authMiddleware)
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
+			r.Get("/peer-client-icons/{name}", peerClientIconHandler.GetPeerClientIcon)
 			r.Post("/stream/subscriptions", s.streamManager.ChangeSubscriptions)
 
 			// Auth routes

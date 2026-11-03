@@ -124,7 +124,8 @@ export interface Torrent {
   progress: number
   ratio: number
   ratio_limit: number
-  reannounce: number
+  // The server leaves it out before qBittorrent 5.0, which does not send it in the torrent list.
+  reannounce?: number
   save_path: string
   seeding_time: number
   seeding_time_limit: number

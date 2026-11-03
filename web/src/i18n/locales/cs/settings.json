@@ -102,7 +102,6 @@
       "proxyUrl": "Proxy URL",
       "showProxyUrl": "Zobrazit proxy URL",
       "hideProxyUrl": "Skrýt proxy URL",
-      "copyProxyUrl": "Kopírovat proxy URL",
       "done": "Hotovo"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "Klient API klíč smazán úspěšně",
       "deleteFailed": "Nepodařilo se smazat klient API klíč: {{error}}",
       "clientNameRequired": "Název klienta je povinný",
-      "selectInstance": "Vyberte qBittorrent instanci",
-      "proxyCopied": "Proxy URL zkopírována do schránky",
-      "copyFailed": "Nepodařilo se zkopírovat do schránky"
+      "selectInstance": "Vyberte qBittorrent instanci"
     }
   },
   "apiKeys": {
@@ -146,7 +143,8 @@
     "newKey": {
       "label": "Váš nový API klíč",
       "warning": "Uložte tento klíč nyní. Nemůžete se na něj podívat znovu.",
-      "done": "Hotovo"
+      "done": "Hotovo",
+      "apiKey": "API klíč"
     },
     "deleteDialog": {
       "title": "Smazat API klíč?",
@@ -158,9 +156,7 @@
       "created": "API klíč vytvořen úspěšně",
       "createFailed": "Nepodařilo se vytvořit API klíč",
       "deleted": "API klíč smazán úspěšně",
-      "deleteFailed": "Nepodařilo se smazat API klíč",
-      "copied": "API klíč zkopírován do schránky",
-      "copyFailed": "Nepodařilo se zkopírovat do schránky"
+      "deleteFailed": "Nepodařilo se smazat API klíč"
     }
   },
   "externalPrograms": {
@@ -1110,11 +1106,6 @@
       "bind": "Navázaná adresa",
       "configDir": "Konfigurační adresář",
       "dataDir": "Adresář dat"
-    },
-    "copyTitle": "Kopírovat {{label}}",
-    "toasts": {
-      "copied": "{{label}} zkopírováno do schránky",
-      "copyFailed": "Nepodařilo se zkopírovat {{label}}"
     }
   }
 }

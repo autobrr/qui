@@ -93,7 +93,7 @@ func TestExpandTagStatesForCrossSeeds_PropagatesToSiblings(t *testing.T) {
 			require.Contains(t, sib.currentTags, "keep-me", "sibling state must be seeded with its own current tags")
 
 			// The diff loop must produce a per-sibling desired set that keeps unrelated
-			// tags (SetTorrentTags replaces the whole list).
+			// tags (SetTags replaces the whole list).
 			sibChange := buildTagChangesForTest(states)["sibling"]
 			require.NotNil(t, sibChange)
 			assert.ElementsMatch(t, tt.wantAdd, sibChange.toAdd)
@@ -119,7 +119,7 @@ func TestApplyRules_TagIncludeCrossSeedsTagsEachCopy(t *testing.T) {
 		svc, instanceID, stub := newWriteStubService(t, torrents)
 		_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 		require.NoError(t, err)
-		require.Equal(t, want, stub.writes())
+		require.Equal(t, want, stub.writtenHashes())
 	})
 	t.Run("dry run", func(t *testing.T) {
 		svc, instanceID, stub := newWriteStubService(t, torrents)
@@ -128,7 +128,7 @@ func TestApplyRules_TagIncludeCrossSeedsTagsEachCopy(t *testing.T) {
 		activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&dryRunRule}, true)
 		require.NoError(t, err)
 		require.Equal(t, want, dryRunActivityHashes(t, svc, instanceID, activities))
-		require.Empty(t, stub.writes())
+		require.Empty(t, stub.writtenHashes())
 	})
 }
 

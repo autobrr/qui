@@ -101,17 +101,19 @@
     "cancel": "Cancel·la",
     "close": "Tanca",
     "create": "Crea",
-    "copyPath": "Copia el camí",
     "scrollToTop": "Vés a dalt de tot",
     "search": "Cerca",
-    "select": "Selecciona"
+    "select": "Selecciona",
+    "copyValue": "Copia {{label}}"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Selecciona elements..."
   },
   "feedback": {
-    "noResultsFound": "No s'ha trobat cap resultat."
+    "noResultsFound": "No s'ha trobat cap resultat.",
+    "copied": "S'ha copiat {{label}} al porta-retalls",
+    "copyFailed": "No s'ha pogut copiar al porta-retalls"
   },
   "errors": {
     "unknown": "Error desconegut",
@@ -245,5 +247,8 @@
     "yearly": "{{price}} / any",
     "monthly": "{{price}} / mes",
     "notLicense": "Els temes premium són una compra única a part."
+  },
+  "labels": {
+    "path": "Camí"
   }
 }

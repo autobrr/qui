@@ -946,6 +946,50 @@ func TestGetTorrentFilesBatch_DefaultOmitsPerHashFailure(t *testing.T) {
 	require.Equal(t, []cacheCall{{hash: "goodhash"}}, fm.cacheCalls)
 }
 
+// regression: #3738
+func TestGetTorrentFilesBatch_CacheReadErrorFailsBatchWithoutFetching(t *testing.T) {
+	t.Parallel()
+
+	cacheErr := errors.New("sqlite: connection setup timed out")
+	client := &scriptedTorrentFilesClient{responses: map[string][]torrentFilesResponse{}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: cacheErr}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA", "HashB"})
+
+	require.ErrorIs(t, err, cacheErr)
+	require.Nil(t, filesByHash)
+	require.Empty(t, client.calls)
+}
+
+// regression: #3738
+func TestGetTorrentFilesBatch_CacheReadErrorSingleHashFetchesFromClient(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{{Name: "single.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{"HashA": {{files: &files}}},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: errors.New("cache read failed")}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"hasha": files}, filesByHash)
+	require.Equal(t, 1, client.callCount("HashA"))
+}
+
 func TestGetTorrentFilesBatch_DefaultReturnsAndCachesEmptyFileList(t *testing.T) {
 	t.Parallel()
 
@@ -1482,6 +1526,7 @@ type stubFilesManager struct {
 	cached     map[string]qbt.TorrentFiles
 	lastHashes []string
 	cacheCalls []cacheCall
+	batchErr   error
 }
 
 func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.TorrentFiles, error) {
@@ -1490,6 +1535,9 @@ func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.To
 
 func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
+	if fm.batchErr != nil {
+		return nil, nil, fm.batchErr
+	}
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
 	missing := make([]string, 0, len(hashes))
@@ -1521,7 +1569,8 @@ func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[
 	return nil
 }
 
-func (*stubFilesManager) InvalidateCache(context.Context, int, string) error {
+func (fm *stubFilesManager) InvalidateCache(_ context.Context, _ int, hash string) error {
+	delete(fm.cached, hash)
 	return nil
 }
 
@@ -3577,4 +3626,76 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 		<-resumed
 		require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
 	})
+}
+
+// blockingTorrentFilesClient returns the files of done at once and makes every
+// other hash wait until its context ends.
+type blockingTorrentFilesClient struct {
+	done  string
+	files qbt.TorrentFiles
+	after func()
+}
+
+func (*blockingTorrentFilesClient) getTorrentsByHashes([]string) []qbt.Torrent { return nil }
+
+func (c *blockingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	if hash != c.done {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	files := slices.Clone(c.files)
+	c.after()
+	return &files, nil
+}
+
+// regression: #3739
+func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	files := qbt.TorrentFiles{{Name: "done.mkv", Size: 1}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return &blockingTorrentFilesClient{done: "done", files: files, after: cancel}, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	_, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"slow", "done"})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, files, fm.cached["done"], "the list that came back before the cancel is in the file cache")
+}
+
+// regression: #3739
+func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	var got []string
+	sm.SetFilesChangedHandler(func(instanceID int, hash string) {
+		got = append(got, fmt.Sprintf("%d|%s", instanceID, hash))
+	})
+
+	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+
+	require.Equal(t, []string{"3|abc"}, got, "a proxy rename drops the remembered cross-seed read")
+}
+
+func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	fm := &stubFilesManager{cached: map[string]qbt.TorrentFiles{"abc": {{Name: "Show.S01E01.mkv"}}}}
+	sm.SetFilesManager(fm)
+	var cachedAtNotify bool
+	sm.SetFilesChangedHandler(func(int, string) {
+		_, cachedAtNotify = fm.cached["abc"]
+	})
+
+	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+
+	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
 }

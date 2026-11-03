@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -51,6 +52,7 @@ type Torrent struct {
 	// Incomplete is a torrent still downloading, which setDownloadPath moves.
 	Incomplete bool
 	Layout     Layout
+	Tags       []string
 	Files      []string
 	// InfohashV1 and InfohashV2 are reported as the WebAPI does; Hash alone
 	// names the torrent in a request.
@@ -243,6 +245,13 @@ func (s *Server) Synced(n int) <-chan struct{} {
 		}
 	}
 	return ch
+}
+
+// Tags returns the sorted tags of a torrent.
+func (s *Server) Tags(hash string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(slices.Values(s.torrents[hash].Tags))
 }
 
 // LastBody is the raw body of the last write to an endpoint.
@@ -465,7 +474,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			torrents[h] = map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
-				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2}
+				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
+				"tags": strings.Join(t.Tags, ", ")}
 		}
 		categories := map[string]any{}
 		for name := range s.categories {
@@ -537,6 +547,36 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				s.moveATM(t, s.categoryPath(t.Category))
 			} else {
 				t.AutoTMM = strings.EqualFold(param("enable"), "true")
+			}
+		}
+	case "torrents/addTags":
+		for _, t := range s.selected(param("hashes"), "|") {
+			for tag := range strings.SplitSeq(param("tags"), ",") {
+				if !slices.Contains(t.Tags, tag) {
+					t.Tags = append(t.Tags, tag)
+				}
+			}
+		}
+	case "torrents/removeTags":
+		for _, t := range s.selected(param("hashes"), "|") {
+			if param("tags") == "" {
+				t.Tags = nil
+				continue
+			}
+			for tag := range strings.SplitSeq(param("tags"), ",") {
+				t.Tags = slices.DeleteFunc(t.Tags, func(have string) bool { return have == tag })
+			}
+		}
+	case "torrents/setTags":
+		// qBittorrent 5.1 (WebAPI 2.11.4) added the endpoint.
+		if !s.webAPIAtLeast("2.11.4") {
+			http.NotFound(w, r)
+			return
+		}
+		for _, t := range s.selected(param("hashes"), "|") {
+			t.Tags = nil
+			if param("tags") != "" {
+				t.Tags = strings.Split(param("tags"), ",")
 			}
 		}
 	case "torrents/categories":

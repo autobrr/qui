@@ -26,6 +26,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
+## Peers
+
+- **Peer client**: The BitTorrent program that a connected peer says it runs, for example Transmission or rTorrent. _Avoid_: client, torrent client.
+
 ## Tracker health
 
 - **Tracker health**: qui's verdict on the trackers of one torrent: healthy, unregistered, tracker down, or tracker error. _Avoid_: tracker status.
@@ -75,8 +79,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Search scope**: The Torznab indexers and the RED/OPS sites that one search asks for one torrent and its duplicate copies, or the reason that it asks none. Every Trigger reads the same Search scope. A scope with no Torznab indexers is not a Gazelle-only run. _Avoid_: allowed indexers, indexer set.
 - **Gazelle-only run**: A library search with Torznab off; candidates come only from the OPS/RED APIs. Reached by the Torznab switch on the Library card, which applies to the next run and is not saved, never inferred from the indexer selection. Needs one Gazelle key. _Avoid_: Torznab-disabled run, forced Gazelle-only.
 - **Season numeral**: A Roman numeral at the end of a release title that names the release's season, as in "Kaiju Squad 100 III" for season 3. When the name also has a season marker, the numeral must equal it. When it has none, only II to X count, and only for a pack, not an episode. A movie with a year never has one. Matching reads the title with and without it, and the alternate-title search tries the title without it. _Avoid_: roman suffix, sequel number.
-- **Read release**: What qui knows about one release name after it reads the name once: its Title keys, Numbering scheme, season, and absolute episode. Every Match path compares Read releases, never raw names. _Avoid_: release view, parsed release (that is the raw parser output).
+- **Read release**: What qui knows about one release after it reads its name once, or its files when the name has no title (a season folder or a seasonless batch): its Title keys, Numbering scheme, season, and absolute episode. Every Match path compares Read releases, never raw names. _Avoid_: release view, parsed release (that is the raw parser output).
 - **Title key**: One normalized form of a release title that matching compares, such as the main title, an alternate or AKA title, one side of a slash title, or the title without its Season numeral. Two releases share a title when any of their Title keys are equal. _Avoid_: normalized title, match title.
+- **Listing**: The name that a tracker shows for one search result. It can differ from the `info.name` of the torrent that the result downloads: a tracker retitles a release, adds a group tag, or drops one. _Avoid_: search result title, indexer title.
 - **Match path**: One place in qui that decides whether two release names are the same release, such as the webhook check, apply, the season pack check, the Batch matcher, or dedup. Every match path must give the same verdict for a pair unless the corpus lists the difference with a reason. _Avoid_: entry point, matcher (the matcher is the shared rules, not the path).
 - **Batch matcher**: The Match path that finds the cross-seeds of torrents already in qBittorrent. The Cross-Seed tab, Filter Cross-Seeds, the delete check, and automations read it. _Avoid_: Local matches, cross-match sets.
 - **Match verdict**: The decision of one Match path on a pair of Read releases: no match, or a match class (strict, web source relabel, exact size, title rescue) with the fields that differ. A CRC tag on one name only is never a difference. Two CRC tags that differ are. _Avoid_: Verdict (alone), decision.
@@ -84,6 +89,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Match evidence**: What a Match path knows about a pair beyond the two Read releases: sizes, file lists, Sonarr alternate titles, and the episode map. A Match path that lacks one gives the Match verdict less to work with. It does not change the rules. _Avoid_: Evidence (alone), context.
 - **Shared file**: One file on disk that two torrents read through the same folder entry, on one instance or on two. A delete with files of one torrent removes it for the other. _Avoid_: same content path (that is path text), content match.
 - **Generic HDR tag**: An `HDR` tag in a release name that does not say `HDR10`, `HDR10+`, or `HLG`. Cross-seed matching reads it as `HDR10`, so `DV HDR` matches `DV HDR10`. It stays distinct from `HDR10+` and `HLG`. Release fields and Season pack status keep the tag as written. _Avoid_: plain HDR.
+- **Season pack run**: One record of a season pack check or apply. A check run is Ready, Ready (no threshold), or Skipped. An apply run is Applied, Failed, or Skipped. _Avoid_: season pack activity, attempt.
 
 ## Indexers
 

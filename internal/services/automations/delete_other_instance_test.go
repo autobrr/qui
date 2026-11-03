@@ -108,7 +108,7 @@ func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		newService := func(t *testing.T) (*Service, int, *writeStub) {
+		newService := func(t *testing.T) (*Service, int, *stubQbt) {
 			svc, instanceID, stub := newWriteStubService(t, torrents)
 			matcher := svc.crossMatcher.(sharedFilesMatcher)
 			matcher.otherShared, matcher.otherUnknown, matcher.offline = tt.shared, tt.unknown, tt.offline
@@ -119,8 +119,8 @@ func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 			svc, instanceID, stub := newService(t)
 			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{tt.rule}, false)
 			require.NoError(t, err)
-			require.ElementsMatch(t, tt.wantDeleted, stub.writes()["delete"])
-			require.ElementsMatch(t, tt.wantFilesDeleted, stub.filesDeleted)
+			require.ElementsMatch(t, tt.wantDeleted, stub.writtenHashes()["delete"])
+			require.ElementsMatch(t, tt.wantFilesDeleted, stub.filesDeleted())
 		})
 		t.Run(tt.name+" (dry run and preview)", func(t *testing.T) {
 			svc, instanceID, stub := newService(t)
@@ -129,7 +129,7 @@ func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&dryRunRule}, true)
 			require.NoError(t, err)
 			require.ElementsMatch(t, tt.wantDeleted, dryRunActivityHashes(t, svc, instanceID, activities)["delete"])
-			require.Empty(t, stub.writes())
+			require.Empty(t, stub.writtenHashes())
 
 			preview, err := svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
 			require.NoError(t, err)

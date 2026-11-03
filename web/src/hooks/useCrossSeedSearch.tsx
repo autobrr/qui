@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { CrossSeedDialog } from "@/components/torrents/CrossSeedDialog"
+import { useCrossSeedInstanceOf } from "@/hooks/useCrossSeedInstanceOf"
 import { api } from "@/lib/api"
 import type {
   CrossSeedApplyResponse,
@@ -49,6 +50,7 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [enabledTorznabIndexers])
 
   const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
+  const crossSeedInstance = useCrossSeedInstanceOf(instanceId, crossSeedDialogOpen)
   const [crossSeedTorrent, setCrossSeedTorrent] = useState<Torrent | null>(null)
   const [crossSeedSearchResponse, setCrossSeedSearchResponse] = useState<CrossSeedTorrentSearchResponse | null>(null)
   const [crossSeedSearchLoading, setCrossSeedSearchLoading] = useState(false)
@@ -476,8 +478,17 @@ export function useCrossSeedSearch(instanceId: number) {
         toast.info(t("hooks.search.applyNoChanges"))
       }
 
-      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
-      queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
+      // A routed add lands on the Cross-seed instance, so refresh its list too.
+      const refreshIds = new Set([instanceId])
+      for (const result of response.results) {
+        for (const ir of result.instanceResults ?? []) {
+          if (ir.crossSeedInstanceId) refreshIds.add(ir.crossSeedInstanceId)
+        }
+      }
+      for (const id of refreshIds) {
+        queryClient.invalidateQueries({ queryKey: ["torrents-list", id], exact: false })
+        queryClient.invalidateQueries({ queryKey: ["torrent-counts", id], exact: false })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : t("hooks.search.addFailed")
       toast.error(message)
@@ -551,6 +562,7 @@ export function useCrossSeedSearch(instanceId: number) {
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}
       refreshCooldownLabel={crossSeedRefreshLabel}
+      crossSeedInstanceName={crossSeedInstance?.name}
     />
   )
 

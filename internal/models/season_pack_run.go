@@ -13,9 +13,15 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-const maxSeasonPackRunHistory = 200
+// Applied runs and all other runs each keep their newest
+// maxSeasonPackRunHistory, so a pile of failed runs cannot delete the applied
+// history.
+const (
+	maxSeasonPackRunHistory = 200
+	maxSeasonPackRunList    = 2 * maxSeasonPackRunHistory
+)
 
-// SeasonPackRun records one season-pack webhook processing attempt.
+// SeasonPackRun records one season pack check or apply.
 type SeasonPackRun struct {
 	ID          int64  `json:"id"`
 	TorrentName string `json:"torrentName"`
@@ -92,7 +98,7 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 
 // List returns the most recent season-pack runs, ordered newest first.
 func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPackRun, error) {
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > maxSeasonPackRunList {
 		limit = 50
 	}
 
@@ -145,10 +151,16 @@ func (s *SeasonPackRunStore) prune(ctx context.Context) error {
 		DELETE FROM season_pack_runs
 		WHERE id NOT IN (
 			SELECT id FROM season_pack_runs
+			WHERE status = 'applied'
+			ORDER BY created_at DESC, id DESC
+			LIMIT ?
+		) AND id NOT IN (
+			SELECT id FROM season_pack_runs
+			WHERE status <> 'applied'
 			ORDER BY created_at DESC, id DESC
 			LIMIT ?
 		)
-	`, maxSeasonPackRunHistory)
+	`, maxSeasonPackRunHistory, maxSeasonPackRunHistory)
 	if err != nil {
 		return fmt.Errorf("prune old season pack runs: %w", err)
 	}

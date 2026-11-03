@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { CrossSeedSearchDecisionTrace } from "@/types"
+import { api } from "@/lib/api"
+import type { CrossSeedApplyResponse, CrossSeedInstanceResult, CrossSeedSearchDecisionTrace } from "@/types"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { buildCrossSeedTraceReport, CrossSeedDialog, type CrossSeedDialogProps } from "./CrossSeedDialog"
@@ -15,6 +16,7 @@ vi.mock("sonner", () => ({ toast }))
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   Reflect.deleteProperty(document, "execCommand")
 })
@@ -145,5 +147,51 @@ describe("CrossSeedDialog search scope", () => {
     const { getByText } = render(<CrossSeedDialog {...baseProps} hasSearched torznabFailed />)
 
     expect(getByText("crossSeedDialog.torznabFailed")).toBeTruthy()
+  })
+})
+
+describe("CrossSeedDialog routed adds", () => {
+  const applyResultFor = (instance: CrossSeedInstanceResult): CrossSeedApplyResponse => ({
+    results: [{ indexer: "alpha", title: "Cedar.Harbor.S01E01", success: instance.success, infoHash: "abc", instanceResults: [instance] }],
+  })
+  const notRouted: CrossSeedInstanceResult = { instanceId: 1, instanceName: "lib", success: true, status: "added" }
+  const routed: CrossSeedInstanceResult = { ...notRouted, crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }
+
+  it("says where the cross-seeds go before the apply", () => {
+    const { getByText, rerender, queryByText } = render(<CrossSeedDialog {...baseProps} crossSeedInstanceName="seeds" />)
+    expect(getByText("crossSeedDialog.routedTo")).toBeTruthy()
+
+    rerender(<CrossSeedDialog {...baseProps} />)
+    expect(queryByText("crossSeedDialog.routedTo")).toBeNull()
+  })
+
+  it("names both instances of a routed result and keeps the name of a result that is not routed", () => {
+    const { getByText, rerender, queryByText } = render(<CrossSeedDialog {...baseProps} hasSearched applyResult={applyResultFor(routed)} />)
+    expect(getByText("crossseed:route.foundOnAddedTo")).toBeTruthy()
+
+    rerender(<CrossSeedDialog {...baseProps} hasSearched applyResult={applyResultFor(notRouted)} />)
+    expect(getByText("lib")).toBeTruthy()
+    expect(queryByText("crossseed:route.foundOnAddedTo")).toBeNull()
+  })
+
+  it("labels the status of a failed routed add", () => {
+    const { getByText } = render(
+      <CrossSeedDialog {...baseProps} hasSearched applyResult={applyResultFor({ ...routed, success: false, status: "crossseed_instance_unavailable", message: "backend detail" })} />
+    )
+
+    expect(getByText("crossseed:routeStatus.unavailable")).toBeTruthy()
+    expect(getByText("crossseed:route.foundOnRoutedTo")).toBeTruthy()
+  })
+
+  it.each([
+    ["the Cross-seed instance of a routed result", routed, 2, "seeds"],
+    ["the instance of a result that is not routed", notRouted, 1, "lib"],
+  ])("blocks the hash on %s", async (_, instance, instanceId, name) => {
+    const block = vi.spyOn(api, "addCrossSeedBlocklist").mockResolvedValue({ instanceId, infoHash: "abc", createdAt: "" })
+    const { getByRole } = render(<CrossSeedDialog {...baseProps} hasSearched applyResult={applyResultFor(instance)} />)
+
+    fireEvent.click(getByRole("button", { name: `crossSeedDialog.blockFor ${name}` }))
+
+    await waitFor(() => expect(block).toHaveBeenCalledWith({ instanceId, infoHash: "abc" }))
   })
 })

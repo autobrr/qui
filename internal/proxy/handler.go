@@ -171,6 +171,11 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 
 	proxyCtx.applyAuthHeaders(pr.Out)
 
+	// qBittorrent's CSRF check rejects a Referer or Origin that does not match its own host
+	// with 401. The values come from the calling app, not the instance, so drop them.
+	pr.Out.Header.Del("Referer")
+	pr.Out.Header.Del("Origin")
+
 	// Strip the proxy prefix from the path
 	apiKey := chi.URLParam(pr.In, "api-key")
 	originalPath := pr.In.URL.Path

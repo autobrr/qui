@@ -83,6 +83,9 @@ release:
   draft: true
   # A re-run of a failed tag build replaces the draft that it left.
   replace_existing_draft: true
+  # Stop before the build when the tag is already an immutable release.
+  preflight:
+    fail_on_error: true
   footer: |
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui/compare/{{ .PreviousTag }}...{{ .Tag }}
 
