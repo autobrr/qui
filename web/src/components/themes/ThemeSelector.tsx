@@ -10,11 +10,13 @@ import { themes, getThemeById, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
-import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { buildThemeCatalog, isThemeShown } from "@/lib/theme-catalog"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
-import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw } from "lucide-react"
+import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff } from "lucide-react"
+import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -22,12 +24,15 @@ interface ThemeCardProps {
   theme: Theme
   isSelected: boolean
   isLocked: boolean
+  isShown: boolean
   onSelect: () => void
   onVariationSelect: (themeId: string, variationId: string) => void
+  onShownChange: (shown: boolean) => void
 }
 
-function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }: ThemeCardProps) {
+function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariationSelect, onShownChange }: ThemeCardProps) {
   const { t } = useTranslation("settings")
+  const titleId = useId()
   // Get current variation for theme (validated)
   const variation = getThemeVariation(theme.id)
 
@@ -44,7 +49,7 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
       >
         <CardHeader className="gap-1 px-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex min-w-0 items-center gap-1 truncate text-sm">
+            <CardTitle id={titleId} className="flex min-w-0 items-center gap-1 truncate text-sm">
               {theme.name}
               {isSelected && (
                 <Check className="h-4 w-4 shrink-0 text-primary" />
@@ -145,6 +150,21 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
                 <span className="sm:hidden">{t("themes.selector.lock")}</span>
               </Badge>
             )}
+
+            {/* Whether the quick theme pickers in the header and the phone footer list this theme */}
+            <Button
+              variant="ghost"
+              size="xs"
+              className="ml-auto h-6"
+              aria-describedby={titleId}
+              onClick={(e) => {
+                e.stopPropagation()
+                onShownChange(!isShown)
+              }}
+            >
+              {isShown ? <EyeOff /> : <Eye />}
+              {t(isShown ? "themes.selector.hideTheme" : "themes.selector.showTheme")}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -166,6 +186,7 @@ export function ThemeSelector() {
   } = useCustomThemes()
   // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
+  const [visibility, setThemeShown] = useThemeVisibility()
 
   // The server is the authority: a premium theme without a license arrives as
   // a locked stub with no CSS, so the locked flag is the gate.
@@ -271,8 +292,10 @@ export function ThemeSelector() {
               theme={theme}
               isSelected={currentTheme === theme.id}
               isLocked={!isThemeUnlocked(theme.id)}
+              isShown={isThemeShown(theme, visibility)}
               onSelect={() => handleThemeSelect(theme.id)}
               onVariationSelect={handleVariationSelect}
+              onShownChange={(shown) => setThemeShown(theme, shown)}
             />
           ))}
         </div>

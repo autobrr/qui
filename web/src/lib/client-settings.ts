@@ -57,6 +57,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
   "qui-log-levels",
+  "qui-theme-visibility",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",

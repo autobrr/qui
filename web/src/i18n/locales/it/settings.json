@@ -429,7 +429,9 @@
       "pro": "Pro",
       "free": "Gratuito",
       "locked": "Bloccato",
-      "lock": "Blocca"
+      "lock": "Blocca",
+      "showTheme": "Mostra",
+      "hideTheme": "Nascondi"
     },
     "toasts": {
       "premiumRequired": "Licenza Premium richiesta",

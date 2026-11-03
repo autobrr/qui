@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
+import { useThemeVisibility } from "@/hooks/useThemeVisibility";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -65,11 +66,12 @@ export const ThemeToggle: React.FC = () => {
   const { currentMode, currentTheme, isDark } = useThemeChange();
   const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
+  const [visibility] = useThemeVisibility();
 
   // Subscribe so the list re-renders when the async theme registry lands;
   // the registry array mutates in place, so it must not be a memo dep.
   useBuiltinThemes();
-  const sortedThemes = buildThemeCatalog(themes, customThemes);
+  const sortedThemes = buildThemeCatalog(themes, customThemes, { visibility, currentThemeId: currentTheme.id });
 
   // Pure property reads over ~two dozen themes: cheap enough to recompute per
   // render, and a cache would go stale when the registry swaps an entry

@@ -427,7 +427,9 @@
       "pro": "Pro",
       "free": "免費",
       "locked": "已鎖定",
-      "lock": "鎖定"
+      "lock": "鎖定",
+      "showTheme": "顯示",
+      "hideTheme": "隱藏"
     },
     "toasts": {
       "premiumRequired": "需要進階授權",

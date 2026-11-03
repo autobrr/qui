@@ -38,6 +38,7 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -119,9 +120,10 @@ export function MobileFooterNav() {
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
   const { currentMode, currentTheme } = useThemeChange()
   const { customThemes } = useCustomThemes()
+  const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
-  const themeCatalog = buildThemeCatalog(themes, customThemes)
+  const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 

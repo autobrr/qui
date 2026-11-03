@@ -429,7 +429,9 @@
       "pro": "Pro",
       "free": "Gratuit",
       "locked": "Verrouillé",
-      "lock": "Verrouillé"
+      "lock": "Verrouillé",
+      "showTheme": "Afficher",
+      "hideTheme": "Masquer"
     },
     "toasts": {
       "premiumRequired": "Licence Premium requise",
