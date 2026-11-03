@@ -78,16 +78,32 @@ func TestClientSupports(t *testing.T) {
 	}
 }
 
-// A saturated WebUI times out and is still the same qBittorrent.
-func TestClientKeepsTheVersionWhenAReadTimesOut(t *testing.T) {
+// A saturated WebUI times out and is still the same qBittorrent, and a
+// request that the caller stops says nothing about the instance.
+func TestClientKeepsTheVersionWhenAReadTimesOutOrIsCancelled(t *testing.T) {
 	t.Parallel()
-	client, _ := newStubClient(t, "2.16.2")
 
-	expired, cancel := context.WithDeadline(t.Context(), time.Now())
-	defer cancel()
-	require.Error(t, client.RefreshCapabilities(expired))
-	require.Equal(t, "2.16.2", client.GetWebAPIVersion())
-	require.True(t, client.Supports(CapShareLimitsAction))
+	for name, stop := range map[string]func(context.Context) (context.Context, context.CancelFunc){
+		"timed out": func(ctx context.Context) (context.Context, context.CancelFunc) {
+			return context.WithDeadline(ctx, time.Now())
+		},
+		"cancelled": func(ctx context.Context) (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+			return ctx, cancel
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			client, _ := newStubClient(t, "2.16.2")
+
+			ctx, cancel := stop(t.Context())
+			defer cancel()
+			require.Error(t, client.RefreshCapabilities(ctx))
+			require.Equal(t, "2.16.2", client.GetWebAPIVersion())
+			require.True(t, client.Supports(CapShareLimitsAction))
+		})
+	}
 }
 
 // A proxy can answer the version request with its login page.

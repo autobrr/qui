@@ -353,11 +353,12 @@ func truncateWebAPIVersion(s string) string {
 
 // RefreshCapabilities reads the Web API version again. A failed read, or an
 // answer that is not a version, leaves the version unknown, and Supports
-// answers no until a read succeeds. A timed-out read keeps the last version:
-// a saturated WebUI is slow, not changed.
+// answers no until a read succeeds. A timed-out or cancelled read keeps the
+// last version: a saturated WebUI is slow, not changed, and a caller that
+// stops says nothing about the instance.
 func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	version, err := c.fetchWebAPIVersion(ctx)
-	if IsDeadlineExpired(err) {
+	if IsDeadlineExpired(err) || isContextStopped(err) {
 		return err
 	}
 
