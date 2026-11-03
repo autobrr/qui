@@ -98,10 +98,10 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 	if err != nil {
 		return categoryVersion{}, err
 	}
-	nests := client.NestsCategorySavePaths()
+	nests := client.Supports(CapCategorySavePathNesting)
 	v = categoryVersion{
-		rule:     CategoryPathRule{Nest: nests, FileName: client.CategoryFileNames(), Platform: platform, InheritsDownloadPath: nests},
-		optional: nests && !client.SubcategoriesAlwaysEnabled(),
+		rule:     CategoryPathRule{Nest: nests, FileName: client.Supports(CapCategoryFileNames), Platform: platform, InheritsDownloadPath: nests},
+		optional: nests && !client.Supports(CapSubcategoriesAlwaysEnabled),
 		at:       time.Now(),
 	}
 
@@ -117,7 +117,7 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 // categoryFolderPlatform returns the build platform when it changes the folder
 // name of a category (qBittorrent 5.3+), and "" before that.
 func categoryFolderPlatform(ctx context.Context, client *Client) (string, error) {
-	if !client.CategoryFileNames() {
+	if !client.Supports(CapCategoryFileNames) {
 		return "", nil
 	}
 	info, err := client.GetAppInfo(ctx)

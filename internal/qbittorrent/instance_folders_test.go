@@ -15,6 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -420,7 +422,7 @@ func TestInstanceFoldersRefreshesStaleCapabilities(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})
 	r := newFoldersRig(map[int]*qbtstub.Server{1: stub})
-	r.sm.clientPool.clients[1].applyCapabilitiesLocked("2.9.3")
+	r.sm.clientPool.clients[1].version = semver.MustParse("2.9.3")
 
 	got, err := r.folders(t, 1)
 	require.NoError(t, err)

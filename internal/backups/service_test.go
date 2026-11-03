@@ -1564,7 +1564,6 @@ type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent
 	categories  map[string]qbt.Category
 	tags        []string
-	webAPIVer   string
 	exportData  []byte
 	exportName  string
 	exportTrack string
@@ -1590,8 +1589,8 @@ func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) 
 	return append([]string(nil), s.tags...), nil
 }
 
-func (s *stubBackupSyncManager) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
-	return s.webAPIVer, nil
+func (s *stubBackupSyncManager) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, nil
 }
 
 func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
