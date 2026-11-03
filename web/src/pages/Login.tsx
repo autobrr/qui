@@ -39,7 +39,7 @@ export function Login() {
   })
 
   // Query to check if OIDC is enabled
-  const { data: oidcConfig } = useQuery({
+  const { data: oidcConfig, refetch: refetchOIDCConfig, isFetching: isFetchingOIDCConfig } = useQuery({
     queryKey: ["oidc-config"],
     queryFn: () => api.getOIDCConfig(),
     staleTime: Infinity,
@@ -95,9 +95,14 @@ export function Login() {
     },
   })
 
-  const handleOIDCLogin = () => {
-    if (oidcConfig?.enabled && oidcConfig.authorizationUrl) {
-      window.location.href = oidcConfig.authorizationUrl
+  const handleOIDCLogin = async () => {
+    let config = oidcConfig
+    // The refetch asks the server to retry provider discovery.
+    if (config?.providerUnavailable) {
+      config = (await refetchOIDCConfig()).data
+    }
+    if (config?.enabled && config.authorizationUrl) {
+      window.location.href = config.authorizationUrl
     }
   }
 
@@ -254,10 +259,17 @@ export function Login() {
                 className="w-full"
                 size="lg"
                 onClick={handleOIDCLogin}
+                disabled={isFetchingOIDCConfig}
               >
                 <Fingerprint className="mr-2 h-5 w-5" />
                 {t("login.openIdConnect")}
               </Button>
+            )}
+
+            {oidcConfig?.providerUnavailable && !isFetchingOIDCConfig && (
+              <p className="mt-3 text-center text-sm text-muted-foreground">
+                {t("login.oidcProviderUnavailable")}
+              </p>
             )}
 
             <Footer />

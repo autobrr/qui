@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -28,25 +29,109 @@ import (
 )
 
 const (
-	oidcInitMaxAttempts    = 5
-	oidcInitInitialBackoff = time.Second
+	// Bounds each issuer candidate, so a provider host that drops packets cannot
+	// hold a login request for the 30s dial timeout.
+	oidcDiscoveryTimeout = 5 * time.Second
+	// A failed discovery answers every request for this long, so reloading the
+	// login page does not send a request to a provider that is down each time.
+	oidcDiscoveryCooldown = 10 * time.Second
 )
 
 var (
 	oidcNewProvider = oidc.NewProvider
-	oidcSleep       = time.Sleep
 	oidcReadRandom  = func(b []byte) error {
 		_, err := io.ReadFull(rand.Reader, b)
 		return err
 	}
 )
 
+var errOIDCProviderUnavailable = errors.New("OIDC provider unavailable")
+
 type OIDCHandler struct {
 	config         *domain.Config
-	provider       *oidc.Provider
-	verifier       *oidc.IDTokenVerifier
-	oauthConfig    *oauth2.Config
 	sessionManager *scs.SessionManager
+	discovery      *oidcDiscovery
+}
+
+// oidcClient holds what qui learns from provider discovery.
+type oidcClient struct {
+	provider    *oidc.Provider
+	verifier    *oidc.IDTokenVerifier
+	oauthConfig *oauth2.Config
+}
+
+// oidcDiscovery runs provider discovery when a request needs it, until one
+// attempt succeeds. Concurrent callers share one attempt, and a failed attempt
+// answers callers until oidcDiscoveryCooldown passes. qui then starts with the
+// provider down, and the first login after the provider comes back succeeds.
+type oidcDiscovery struct {
+	discover func(context.Context) (*oidcClient, error)
+
+	mu      sync.Mutex
+	client  *oidcClient
+	attempt *oidcDiscoveryAttempt
+}
+
+type oidcDiscoveryAttempt struct {
+	done     chan struct{}
+	client   *oidcClient
+	err      error
+	finished time.Time
+}
+
+// newOIDCDiscovery starts the first attempt at once, so the first login does not wait for it.
+func newOIDCDiscovery(ctx context.Context, discover func(context.Context) (*oidcClient, error)) *oidcDiscovery {
+	d := &oidcDiscovery{discover: discover}
+	d.attempt = d.startAttempt(ctx)
+	return d
+}
+
+func (d *oidcDiscovery) get(ctx context.Context) (*oidcClient, error) {
+	d.mu.Lock()
+	if d.client != nil {
+		client := d.client
+		d.mu.Unlock()
+		return client, nil
+	}
+	attempt := d.attempt
+	if attempt.cooledDown() {
+		attempt = d.startAttempt(ctx)
+		d.attempt = attempt
+	}
+	d.mu.Unlock()
+
+	select {
+	case <-attempt.done:
+		return attempt.client, attempt.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (d *oidcDiscovery) startAttempt(ctx context.Context) *oidcDiscoveryAttempt {
+	attempt := &oidcDiscoveryAttempt{done: make(chan struct{})}
+	// Detached: a caller that gives up must not cancel the attempt that other callers wait on.
+	ctx = context.WithoutCancel(ctx)
+	go func() {
+		client, err := d.discover(ctx)
+		if client != nil {
+			d.mu.Lock()
+			d.client = client
+			d.mu.Unlock()
+		}
+		attempt.client, attempt.err, attempt.finished = client, err, time.Now()
+		close(attempt.done)
+	}()
+	return attempt
+}
+
+func (a *oidcDiscoveryAttempt) cooledDown() bool {
+	select {
+	case <-a.done:
+		return time.Since(a.finished) >= oidcDiscoveryCooldown
+	default:
+		return false
+	}
 }
 
 // OIDCClaims represents the claims returned from the OIDC provider
@@ -96,14 +181,21 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 		return nil, errors.New("OIDC redirect URL is required")
 	}
 
-	scopes := []string{"openid", "profile", "email"}
+	handler := &OIDCHandler{
+		config:         cfg,
+		sessionManager: sessionManager,
+	}
+	handler.discovery = newOIDCDiscovery(context.Background(), handler.discoverClient)
 
-	ctx := context.Background()
+	return handler, nil
+}
 
+func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
+	cfg := h.config
 	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to initialize OIDC provider")
-		return nil, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+		log.Warn().Err(err).Str("issuer", cfg.OIDCIssuer).Msg("OIDC provider discovery failed; the next OIDC login request retries it")
+		return nil, err
 	}
 
 	if usedIssuer != cfg.OIDCIssuer {
@@ -134,22 +226,18 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 		ClientID: cfg.OIDCClientID,
 	}
 
-	handler := &OIDCHandler{
-		config:         cfg,
-		provider:       provider,
-		verifier:       provider.Verifier(oidcConfig),
-		sessionManager: sessionManager,
+	log.Debug().Str("issuer", usedIssuer).Msg("OIDC provider discovered")
+	return &oidcClient{
+		provider: provider,
+		verifier: provider.Verifier(oidcConfig),
 		oauthConfig: &oauth2.Config{
 			ClientID:     cfg.OIDCClientID,
 			ClientSecret: cfg.OIDCClientSecret,
 			RedirectURL:  cfg.OIDCRedirectURL,
 			Endpoint:     provider.Endpoint(),
-			Scopes:       scopes,
+			Scopes:       []string{"openid", "profile", "email"},
 		},
-	}
-
-	log.Debug().Msg("OIDC handler initialized successfully")
-	return handler, nil
+	}, nil
 }
 
 func (h *OIDCHandler) Routes(r chi.Router) {
@@ -168,33 +256,20 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 	}
 
 	var lastErr error
-	for attempt := 1; attempt <= oidcInitMaxAttempts; attempt++ {
-		for idx, candidate := range candidates {
-			provider, err := oidcNewProvider(ctx, candidate)
-			if err == nil {
-				return provider, candidate, nil
-			}
-
-			lastErr = err
-			log.Warn().
-				Err(err).
-				Int("attempt", attempt).
-				Int("candidate_index", idx).
-				Str("issuer", candidate).
-				Msg("failed to initialize OIDC provider candidate")
+	for _, candidate := range candidates {
+		candidateCtx, cancel := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		// go-oidc keeps only the HTTP client from this context, so the provider stays usable after cancel.
+		provider, err := oidcNewProvider(candidateCtx, candidate)
+		cancel()
+		if err == nil {
+			return provider, candidate, nil
 		}
 
-		if attempt < oidcInitMaxAttempts {
-			backoff := oidcInitInitialBackoff << (attempt - 1)
-			log.Trace().
-				Int("next_attempt", attempt+1).
-				Dur("sleep", backoff).
-				Msg("retrying OIDC provider initialization after backoff")
-			oidcSleep(backoff)
-		}
+		lastErr = err
+		log.Debug().Err(err).Str("issuer", candidate).Msg("failed to discover OIDC provider candidate")
 	}
 
-	return nil, "", fmt.Errorf("attempted %d times without success: %w", oidcInitMaxAttempts, lastErr)
+	return nil, "", lastErr
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +278,15 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
 
 	// Get the config first
-	config, state, pkceVerifier, err := h.GetConfigResponse()
+	config, state, pkceVerifier, err := h.GetConfigResponse(r.Context())
+	if errors.Is(err, errOIDCProviderUnavailable) {
+		// The login page reads disableBuiltInLogin from this body to keep the password form hidden.
+		RespondJSON(w, http.StatusServiceUnavailable, oidcUnavailableResponse{
+			Error:               errOIDCProviderUnavailable.Error(),
+			DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
+		})
+		return
+	}
 	if err != nil {
 		log.Error().Err(err).Msg("failed to build OIDC config response")
 		RespondError(w, http.StatusInternalServerError, "failed to build OIDC config response")
@@ -260,7 +343,13 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
 	}
 
-	oauth2Token, err := h.oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
+	client, err := h.discovery.get(r.Context())
+	if err != nil {
+		RespondError(w, http.StatusServiceUnavailable, errOIDCProviderUnavailable.Error())
+		return
+	}
+
+	oauth2Token, err := client.oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to exchange token")
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to exchange token: %v", err))
@@ -274,7 +363,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idToken, err := h.verifier.Verify(r.Context(), rawIDToken)
+	idToken, err := client.verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to verify ID Token")
 		RespondError(w, http.StatusUnauthorized, fmt.Sprintf("failed to verify ID Token: %v", err))
@@ -289,7 +378,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try to get additional claims from userinfo endpoint
-	userInfo, err := h.provider.UserInfo(r.Context(), oauth2.StaticTokenSource(oauth2Token))
+	userInfo, err := client.provider.UserInfo(r.Context(), oauth2.StaticTokenSource(oauth2Token))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get userinfo")
 	}
@@ -441,31 +530,42 @@ func generatePKCEVerifier() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func (h *OIDCHandler) supportsPKCE() bool {
+func (c *oidcClient) supportsPKCE() bool {
 	var claims struct {
 		CodeChallenges []string `json:"code_challenge_methods_supported"`
 	}
-	if err := h.provider.Claims(&claims); err != nil {
+	if err := c.provider.Claims(&claims); err != nil {
 		return false
 	}
 	return slices.Contains(claims.CodeChallenges, "S256")
 }
 
-func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, string, error) {
+type oidcUnavailableResponse struct {
+	Error               string `json:"error"`
+	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
+}
+
+// GetConfigResponse returns errOIDCProviderUnavailable while provider discovery has not succeeded.
+func (h *OIDCHandler) GetConfigResponse(ctx context.Context) (OIDCConfigResponse, string, string, error) {
+	client, err := h.discovery.get(ctx)
+	if err != nil {
+		return OIDCConfigResponse{}, "", "", fmt.Errorf("%w: %w", errOIDCProviderUnavailable, err)
+	}
+
 	state, err := generateRandomState()
 	if err != nil {
 		return OIDCConfigResponse{}, "", "", err
 	}
 
 	var authURL, verifier string
-	if h.supportsPKCE() {
+	if client.supportsPKCE() {
 		verifier, err = generatePKCEVerifier()
 		if err != nil {
 			return OIDCConfigResponse{}, "", "", err
 		}
-		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+		authURL = client.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	} else {
-		authURL = h.oauthConfig.AuthCodeURL(state)
+		authURL = client.oauthConfig.AuthCodeURL(state)
 	}
 
 	return OIDCConfigResponse{
