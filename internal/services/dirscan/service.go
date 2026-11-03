@@ -918,8 +918,7 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 		return nil, nil, false
 	}
 
-	// Injection refuses a remote instance too, and #2919 lifts both together.
-	if err != nil || models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
+	if err != nil {
 		errMsg := "target instance does not have local filesystem access"
 		l.Error().Msg("dirscan: " + errMsg)
 		s.markRunFailed(ctx, runID, errMsg, dir.TargetInstanceID, l)

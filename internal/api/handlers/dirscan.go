@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
@@ -233,7 +234,12 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 		return nil, false
 	}
 
-	if validateErr := h.validateTargetInstance(w, r, *payload.TargetInstanceID); validateErr != nil {
+	instance, validateErr := h.validateTargetInstance(w, r, *payload.TargetInstanceID)
+	if validateErr != nil {
+		return nil, false
+	}
+	if remotePathIsRelative(instance, *payload.Path) {
+		RespondError(w, http.StatusBadRequest, errRemotePathNotAbsolute)
 		return nil, false
 	}
 
@@ -311,11 +317,8 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate target instance if being changed
-	if payload.TargetInstanceID != nil {
-		if validateErr := h.validateTargetInstance(w, r, *payload.TargetInstanceID); validateErr != nil {
-			return
-		}
+	if !h.validateUpdatedPathAndTarget(w, r, dirID, &payload) {
+		return
 	}
 
 	params := &models.DirScanDirectoryUpdateParams{
@@ -676,26 +679,80 @@ func parseRunID(w http.ResponseWriter, r *http.Request) (int64, error) {
 	return id, nil
 }
 
-// validateTargetInstance validates that the target instance exists and has local filesystem access.
+// validateTargetInstance validates that the target instance exists and qui can read its files.
 // Returns an error if validation fails (response is already written in that case).
-func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) error {
+func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) (*models.Instance, error) {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusBadRequest, "Target instance not found")
-			return fmt.Errorf("instance not found: %w", err)
+			return nil, fmt.Errorf("instance not found: %w", err)
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("dirscan: failed to get instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to validate target instance")
-		return fmt.Errorf("get instance: %w", err)
+		return nil, fmt.Errorf("get instance: %w", err)
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Read {
 		RespondError(w, http.StatusBadRequest, "Target instance must have local filesystem access enabled")
-		return errors.New("instance lacks local filesystem access")
+		return nil, errors.New("instance lacks filesystem access")
 	}
 
-	return nil
+	return instance, nil
+}
+
+const errRemotePathNotAbsolute = "Path must be absolute on a remote instance"
+
+// remotePathIsRelative is a path a remote instance can't take, since find only
+// takes absolute ones and an sftp server resolves the rest against the login folder.
+func remotePathIsRelative(instance *models.Instance, path string) bool {
+	return models.FilesystemAccessMode(instance) == models.FilesystemModeRemote && !fsops.SlashPaths.IsAbs(path)
+}
+
+// validateUpdatedPathAndTarget checks the path and target an update leaves the
+// directory with, so a path-only update reads the directory's current target.
+// Returns false if validation fails (response is already written in that case).
+func (h *DirScanHandler) validateUpdatedPathAndTarget(w http.ResponseWriter, r *http.Request, dirID int, payload *DirScanDirectoryPayload) bool {
+	if payload.TargetInstanceID == nil && payload.Path == nil {
+		return true
+	}
+
+	var instance *models.Instance
+	if payload.TargetInstanceID != nil {
+		var err error
+		if instance, err = h.validateTargetInstance(w, r, *payload.TargetInstanceID); err != nil {
+			return false
+		}
+	}
+
+	dir, err := h.service.GetDirectory(r.Context(), dirID)
+	switch {
+	case errors.Is(err, models.ErrDirectoryNotFound):
+		RespondError(w, http.StatusNotFound, "Directory not found")
+		return false
+	case err != nil:
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to validate directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
+		return false
+	}
+
+	if instance == nil {
+		if instance, err = h.instanceStore.Get(r.Context(), dir.TargetInstanceID); err != nil {
+			log.Error().Err(err).Int("instanceID", dir.TargetInstanceID).Msg("dirscan: failed to get instance")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate target instance")
+			return false
+		}
+	}
+
+	path := dir.Path
+	if payload.Path != nil {
+		path = *payload.Path
+	}
+	if remotePathIsRelative(instance, path) {
+		RespondError(w, http.StatusBadRequest, errRemotePathNotAbsolute)
+		return false
+	}
+	return true
 }
 
 func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request, directoryID int) bool {

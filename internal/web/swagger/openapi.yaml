@@ -4433,7 +4433,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '500':
           description: Failed to create directory
 
@@ -4477,7 +4477,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '404':
           description: Directory not found
         '500':
