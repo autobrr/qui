@@ -181,6 +181,11 @@ type syncProvider interface {
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
+}
+
+// versionWatcher tells a tick that an instance version changed since the last
+// frame. It stays apart from syncProvider, which ADR 0005 caps at five methods.
+type versionWatcher interface {
 	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
 }
 
@@ -201,6 +206,7 @@ type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
+	versions    versionWatcher
 	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
@@ -426,7 +432,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore instanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -440,6 +446,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		server:         &sse.Server{},
 		clientPool:     clientPool,
 		syncManager:    syncManager,
+		versions:       versions,
 		instanceDB:     instanceStore,
 		subscriptions:  make(map[string]*subscriptionState),
 		instanceIndex:  make(map[int]map[string]*subscriptionState),
@@ -1664,7 +1671,7 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		switch {
 		// A version read after the last frame changes the rows and the version
 		// list of the view, so it rebuilds.
-		case m.syncManager.WebAPIVersionsChanged(m.ctx, group.baselineVersions()):
+		case m.versions.WebAPIVersionsChanged(m.ctx, group.baselineVersions()):
 		// A cross-instance view carries no server state, so it rebuilds.
 		case (meta.serverState != nil || meta.idle) && !opts.isMultiInstance():
 			// The same bound as a rebuild, so a stalled task count request
