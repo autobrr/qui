@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -266,7 +267,8 @@ func TestValidateLinkTreeInstance(t *testing.T) {
 // qBittorrent stays reachable.
 type statFailingHost struct {
 	*fakeRemoteHost
-	err error
+	err     error
+	linkErr error
 }
 
 func (h *statFailingHost) Stat(context.Context, string) (*fsops.LstatInfo, error) {
@@ -274,6 +276,9 @@ func (h *statFailingHost) Stat(context.Context, string) (*fsops.LstatInfo, error
 }
 
 func (h *statFailingHost) MkdirAll(context.Context, string, fs.FileMode) error {
+	if h.linkErr != nil {
+		return h.linkErr
+	}
 	return h.err
 }
 
@@ -289,6 +294,13 @@ func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
 		req.MatchResult.IsPerfectMatch, req.MatchResult.IsPartialMatch = false, true
 		req.DownloadMissingFiles = true
 	}
+	folderedPartial := func(req *InjectRequest) {
+		missing := TorrentFile{Path: req.ParsedTorrent.Name + "/extra.mkv", Size: 4}
+		req.ParsedTorrent.Files = append(req.ParsedTorrent.Files, missing)
+		req.MatchResult.UnmatchedTorrentFiles = []TorrentFile{missing}
+		req.MatchResult.IsPerfectMatch, req.MatchResult.IsPartialMatch = false, true
+		req.DownloadMissingFiles = true
+	}
 	hardlinksWithFallback := func(row *models.Instance) {
 		row.UseHardlinks, row.FallbackToRegularMode, row.HardlinkBaseDir = true, true, "/data/links"
 	}
@@ -296,15 +308,18 @@ func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
 	tests := []struct {
 		name    string
 		statErr error
+		linkErr error
 		row     func(*models.Instance)
 		req     func(*InjectRequest)
 		wantAdd bool
 	}{
 		{name: "lost connection, foldered full match", statErr: fsops.ErrConnectionLost},
 		{name: "lost connection, rootless partial match", statErr: fsops.ErrConnectionLost, req: rootlessPartial},
-		{name: "lost connection stays in link mode", statErr: fsops.ErrConnectionLost, row: hardlinksWithFallback},
+		{name: "lost connection stays in link mode", statErr: fsops.ErrConnectionLost, row: hardlinksWithFallback, req: folderedPartial},
+		{name: "fallback after a link failure still reads the layout", statErr: fsops.ErrConnectionLost, linkErr: errors.New("no hardlinks here"), row: hardlinksWithFallback, req: rootlessPartial},
 		{name: "denied read, foldered full match", statErr: fs.ErrPermission},
 		{name: "missing path is not a directory", statErr: fs.ErrNotExist, wantAdd: true},
+		{name: "path under a file is not a directory", statErr: syscall.ENOTDIR, wantAdd: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -313,7 +328,7 @@ func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
 			if tt.row != nil {
 				tt.row(row)
 			}
-			host := &statFailingHost{fakeRemoteHost: &fakeRemoteHost{d: fsops.SlashPaths}, err: fmt.Errorf("stat: %w", tt.statErr)}
+			host := &statFailingHost{fakeRemoteHost: &fakeRemoteHost{d: fsops.SlashPaths}, err: fmt.Errorf("stat: %w", tt.statErr), linkErr: tt.linkErr}
 			manager := &recordingTorrentManager{}
 			pool := fsops.NewPoolWithRemote(&fakeInstanceStore{instance: row}, &remoteSpy{}, func(*models.Instance) fsops.Backend { return host })
 			injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, (&settleFake{}).idle(), nil), nil, nil, pool)

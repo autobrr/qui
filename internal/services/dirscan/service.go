@@ -447,7 +447,7 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 }
 
 // DirectoryPaths is the grammar of dir's paths. An instance with no backend reads
-// as the host's, and the run reports what is wrong with it.
+// as the host's, and a run started while it has none reports what is wrong with it.
 func (s *Service) DirectoryPaths(ctx context.Context, dir *models.DirScanDirectory) fsops.PathDialect {
 	if s.backendPool == nil {
 		return fsops.HostPaths

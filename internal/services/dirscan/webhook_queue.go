@@ -28,16 +28,21 @@ func mergeWebhookScanRoots(d fsops.PathDialect, directoryPath, existing, next st
 		return dir
 	}
 
-	for candidate := current; candidate != "." && candidate != d.Separator(); candidate = d.Dir(candidate) {
+	// A queued root can sit outside dir after dir's path was edited, and
+	// d.Dir stops moving at a root, which on Windows is not one fixed spelling.
+	for candidate := current; ; {
+		if isPathWithin(d, candidate, dir) {
+			return dir
+		}
 		if isPathWithin(d, candidate, incoming) && isPathWithin(d, dir, candidate) {
 			return candidate
 		}
-		if candidate == dir {
+		parent := d.Dir(candidate)
+		if parent == candidate {
 			return dir
 		}
+		candidate = parent
 	}
-
-	return dir
 }
 
 func normalizeQueuedWebhookRoot(d fsops.PathDialect, directoryPath, scanRoot string) string {
