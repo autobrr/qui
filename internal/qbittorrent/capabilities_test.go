@@ -80,6 +80,7 @@ func TestClientSupports(t *testing.T) {
 
 // A saturated WebUI times out and is still the same qBittorrent, and a
 // request that the caller stops says nothing about the instance.
+// regression: #3765
 func TestClientKeepsTheVersionWhenAReadTimesOutOrIsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +149,7 @@ func forgetVersion(t *testing.T, client *Client, stub *qbtstub.Server) {
 
 // A share-limit edit with an unknown version reads it again, and does not
 // drop the action and still report success.
+// regression: #3765
 func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -172,6 +174,7 @@ func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 
 // A backup of qBittorrent 4.6 with an unknown version reads it again, so it
 // still patches the trackers into the exported files.
+// regression: #3765
 func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	client, stub := newStubClient(t, "2.9.2")

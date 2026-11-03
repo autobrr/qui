@@ -299,6 +299,7 @@ func TestShouldSkipLiveExportForBackup(t *testing.T) {
 
 // Without the version, qui cannot tell if qBittorrent 4.6 left out the
 // trackers, so it saves no backup.
+// regression: #3765
 func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
 	t.Parallel()
 

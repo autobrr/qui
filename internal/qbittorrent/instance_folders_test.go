@@ -441,6 +441,7 @@ func TestInstanceFoldersFailWhenTheCategoriesCannotBeRead(t *testing.T) {
 
 // The app info refresh inside the folder check reads the version again. When
 // that second read fails, the folder rules still come from the first one.
+// regression: #3765
 func TestInstanceFoldersKeepTheRulesOfTheVersionRead(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})
