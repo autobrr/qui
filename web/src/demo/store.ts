@@ -676,7 +676,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
     piece_size: pieceSize,
     pieces_have: piecesHave,
     pieces_num: piecesNum,
-    reannounce: t.reannounce,
+    reannounce: t.reannounce ?? 0,
     save_path: t.save_path,
     seeding_time: t.seeding_time,
     seeds: t.num_seeds,

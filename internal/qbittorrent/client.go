@@ -46,6 +46,7 @@ var (
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
+	liveReannounceMinVersion             = semver.MustParse("2.10.0") // qBittorrent 5.0: reannounce in torrents/info and sync/maindata
 	partialCategoryEditMinVersion        = semver.MustParse("2.16.1") // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 )
 
@@ -102,6 +103,7 @@ type Client struct {
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
+	supportsLiveReannounce     bool
 	partialCategoryEdit        bool
 	lastHealthCheck            time.Time
 	isHealthy                  bool
@@ -493,6 +495,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
+	c.supportsLiveReannounce = !v.LessThan(liveReannounceMinVersion)
 	c.partialCategoryEdit = !v.LessThan(partialCategoryEditMinVersion)
 }
 
@@ -595,6 +598,15 @@ func (c *Client) SupportsTorrentTmpPath() bool {
 	return c.supportsTorrentTmpPath
 }
 
+// SupportsLiveReannounce reports whether the torrent list carries the seconds
+// until the next announce (qBittorrent 5.0+). Before that, only
+// torrents/properties has the value.
+func (c *Client) SupportsLiveReannounce() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsLiveReannounce
+}
+
 func (c *Client) SupportsPathAutocomplete() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -605,6 +617,19 @@ func (c *Client) SupportsTestEmail() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTestEmail
+}
+
+// hasAnyTorrent reports whether at least one of hashes is in the cache. It stops
+// at the first hit and copies no torrents.
+func (c *Client) hasAnyTorrent(hashes []string) bool {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
+		return false
+	}
+	return slices.ContainsFunc(hashes, func(hash string) bool {
+		_, ok := syncManager.GetTorrent(hash)
+		return ok
+	})
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

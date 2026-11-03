@@ -40,6 +40,18 @@ if (oauth) {
   refresh = setInterval(() => writeToken().catch((err) => console.warn(err.message)), 4 * 60 * 1000);
 }
 
+// gh reads the token from its config file, not from the environment, so a
+// prompt injection cannot print it with `gh --jq 'env.GH_TOKEN'`. A deny rule
+// on --jq does not hold, because a quoted flag such as '--jq' gets past it.
+// The default directory, because the scrub removes GH_CONFIG_DIR. "wx" fails
+// instead of overwriting the gh login of a person who runs this script.
+const ghConfigDir = join(homedir(), ".config/gh");
+if (env.GH_TOKEN) {
+  mkdirSync(ghConfigDir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(ghConfigDir, "hosts.yml"), `github.com:\n  oauth_token: ${env.GH_TOKEN}\n`, { mode: 0o600, flag: "wx" });
+  delete env.GH_TOKEN;
+}
+
 // The built-in tools that exist in the run, and the calls that need no
 // permission. Some tools, such as Agent, need no permission, so allowedTools
 // alone does not remove them.
@@ -97,9 +109,17 @@ try {
       tools: profile.tools,
       allowedTools: profile.allowedTools,
       // A prompt injection could make Claude post a credential in a comment.
-      // Hide the GitHub OIDC token and the Anthropic token that Claude Code
-      // caches after the exchange. Read rules also apply to Grep and Glob.
-      disallowedTools: [`Read(/${identityDir}/**)`, `Read(/${join(homedir(), ".config/anthropic")}/**)`],
+      // Hide the GitHub OIDC token, the Anthropic token that Claude Code
+      // caches after the exchange, and the gh token. /proc holds the
+      // environment of this process, which keeps every token: Claude Code
+      // blocks /proc/<pid>/environ but not /proc/<pid>/task/<tid>/environ.
+      // Read rules also apply to Grep and Glob.
+      disallowedTools: [
+        `Read(/${identityDir}/**)`,
+        `Read(/${join(homedir(), ".config/anthropic")}/**)`,
+        `Read(/${ghConfigDir}/**)`,
+        "Read(//proc/**)",
+      ],
       // The subscription has its own limits. Only Console usage costs money.
       maxBudgetUsd: oauth ? undefined : 5,
       env,
