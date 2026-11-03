@@ -37,6 +37,9 @@ const (
 // nothing rechecks or resumes it automatically.
 var errSettleQueueFull = errors.New("recheck and resume queue full, manual intervention required")
 
+// errRemoteTargetChanged means the remote instance has another mode or server than the one the run walked.
+var errRemoteTargetChanged = errors.New("remote instance changed since the scan read it")
+
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader

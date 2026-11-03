@@ -964,6 +964,12 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		return nil, nil, false
 	}
 
+	if err := s.checkWalkedEndpoint(ctx, target.instance); err != nil {
+		l.Error().Err(err).Msg("dirscan: failing scan, the remote instance changed while it ran")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
 	if hasIdentity {
 		if missing := countFilesWithoutIdentity(scanResult); missing > 0 {
 			l.Info().Int("files", missing).Msg("dirscan: scanned files have no identity, so they cannot be seen as already seeding or renamed")
@@ -971,6 +977,23 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	}
 
 	return scanResult, fileIDIndex, true
+}
+
+// checkWalkedEndpoint fails a remote walk whose row changed under it. A dial
+// reads the row, not the held one, so part of the walk may have read a new server.
+func (s *Service) checkWalkedEndpoint(ctx context.Context, walked *models.Instance) error {
+	endpoint := fsops.WalkedEndpoint(walked)
+	if endpoint == "" {
+		return nil
+	}
+	_, current, err := s.backendPool.Require(ctx, walked.ID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		return fmt.Errorf("reload instance after the walk: %w", err)
+	}
+	if err != nil || fsops.WalkedEndpoint(current) != endpoint {
+		return errRemoteTargetChanged
+	}
+	return nil
 }
 
 func countFilesWithoutIdentity(result *ScanResult) int {

@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"bytes"
+	"context"
 	"io/fs"
 	"testing"
 	"time"
@@ -13,9 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
+
+// rowPool answers every read with row, and any remote backend it builds counts as an unexpected read.
+func rowPool(row *models.Instance) *fsops.Pool {
+	return fsops.NewPoolWithRemote(&fakeInstanceStore{instance: row}, local.NewBackend(), func(*models.Instance) fsops.Backend { return &remoteSpy{} })
+}
 
 // An exec walk that fell back to sftp reads no identity, which a row claiming Identity should explain once.
 func TestScanLogsFilesWithoutIdentity(t *testing.T) {
@@ -37,7 +44,7 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 			t.Parallel()
 			walk := append([]fsops.WalkEntry{slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/Film", "Film", fs.ModeDir)}, tt.walk...)
 			row := remoteInstance(tt.tier)
-			svc := &Service{torrentFiles: stubTorrentFiles{empty: true}}
+			svc := &Service{torrentFiles: stubTorrentFiles{empty: true}, backendPool: rowPool(row)}
 			var buf bytes.Buffer
 			l := zerolog.New(&buf)
 
@@ -134,4 +141,58 @@ func TestStoredIdentityOfALocalRowIsUnchanged(t *testing.T) {
 	require.False(t, ok)
 	_, ok = idx.keyOfStored(remoteIdx.storedFileID(remoteID(1)))
 	require.False(t, ok)
+}
+
+// A dial reads the row, not the run's copy, so an SSH edit during the walk can read the new server under the old scope.
+//
+// regression: #2919
+func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
+	walked := remoteInstance(models.SSHTierExec)
+	otherHost := *walked
+	otherHost.SSHHost = "other.example.invalid"
+	otherPin := *walked
+	otherPin.SSHHostKeyEncrypted = "enc-hostkey-2"
+	localNow := *walked
+	localNow.HasLocalFilesystemAccess = true
+	for _, tt := range []struct {
+		name    string
+		store   fsopsInstanceGetter
+		wantOK  bool
+		wantErr string
+	}{
+		{name: "unchanged", store: &fakeInstanceStore{instance: walked}, wantOK: true},
+		{name: "other host", store: &fakeInstanceStore{instance: &otherHost}, wantErr: errRemoteTargetChanged.Error()},
+		{name: "host key replaced", store: &fakeInstanceStore{instance: &otherPin}, wantErr: errRemoteTargetChanged.Error()},
+		{name: "local access turned on", store: &fakeInstanceStore{instance: &localNow}, wantErr: errRemoteTargetChanged.Error()},
+		{name: "credentials removed", store: &fakeInstanceStore{instance: &models.Instance{ID: walked.ID}}, wantErr: errRemoteTargetChanged.Error()},
+		{name: "row unreadable", store: failingInstanceStore{}, wantErr: "database is locked"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			svc, store, dir := newDirScanTestService(t)
+			runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
+			require.NoError(t, err)
+			svc.torrentFiles = stubTorrentFiles{empty: true}
+			svc.backendPool = fsops.NewPoolWithRemote(tt.store, local.NewBackend(), func(*models.Instance) fsops.Backend { return &remoteSpy{} })
+			backend := newSlashBackend(slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/film.mkv", "film.mkv", 0))
+			l := zerolog.Nop()
+
+			result, _, ok := svc.runScanPhase(ctx, dir, &scanTarget{backend: backend, instance: walked}, "/data/scan", runID, &l)
+
+			require.Equal(t, tt.wantOK, ok)
+			run, err := store.GetRun(ctx, runID)
+			require.NoError(t, err)
+			if tt.wantOK {
+				require.Len(t, result.Searchees, 1)
+				return
+			}
+			require.Nil(t, result)
+			require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+			require.Contains(t, run.ErrorMessage, tt.wantErr)
+		})
+	}
+}
+
+type fsopsInstanceGetter interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
 }
