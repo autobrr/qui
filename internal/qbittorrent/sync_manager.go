@@ -1301,6 +1301,9 @@ func (sm *SyncManager) OmitsTrackersOnExport(ctx context.Context, instanceID int
 			return false, err
 		}
 	}
+	if err := client.EnsureCapabilities(ctx); err != nil {
+		return false, fmt.Errorf("read the qBittorrent version: %w", err)
+	}
 	return client.Supports(CapExportOmitsTrackers), nil
 }
 
@@ -5795,6 +5798,9 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 // Action and mode must be qBittorrent/Qt meta enum names (Default, Stop, Remove, …).
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	return sm.editTorrents(ctx, instanceID, hashes, "set share limits", nil, func(client *Client) error {
+		if err := client.EnsureCapabilities(ctx); err != nil {
+			return fmt.Errorf("read the qBittorrent version: %w", err)
+		}
 		action := strings.TrimSpace(shareLimitAction)
 		if !client.Supports(CapShareLimitsAction) {
 			action = ""

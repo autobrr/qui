@@ -553,6 +553,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				t.Tags = strings.Split(param("tags"), ",")
 			}
 		}
+	case "torrents/setShareLimits":
+		// LastBody has what qui sent.
 	case "torrents/categories":
 		if s.CategoriesStatus != 0 {
 			w.WriteHeader(s.CategoriesStatus)

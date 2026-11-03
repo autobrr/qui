@@ -723,9 +723,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		sort.Strings(snapshotTags)
 	}
 
+	// A 4.6 export without its trackers must not pass as a good backup.
 	patchTrackers, err := s.reader.OmitsTrackersOnExport(ctx, j.instanceID)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
+		return nil, fmt.Errorf("failed to decide on tracker patching: %w", err)
 	}
 
 	timestamp := s.now().UTC().Format("20060102T150405Z")

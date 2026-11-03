@@ -134,3 +134,57 @@ func TestClientSupportsNothingWhileTheVersionIsUnknown(t *testing.T) {
 		})
 	}
 }
+
+// forgetVersion makes the version unknown on a client that stays healthy, as a
+// failed read outside the health check does.
+func forgetVersion(t *testing.T, client *Client, stub *qbtstub.Server) {
+	t.Helper()
+	good := stub.WebAPIVersion
+	stub.WebAPIVersion = "<html><title>Login</title></html>"
+	require.Error(t, client.RefreshCapabilities(t.Context()))
+	require.Empty(t, client.GetWebAPIVersion())
+	stub.WebAPIVersion = good
+}
+
+// A share-limit edit with an unknown version reads it again, and does not
+// drop the action and still report success.
+func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.WebAPIVersion = "2.15.1"
+	stub.Add(qbtstub.Torrent{Hash: hashA, Name: "Show.S01E01-GRP", SavePath: root, Files: []string{"Show.S01E01.mkv"}})
+	client, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(client.optimisticUpdates.Close)
+	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	forgetVersion(t, client, stub)
+	require.NoError(t, sm.SetTorrentShareLimit(t.Context(), 1, []string{hashA}, 2, -2, -2, "Stop", ""))
+	require.Contains(t, stub.LastBody("torrents/setShareLimits"), "shareLimitAction=Stop")
+
+	forgetVersion(t, client, stub)
+	stub.WebAPIVersionStatus = http.StatusBadGateway
+	require.Error(t, sm.SetTorrentShareLimit(t.Context(), 1, []string{hashA}, 2, -2, -2, "Stop", ""),
+		"an edit that cannot read the version fails, not sends without the action")
+}
+
+// A backup of qBittorrent 4.6 with an unknown version reads it again, so it
+// still patches the trackers into the exported files.
+func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
+	t.Parallel()
+	client, stub := newStubClient(t, "2.9.2")
+	client.isHealthy = true
+	sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+	forgetVersion(t, client, stub)
+	omits, err := sm.OmitsTrackersOnExport(t.Context(), 1)
+	require.NoError(t, err)
+	require.True(t, omits)
+
+	forgetVersion(t, client, stub)
+	stub.WebAPIVersionStatus = http.StatusBadGateway
+	_, err = sm.OmitsTrackersOnExport(t.Context(), 1)
+	require.Error(t, err)
+}
