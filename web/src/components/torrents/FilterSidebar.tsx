@@ -363,11 +363,19 @@ const FilterSidebarComponent = ({
           .map(torrent => ({ instanceId, hash: torrent.hash }))
       } else {
         const scopeIds = instanceIds ?? instances?.filter(instance => instance.isActive).map(instance => instance.id) ?? []
+        let instanceFailed = false
         trackerTorrents = takeTurns(await Promise.all(scopeIds.map(id =>
           api.getTorrents(id, { filters: trackerFilters, limit: 50 })
             .then(response => response.torrents.map(torrent => ({ instanceId: id, hash: torrent.hash })))
-            .catch(() => [])
+            .catch(() => {
+              instanceFailed = true
+              return []
+            })
         )))
+        // The list can then miss a URL, so say so and still show the URLs found.
+        if (instanceFailed) {
+          toast.error(t("filterSidebar.toast.fetchTrackerUrlsFailed"))
+        }
       }
 
       if (trackerTorrents.length > 0) {
