@@ -152,11 +152,10 @@
     "dark": "Fosc",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència."
+    "premiumThemeError": "Aquest tema necessita una llicència. Obre Configuració → Temes per activar-ne una."
   },
   "updateBanner": {
     "updateAvailable": "Actualització disponible",
@@ -246,7 +245,7 @@
     "perkSuffix": "a Discord i el nostre agraïment etern.",
     "yearly": "{{price}} / any",
     "monthly": "{{price}} / mes",
-    "notLicense": "Els temes premium són una compra única a part."
+    "notLicense": "La llicència dels temes és una compra única a part."
   },
   "labels": {
     "path": "Camí"

@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { getThemeById, isThemePremium, themes } from "@/config/themes"
+import { getThemeById, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -69,6 +69,7 @@ import {
   Home,
   Loader2,
   Globe,
+  Lock,
   LogOut,
   Monitor,
   Moon,
@@ -674,7 +675,6 @@ export function MobileFooterNav() {
               <div className="text-sm font-medium mb-2">{t("themeToggle.theme")}</div>
               <div className="space-y-1">
                 {themeCatalog.map((theme) => {
-                  const isPremium = isThemePremium(theme.id)
                   const isLocked = !!theme.locked
                   const colors = getThemeColors(theme)
                   const currentVariation = getThemeVariation(theme.id)
@@ -707,10 +707,11 @@ export function MobileFooterNav() {
                           />
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="truncate">{theme.name}</span>
-                            {isPremium && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                                {t("themeToggle.premium")}
-                              </span>
+                            {isLocked && (
+                              <>
+                                <Lock aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                <span className="sr-only">{t("settings:themes.selector.locked")}</span>
+                              </>
                             )}
                           </div>
                         </div>

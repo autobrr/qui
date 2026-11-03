@@ -152,11 +152,10 @@
     "dark": "深色",
     "system": "跟隨系統",
     "theme": "主題",
-    "premium": "進階",
     "switchedToMode": "已切換到{{mode}}模式",
     "switchedToTheme": "已切換到{{theme}}主題",
     "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
-    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。"
+    "premiumThemeError": "此主題需要授權。請前往設定 > 主題啟用授權。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
@@ -239,7 +238,7 @@
     "perkSuffix": "身分組，以及我們永遠的感謝。",
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
-    "notLicense": "進階主題是單獨的一次性購買。"
+    "notLicense": "主題授權是單獨的一次性購買。"
   },
   "labels": {
     "path": "路徑"

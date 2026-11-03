@@ -15,7 +15,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { buildThemeCatalog, isThemeShown } from "@/lib/theme-catalog"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
-import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff } from "lucide-react"
+import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff } from "lucide-react"
 import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -131,13 +131,7 @@ function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariation
                 <FolderOpen className="mr-0.5 h-2.5 w-2.5" />
                 {t("themes.custom.badge")}
               </Badge>
-            ) : theme.isPremium ? (
-              <Badge variant="secondary" className="px-1.5 text-[10px]">
-                <Sparkles className="mr-0.5 h-2.5 w-2.5" />
-                <span className="hidden sm:inline">{t("themes.selector.premium")}</span>
-                <span className="sm:hidden">{t("themes.selector.pro")}</span>
-              </Badge>
-            ) : (
+            ) : theme.isPremium ? null : (
               <Badge variant="outline" className="px-1.5 text-[10px]">
                 {t("themes.selector.free")}
               </Badge>

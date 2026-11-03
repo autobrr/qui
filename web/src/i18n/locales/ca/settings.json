@@ -12,7 +12,7 @@
     "externalPrograms": "Programes externs",
     "notifications": "Notificacions",
     "dateTime": "Hora i idioma",
-    "premiumThemes": "Temes premium",
+    "premiumThemes": "Temes",
     "security": "Seguretat",
     "logs": "Registres"
   },
@@ -420,13 +420,11 @@
     "selector": {
       "title": "Selecció de tema",
       "loadingDescription": "S'estan carregant els temes disponibles...",
-      "description": "Tria entre els temes disponibles. Els temes premium necessiten una llicència vàlida.",
-      "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes premium està desactivat temporalment.",
-      "notLoaded": "Els temes premium no s'han carregat",
+      "description": "Tria entre els temes disponibles. Alguns temes necessiten una llicència vàlida.",
+      "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes amb llicència està desactivat temporalment.",
+      "notLoaded": "Els temes amb llicència no s'han carregat",
       "notLoadedDescription": "Configura",
       "notLoadedAnd": "i executa",
-      "premium": "Premium",
-      "pro": "Pro",
       "free": "Gratuït",
       "locked": "Bloquejat",
       "lock": "Bloqueja",
@@ -434,26 +432,26 @@
       "hideTheme": "Amaga"
     },
     "toasts": {
-      "premiumRequired": "Cal una llicència premium",
-      "premiumRequiredDescription": "Desbloqueja els temes premium afegint-hi una llicència premium vàlida."
+      "premiumRequired": "Cal una llicència",
+      "premiumRequiredDescription": "Afegeix una llicència vàlida per desbloquejar tots els temes."
     },
     "license": {
       "loadingTitle": "Gestió de llicències",
       "loadingDescription": "S'estan carregant les llicències dels temes...",
       "managementTitle": "Gestió de llicències",
-      "managementDescription": "Gestiona la llicència dels temes i l'accés premium",
+      "managementDescription": "Gestiona la llicència dels temes",
       "providers": {
         "licensePortal": "portal de llicències"
       },
       "status": {
-        "unlockTitle": "Desbloqueja els temes premium",
+        "unlockTitle": "Desbloqueja tots els temes",
         "unlockDescription": "Paga el que vulguis (mín. 9,99 $) • Llicència vitalícia • Tots els temes",
-        "activeTitle": "Accés premium actiu",
-        "activeDescription": "Tens accés a tots els temes premium actuals i futurs",
+        "activeTitle": "Llicència activa",
+        "activeDescription": "Tens accés a tots els temes actuals i futurs",
         "activationRequiredTitle": "Cal activar la llicència",
         "activationRequiredDescription": "La teva llicència s'ha d'activar en aquesta màquina",
         "offlineTitle": "Servei de llicències inaccessible",
-        "offlineDescription": "qui no ha pogut connectar amb el servei de llicències durant 7 dies, per això els temes premium estan bloquejats. qui ho comprova en iniciar-se i un cop al dia. Els temes es desbloquegen quan el servei respon. No cal que tornis a activar la llicència."
+        "offlineDescription": "qui no ha pogut connectar amb el servei de llicències durant 7 dies, per això els temes amb llicència estan bloquejats. qui ho comprova en iniciar-se i un cop al dia. Els temes es desbloquegen quan el servei respon. No cal que tornis a activar la llicència."
       },
       "portalHelp": {
         "prefix": "Compra-ho a DodoPayments i després introdueix aquí la teva clau de llicència. Si perds la clau, recupera-la mitjançant el",
@@ -505,7 +503,7 @@
         "addLicense": "Afegeix una llicència",
         "remove": "Suprimeix",
         "removing": "S'està suprimint...",
-        "getPremium": "Aconsegueix premium",
+        "getPremium": "Aconsegueix una llicència",
         "reactivate": "Reactiva la llicència",
         "activating": "S'està activant...",
         "copyLicenseKey": "Copia la clau de llicència",
@@ -521,17 +519,17 @@
         "recoverPrefix": "Si cal, la pots recuperar més endavant des del teu"
       },
       "addDialog": {
-        "title": "Afegeix una llicència premium",
-        "description": "Introdueix la clau de llicència dels temes premium per desbloquejar-los tots.",
+        "title": "Afegeix una llicència",
+        "description": "Introdueix la clau de llicència per desbloquejar tots els temes.",
         "label": "Clau de llicència",
-        "placeholder": "Introdueix la clau de llicència dels temes premium",
+        "placeholder": "Introdueix la clau de llicència",
         "recoverKey": "Has perdut la clau?",
         "validation": {
           "required": "La clau de llicència és obligatòria"
         }
       },
       "paymentDialog": {
-        "title": "Aconsegueix una llicència premium",
+        "title": "Aconsegueix una llicència",
         "description": "Paga el que vulguis (mín. 9,99 $) • Llicència vitalícia • Tots els temes",
         "steps": {
           "choosePaymentMethod": {
@@ -563,10 +561,10 @@
       "copiedVerify": "S'ha copiat l'ordre de verificació",
       "failedCopyVerify": "No s'ha pogut copiar l'ordre de verificació",
       "toasts": {
-        "activationSuccessPremium": "S'ha activat l'accés premium. Gràcies!",
-        "paymentCompleted": "S'ha completat el pagament. Afegeix la clau de llicència premium per acabar la configuració.",
+        "activationSuccessPremium": "S'ha activat la llicència. Gràcies!",
+        "paymentCompleted": "S'ha completat el pagament. Afegeix la clau de llicència per acabar la configuració.",
         "paymentNotCompleted": "El pagament no s'ha completat correctament.",
-        "returnedFromCheckout": "Has tornat de la pàgina de pagament. Afegeix la clau de llicència premium quan vulguis.",
+        "returnedFromCheckout": "Has tornat de la pàgina de pagament. Afegeix la clau de llicència quan vulguis.",
         "keyCopied": "S'ha copiat la clau de llicència al porta-retalls",
         "copyFailed": "No s'ha pogut copiar la clau de llicència",
         "removedFromMachine": "S'ha suprimit la llicència d'aquesta màquina"
@@ -575,9 +573,9 @@
     "custom": {
       "badge": "Personalitzat",
       "title": "Temes personalitzats",
-      "lockedTitle": "Els temes personalitzats són una funció premium",
-      "lockedDescription": "Desbloqueja premium per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
-      "unlockCta": "Desbloqueja premium",
+      "lockedTitle": "Els temes personalitzats necessiten una llicència",
+      "lockedDescription": "Aconsegueix una llicència per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
+      "unlockCta": "Aconsegueix una llicència",
       "refresh": "Actualitza",
       "detectedCount": "Temes trobats: {{total}}",
       "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",

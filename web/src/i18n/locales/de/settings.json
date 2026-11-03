@@ -12,7 +12,7 @@
     "externalPrograms": "Externe Programme",
     "notifications": "Benachrichtigungen",
     "dateTime": "Zeit & Sprache",
-    "premiumThemes": "Premium-Designs",
+    "premiumThemes": "Designs",
     "security": "Sicherheit",
     "logs": "Protokolle"
   },
@@ -420,13 +420,11 @@
     "selector": {
       "title": "Design-Auswahl",
       "loadingDescription": "Verfügbare Designs werden geladen...",
-      "description": "Wähle aus den verfügbaren Designs. Premium-Designs erfordern eine gültige Lizenz.",
-      "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
-      "notLoaded": "Premium-Designs nicht geladen",
+      "description": "Wähle aus den verfügbaren Designs. Einige Designs erfordern eine gültige Lizenz.",
+      "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu lizenzierten Designs ist vorübergehend deaktiviert.",
+      "notLoaded": "Lizenzierte Designs nicht geladen",
       "notLoadedDescription": "Konfiguriere",
       "notLoadedAnd": "und führe aus",
-      "premium": "Premium",
-      "pro": "Pro",
       "free": "Kostenlos",
       "locked": "Gesperrt",
       "lock": "Sperren",
@@ -434,26 +432,26 @@
       "hideTheme": "Ausblenden"
     },
     "toasts": {
-      "premiumRequired": "Premium-Lizenz erforderlich",
-      "premiumRequiredDescription": "Schalte Premium-Designs frei, indem du eine gültige Premium-Lizenz hinzufügst."
+      "premiumRequired": "Lizenz erforderlich",
+      "premiumRequiredDescription": "Füge eine gültige Lizenz hinzu, um alle Designs freizuschalten."
     },
     "license": {
       "loadingTitle": "Lizenzverwaltung",
       "loadingDescription": "Design-Lizenzen werden geladen...",
       "managementTitle": "Lizenzverwaltung",
-      "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
+      "managementDescription": "Verwalte deine Design-Lizenz",
       "providers": {
         "licensePortal": "Lizenzportal"
       },
       "status": {
-        "unlockTitle": "Premium-Designs freischalten",
+        "unlockTitle": "Alle Designs freischalten",
         "unlockDescription": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
-        "activeTitle": "Premium-Zugang aktiv",
-        "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Premium-Designs",
+        "activeTitle": "Lizenz aktiv",
+        "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Designs",
         "activationRequiredTitle": "Lizenzaktivierung erforderlich",
         "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden",
         "offlineTitle": "Lizenzdienst nicht erreichbar",
-        "offlineDescription": "qui konnte den Lizenzdienst 7 Tage lang nicht erreichen, daher sind die Premium-Designs gesperrt. qui prüft beim Start und einmal am Tag. Die Designs werden wieder freigeschaltet, sobald der Dienst antwortet. Du musst die Lizenz nicht neu aktivieren."
+        "offlineDescription": "qui konnte den Lizenzdienst 7 Tage lang nicht erreichen, daher sind die lizenzierten Designs gesperrt. qui prüft beim Start und einmal am Tag. Die Designs werden wieder freigeschaltet, sobald der Dienst antwortet. Du musst die Lizenz nicht neu aktivieren."
       },
       "portalHelp": {
         "prefix": "Kaufe über DodoPayments und gib hier deinen Lizenzschlüssel ein. Falls du den Schlüssel verlierst, kannst du ihn wiederherstellen über das",
@@ -505,7 +503,7 @@
         "addLicense": "Lizenz hinzufügen",
         "remove": "Entfernen",
         "removing": "Wird entfernt...",
-        "getPremium": "Premium holen",
+        "getPremium": "Lizenz holen",
         "reactivate": "Lizenz reaktivieren",
         "activating": "Wird aktiviert...",
         "copyLicenseKey": "Lizenzschlüssel kopieren",
@@ -521,17 +519,17 @@
         "recoverPrefix": "Bei Bedarf kannst du ihn später wiederherstellen über dein"
       },
       "addDialog": {
-        "title": "Premium-Lizenz hinzufügen",
-        "description": "Gib deinen Lizenzschlüssel für Premium-Designs ein, um alle Premium-Designs freizuschalten.",
+        "title": "Lizenz hinzufügen",
+        "description": "Gib deinen Lizenzschlüssel ein, um alle Designs freizuschalten.",
         "label": "Lizenzschlüssel",
-        "placeholder": "Gib deinen Lizenzschlüssel für Premium-Designs ein",
+        "placeholder": "Gib deinen Lizenzschlüssel ein",
         "recoverKey": "Schlüssel wiederherstellen?",
         "validation": {
           "required": "Lizenzschlüssel ist erforderlich"
         }
       },
       "paymentDialog": {
-        "title": "Premium-Lizenz holen",
+        "title": "Lizenz holen",
         "description": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
         "steps": {
           "choosePaymentMethod": {
@@ -563,10 +561,10 @@
       "copiedVerify": "Verifizierungsbefehl kopiert",
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
-        "activationSuccessPremium": "Premium-Zugang aktiviert! Vielen Dank!",
-        "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Premium-Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
+        "activationSuccessPremium": "Lizenz aktiviert! Vielen Dank!",
+        "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
-        "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Premium-Lizenzschlüssel hinzu, sobald du bereit bist.",
+        "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Lizenzschlüssel hinzu, sobald du bereit bist.",
         "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
         "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
         "removedFromMachine": "Lizenz von diesem Gerät entfernt"
@@ -575,9 +573,9 @@
     "custom": {
       "badge": "Eigene",
       "title": "Eigene Themes",
-      "lockedTitle": "Eigene Themes sind eine Premium-Funktion",
-      "lockedDescription": "Schalte Premium frei, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
-      "unlockCta": "Premium freischalten",
+      "lockedTitle": "Eigene Themes erfordern eine Lizenz",
+      "lockedDescription": "Hol dir eine Lizenz, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
+      "unlockCta": "Lizenz holen",
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
