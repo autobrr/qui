@@ -39,7 +39,12 @@ export function Login() {
   })
 
   // Query to check if OIDC is enabled
-  const { data: oidcConfig, refetch: refetchOIDCConfig, isFetching: isFetchingOIDCConfig } = useQuery({
+  const {
+    data: oidcConfig,
+    isError: oidcConfigFailed,
+    refetch: refetchOIDCConfig,
+    isFetching: isFetchingOIDCConfig,
+  } = useQuery({
     queryKey: ["oidc-config"],
     queryFn: () => api.getOIDCConfig(),
     staleTime: Infinity,
@@ -95,10 +100,13 @@ export function Login() {
     },
   })
 
+  // A failed first load leaves no config. A failed refetch keeps the last config.
+  const oidcUnavailable = oidcConfig?.providerUnavailable === true || (oidcConfig === undefined && oidcConfigFailed)
+
   const handleOIDCLogin = async () => {
     let config = oidcConfig
     // The refetch asks the server to retry provider discovery.
-    if (config?.providerUnavailable) {
+    if (oidcUnavailable) {
       config = (await refetchOIDCConfig()).data
     }
     if (config?.enabled && config.authorizationUrl) {
@@ -117,7 +125,7 @@ export function Login() {
 
   // Don't show built-in login form if OIDC is enabled and built-in login is disabled
   const showBuiltInLogin = !oidcConfig?.enabled || !oidcConfig?.disableBuiltInLogin
-  const showOIDC = oidcConfig?.enabled
+  const showOIDC = oidcConfig?.enabled || oidcUnavailable
 
   return (
     <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
@@ -266,7 +274,7 @@ export function Login() {
               </Button>
             )}
 
-            {oidcConfig?.providerUnavailable && !isFetchingOIDCConfig && (
+            {oidcUnavailable && !isFetchingOIDCConfig && (
               <p className="mt-3 text-center text-sm text-muted-foreground">
                 {t("login.oidcProviderUnavailable")}
               </p>

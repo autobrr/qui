@@ -758,14 +758,18 @@ class ApiClient {
           providerUnavailable: true,
         }
       }
-      // Return default config if OIDC is not configured
-      return {
-        enabled: false,
-        authorizationUrl: "",
-        disableBuiltInLogin: false,
-        issuerUrl: "",
-        providerUnavailable: false,
+      // OIDC is off: 404 when the routes are not registered, 428 before setup (RequireSetup skips it when OIDC is on).
+      if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
+        return {
+          enabled: false,
+          authorizationUrl: "",
+          disableBuiltInLogin: false,
+          issuerUrl: "",
+          providerUnavailable: false,
+        }
       }
+      // A 429 from the /auth throttle or a network error says nothing about the login policy.
+      throw error
     }
   }
 
