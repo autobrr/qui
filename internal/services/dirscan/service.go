@@ -1450,7 +1450,7 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 			if isFinal && (update.status == models.DirScanFileStatusAlreadySeeding || update.status == models.DirScanFileStatusError) {
 				continue
 			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, update); err != nil {
+			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, update); err != nil {
 				return err
 			}
 		case markAllError:
@@ -1461,7 +1461,7 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 			if !attempted {
 				continue
 			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{status: models.DirScanFileStatusError}); err != nil {
+			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, dirScanFileUpdate{status: models.DirScanFileStatusError}); err != nil {
 				return err
 			}
 		case markRemainingNoMatch:
@@ -1473,7 +1473,7 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 			if !attempted && isVideo {
 				continue
 			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{
+			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, dirScanFileUpdate{
 				status:             models.DirScanFileStatusNoMatch,
 				searchedIndexerIDs: consideredIndexerIDs,
 			}); err != nil {
@@ -1497,14 +1497,9 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 	return nil
 }
 
-func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, scanned *ScannedFile, update dirScanFileUpdate) error {
+func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, scanned *ScannedFile, trackedFiles *trackedFilesIndex, update dirScanFileUpdate) error {
 	if s == nil || s.store == nil || scanned == nil || directoryID <= 0 {
 		return nil
-	}
-
-	var fileID []byte
-	if !scanned.FileID.IsZero() {
-		fileID = scanned.FileID.Bytes()
 	}
 
 	file := &models.DirScanFile{
@@ -1512,7 +1507,7 @@ func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, 
 		FilePath:           scanned.Path,
 		FileSize:           scanned.Size,
 		FileModTime:        scanned.ModTime,
-		FileID:             fileID,
+		FileID:             trackedFiles.storedFileID(scanned.FileID),
 		Status:             update.status,
 		MatchedTorrentHash: update.matchedTorrentHash,
 		MatchedIndexerID:   update.matchedIndexerID,

@@ -190,7 +190,7 @@ func TestRemoteRenameKeepsVerdictByFileID(t *testing.T) {
 	modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
 	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
 		DirectoryID: dir.ID, FilePath: "/data/old/film.mkv", FileSize: 100, FileModTime: modTime,
-		FileID: remoteID(1).Bytes(), Status: models.DirScanFileStatusNoMatch,
+		FileID: append(remoteID(1).Bytes(), endpointTag(row)...), Status: models.DirScanFileStatusNoMatch,
 	}))
 	scanned := &ScanResult{Searchees: []*Searchee{{Name: "new", Path: "/data/new", Files: []*ScannedFile{
 		{Path: "/data/new/film.mkv", RelPath: "film.mkv", Size: 100, ModTime: modTime, FileID: remoteID(1)},

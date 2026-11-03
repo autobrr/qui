@@ -136,7 +136,8 @@ persists it as `dir_scan_files.file_id` under a partial index on
 `(directory_id, file_id)` matched by rename detection, so the encoding
 change ships with a migration that sets `dir_scan_files.file_id` to
 NULL; there is no legacy read path, the next scan fills the column
-again. `IsZero()` survives unchanged; `==` and bare map keys give way
+again. A remote identity is stored with a tag of the endpoint that read it,
+so a file on a new SSH host, port or key never inherits a verdict by inode. `IsZero()` survives unchanged; `==` and bare map keys give way
 to the helper below, and the rest of the churn is per-platform
 constructors and test literals.
 
