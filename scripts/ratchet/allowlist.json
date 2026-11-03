@@ -38,7 +38,6 @@
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
-    "internal/api/handlers/automations_decode.go": 1,
     "internal/api/handlers/backups.go": 3,
     "internal/api/handlers/crossseed.go": 2,
     "internal/api/handlers/instances.go": 1,
