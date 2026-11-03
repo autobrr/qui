@@ -12,7 +12,7 @@
     "externalPrograms": "외부 프로그램",
     "notifications": "알림",
     "dateTime": "시간 및 언어",
-    "premiumThemes": "프리미엄 테마",
+    "premiumThemes": "테마",
     "security": "보안",
     "logs": "로그"
   },
@@ -418,38 +418,36 @@
     "selector": {
       "title": "테마 선택",
       "loadingDescription": "사용 가능한 테마 불러오는 중...",
-      "description": "사용 가능한 테마 중에서 선택하세요. 프리미엄 테마에는 유효한 라이선스가 필요합니다.",
-      "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 프리미엄 테마 전환이 일시적으로 비활성화되었습니다.",
-      "notLoaded": "프리미엄 테마가 로드되지 않음",
+      "description": "사용 가능한 테마 중에서 선택하세요. 일부 테마에는 유효한 라이선스가 필요합니다.",
+      "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 라이선스 테마로의 전환이 일시적으로 비활성화되었습니다.",
+      "notLoaded": "라이선스 테마가 로드되지 않음",
       "notLoadedDescription": "구성",
       "notLoadedAnd": "한 후 실행",
-      "premium": "프리미엄",
-      "pro": "Pro",
       "free": "무료",
       "locked": "잠김",
       "lock": "잠금"
     },
     "toasts": {
-      "premiumRequired": "프리미엄 라이선스가 필요합니다",
-      "premiumRequiredDescription": "유효한 프리미엄 라이선스를 추가하여 프리미엄 테마를 잠금 해제하세요."
+      "premiumRequired": "라이선스가 필요합니다",
+      "premiumRequiredDescription": "유효한 라이선스를 추가하여 모든 테마를 잠금 해제하세요."
     },
     "license": {
       "loadingTitle": "라이선스 관리",
       "loadingDescription": "테마 라이선스 불러오는 중...",
       "managementTitle": "라이선스 관리",
-      "managementDescription": "테마 라이선스 및 프리미엄 접근을 관리합니다",
+      "managementDescription": "테마 라이선스를 관리합니다",
       "providers": {
         "licensePortal": "라이선스 포털"
       },
       "status": {
-        "unlockTitle": "프리미엄 테마 잠금 해제",
+        "unlockTitle": "모든 테마 잠금 해제",
         "unlockDescription": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
-        "activeTitle": "프리미엄 접근 활성화됨",
-        "activeDescription": "현재 및 향후 모든 프리미엄 테마에 접근할 수 있습니다",
+        "activeTitle": "라이선스 활성화됨",
+        "activeDescription": "현재 및 향후 모든 테마에 접근할 수 있습니다",
         "activationRequiredTitle": "라이선스 활성화 필요",
         "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다",
         "offlineTitle": "라이선스 서비스에 연결할 수 없음",
-        "offlineDescription": "qui가 7일 동안 라이선스 서비스에 연결하지 못해 프리미엄 테마가 잠겼습니다. qui는 시작할 때와 하루에 한 번 확인합니다. 서비스가 응답하면 테마 잠금이 해제됩니다. 라이선스를 다시 활성화할 필요는 없습니다."
+        "offlineDescription": "qui가 7일 동안 라이선스 서비스에 연결하지 못해 라이선스 테마가 잠겼습니다. qui는 시작할 때와 하루에 한 번 확인합니다. 서비스가 응답하면 테마 잠금이 해제됩니다. 라이선스를 다시 활성화할 필요는 없습니다."
       },
       "portalHelp": {
         "prefix": "DodoPayments에서 구매한 다음, 여기에 라이선스 키를 입력하세요. 키를 분실한 경우",
@@ -501,7 +499,7 @@
         "addLicense": "라이선스 추가",
         "remove": "제거",
         "removing": "제거 중...",
-        "getPremium": "프리미엄 받기",
+        "getPremium": "라이선스 받기",
         "reactivate": "라이선스 다시 활성화",
         "activating": "활성화 중...",
         "copyLicenseKey": "라이선스 키 복사",
@@ -517,17 +515,17 @@
         "recoverPrefix": "필요한 경우 나중에 다음에서 복구할 수 있습니다:"
       },
       "addDialog": {
-        "title": "프리미엄 라이선스 추가",
-        "description": "모든 프리미엄 테마를 잠금 해제하려면 프리미엄 테마 라이선스 키를 입력하세요.",
+        "title": "라이선스 추가",
+        "description": "모든 테마를 잠금 해제하려면 라이선스 키를 입력하세요.",
         "label": "라이선스 키",
-        "placeholder": "프리미엄 테마 라이선스 키를 입력하세요",
+        "placeholder": "라이선스 키를 입력하세요",
         "recoverKey": "키 복구?",
         "validation": {
           "required": "라이선스 키는 필수입니다"
         }
       },
       "paymentDialog": {
-        "title": "프리미엄 라이선스 받기",
+        "title": "라이선스 받기",
         "description": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
         "steps": {
           "choosePaymentMethod": {
@@ -559,10 +557,10 @@
       "copiedVerify": "확인 명령이 복사되었습니다",
       "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
       "toasts": {
-        "activationSuccessPremium": "프리미엄 접근이 활성화되었습니다! 감사합니다!",
-        "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 프리미엄 라이선스 키를 추가하세요.",
+        "activationSuccessPremium": "라이선스가 활성화되었습니다! 감사합니다!",
+        "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 라이선스 키를 추가하세요.",
         "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
-        "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 프리미엄 라이선스 키를 추가하세요.",
+        "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 라이선스 키를 추가하세요.",
         "keyCopied": "라이선스 키가 클립보드에 복사되었습니다",
         "copyFailed": "라이선스 키를 복사하지 못했습니다",
         "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다"
@@ -571,9 +569,9 @@
     "custom": {
       "badge": "사용자 지정",
       "title": "사용자 지정 테마",
-      "lockedTitle": "사용자 지정 테마는 프리미엄 기능입니다",
-      "lockedDescription": "프리미엄을 잠금 해제하면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
-      "unlockCta": "프리미엄 잠금 해제",
+      "lockedTitle": "사용자 지정 테마에는 라이선스가 필요합니다",
+      "lockedDescription": "라이선스를 받으면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
+      "unlockCta": "라이선스 받기",
       "refresh": "새로 고침",
       "detectedCount": "찾은 테마: {{total}}개",
       "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",

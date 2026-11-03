@@ -152,11 +152,10 @@
     "dark": "Dark",
     "system": "System",
     "theme": "Theme",
-    "premium": "Premium",
     "switchedToMode": "Switched to {{mode}} mode",
     "switchedToTheme": "Switched to {{theme}} theme",
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
-    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license."
+    "premiumThemeError": "This theme needs a license. Open Settings → Themes to activate one."
   },
   "updateBanner": {
     "updateAvailable": "Update Available",
@@ -246,7 +245,7 @@
     "perkSuffix": "role in Discord and our eternal gratitude.",
     "yearly": "{{price}} / year",
     "monthly": "{{price}} / month",
-    "notLicense": "Premium themes are a separate one-time purchase."
+    "notLicense": "The theme license is a separate one-time purchase."
   },
   "labels": {
     "path": "Path"
