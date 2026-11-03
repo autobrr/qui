@@ -307,6 +307,8 @@ type TorrentResponse struct {
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
+	// WebAPIVersions maps each instance in the response to its Web API version, "" while unknown.
+	WebAPIVersions map[int]string `json:"webAPIVersions,omitempty"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -1721,6 +1723,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
 		TrackerHealthSupported: trackerHealthSupported,
+		WebAPIVersions:         map[int]string{instanceID: client.GetWebAPIVersion()},
 	}
 
 	// Always compute from fresh all_torrents data
@@ -1830,6 +1833,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var useSubcategories bool
 	aggregatedCategories := make(map[string]qbt.Category)
 	aggregatedTagSet := make(map[string]struct{})
+	webAPIVersions := make(map[int]string)
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
@@ -1900,6 +1904,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
 		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
 		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
+		maps.Copy(webAPIVersions, instanceResponse.WebAPIVersions)
 
 		totalCount += len(instanceResponse.Torrents)
 	}
@@ -1951,6 +1956,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		TrackerHealthSupported: trackerHealthSupported,
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
+		WebAPIVersions:         webAPIVersions,
 	}
 
 	return response, nil

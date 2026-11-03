@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, type QueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { InstanceCapabilities } from "@/types"
+import type { InstanceCapabilities, TorrentResponse } from "@/types"
 
 type UseInstanceCapabilitiesOptions = {
   enabled?: boolean
@@ -31,4 +31,21 @@ export function useInstanceCapabilities(
       return false
     },
   })
+}
+
+// refreshChangedCapabilities asks an instance for its capabilities again when
+// the torrent list reports a Web API version other than the loaded one, as
+// after a qBittorrent upgrade or downgrade.
+export function refreshChangedCapabilities(
+  queryClient: QueryClient,
+  source: Pick<TorrentResponse, "webAPIVersions">
+) {
+  for (const [instanceId, version] of Object.entries(source.webAPIVersions ?? {})) {
+    const queryKey = ["instance-capabilities", Number(instanceId)]
+    const loaded = queryClient.getQueryData<InstanceCapabilities>(queryKey)
+    if (loaded && (loaded.webAPIVersion ?? "") !== version) {
+      // Each stream frame carries the version: keep a running request.
+      void queryClient.invalidateQueries({ queryKey, exact: true }, { cancelRefetch: false })
+    }
+  }
 }
