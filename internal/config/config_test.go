@@ -1025,6 +1025,7 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 
 // The watcher reads the file before configReloadDelay, so reload must read
 // the file as it is when the delay ends.
+// regression: #3797
 func TestReloadReadsCurrentConfigFile(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
