@@ -421,7 +421,7 @@
       "title": "Sélection de thème",
       "loadingDescription": "Chargement des thèmes disponibles...",
       "description": "Choisissez parmi les thèmes. Certains thèmes nécessitent une licence valide.",
-      "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est désactivé.",
+      "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est temporairement désactivé.",
       "notLoaded": "Thèmes sous licence non chargés",
       "notLoadedDescription": "Configurer",
       "notLoadedAnd": "et exécutez",
