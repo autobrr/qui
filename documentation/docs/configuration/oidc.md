@@ -24,6 +24,8 @@ To find your subject identifier, set `oidcAllowedSubject` to any value and log i
 
 qui reads a change to these keys when you save `config.toml`. You do not have to restart qui. If an open OIDC session no longer matches, it ends at its next request, and the browser goes to the login page. Password sessions and API keys do not change.
 
+If you set `oidcDisableBuiltInLogin` and one of these keys has a wrong value, the login page gives you no way to log in. Correct the value in `config.toml`, and qui applies it without a restart.
+
 An `https://` redirect URL marks the session cookie as Secure, so the browser sends it only over HTTPS. See [Sessions](./reference.md#sessions).
 
 For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference.md).
