@@ -258,6 +258,7 @@ func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
 		{name: "reflink added", status: "added_reflink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
 		{name: "hardlink failed", status: "hardlink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 		{name: "reflink failed", status: "reflink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+		{name: "pool registration failed", status: partialPoolRegistrationErrorStatus, eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 	}
 
 	for _, tt := range tests {

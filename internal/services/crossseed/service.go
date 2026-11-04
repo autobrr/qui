@@ -10540,7 +10540,7 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 				if result.Success {
 					addedResults = append(addedResults, result)
 				}
-			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", crossSeedUnavailableStatus, crossSeedCannotSeeStatus:
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", partialPoolRegistrationErrorStatus, crossSeedUnavailableStatus, crossSeedCannotSeeStatus:
 				failedResults = append(failedResults, result)
 			}
 		}
