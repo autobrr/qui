@@ -2194,6 +2194,63 @@ describe("useTorrentsList categories and tags", () => {
     expect(result.current.tags).toEqual([])
   })
 
+  it("keeps the values while a later page of the same view loads", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) =>
+      params.page === 0
+        ? Promise.resolve(makeResponse({ tags: ["linux"], total: 3, hasMore: true }))
+        : new Promise(() => undefined)
+    )
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+
+    expect(result.current.isLoadingMore).toBe(true)
+    expect(result.current.tags).toEqual(["linux"])
+  })
+
+  it("shows no old values after a switch from a list past its first page", async () => {
+    let resolveSecond!: (response: TorrentResponse) => void
+    mockedApi.getTorrents.mockImplementation(instanceId =>
+      instanceId === 1
+        ? Promise.resolve(makeResponse({
+          categories: { movies: { name: "movies", savePath: "" } },
+          tags: ["linux"],
+          total: 3,
+          hasMore: true,
+        }))
+        : new Promise(resolve => { resolveSecond = resolve })
+    )
+
+    const rendered: Pick<ReturnType<typeof useTorrentsList>, "tags" | "categories">[] = []
+    const { result, rerender } = renderHook(({ id }) => {
+      const list = useTorrentsList(id)
+      rendered.push({ tags: list.tags, categories: list.categories })
+      return list
+    }, { wrapper: makeWrapper(), initialProps: { id: 1 } })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1 }), expect.any(AbortSignal))
+
+    rendered.length = 0
+    rerender({ id: 2 })
+    await flush()
+
+    // The parent keeps the last values that it gets, so one render is enough to show old values.
+    expect(rendered.length).toBeGreaterThan(0)
+    expect(rendered).toEqual(rendered.map(() => ({ tags: undefined, categories: undefined })))
+
+    await act(async () => {
+      resolveSecond(makeResponse())
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
   it.each([
     ["a full frame", "update", {}],
     ["a delta frame", "delta", { delta: {} }],

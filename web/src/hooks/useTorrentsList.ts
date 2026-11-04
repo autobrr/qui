@@ -24,7 +24,7 @@ import type {
   TorrentResponse,
   TorrentStreamPayload
 } from "@/types"
-import { replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
+import { hashKey, replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 /** Fallback REST polling interval used while the torrent SSE stream is unavailable. */
@@ -581,8 +581,15 @@ export function useTorrentsList(
     // A recent window refresh already covers every loaded page on tab return.
     staleTime: currentPage > 0 ? LOADED_WINDOW_POLL_INTERVAL_MS : 0,
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
-    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
-    placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state.
+    // Key part 3 is the page. Data from another view stays out: the parent keeps the categories and tags
+    // of one render, and a switch from a scrolled list renders once before the page resets.
+    placeholderData: currentPage > 0
+      ? (previousData, previousQuery) =>
+        previousQuery && hashKey(previousQuery.queryKey.map((part, index) => index === 3 ? 0 : part)) === hashKey(streamQueryKey)
+          ? previousData
+          : undefined
+      : undefined,
     // SSE owns only page zero. Healthy streams let later pages refresh more
     // slowly. A stream that is not usable sets the poll for every page.
     refetchInterval: !pollingEnabled
