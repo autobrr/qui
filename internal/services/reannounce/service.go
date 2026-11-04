@@ -261,7 +261,7 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		return
 	}
 
-	if client.SupportsTrackerHealth() {
+	if client.Supports(qbittorrent.CapTrackerHealth) {
 		// Cached torrents can lack tracker lists. Keep possible tracker matches
 		// and apply tracker rules to the fresh response below.
 		prefilter := *settings

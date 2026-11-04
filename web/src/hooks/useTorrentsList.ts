@@ -6,7 +6,7 @@
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { refreshChangedCapabilities, useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
@@ -439,6 +439,7 @@ export function useTorrentsList(
       rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
       updateAppInfoCache(data)
       updateMetadataCache(data)
+      refreshChangedCapabilities(queryClient, data)
 
       if (rowsChanged) {
         setAllTorrents(prev => mergeStreamedRows(prev, data, Boolean(useCrossInstanceEndpoint)))
@@ -629,6 +630,7 @@ export function useTorrentsList(
     if (!newerStreamSnapshotExists) {
       updateAppInfoCache(data)
       updateMetadataCache(data)
+      refreshChangedCapabilities(queryClient, data)
       rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
 
       if (data.total !== undefined) {
@@ -690,7 +692,7 @@ export function useTorrentsList(
       }
     }
 
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, getNewerStreamSnapshot, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, getNewerStreamSnapshot, queryClient, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
 
   const loadMore = () => {
     const now = Date.now()

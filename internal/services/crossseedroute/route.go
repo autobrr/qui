@@ -86,12 +86,10 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	if !forListing {
 		return nil
 	}
-	if client.GetWebAPIVersion() == "" {
-		if err := client.RefreshCapabilities(ctx); err != nil {
-			return fmt.Errorf("%w: %s: read the qBittorrent version: %w", ErrUnavailable, instance.Name, err)
-		}
+	if err := client.EnsureCapabilities(ctx); err != nil {
+		return fmt.Errorf("%w: %s: read the qBittorrent version: %w", ErrUnavailable, instance.Name, err)
 	}
-	if !client.SupportsPathAutocomplete() {
+	if !client.Supports(qbittorrent.CapPathAutocomplete) {
 		return fmt.Errorf("%w: %s runs a qBittorrent version older than 5.0", ErrUnavailable, instance.Name)
 	}
 	return nil

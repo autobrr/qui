@@ -46,7 +46,7 @@ func connectActivityStream(t *testing.T, srv string) (*sseReader, func()) {
 }
 
 func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	subscribed := watchSubscriptions(manager)
 	hub := activity.NewHub()
 	manager.SetActivityHub(hub)
@@ -82,7 +82,7 @@ func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
 }
 
 func TestActivityTopicReleasedOnDisconnect(t *testing.T) {
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	hub := activity.NewHub()
 	manager.SetActivityHub(hub)
 	t.Cleanup(func() {
@@ -112,7 +112,7 @@ func TestActivityTopicReleasedOnDisconnect(t *testing.T) {
 func TestServeRejectsEmptyRequestWithoutActivity(t *testing.T) {
 	// With no activity hub wired and no streams param, the request is rejected as
 	// before (activity mode is gated on a configured hub).
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	srv := startStreamServer(t, manager)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/stream", nil)

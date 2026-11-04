@@ -12,7 +12,7 @@
     "externalPrograms": "外部程式",
     "notifications": "通知",
     "dateTime": "時間與語言",
-    "premiumThemes": "進階主題",
+    "premiumThemes": "主題",
     "security": "安全",
     "logs": "日誌"
   },
@@ -418,38 +418,37 @@
     "selector": {
       "title": "主題選擇",
       "loadingDescription": "正在載入可用主題...",
-      "description": "從可用主題中選擇。進階主題需要有效的授權。",
-      "verificationUnavailable": "授權驗證不可用。進階主題切換暫時停用。",
-      "notLoaded": "進階主題未載入",
-      "notLoadedDescription": "配置",
-      "notLoadedAnd": "並執行",
-      "premium": "進階",
-      "pro": "Pro",
+      "description": "從可用主題中選擇。部分主題需要有效的授權。",
+      "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
+      "notLoaded": "需要授權的主題未載入",
+      "notLoadedDescription": "執行",
       "free": "免費",
       "locked": "已鎖定",
-      "lock": "鎖定"
+      "lock": "鎖定",
+      "showTheme": "顯示",
+      "hideTheme": "隱藏"
     },
     "toasts": {
-      "premiumRequired": "需要進階授權",
-      "premiumRequiredDescription": "新增有效的進階授權以解鎖進階主題。"
+      "premiumRequired": "需要授權",
+      "premiumRequiredDescription": "新增有效的授權以解鎖所有主題。"
     },
     "license": {
       "loadingTitle": "授權管理",
       "loadingDescription": "正在載入主題授權...",
       "managementTitle": "授權管理",
-      "managementDescription": "管理您的主題授權和進階存取權限",
+      "managementDescription": "管理您的主題授權",
       "providers": {
         "licensePortal": "授權門戶"
       },
       "status": {
-        "unlockTitle": "解鎖進階主題",
+        "unlockTitle": "解鎖所有主題",
         "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
-        "activeTitle": "進階存取已啟用",
-        "activeDescription": "您可以存取所有目前和未來的進階主題",
+        "activeTitle": "授權已啟用",
+        "activeDescription": "您可以使用所有目前和未來的主題",
         "activationRequiredTitle": "需要啟用授權",
         "activationRequiredDescription": "您的授權需要在此裝置上啟用",
         "offlineTitle": "無法連線至授權服務",
-        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此進階主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此需要授權的主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
@@ -501,7 +500,7 @@
         "addLicense": "新增授權",
         "remove": "移除",
         "removing": "移除中...",
-        "getPremium": "獲取進階版",
+        "getPremium": "取得授權",
         "reactivate": "重新啟用授權",
         "activating": "啟用中...",
         "copyLicenseKey": "複製授權金鑰",
@@ -517,17 +516,17 @@
         "recoverPrefix": "如有需要，您可以稍後從"
       },
       "addDialog": {
-        "title": "新增進階授權",
-        "description": "輸入您的進階主題授權金鑰以解鎖所有進階主題。",
+        "title": "新增授權",
+        "description": "輸入您的授權金鑰以解鎖所有主題。",
         "label": "授權金鑰",
-        "placeholder": "輸入您的進階主題授權金鑰",
+        "placeholder": "輸入您的授權金鑰",
         "recoverKey": "找回金鑰？",
         "validation": {
           "required": "授權金鑰為必填項"
         }
       },
       "paymentDialog": {
-        "title": "獲取進階授權",
+        "title": "取得授權",
         "description": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
         "steps": {
           "choosePaymentMethod": {
@@ -559,10 +558,10 @@
       "copiedVerify": "驗證命令已複製",
       "failedCopyVerify": "複製驗證命令失敗",
       "toasts": {
-        "activationSuccessPremium": "進階存取已啟用！感謝您的支援！",
-        "paymentCompleted": "支付完成。請新增您的進階授權金鑰以完成設定。",
+        "activationSuccessPremium": "授權已啟用！感謝您的支援！",
+        "paymentCompleted": "支付完成。請新增您的授權金鑰以完成設定。",
         "paymentNotCompleted": "支付未成功完成。",
-        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的進階授權金鑰。",
+        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的授權金鑰。",
         "keyCopied": "授權金鑰已複製到剪貼簿",
         "copyFailed": "複製授權金鑰失敗",
         "removedFromMachine": "授權已從此裝置移除"
@@ -571,9 +570,9 @@
     "custom": {
       "badge": "自訂",
       "title": "自訂主題",
-      "lockedTitle": "自訂主題是進階功能",
-      "lockedDescription": "解鎖進階版即可從磁碟目錄載入您自己的主題 CSS 檔案。",
-      "unlockCta": "解鎖進階版",
+      "lockedTitle": "自訂主題需要授權",
+      "lockedDescription": "取得授權即可從磁碟目錄載入您自己的主題 CSS 檔案。",
+      "unlockCta": "取得授權",
       "refresh": "重新整理",
       "detectedCount": "找到的主題：{{total}}",
       "parseErrorsTitle": "無法解析以下檔案：",

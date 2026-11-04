@@ -36,13 +36,24 @@ const (
 	UnitFraction       Unit = "fraction" // 0 to 1; a value above 1 is read as a percentage
 )
 
-// Requirement is what an instance must have before a field has data. The empty value means nothing.
-type Requirement string
+// Requirement is what an instance must have before a field has data. The zero value means nothing.
+type Requirement struct {
+	// Key names the requirement in the rule builder: a field of the instance capabilities
+	// response for a version requirement, or an instance capability for an access requirement.
+	Key string
+	// Label is what the docs show.
+	Label string
+	// Capability is the version table entry of a version requirement, and nil for an access requirement.
+	Capability *qbittorrent.Capability
+}
 
-const (
-	RequiresQBit51           Requirement = "qBittorrent 5.1+"
-	RequiresLocalAccess      Requirement = "local filesystem access"
-	RequiresFilesystemAccess Requirement = "filesystem access"
+var (
+	RequiresLiveReannounce   = Requirement{Key: "supportsLiveReannounce", Label: "qBittorrent 5.0+", Capability: new(qbittorrent.CapLiveReannounce)}
+	RequiresListFieldsV5     = Requirement{Key: "supportsListFieldsV5", Label: "qBittorrent 5.0+", Capability: new(qbittorrent.CapListFieldsV5)}
+	RequiresTrackerHealth    = Requirement{Key: "supportsTrackerHealth", Label: "qBittorrent 5.1+", Capability: new(qbittorrent.CapTrackerHealth)}
+	RequiresListCreatedBy    = Requirement{Key: "supportsListCreatedBy", Label: "qBittorrent 5.2+", Capability: new(qbittorrent.CapListCreatedBy)}
+	RequiresLocalAccess      = Requirement{Key: "trustedIdentity", Label: "local filesystem access"}
+	RequiresFilesystemAccess = Requirement{Key: "read", Label: "filesystem access"}
 )
 
 // FieldSpec describes one condition field.
@@ -70,6 +81,11 @@ func (s FieldSpec) Sortable() bool { return s.Sort.Number != nil || s.Sort.Text 
 
 // Scorable reports whether a score rule can multiply the field.
 func (s FieldSpec) Scorable() bool { return s.Sort.Number != nil }
+
+func (s FieldSpec) requires(r Requirement) FieldSpec {
+	s.Requires = r
+	return s
+}
 
 func (s FieldSpec) sortNumber(read func(t qbt.Torrent, ctx *EvalContext) float64) FieldSpec {
 	s.Sort.Number = read
@@ -161,7 +177,7 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldSavePath:      stringField().sortText(func(t qbt.Torrent) string { return strings.ToLower(t.SavePath) }),
 	models.FieldContentPath:   stringField().sortText(func(t qbt.Torrent) string { return strings.ToLower(t.ContentPath) }),
 	models.FieldDownloadPath:  stringField(),
-	models.FieldCreatedBy:     stringField(),
+	models.FieldCreatedBy:     stringField().requires(RequiresListCreatedBy),
 	models.FieldTrackers:      {Type: ValueString, Operators: stringOperators, Legacy: true},
 	models.FieldContentType:   {Type: ValueString, Operators: stringOperators, Values: contentTypes},
 	models.FieldEffectiveName: stringField(),
@@ -176,9 +192,9 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldRlsYear:        numberField(ValueInteger, UnitNone),
 	models.FieldState:          enumField(torrentStates).sortText(func(t qbt.Torrent) string { return strings.ToLower(string(t.State)) }),
 	models.FieldTracker:        stringField().sortText(func(t qbt.Torrent) string { return strings.ToLower(t.Tracker) }),
-	models.FieldTrackerStatus:  {Type: ValueEnum, Operators: equalOperators, Values: trackerStatuses, Requires: RequiresQBit51},
-	models.FieldTrackerMessage: {Type: ValueString, Operators: stringOperators, Requires: RequiresQBit51},
-	models.FieldComment:        stringField().sortText(func(t qbt.Torrent) string { return strings.ToLower(t.Comment) }),
+	models.FieldTrackerStatus:  {Type: ValueEnum, Operators: equalOperators, Values: trackerStatuses, Requires: RequiresTrackerHealth},
+	models.FieldTrackerMessage: {Type: ValueString, Operators: stringOperators, Requires: RequiresTrackerHealth},
+	models.FieldComment:        stringField().requires(RequiresListFieldsV5).sortText(func(t qbt.Torrent) string { return strings.ToLower(t.Comment) }),
 
 	models.FieldSize:              numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.Size) }),
 	models.FieldTotalSize:         numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.TotalSize) }),
@@ -206,7 +222,7 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldLastActivity:             numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return positive(t.LastActivity) }),
 	models.FieldSeenComplete:             numberField(ValueInteger, UnitSeconds),
 	models.FieldETA:                      numberField(ValueInteger, UnitSeconds),
-	models.FieldReannounce:               numberField(ValueInteger, UnitSeconds),
+	models.FieldReannounce:               numberField(ValueInteger, UnitSeconds).requires(RequiresLiveReannounce),
 	models.FieldSeedingTime:              numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return positive(t.SeedingTime) }),
 	models.FieldTimeActive:               numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return positive(t.TimeActive) }),
 	models.FieldMaxSeedingTime:           numberField(ValueInteger, UnitSeconds),
@@ -225,7 +241,7 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	// The sort and the score read 0 to 100. A Condition compares 0 to 1.
 	models.FieldProgress:     numberField(ValueNumber, UnitFraction).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Progress * 100 }),
 	models.FieldAvailability: numberField(ValueNumber, UnitNone).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Availability }),
-	models.FieldPopularity:   numberField(ValueNumber, UnitNone),
+	models.FieldPopularity:   numberField(ValueNumber, UnitNone).requires(RequiresListFieldsV5),
 
 	models.FieldDlSpeed: numberField(ValueInteger, UnitBytesPerSecond).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.DlSpeed) }),
 	models.FieldUpSpeed: numberField(ValueInteger, UnitBytesPerSecond).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.UpSpeed) }),
@@ -240,13 +256,13 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldPriority:      numberField(ValueInteger, UnitNone),
 	models.FieldGroupSize:     numberField(ValueInteger, UnitNone),
 
-	models.FieldPrivate:                booleanField(),
+	models.FieldPrivate:                booleanField().requires(RequiresListFieldsV5),
 	models.FieldAutoManaged:            booleanField(),
 	models.FieldFirstLastPiecePrio:     booleanField(),
 	models.FieldForceStart:             booleanField(),
 	models.FieldSequentialDownload:     booleanField(),
 	models.FieldSuperSeeding:           booleanField(),
-	models.FieldIsUnregistered:         {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresQBit51},
+	models.FieldIsUnregistered:         {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresTrackerHealth},
 	models.FieldHasMissingFiles:        {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresFilesystemAccess},
 	models.FieldHasSkippedFiles:        booleanField(),
 	models.FieldIsGrouped:              booleanField(),

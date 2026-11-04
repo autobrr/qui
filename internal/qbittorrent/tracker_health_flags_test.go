@@ -121,7 +121,7 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.True(t, client.announceFlagsSupported())
+	require.True(t, client.Supports(CapAnnounceFlags))
 
 	rig.sm = NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 	rig.sm.SetSyncEventSink(rig.sink)

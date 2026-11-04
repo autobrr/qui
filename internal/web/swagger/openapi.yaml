@@ -1851,6 +1851,11 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
     post:
       tags:
         - Torrents
@@ -4127,6 +4132,11 @@ paths:
                   partialResults:
                     type: boolean
                     description: Indicates if some instances failed to respond
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
         '400':
           description: Missing or invalid filters parameter
           content:
@@ -7895,6 +7905,15 @@ components:
         supportsShareLimitsMode:
           type: boolean
           description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
+        supportsLiveReannounce:
+          type: boolean
+          description: Whether the torrent list has the seconds until the next announce (Web API 2.10.0+, qBittorrent 5.0+).
+        supportsListFieldsV5:
+          type: boolean
+          description: Whether the torrent list has popularity, private and comment (Web API 2.11.2+, qBittorrent 5.0.0rc1+).
+        supportsListCreatedBy:
+          type: boolean
+          description: Whether the torrent list has created_by (Web API 2.15.1+, qBittorrent 5.2+).
         webAPIVersion:
           type: string
           nullable: true
@@ -7968,6 +7987,12 @@ components:
           type: integer
           format: int64
           description: Seconds until qBittorrent next announces the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
+        popularity:
+          type: number
+          description: Popularity of the torrent. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list.
+        private:
+          type: boolean
+          description: Whether the torrent is private. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list, and for a torrent without metadata, such as a magnet link.
         savePath:
           type: string
 
