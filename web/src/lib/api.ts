@@ -736,17 +736,40 @@ class ApiClient {
     authorizationUrl: string
     disableBuiltInLogin: boolean
     issuerUrl: string
+    providerUnavailable: boolean
   }> {
     try {
-      return await this.request("/auth/oidc/config")
-    } catch {
-      // Return default config if OIDC is not configured
-      return {
-        enabled: false,
-        authorizationUrl: "",
-        disableBuiltInLogin: false,
-        issuerUrl: "",
+      const config = await this.request<{
+        enabled: boolean
+        authorizationUrl: string
+        disableBuiltInLogin: boolean
+        issuerUrl: string
+      }>("/auth/oidc/config")
+      return { ...config, providerUnavailable: false }
+    } catch (error) {
+      // 503: OIDC is configured, but qui has not reached the identity provider yet.
+      if (error instanceof APIError && error.status === 503) {
+        const data = error.data as { disableBuiltInLogin?: boolean } | undefined
+        return {
+          enabled: true,
+          authorizationUrl: "",
+          disableBuiltInLogin: data?.disableBuiltInLogin === true,
+          issuerUrl: "",
+          providerUnavailable: true,
+        }
       }
+      // OIDC is off: 404 when the routes are not registered, 428 before setup (RequireSetup skips it when OIDC is on).
+      if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
+        return {
+          enabled: false,
+          authorizationUrl: "",
+          disableBuiltInLogin: false,
+          issuerUrl: "",
+          providerUnavailable: false,
+        }
+      }
+      // A 429 from the /auth throttle or a network error says nothing about the login policy.
+      throw error
     }
   }
 
