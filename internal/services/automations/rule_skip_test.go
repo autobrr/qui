@@ -558,12 +558,30 @@ func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T)
 }
 
 // regression: #3763
+// The preview keeps only the category action, but the live run skips the group for the whole rule.
+func TestPreview_GroupWithATorrentWithoutMetadataShowsNoCategoryChange(t *testing.T) {
+	svc, instanceID, _ := newSkipTestService(t, webAPIQbit52)
+	rule := parityCategoryRule(models.CategoryAction{})
+	rule.Conditions.Grouping = &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}}
+	rule.Conditions.Category.GroupID = "bysave"
+	rule.Conditions.Category.Condition = &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "m"}
+	rule.Conditions.Pause = &models.PauseAction{Enabled: true, Condition: privateIs("false", false)}
+
+	preview, err := svc.PreviewCategoryRule(t.Context(), instanceID, rule, 10, 0)
+
+	require.NoError(t, err)
+	require.Zero(t, preview.TotalMatches)
+}
+
+// regression: #3763
 // The skip is known before the run reads other data, so a failure for another rule does not hide it.
 func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))
 	require.NoError(t, err)
 	svc.instanceStore = emptyStore
+	publisher := &recordingPublisher{}
+	svc.SetActivityPublisher(publisher)
 	skippedRule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
 	skippedRule.ID = 1
 	runnable := parityDeleteRule(DeleteModeKeepFiles, parityDeleteTag)
@@ -576,4 +594,6 @@ func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, activities, 1)
 	require.Equal(t, models.ActivityActionRuleSkipped, activities[0].Action)
+	// The run stops with an error, so only this signal tells an open activity log about the entry.
+	require.Len(t, publisher.events, 1)
 }

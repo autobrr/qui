@@ -481,8 +481,12 @@ export function WorkflowsOverview() {
       }
       return api.dryRunAutomation(instanceId, payload)
     },
-    onSuccess: (_, { instanceId, rule }) => {
-      toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
+    onSuccess: (result, { instanceId, rule }) => {
+      if (result.activities?.some(activity => activity.action === "rule_skipped")) {
+        toast.warning(t("preferences.runWorkflowNow.toast.skipped", { name: rule.name }))
+      } else {
+        toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
+      }
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     },
     onError: (error) => {

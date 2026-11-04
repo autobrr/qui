@@ -173,6 +173,8 @@ func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, rules []s
 		s.reportedSkips[key] = skipped.RuleSkip
 		s.mu.Unlock()
 	}
+	// A later failure for another rule ends the run before its own signal.
+	s.publishActivity(instanceID, activities)
 	return activities
 }
 
@@ -837,9 +839,10 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 		deletions:     &deletionSelection{},
 		torrents:      torrents,
 		torrentByHash: torrentByHash,
-		ruleByID:      map[int]*models.Automation{only.ID: &only},
-		crossSeeds:    crossSeeds,
-		evalCtx:       evalCtx,
+		// The whole rule: a grouped action asks if the rule reads Private in another action.
+		ruleByID:   map[int]*models.Automation{rule.ID: rule},
+		crossSeeds: crossSeeds,
+		evalCtx:    evalCtx,
 	})
 	return plan, own
 }
