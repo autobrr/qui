@@ -859,6 +859,7 @@ func keepResetTagsOfRule(rule *models.Automation, state *torrentDesiredState) {
 // tag from every torrent first, so a torrent that gets no decision keeps the tags it has.
 func keepCurrentTags(rule *models.Automation, tags []string, state *torrentDesiredState) {
 	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
 		_, hasTag := state.currentTags[tag]
 		if _, pending := state.tagActions[tag]; hasTag && !pending {
 			state.tagActions[tag] = "add"

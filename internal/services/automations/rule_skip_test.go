@@ -476,6 +476,41 @@ func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 }
 
 // regression: #3763
+// The reset deletes the trimmed tag, so a space around the configured tag must not lose it. The
+// torrent keeps the spelling of its own tag.
+func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+		onTorrent  string
+	}{
+		{"a space around the configured tag", " managed ", "managed"},
+		{"an upper-case tag", "Managed", "Managed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := newStubQbt(t, `{"magnet": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "`+tt.onTorrent+`"}}`)
+			stub.webAPIVersion = webAPIQbit52
+			svc, _, instanceIDs := newStubService(t, nil, stub)
+			rule := &models.Automation{ID: 1, Name: "tags", TrackerPattern: "*", Enabled: true, Conditions: &models.ActionConditions{
+				Tags: []*models.TagAction{{Enabled: true, Tags: []string{tt.configured}, Mode: models.TagModeFull, DeleteFromClient: true, Condition: privateIs("false", false)}},
+			}}
+
+			_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, []*models.Automation{rule}, false)
+
+			require.NoError(t, err)
+			var kept bool
+			for _, write := range stub.recordedWrites() {
+				if write.path == "torrents/setTags" {
+					kept = kept || (write.form.Get("hashes") == "magnet" && write.form.Get("tags") == tt.onTorrent)
+				}
+			}
+			require.True(t, kept, "the magnet link lost its tag: %+v", stub.recordedWrites())
+		})
+	}
+}
+
+// regression: #3763
 // The skip is known before the run reads other data, so a failure for another rule does not hide it.
 func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
