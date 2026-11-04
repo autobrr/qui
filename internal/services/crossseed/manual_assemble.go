@@ -231,13 +231,17 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				prep.rejected[hash] = "target_not_found"
 				continue
 			}
-			if torrent.Progress < 1 {
+			switch s.sourceGate().check(&torrent, sourceFilter{}) {
+			case sourceIncomplete:
 				prep.rejected[hash] = "incomplete"
 				continue
-			}
-			if !isSettledSource(&torrent) {
+			case sourceErrored:
+				prep.rejected[hash] = "errored"
+				continue
+			case sourceMovingOrChecking:
 				prep.rejected[hash] = "not_settled"
 				continue
+			default:
 			}
 			parsed := s.releaseCache.Parse(torrent.Name)
 			if parsed == nil {

@@ -128,7 +128,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 
 	for i := range torrents {
 		torrent := &torrents[i]
-		if torrent.Progress < 1.0 {
+		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)

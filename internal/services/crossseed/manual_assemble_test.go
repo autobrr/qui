@@ -230,6 +230,19 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Equal(t, "not_settled", preview.Targets[1].Reason)
 	torrents[2].State = qbt.TorrentStateStalledUp
 
+	// regression: #3707
+	torrents[2].State = qbt.TorrentStateMissingFiles
+	preview, err = svc.CheckManualAssemble(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, "errored", preview.Targets[1].Reason)
+	torrents[2].State = qbt.TorrentStateCheckingUp
+	torrents[2].Progress = 0.4
+	preview, err = svc.CheckManualAssemble(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, "not_settled", preview.Targets[1].Reason)
+	torrents[2].State = qbt.TorrentStateStalledUp
+	torrents[2].Progress = 1
+
 	sm.files["e02"][0].Size++
 	req.TargetHashes = []string{"e01", "e02", "another-instance-hash"}
 	preview, err = svc.CheckManualAssemble(t.Context(), req)

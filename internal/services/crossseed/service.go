@@ -1392,6 +1392,11 @@ var ErrTorrentNotComplete = errors.New("cross-seed torrent not fully downloaded"
 // torrent. The Manual match dialog shows the text as is.
 var ErrSourceNotSettled = errors.New("This torrent is still moving or being checked. Try again when it is done.") //nolint:revive,staticcheck // the user reads this text
 
+// ErrSourceErrored indicates the source torrent has an error or missing files
+// and error recovery is off. The search dialog and the Manual match dialog show
+// the text as is.
+var ErrSourceErrored = errors.New("This torrent has an error or missing files. Fix it, then try again.") //nolint:revive,staticcheck // the user reads this text
+
 // ErrBlocklistEntryNotFound indicates a requested blocklist entry does not exist.
 var ErrBlocklistEntryNotFound = errors.New("cross-seed blocklist entry not found")
 
@@ -1510,29 +1515,6 @@ type searchRunState struct {
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
 	// This avoids repeated settings/key lookups for every candidate torrent.
 	gazelleClients *gazelleClientSet
-}
-
-// shouldSkipErroredTorrent returns true if the torrent should be excluded from
-// candidate selection due to its error state. When recovery is disabled (default),
-// errored/missingFiles torrents are skipped since they can't provide data.
-func (s *Service) shouldSkipErroredTorrent(state qbt.TorrentState) bool {
-	if s.recoverErroredTorrentsEnabled {
-		return false
-	}
-	return state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles
-}
-
-// isSettledSource reports whether a source torrent is complete and qBittorrent
-// is not moving or checking it. A moving torrent still reports the content path
-// of its download path, so a cross-seed added from it misses its files.
-func isSettledSource(torrent *qbt.Torrent) bool {
-	return torrent.Progress >= 1 && !isCompletionCheckingState(torrent.State)
-}
-
-// canGiveFiles reports whether a source torrent can give files to a cross-seed
-// now: it is settled and not skipped for an error.
-func (s *Service) canGiveFiles(torrent *qbt.Torrent) bool {
-	return isSettledSource(torrent) && !s.shouldSkipErroredTorrent(torrent.State)
 }
 
 func (s *Service) ensureIndexersConfigured(ctx context.Context) error {
@@ -2030,7 +2012,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
+	if s.shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
 		return
 	}
 
@@ -2057,7 +2039,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled during delay")
 			return
 		}
-		if shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
+		if s.shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
 			return
 		}
 	}
@@ -2087,13 +2069,15 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Msg("[CROSSSEED-COMPLETION] Failed to reload completion torrent")
 		return
 	}
-	if isCompletionCheckingState(readyTorrent.State) {
+	// An errored torrent goes on to the refusal in content analysis.
+	switch s.sourceGate().check(readyTorrent, sourceFilter{}) {
+	case sourceMovingOrChecking:
 		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent resumed checking before completion search")
 		return
-	}
-	if readyTorrent.Progress < 1.0 {
+	case sourceIncomplete:
 		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent is no longer fully downloaded")
 		return
+	default:
 	}
 
 	completionSettings, err = s.completionStore.Get(ctx, instanceID)
@@ -2109,7 +2093,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
-	if shouldSkipCompletionTorrent(instanceID, readyTorrent, completionSettings) {
+	if s.shouldSkipCompletionTorrent(instanceID, readyTorrent, completionSettings) {
 		return
 	}
 
@@ -2138,7 +2122,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 }
 
-func shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torrent, completionSettings *models.InstanceCrossSeedCompletionSettings) bool {
+func (s *Service) shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torrent, completionSettings *models.InstanceCrossSeedCompletionSettings) bool {
 	if torrent == nil {
 		return true
 	}
@@ -2153,12 +2137,16 @@ func shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torrent, completio
 		return true
 	}
 
-	if !matchesCompletionFilters(torrent, completionSettings) {
+	if s.sourceGate().check(torrent, completionSourceFilter(completionSettings)) == sourceOutsideFilter {
 		logCompletionSkip(instanceID, torrent, "[CROSSSEED-COMPLETION] Torrent does not match completion filters")
 		return true
 	}
 
 	return false
+}
+
+func completionSourceFilter(settings *models.InstanceCrossSeedCompletionSettings) sourceFilter {
+	return sourceFilter{settings.Categories, settings.Tags, settings.ExcludeCategories, settings.ExcludeTags}
 }
 
 func logCompletionSkip(instanceID int, torrent *qbt.Torrent, message string) {
@@ -2374,7 +2362,7 @@ func (s *Service) applyCompletionPollResultsLocked(
 			continue
 		}
 
-		if current.Progress < 1.0 {
+		if s.sourceGate().check(&current, sourceFilter{}) == sourceIncomplete {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", current.Hash).
@@ -2404,7 +2392,7 @@ func (s *Service) keepWaitingForCompletion(
 	current qbt.Torrent,
 	now time.Time,
 ) bool {
-	if !isCompletionCheckingState(current.State) {
+	if s.sourceGate().check(&current, sourceFilter{}) != sourceMovingOrChecking {
 		return false
 	}
 
@@ -2616,13 +2604,6 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 	return result, nil
 }
 
-func isCompletionCheckingState(state qbt.TorrentState) bool {
-	return state == qbt.TorrentStateCheckingDl ||
-		state == qbt.TorrentStateCheckingUp ||
-		state == qbt.TorrentStateCheckingResumeData ||
-		state == qbt.TorrentStateMoving
-}
-
 func (s *Service) invokeCompletionSearch(
 	ctx context.Context,
 	instanceID int,
@@ -2831,10 +2812,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	defaults := defaultsFor(triggerCompletion, settings)
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
 	if completionSettings != nil {
-		defaults.sourceFilter = sourceFilter{
-			completionSettings.Categories, completionSettings.Tags,
-			completionSettings.ExcludeCategories, completionSettings.ExcludeTags,
-		}
+		defaults.sourceFilter = completionSourceFilter(completionSettings)
 	}
 	entries, err := s.applySourceSearchResults(ctx, instanceID, torrent, searchResp, defaults, time.Now().UTC())
 	if err != nil {
@@ -3906,10 +3884,11 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 	}
 
 	// Check if RSS source filters are configured
-	hasRSSSourceFilters := settings != nil && (len(settings.RSSSourceCategories) > 0 ||
-		len(settings.RSSSourceTags) > 0 ||
-		len(settings.RSSSourceExcludeCategories) > 0 ||
-		len(settings.RSSSourceExcludeTags) > 0)
+	var rssFilter sourceFilter
+	if settings != nil {
+		rssFilter = defaultsFor(triggerRSS, settings).sourceFilter
+	}
+	hasRSSSourceFilters := rssFilter.hasRules()
 
 	if settings != nil {
 		log.Debug().
@@ -3943,45 +3922,29 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			continue
 		}
 
-		// Apply RSS source filters if configured - track filtering stats inline
-		var excludedCategories, includedCategories map[string]int
-		if hasRSSSourceFilters {
-			excludedCategories = make(map[string]int)
-			includedCategories = make(map[string]int)
-		}
-
 		// Filter torrents inline without creating intermediate copies
 		if hasRSSSourceFilters {
+			var counts sourceFilterCounts
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
 			for i := range torrents {
-				if matchesRSSSourceFilters(&torrents[i], settings) {
+				kept := rssFilter.match(&torrents[i])
+				counts.add(torrents[i].Category, kept)
+				if kept {
 					filtered = append(filtered, torrents[i])
-					includedCategories[torrents[i].Category]++
-				} else {
-					excludedCategories[torrents[i].Category]++
 				}
 			}
 			torrents = filtered
 
 			// Log filter results
-			if len(excludedCategories) > 0 || len(includedCategories) > 0 {
-				excludedSummary := make([]string, 0, len(excludedCategories))
-				for cat, count := range excludedCategories {
-					excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-				}
-				includedSummary := make([]string, 0, len(includedCategories))
-				for cat, count := range includedCategories {
-					includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-				}
-
+			if !counts.empty() {
 				log.Debug().
 					Int("instanceID", instanceID).
 					Str("instanceName", snap.instance.Name).
 					Int("original", originalCount).
 					Int("filtered", len(torrents)).
-					Strs("excludedCategories", excludedSummary).
-					Strs("includedCategories", includedSummary).
+					Strs("excludedCategories", categoryCountSummary(counts.excluded)).
+					Strs("includedCategories", categoryCountSummary(counts.included)).
 					Msg("[RSS] Source filter results")
 			}
 		}
@@ -4024,6 +3987,8 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	}
 	sort.Ints(instanceIDs)
 
+	gate := s.sourceGate()
+	rssFilter := defaultsFor(triggerRSS, settings).sourceFilter
 	matches := make([]boundAnnouncementMatch, 0, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
 		snapshot := snapshots.instances[instanceID]
@@ -4032,7 +3997,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 		}
 		for i := range snapshot.torrents {
 			torrent := &snapshot.torrents[i]
-			if !s.canGiveFiles(torrent) || !matchesRSSSourceFilters(torrent, settings) {
+			if gate.check(torrent, rssFilter) != sourcePass {
 				continue
 			}
 			if sourceSize := searchSourceSize(torrent); sourceSize <= 0 || sourceSize != result.Size {
@@ -4381,12 +4346,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		// Pre-filter torrents before loading files to reduce downstream work
 		for _, torrent := range torrents {
-			if !s.canGiveFiles(&torrent) {
-				continue
-			}
-
-			// Apply source filters if provided (from RSS automation source filter settings)
-			if !matchesSourceFilters(&torrent, req) {
+			if s.sourceGate().check(&torrent, req.sourceFilter) != sourcePass {
 				continue
 			}
 
@@ -4599,6 +4559,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
 		ManualTargetHash:       req.ManualTargetHash,
 		SearchDecision:         req.SearchDecision.clone(),
+		sourceFilter:           req.sourceFilter,
 	}
 	if req.ManualTargetHash != "" {
 		log.Info().
@@ -4607,22 +4568,8 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 			Str("manualTargetHash", req.ManualTargetHash).
 			Msg("[CROSSSEED] Manual match: applying against user-chosen target")
 	}
-	// Pass through source filters for RSS automation
-	if len(req.SourceFilterCategories) > 0 {
-		findReq.SourceFilterCategories = append([]string(nil), req.SourceFilterCategories...)
-	}
-	if len(req.SourceFilterTags) > 0 {
-		findReq.SourceFilterTags = append([]string(nil), req.SourceFilterTags...)
-	}
-	if len(req.SourceFilterExcludeCategories) > 0 {
-		findReq.SourceFilterExcludeCategories = append([]string(nil), req.SourceFilterExcludeCategories...)
-	}
-	if len(req.SourceFilterExcludeTags) > 0 {
-		findReq.SourceFilterExcludeTags = append([]string(nil), req.SourceFilterExcludeTags...)
-	}
-
 	candidatesResp, err := s.FindCandidates(ctx, findReq)
-	if errors.Is(err, ErrSourceNotSettled) {
+	if sourceTurnRefusal(err) != nil {
 		return nil, err
 	}
 	if err != nil {
@@ -4957,9 +4904,11 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 // autobrrApplySources yields the local torrents that autobrr apply can use as
 // its source: settled, with no error, and inside the webhook source filters.
 func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
+	gate := s.sourceGate()
+	filter := defaultsFor(triggerWebhook, settings).sourceFilter
 	return func(yield func(*qbt.Torrent) bool) {
 		for torrent := range viewTorrents(torrents) {
-			if s.canGiveFiles(torrent) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+			if gate.check(torrent, filter) == sourcePass && !yield(torrent) {
 				return
 			}
 		}
@@ -6259,8 +6208,8 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 	sourceTorrent := &torrents[0]
-	if sourceTorrent.Progress < 1.0 {
-		return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
+	if err := s.requireSource(sourceTorrent); err != nil {
+		return nil, err
 	}
 
 	// Pre-fetch all indexer info (names and domains) for performance
@@ -7286,8 +7235,8 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 		return nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 	sourceTorrent := &torrents[0]
-	if sourceTorrent.Progress < 1.0 {
-		return nil, nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
+	if err := s.requireSource(sourceTorrent); err != nil {
+		return nil, nil, err
 	}
 	return instance, sourceTorrent, nil
 }
@@ -9117,13 +9066,12 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	}
 
 	// Filter torrents inline without creating intermediate copies
+	gate := s.sourceGate()
 	filtered := make([]qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
-		// Skip errored torrents when recovery is disabled
-		if s.shouldSkipErroredTorrent(torrent.State) {
-			continue
-		}
-		if matchesSearchFilters(&torrent, state.opts) {
+		// A moving or checking torrent stays: the check at its turn reads its
+		// state then.
+		if answer := gate.check(&torrent, state.opts.sourceFilter); answer == sourcePass || answer == sourceMovingOrChecking {
 			filtered = append(filtered, torrent)
 		}
 	}
@@ -9252,12 +9200,6 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 	}
 
 	if torrent.Hash == "" {
-		if cacheKey != "" && state.skipCache != nil {
-			state.skipCache[cacheKey] = true
-		}
-		return true, nil
-	}
-	if torrent.Progress < 1.0 {
 		if cacheKey != "" && state.skipCache != nil {
 			state.skipCache[cacheKey] = true
 		}
@@ -9431,6 +9373,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		gazelleKeys:          state.gazelleClients.hosts(),
 		duplicateSourceSites: state.duplicateSourceSites[torrent.Hash],
 	}, false)
+	if s.skipRefusedSource(state, torrent, scope.err, processedAt) { //nolint:contextcheck // the run row is saved with its own context, so a canceled run keeps it
+		return false, nil
+	}
 	if scope.err != nil {
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
@@ -9481,6 +9426,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		FindIndividualEpisodes: state.opts.findIndividualEpisodes,
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, scope, state.gazelleClients)
+	if s.skipRefusedSource(state, torrent, err, processedAt) { //nolint:contextcheck // the run row is saved with its own context, so a canceled run keeps it
+		return false, nil
+	}
 	delayAfterCandidate := remoteRequestsMade
 	// searchTorrentMatches can return before the Torznab search, so only an
 	// indexer that answered proves one ran.
@@ -9593,6 +9541,25 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return delayAfterCandidate, nil
 	}
 	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %w", counts.firstErr)
+}
+
+// skipRefusedSource adds the Skipped row of a torrent that cannot give files at
+// its turn. It writes no history, for the torrent and for its duplicates, so the
+// next run searches it.
+func (s *Service) skipRefusedSource(state *searchRunState, torrent *qbt.Torrent, err error, processedAt time.Time) bool {
+	refusal := sourceTurnRefusal(err)
+	if refusal == nil {
+		return false
+	}
+	s.appendSearchResult(state, models.CrossSeedSearchResult{
+		TorrentHash: torrent.Hash,
+		TorrentName: torrent.Name,
+		Status:      models.CrossSeedSearchResultStatusSkipped,
+		Message:     refusal.Error(),
+		ProcessedAt: processedAt,
+	})
+	s.finishSearchCandidate(state, 0, false)
+	return true
 }
 
 // finishSearchCandidate puts one completed search candidate into exactly one
@@ -10711,218 +10678,6 @@ func (s *Service) setNextWake(state *searchRunState, next time.Time) {
 	s.searchMu.Unlock()
 }
 
-func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
-	if torrent == nil {
-		return false
-	}
-
-	// TODO: ExcludeCategories and ExcludeTags are not yet exposed in the Seeded Search UI.
-
-	// Check exclude categories first (if configured)
-	if len(opts.ExcludeCategories) > 0 && slices.Contains(opts.ExcludeCategories, torrent.Category) {
-		return false
-	}
-
-	// Check include categories (if configured)
-	if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	// Check exclude tags (if configured)
-	if len(opts.ExcludeTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(opts.ExcludeTags, tag) {
-				return false
-			}
-		}
-	}
-
-	// Check include tags (if configured)
-	if len(opts.Tags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(opts.Tags, tag) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// matchesRSSSourceFilters checks if a torrent matches RSS source filters.
-// Empty filter arrays mean "all" (no filtering).
-func matchesRSSSourceFilters(torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) bool {
-	if torrent == nil || settings == nil {
-		return false
-	}
-
-	// Check exclude categories first (if configured)
-	if len(settings.RSSSourceExcludeCategories) > 0 && slices.Contains(settings.RSSSourceExcludeCategories, torrent.Category) {
-		return false
-	}
-
-	// Check include categories (if configured)
-	if len(settings.RSSSourceCategories) > 0 && !slices.Contains(settings.RSSSourceCategories, torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
-	if len(settings.RSSSourceExcludeTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.RSSSourceExcludeTags, tag) {
-				return false
-			}
-		}
-	}
-
-	// Check include tags (if configured) - at least one must match, case-sensitive
-	if len(settings.RSSSourceTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.RSSSourceTags, tag) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// matchesCompletionFilters checks if a torrent matches completion filters.
-// Uses per-instance InstanceCrossSeedCompletionSettings.
-func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFilterProvider) bool {
-	if torrent == nil || settings == nil {
-		return false
-	}
-
-	if len(settings.GetExcludeCategories()) > 0 && slices.Contains(settings.GetExcludeCategories(), torrent.Category) {
-		return false
-	}
-
-	if len(settings.GetCategories()) > 0 && !slices.Contains(settings.GetCategories(), torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	if len(settings.GetExcludeTags()) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.GetExcludeTags(), tag) {
-				return false
-			}
-		}
-	}
-
-	if len(settings.GetTags()) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.GetTags(), tag) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// matchesWebhookSourceFilters checks if a torrent matches webhook source filters.
-// Empty filter arrays mean "all" (no filtering).
-func matchesWebhookSourceFilters(torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) bool {
-	if torrent == nil || settings == nil {
-		return false
-	}
-
-	// Check exclude categories first (if configured)
-	if len(settings.WebhookSourceExcludeCategories) > 0 && slices.Contains(settings.WebhookSourceExcludeCategories, torrent.Category) {
-		return false
-	}
-
-	// Check include categories (if configured)
-	if len(settings.WebhookSourceCategories) > 0 && !slices.Contains(settings.WebhookSourceCategories, torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
-	if len(settings.WebhookSourceExcludeTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.WebhookSourceExcludeTags, tag) {
-				return false
-			}
-		}
-	}
-
-	// Check include tags (if configured) - at least one must match, case-sensitive
-	if len(settings.WebhookSourceTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(settings.WebhookSourceTags, tag) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// matchesSourceFilters checks if a torrent matches source filters from FindCandidatesRequest.
-// This is used when FindCandidates is called without pre-built snapshots (e.g., from CrossSeed).
-// Empty filter arrays mean "all" (no filtering).
-func matchesSourceFilters(torrent *qbt.Torrent, req *FindCandidatesRequest) bool {
-	if torrent == nil || req == nil {
-		return true // No filters to apply
-	}
-
-	// Check if any source filters are configured
-	hasFilters := len(req.SourceFilterCategories) > 0 ||
-		len(req.SourceFilterTags) > 0 ||
-		len(req.SourceFilterExcludeCategories) > 0 ||
-		len(req.SourceFilterExcludeTags) > 0
-
-	if !hasFilters {
-		return true
-	}
-
-	// Check exclude categories first (if configured)
-	if len(req.SourceFilterExcludeCategories) > 0 && slices.Contains(req.SourceFilterExcludeCategories, torrent.Category) {
-		return false
-	}
-
-	// Check include categories (if configured)
-	if len(req.SourceFilterCategories) > 0 && !slices.Contains(req.SourceFilterCategories, torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
-	if len(req.SourceFilterExcludeTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(req.SourceFilterExcludeTags, tag) {
-				return false
-			}
-		}
-	}
-
-	// Check include tags (if configured) - at least one must match, case-sensitive
-	if len(req.SourceFilterTags) > 0 {
-		for _, tag := range torrentTags {
-			if slices.Contains(req.SourceFilterTags, tag) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
 func hasCrossSeedTag(rawTags string) bool {
 	return slices.Contains(splitTags(rawTags), "cross-seed")
 }
@@ -11659,10 +11414,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	announcedGroup := m.normalizedGroupSiteIdentity(incomingRelease)
 
 	// Apply webhook source filters if configured
-	hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
-		len(settings.WebhookSourceTags) > 0 ||
-		len(settings.WebhookSourceExcludeCategories) > 0 ||
-		len(settings.WebhookSourceExcludeTags) > 0
+	gate := s.sourceGate()
+	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
+	hasWebhookSourceFilters := webhookFilter.hasRules()
 
 	// Start the file reads of all instances before the first wait, so a slow
 	// instance does not use up the wait of the others. The waits share one
@@ -11681,8 +11435,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		// An errored source with recovery off is no match, so its files are not read.
 		pendingReads[instance.ID] = s.requestLocalReads(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
 			for torrent := range viewTorrents(torrentsView) {
-				if !s.shouldSkipErroredTorrent(torrent.State) &&
-					(!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
+				if !gate.check(torrent, webhookFilter).lasting() && !yield(torrent) {
 					return
 				}
 			}
@@ -11730,13 +11483,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Msg("[Webhook] Source filter settings for instance")
 
 		// Track filtering stats if we're logging them
-		var excludedCategories map[string]int
-		var includedCategories map[string]int
-		var filteredCount int
-		if hasWebhookSourceFilters {
-			excludedCategories = make(map[string]int)
-			includedCategories = make(map[string]int)
-		}
+		var counts sourceFilterCounts
 
 		log.Debug().
 			Str("source", "cross-seed.webhook").
@@ -11757,19 +11504,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 			torrent := torrentView.Torrent
 
-			// Skip torrents that don't match webhook source filters
+			answer := gate.check(torrent, webhookFilter)
 			if hasWebhookSourceFilters {
-				if matchesWebhookSourceFilters(torrent, settings) {
-					filteredCount++
-					includedCategories[torrent.Category]++
-				} else {
-					excludedCategories[torrent.Category]++
-					continue
-				}
+				counts.add(torrent.Category, answer != sourceOutsideFilter)
 			}
-			// An errored source with recovery off cannot finish without the user, so
-			// it is no match at any progress.
-			if s.shouldSkipErroredTorrent(torrent.State) {
+			if answer.lasting() {
 				continue
 			}
 			match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, req.Size, announcementMatchPolicy{
@@ -11803,7 +11542,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			}
 			matches = append(matches, match)
 
-			if isSettledSource(torrent) {
+			if answer == sourcePass {
 				hasCompleteMatch = true
 				continue
 			}
@@ -11819,24 +11558,15 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		}
 
 		// Log filter results if we tracked them
-		if hasWebhookSourceFilters && (len(excludedCategories) > 0 || len(includedCategories) > 0) {
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-
+		if !counts.empty() {
 			log.Debug().
 				Str("source", "cross-seed.webhook").
 				Int("instanceID", instance.ID).
 				Str("instanceName", instance.Name).
 				Int("original", len(torrentsView)).
-				Int("filtered", filteredCount).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
+				Int("filtered", counts.kept).
+				Strs("excludedCategories", categoryCountSummary(counts.excluded)).
+				Strs("includedCategories", categoryCountSummary(counts.included)).
 				Msg("[Webhook] Source filter results")
 		}
 	}
