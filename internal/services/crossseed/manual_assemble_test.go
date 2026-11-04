@@ -33,7 +33,7 @@ func TestManualAssembleTargetReasonsAreInOpenAPI(t *testing.T) {
 		return string(data)
 	}
 	source := read("manual_assemble.go") + read("seasonpack.go")
-	reasons := regexp.MustCompile(`rejected\[.+\] = "(\w+)"|reject\(candidate, "(\w+)"\)|reason = "(not_paired)"`).FindAllStringSubmatch(source, -1)
+	reasons := regexp.MustCompile(`rejected\[.+\] = "(\w+)"|reject\(candidate, "(\w+)"\)|reason == "" \{\s*reason = "(\w+)"`).FindAllStringSubmatch(source, -1)
 	require.NotEmpty(t, reasons)
 
 	enum := regexp.MustCompile(`enum: \[(.*target_not_found.*)\]`).FindStringSubmatch(read("../../web/swagger/openapi.yaml"))
