@@ -14,6 +14,7 @@ import {
   STATE_VALUE_REQUIREMENTS,
   getCapabilityReason,
   getDisabledFields,
+  getRuleSkipReason,
   type Capabilities,
   type DisabledStateValue
 } from "@/components/query-builder/constants"
@@ -148,6 +149,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   external_program: "preferences.workflowDialog.dryRun.actions.externalProgram",
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
+  rule_skipped: "preferences.workflowDialog.dryRun.actions.ruleSkipped",
 }
 
 // Outside the map: an action of this name would otherwise claim its own fallback.
@@ -209,6 +211,8 @@ function formatDryRunEventSummary(
     }
     case "dry_run_no_match":
       return t("preferences.workflowDialog.dryRun.summary.noMatches")
+    case "rule_skipped":
+      return getRuleSkipReason(details, t)
     case "paused":
     case "resumed":
     case "rechecked":
@@ -2576,6 +2580,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <p className="text-xs text-muted-foreground">
                           {t("preferences.workflowDialog.addConditionsToPreview")}
                         </p>
+                      ) : livePreviewResult.skipped ? (
+                        <p className="text-xs text-amber-500">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">

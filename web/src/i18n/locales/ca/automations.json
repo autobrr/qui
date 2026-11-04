@@ -231,6 +231,7 @@
       "localFilesystemAccess": "Requereix accés al sistema de fitxers local",
       "remoteInstance": "No disponible en instàncies remotes"
     },
-    "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}."
+    "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}.",
+    "ruleSkip": "No s'executa en aquesta instància: {{field}} necessita {{requires}}."
   }
 }

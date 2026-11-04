@@ -555,7 +555,8 @@
         "move": "Move",
         "externalProgram": "External program",
         "dryRun": "Dry-run",
-        "exportToInstance": "Export to instance"
+        "exportToInstance": "Export to instance",
+        "ruleSkipped": "Rule not run"
       },
       "shareLimit": {
         "global": "Global",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "Deleted {{count}} activity entries",
         "deleteActivityFailed": "Failed to delete activity"
       },
-      "exported": "Exported"
+      "exported": "Exported",
+      "skipped": "Skipped"
     },
     "runWorkflowNow": {
       "action": "Run now",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Run completed for \"{{name}}\" with errors. See the activity log.",
         "dryRunCompleted": "Dry-run completed for \"{{name}}\"",
         "inProgress": "A run is in progress. Try again in a moment.",
-        "failed": "Failed to run the workflow"
+        "failed": "Failed to run the workflow",
+        "skipped": "\"{{name}}\" did not run. See the activity log."
       }
     },
     "workflowPreview": {
@@ -962,7 +965,8 @@
         "external_program": "External program",
         "auto_managed": "Auto managed",
         "dry_run_no_match": "Dry-run (no match)",
-        "exported_to_instance": "Export to instance"
+        "exported_to_instance": "Export to instance",
+        "rule_skipped": "Rule not run"
       }
     },
     "reannounceOverview": {
@@ -1432,7 +1436,8 @@
           "moved": "Move",
           "externalProgram": "External program",
           "noMatches": "No matches",
-          "exportedToInstance": "Export to instance"
+          "exportedToInstance": "Export to instance",
+          "ruleSkipped": "Rule not run"
         },
         "actionFallback": "Unknown action ({{action}})",
         "summary": {

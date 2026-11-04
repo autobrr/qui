@@ -555,7 +555,8 @@
         "move": "Mover",
         "externalProgram": "Programa externo",
         "dryRun": "Simulação (Dry-run)",
-        "exportToInstance": "Exportar"
+        "exportToInstance": "Exportar",
+        "ruleSkipped": "Regra não executada"
       },
       "shareLimit": {
         "global": "Global",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "Apagadas {{count}} entradas",
         "deleteActivityFailed": "Falha ao excluir histórico"
       },
-      "exported": "Exportado"
+      "exported": "Exportado",
+      "skipped": "Ignorada"
     },
     "runWorkflowNow": {
       "action": "Executar agora",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Execução concluída para \"{{name}}\" com erros. Veja o registro de atividades.",
         "dryRunCompleted": "Simulação concluída para \"{{name}}\"",
         "inProgress": "Há uma execução em andamento. Tente novamente em instantes.",
-        "failed": "Falha ao executar o workflow"
+        "failed": "Falha ao executar o workflow",
+        "skipped": "\"{{name}}\" não foi executada. Veja o registro de atividades."
       }
     },
     "workflowPreview": {
@@ -962,7 +965,8 @@
         "external_program": "Programa rodado",
         "auto_managed": "Gerenciamento Automático",
         "dry_run_no_match": "Simulação (Sem correspondência)",
-        "exported_to_instance": "Exportado"
+        "exported_to_instance": "Exportado",
+        "rule_skipped": "Regra não executada"
       }
     },
     "reannounceOverview": {
@@ -1432,7 +1436,8 @@
           "moved": "Mover",
           "externalProgram": "Programa externo",
           "noMatches": "Nenhuma correspondência",
-          "exportedToInstance": "Exportar"
+          "exportedToInstance": "Exportar",
+          "ruleSkipped": "Regra não executada"
         },
         "actionFallback": "Ação desconhecida ({{action}})",
         "summary": {

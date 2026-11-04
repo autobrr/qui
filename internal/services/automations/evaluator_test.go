@@ -805,7 +805,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorEqual,
 				Value:    "true",
 			},
-			torrent:  qbt.Torrent{Private: true},
+			torrent:  qbt.Torrent{Private: true, HasMetadata: new(true)},
 			expected: true,
 		},
 		{
@@ -815,7 +815,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorEqual,
 				Value:    "false",
 			},
-			torrent:  qbt.Torrent{Private: false},
+			torrent:  qbt.Torrent{Private: false, HasMetadata: new(true)},
 			expected: true,
 		},
 		{
@@ -825,7 +825,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorNotEqual,
 				Value:    "true",
 			},
-			torrent:  qbt.Torrent{Private: false},
+			torrent:  qbt.Torrent{Private: false, HasMetadata: new(true)},
 			expected: true,
 		},
 	}

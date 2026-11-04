@@ -4,7 +4,7 @@
  */
 
 import type { TFunction } from "i18next";
-import type { ConditionField, ConditionOperator } from "@/types";
+import type { AutomationRuleSkip, ConditionField, ConditionOperator } from "@/types";
 import { CONDITION_FIELDS } from "./fields.generated";
 
 // find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
@@ -171,6 +171,15 @@ export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
 /** Get translated label for a condition field */
 export function getFieldLabel(field: string, t: TFunction): string {
   return t(`queryBuilder.fields.${field}`);
+}
+
+/** Get translated reason a rule does not run on this instance */
+export function getRuleSkipReason(skip: Partial<AutomationRuleSkip> | undefined, t: TFunction): string {
+  return t("queryBuilder.ruleSkip", {
+    ns: "automations",
+    field: t([`queryBuilder.fields.${skip?.field}`, "common:status.unknown"], { ns: "automations" }),
+    requires: skip?.requires,
+  });
 }
 
 /** Get translated reason a field or state value is unavailable on this instance */
