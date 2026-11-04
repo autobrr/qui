@@ -990,3 +990,59 @@ func TestBaseURLNormalization(t *testing.T) {
 		assert.Equal(t, want, cfg.Config.BaseURL, "input %q", input)
 	}
 }
+
+func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	cfg := &AppConfig{
+		Config: &domain.Config{
+			LogLevel:           "info",
+			OIDCEnabled:        true,
+			OIDCAllowedSubject: "intruder",
+			OIDCAllowedEmail:   "me@example.com",
+			CORSAllowedOrigins: []string{"https://new.example"},
+		},
+		version:    "test",
+		logManager: NewLogManager("test"),
+	}
+
+	var listenerCalls atomic.Int32
+	cfg.RegisterReloadListener(func(_ *domain.Config) {
+		listenerCalls.Add(1)
+	})
+
+	cfg.applyDynamicChanges(authReloadSettings{oidcAllowedSubject: "abc-123", oidcEnabled: true})
+
+	assert.Equal(t, "abc-123", cfg.Config.OIDCAllowedSubject)
+	assert.Empty(t, cfg.Config.OIDCAllowedEmail)
+	// The rest of the reload still applies.
+	assert.Equal(t, []string{"https://new.example"}, cfg.Config.CORSAllowedOrigins)
+	assert.Equal(t, int32(1), listenerCalls.Load())
+}
+
+// The watcher reads the file before configReloadDelay, so reload must read
+// the file as it is when the delay ends.
+// regression: #3797
+func TestReloadReadsCurrentConfigFile(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	base := testConfigContent + "oidcEnabled = true\n"
+	require.NoError(t, os.WriteFile(path, []byte(base+"oidcAllowedEmail = \"me@example.com\"\n"), 0o600))
+
+	cfg := &AppConfig{viper: viper.New(), Config: &domain.Config{}, version: "test", logManager: NewLogManager("test")}
+	require.NoError(t, cfg.load(path))
+	require.NoError(t, cfg.viper.Unmarshal(cfg.Config))
+	cfg.hydrateConfigFromViper()
+
+	require.NoError(t, os.WriteFile(path, []byte(base+"oidcAllowedSubject = \"abc-123\"\n"), 0o600))
+	cfg.reload()
+	assert.Equal(t, "abc-123", cfg.Config.OIDCAllowedSubject)
+	assert.Empty(t, cfg.Config.OIDCAllowedEmail)
+}

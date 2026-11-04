@@ -227,8 +227,11 @@
     },
     "capabilityReasons": {
       "trackerHealth": "qBittorrent 5.1+ 필요",
+      "qbittorrent50": "qBittorrent 5.0+ 필요",
+      "qbittorrent52": "qBittorrent 5.2+ 필요",
       "localFilesystemAccess": "로컬 파일시스템 접근 필요",
       "remoteInstance": "원격 인스턴스에서는 사용할 수 없음"
-    }
+    },
+    "ruleSkip": "이 인스턴스에서 실행되지 않습니다: {{field}}에는 {{requires}}이(가) 필요합니다."
   }
 }

@@ -217,6 +217,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",
+      "qbittorrent50": "Потребує qBittorrent 5.0+",
+      "qbittorrent52": "Потребує qBittorrent 5.2+",
       "localFilesystemAccess": "Потребує локального доступу до файлової системи",
       "remoteInstance": "Недоступно на віддалених екземплярах"
     },
@@ -229,6 +231,7 @@
       "error": "Помилка",
       "tracker_error": "Помилка трекера",
       "unreachable": "Недоступний"
-    }
+    },
+    "ruleSkip": "Не запускається на цьому екземплярі: {{field}} потребує {{requires}}."
   }
 }

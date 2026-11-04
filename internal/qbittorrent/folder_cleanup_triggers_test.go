@@ -874,3 +874,79 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	}
 	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }
+
+// regression: #3739
+func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"delete", "deleteWithFiles"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.add(r.perRelease(hashA, "tv"))
+			var mu sync.Mutex
+			var got []string
+			r.sm.SetFilesChangedHandler(func(_ int, hash string) {
+				mu.Lock()
+				defer mu.Unlock()
+				got = append(got, hash)
+			})
+
+			require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, action))
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, []string{hashA}, got, "a delete through qui drops the remembered cross-seed read")
+		})
+	}
+}
+
+// syncPending reports whether an edit started a sync that has not finished.
+func (r *triggerRig) syncPending() bool {
+	r.sm.syncDebounceMu.Lock()
+	defer r.sm.syncDebounceMu.Unlock()
+	_, ok := r.sm.debouncedSyncTimers[r.instanceID]
+	return ok
+}
+
+// Each rule of the edit path, tested once through one edit. The accepted Set
+// Location that queues folder cleanup is TestFolderCleanupTriggerSetLocation.
+func TestEditPath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("hashes not in qBittorrent", func(t *testing.T) {
+		t.Parallel()
+		r := newTriggerRig(t)
+		r.add()
+
+		require.ErrorContains(t, r.sm.SetTags(t.Context(), r.instanceID, []string{hashA}, "keep"), "no valid torrents found to set tags")
+		require.Zero(t, r.stub.Writes("torrents/setTags"))
+	})
+
+	t.Run("qBittorrent rejects the edit", func(t *testing.T) {
+		t.Parallel()
+		r := newTriggerRig(t)
+		r.add(r.perRelease(hashA, "tv"))
+		fc := NewFolderCleanup(r.sm.folderCleanup.Load().pool, r.sm, &fakeIgnores{})
+		r.sm.SetFolderCleanup(fc)
+		r.stub.Reject = http.StatusInternalServerError
+
+		require.Error(t, r.sm.SetLocation(t.Context(), r.instanceID, []string{hashA}, r.p("torrents/movies")))
+		require.Equal(t, 1, r.stub.Writes("torrents/setLocation"))
+		require.Empty(t, fc.pending, "a rejected edit queues no folder cleanup")
+		require.False(t, r.syncPending(), "a rejected edit starts no sync")
+	})
+
+	t.Run("qBittorrent accepts the edit", func(t *testing.T) {
+		t.Parallel()
+		r := newTriggerRig(t)
+		r.add(r.perRelease(hashA, "tv"))
+		syncs := r.stub.Syncs()
+
+		require.NoError(t, r.sm.SetTags(t.Context(), r.instanceID, []string{hashA}, "keep"))
+		require.Equal(t, []string{"keep"}, r.stub.Tags(hashA))
+		require.True(t, r.syncPending(), "an accepted edit starts a sync")
+		// One sync after an edit sends two maindata requests (runDebouncedSync).
+		require.Eventually(t, func() bool { return !r.syncPending() }, 5*time.Second, 10*time.Millisecond)
+		require.Equal(t, syncs+2, r.stub.Syncs(), "an accepted edit starts one sync")
+	})
+}

@@ -14,17 +14,18 @@ import {
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
+import { useInstancesSupport, type CapabilityFlag } from "@/hooks/useInstanceCapabilities"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { buildTorrentActionTargets, getTorrentTargetInstanceId } from "@/lib/torrent-action-targets"
 import type { TorrentFieldName, TorrentFieldSelection } from "@/lib/torrent-field-request"
-import type { ActionTarget } from "@/lib/torrent-selection"
+import { actionTargetInstanceIds, type ActionTarget } from "@/lib/torrent-selection"
 import { getToggleSelectionState, getTorrentDisplayHash, getTorrentFullPaths } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import {
   Blocks,
   CheckCircle,
@@ -47,7 +48,7 @@ import {
   Terminal,
   Trash2
 } from "lucide-react"
-import { memo, useCallback, useMemo } from "react"
+import { memo, useCallback, useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CategorySubmenu } from "./CategorySubmenu"
@@ -92,6 +93,13 @@ export interface TorrentContextMenuProps {
     field: TorrentFieldName,
     selection?: TorrentFieldSelection
   ) => Promise<string[]>
+}
+
+// WhenSupported renders its children when every instance supports the
+// capability. It mounts only with the open menu, so a closed row menu holds no
+// capability observers.
+function WhenSupported({ instanceIds, capability, children }: { instanceIds: number[] | undefined; capability: CapabilityFlag; children: ReactNode }) {
+  return useInstancesSupport(instanceIds, capability) ? children : null
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -143,25 +151,10 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const hashes = useMemo(() => torrents.map(t => t.hash), [torrents])
   const actionTargets = useMemo(() => buildTorrentActionTargets(torrents, _instanceId), [torrents, _instanceId])
 
-  const targetInstanceIds = useMemo(() => {
-    const ids = new Set<number>()
-    for (const target of actionTargets) {
-      if (target.instanceId > 0) {
-        ids.add(target.instanceId)
-      }
-    }
-    return Array.from(ids).sort((a, b) => a - b)
-  }, [actionTargets])
-
-  const shouldResolveSetCommentSupport = capabilities === undefined && _instanceId <= 0 && targetInstanceIds.length > 0
-  const setCommentCapabilityQueries = useQueries({
-    queries: targetInstanceIds.map(id => ({
-      queryKey: ["instance-capabilities", id],
-      queryFn: () => api.getInstanceCapabilities(id),
-      staleTime: 60_000,
-      enabled: shouldResolveSetCommentSupport,
-    })),
-  })
+  const targetInstanceIds = useMemo(
+    () => useSelection ? actionTargetInstanceIds(actionTarget, _instanceId) : [getTorrentTargetInstanceId(torrent, _instanceId)],
+    [useSelection, actionTarget, _instanceId, torrent]
+  )
 
   const count = useSelection ? effectiveSelectionCount : 1
   const mixedLabel = count > 1 ? `${t("contextMenu.mixed")} (${count})` : t("contextMenu.mixed")
@@ -330,10 +323,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable })
   }, [onAction])
 
-  const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
-  const supportsSetComment = capabilities?.supportsSetComment ?? (
-    shouldResolveSetCommentSupport? setCommentCapabilityQueries.some(query => query.data?.supportsSetComment === true): false
-  )
   const supportsInstanceScopedActions = _instanceId > 0
 
   return (
@@ -527,14 +516,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 capabilities={capabilities}
               />
             )}
-            {supportsSetComment && onPrepareComment && (
-              <ContextMenuItem
-                onClick={() => onPrepareComment()}
-                disabled={isPending}
-              >
-                <MessageSquare className="mr-2 h-4 w-4" />
-                {t("contextMenu.setComment")} {count > 1 ? `(${count})` : ""}
-              </ContextMenuItem>
+            {onPrepareComment && (
+              <WhenSupported instanceIds={targetInstanceIds} capability="supportsSetComment">
+                <ContextMenuItem
+                  onClick={() => onPrepareComment()}
+                  disabled={isPending}
+                >
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  {t("contextMenu.setComment")} {count > 1 ? `(${count})` : ""}
+                </ContextMenuItem>
+              </WhenSupported>
             )}
             <ContextMenuSeparator />
             <ContextMenuItem
@@ -589,7 +580,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             )}
             <ContextMenuSeparator />
             {supportsInstanceScopedActions && <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />}
-            {supportsTorrentExport && (
+            <WhenSupported instanceIds={targetInstanceIds} capability="supportsTorrentExport">
               <ContextMenuItem
                 onClick={onExport}
                 disabled={isExporting}
@@ -597,7 +588,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 <Download className="mr-2 h-4 w-4" />
                 {count > 1 ? t("contextMenu.exportTorrents", { count }) : t("contextMenu.exportTorrent")}
               </ContextMenuItem>
-            )}
+            </WhenSupported>
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <Copy className="mr-4 h-4 w-4" />

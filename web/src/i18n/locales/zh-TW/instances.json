@@ -554,7 +554,8 @@
         "move": "移動",
         "externalProgram": "外部程式",
         "dryRun": "模擬執行",
-        "exportToInstance": "匯出到實例"
+        "exportToInstance": "匯出到實例",
+        "ruleSkipped": "規則未執行"
       },
       "shareLimit": {
         "global": "全域",
@@ -649,7 +650,8 @@
         "deletedActivityEntries": "已刪除 {{count}} 條活動記錄",
         "deleteActivityFailed": "刪除活動失敗"
       },
-      "exported": "已匯出"
+      "exported": "已匯出",
+      "skipped": "已略過"
     },
     "runWorkflowNow": {
       "action": "立即執行",
@@ -666,7 +668,8 @@
         "completedWithErrors": "「{{name}}」執行完成，但有錯誤。請查看活動記錄。",
         "dryRunCompleted": "「{{name}}」的模擬執行已完成",
         "inProgress": "已有執行正在進行。請稍後再試。",
-        "failed": "執行工作流失敗"
+        "failed": "執行工作流失敗",
+        "skipped": "「{{name}}」未執行。請查看活動記錄。"
       }
     },
     "workflowPreview": {
@@ -934,7 +937,8 @@
         "external_program": "外部程式",
         "auto_managed": "自動管理",
         "dry_run_no_match": "模擬執行（無匹配）",
-        "exported_to_instance": "匯出到實例"
+        "exported_to_instance": "匯出到實例",
+        "rule_skipped": "規則未執行"
       }
     },
     "reannounceOverview": {
@@ -1403,7 +1407,8 @@
           "moved": "移動",
           "externalProgram": "外部程式",
           "noMatches": "無匹配",
-          "exportedToInstance": "匯出到實例"
+          "exportedToInstance": "匯出到實例",
+          "ruleSkipped": "規則未執行"
         },
         "actionFallback": "未知操作（{{action}}）",
         "summary": {

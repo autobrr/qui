@@ -2378,10 +2378,11 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 
 	torrents := []qbt.Torrent{
 		{
-			Hash:    "abc123",
-			Name:    "Test Torrent",
-			Private: false,
-			Tags:    "TEST",
+			Hash:        "abc123",
+			Name:        "Test Torrent",
+			Private:     false,
+			HasMetadata: new(true),
+			Tags:        "TEST",
 		},
 	}
 

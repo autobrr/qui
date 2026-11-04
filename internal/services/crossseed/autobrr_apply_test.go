@@ -258,6 +258,7 @@ func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
 		{name: "reflink added", status: "added_reflink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
 		{name: "hardlink failed", status: "hardlink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 		{name: "reflink failed", status: "reflink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+		{name: "pool registration failed", status: partialPoolRegistrationErrorStatus, eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 	}
 
 	for _, tt := range tests {
@@ -594,10 +595,10 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
 			// Verify source filters were passed through
-			require.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
-			require.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
-			require.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
-			require.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+			require.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
+			require.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
+			require.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
+			require.Equal(t, tt.expectExcludeTags, captured.sourceFilter.excludeTags, "excludeTags mismatch")
 		})
 	}
 }

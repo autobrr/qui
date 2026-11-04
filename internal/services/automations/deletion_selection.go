@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // deletionSelectionInput is what the Deletion selection reads. The run, the dry run and
@@ -216,6 +217,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	projects := !in.eligibleView && ConditionUsesField(deleteAction.Condition, FieldFreeSpace)
+	readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 	stats := getOrCreateRuleStats(in.stats, rule)
 	countNotMet := func() {
 		if stats != nil {
@@ -229,6 +231,10 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 			continue
 		}
 		if !trackers.match(rule.TrackerPattern, torrent, s) {
+			continue
+		}
+		// A torrent without a private value drops out of a rule that reads it. ADR 0039.
+		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate {
 			continue
 		}
 		// Safety: delete must always have an explicit condition.
@@ -333,7 +339,8 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
-		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) {
+		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
+			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return
 		}

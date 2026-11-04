@@ -52,6 +52,7 @@ const ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
   auto_managed: "preferences.activityRunDialog.actionLabels.auto_managed",
   exported_to_instance: "preferences.activityRunDialog.actionLabels.exported_to_instance",
   dry_run_no_match: "preferences.activityRunDialog.actionLabels.dry_run_no_match",
+  rule_skipped: "preferences.activityRunDialog.actionLabels.rule_skipped",
 }
 
 interface AutomationActivityRunDialogProps {

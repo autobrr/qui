@@ -188,6 +188,7 @@ func TestOneRowViewResendsLiveCounters(t *testing.T) {
 		"NumIncomplete":    func(tr *qbt.Torrent) { tr.NumIncomplete++ },
 		"ConnectionsCount": func(tr *qbt.Torrent) { tr.ConnectionsCount++ },
 		"PiecesHave":       func(tr *qbt.Torrent) { tr.PiecesHave++ },
+		"Reannounce":       func(tr *qbt.Torrent) { tr.Reannounce-- },
 	}
 	for name, tick := range counters {
 		for _, tc := range []struct {

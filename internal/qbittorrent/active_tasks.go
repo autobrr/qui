@@ -24,7 +24,7 @@ const activeTaskCountTTL = 10 * time.Second
 // last known value is returned and the cache timestamp is left stale so the next
 // call retries.
 func (c *Client) GetActiveTaskCount(ctx context.Context) int {
-	if c == nil || c.Client == nil || !c.SupportsTorrentCreation() {
+	if c == nil || c.Client == nil || !c.Supports(CapTorrentCreation) {
 		return 0
 	}
 

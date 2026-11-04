@@ -276,6 +276,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.bindOrReadFromFile("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
+	c.viper.BindEnv("oidcAllowedSubject", envPrefix+"OIDC_ALLOWED_SUBJECT")
+	c.viper.BindEnv("oidcAllowedEmail", envPrefix+"OIDC_ALLOWED_EMAIL")
 }
 
 func (c *AppConfig) watchConfig() {
@@ -284,29 +286,43 @@ func (c *AppConfig) watchConfig() {
 	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
-
-		c.configMu.Lock()
-		defer c.configMu.Unlock()
-
-		previousAuthSettings := authReloadSettings{
-			authDisabled:               c.Config.AuthDisabled,
-			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
-			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
-			oidcEnabled:                c.Config.OIDCEnabled,
-			corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
-		}
-
-		// Reload configuration
-		if err := c.viper.Unmarshal(c.Config); err != nil {
-			log.Error().Err(err).Msg("Failed to reload configuration")
-			return
-		}
-		c.hydrateConfigFromViper()
-
-		// Apply dynamic changes
-		c.applyDynamicChanges(previousAuthSettings)
+		// An editor can save in several writes, and a part-written file can
+		// clear keys such as oidcAllowedSubject. Read the file once it is quiet.
+		time.Sleep(configReloadDelay)
+		c.reload()
 	})
 	c.viper.WatchConfig()
+}
+
+const configReloadDelay = 200 * time.Millisecond
+
+func (c *AppConfig) reload() {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+
+	// The watcher read the file before the delay. Read the file as it is now.
+	if err := c.viper.ReadInConfig(); err != nil {
+		log.Error().Err(err).Msg("Failed to read configuration file")
+		return
+	}
+
+	previousAuthSettings := authReloadSettings{
+		authDisabled:               c.Config.AuthDisabled,
+		iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+		authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+		oidcEnabled:                c.Config.OIDCEnabled,
+		oidcAllowedSubject:         c.Config.OIDCAllowedSubject,
+		oidcAllowedEmail:           c.Config.OIDCAllowedEmail,
+		corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
+	}
+
+	if err := c.viper.Unmarshal(c.Config); err != nil {
+		log.Error().Err(err).Msg("Failed to reload configuration")
+		return
+	}
+	c.hydrateConfigFromViper()
+
+	c.applyDynamicChanges(previousAuthSettings)
 }
 
 type authReloadSettings struct {
@@ -314,6 +330,8 @@ type authReloadSettings struct {
 	iAcknowledgeThisIsABadIdea bool
 	authDisabledAllowedCIDRs   []string
 	oidcEnabled                bool
+	oidcAllowedSubject         string
+	oidcAllowedEmail           string
 	corsAllowedOrigins         []string
 }
 
@@ -322,6 +340,13 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	if err := c.ApplyLogConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to apply log configuration")
 	}
+
+	if err := c.Config.ValidateOIDCAllowedUser(); err != nil {
+		log.Error().Err(err).Msg("OIDC allowed user config is invalid after reload; keeping previous oidcAllowedSubject and oidcAllowedEmail")
+		c.Config.OIDCAllowedSubject = previousAuthSettings.oidcAllowedSubject
+		c.Config.OIDCAllowedEmail = previousAuthSettings.oidcAllowedEmail
+	}
+	WarnIfOIDCAllowedUserUnset(c.Config)
 
 	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
 		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
@@ -350,6 +375,14 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	}
 
 	c.notifyListeners()
+}
+
+// WarnIfOIDCAllowedUserUnset logs that every provider user can log in when OIDC
+// is enabled without an allowed user.
+func WarnIfOIDCAllowedUserUnset(cfg *domain.Config) {
+	if cfg.OIDCEnabled && cfg.OIDCAllowedSubject == "" && cfg.OIDCAllowedEmail == "" {
+		log.Warn().Msg("neither oidcAllowedSubject nor oidcAllowedEmail is set: any user your OIDC provider authenticates for this client can log in")
+	}
 }
 
 func (c *AppConfig) hydrateConfigFromViper() {
@@ -410,6 +443,8 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+	c.Config.OIDCAllowedSubject = c.viper.GetString("oidcAllowedSubject")
+	c.Config.OIDCAllowedEmail = c.viper.GetString("oidcAllowedEmail")
 }
 
 func (c *AppConfig) loadAllowedHosts() error {
@@ -734,6 +769,17 @@ sessionSecret = "{{ .sessionSecret }}"
 
 # Disable Built-In Login Form (only works when OIDC is enabled)
 #oidcDisableBuiltInLogin = false
+
+# Only allow one OIDC user to log in, by subject identifier (sub) or by the email
+# address the provider has verified. Set one of the two, not both. When neither
+# is set, any user your provider authenticates for this client can log in.
+# The subject is unique per provider; if your provider lets several accounts
+# share an email address, all of them can log in with oidcAllowedEmail.
+# Environment variable: QUI__OIDC_ALLOWED_SUBJECT
+#oidcAllowedSubject = ""
+
+# Environment variable: QUI__OIDC_ALLOWED_EMAIL
+#oidcAllowedEmail = ""
 `
 
 	// Prepare template data

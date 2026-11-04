@@ -129,15 +129,6 @@ type CrossSeedAutomationSettings struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// CompletionFilterProvider defines the interface for types that provide completion filter fields.
-// Used by InstanceCrossSeedCompletionSettings for per-instance completion configuration.
-type CompletionFilterProvider interface {
-	GetCategories() []string
-	GetTags() []string
-	GetExcludeCategories() []string
-	GetExcludeTags() []string
-}
-
 // DefaultAutoResumeMaxDownloadMB is the default auto-resume budget for new
 // cross-seed additions: resume only when missing data is 50 MiB or less.
 const DefaultAutoResumeMaxDownloadMB = 50

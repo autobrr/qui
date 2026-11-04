@@ -1326,6 +1326,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	policy := seasonPackPolicy(settings)
 	policy.SkipSizeCheck = true
 	packEpisodeReleases := make(map[int]*rls.Release)
+	gate := s.sourceGate()
+	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
 
 	for i := range cached {
 		view := &cached[i]
@@ -1334,7 +1336,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 		torrent := view.Torrent
 
-		if !matchesWebhookSourceFilters(torrent, settings) {
+		answer := gate.check(torrent, webhookFilter)
+		if answer.lasting() {
 			continue
 		}
 
@@ -1414,7 +1417,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
 		// the pack (announce raced the episode's download or its move).
-		if !s.canGiveFiles(torrent) {
+		if answer != sourcePass {
 			log.Debug().
 				Str("pack", packRelease.Title).
 				Int("season", packRelease.Series).

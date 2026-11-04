@@ -95,19 +95,16 @@ func TestTriggerDefaultsRequest(t *testing.T) {
 	}
 
 	assert.Equal(t, &CrossSeedRequest{
-		TorrentData:                   "ZGF0YQ==",
-		Tags:                          []string{"cross-seed"},
-		StartPaused:                   new(true),
-		InheritSourceTags:             true,
-		IndexerName:                   "Indexer",
-		FindIndividualEpisodes:        true,
-		SkipAutoResume:                true,
-		SkipRecheck:                   true,
-		SkipPieceBoundarySafetyCheck:  true,
-		SourceFilterCategories:        []string{"in"},
-		SourceFilterTags:              []string{"tag"},
-		SourceFilterExcludeCategories: []string{"out"},
-		SourceFilterExcludeTags:       []string{"no"},
+		TorrentData:                  "ZGF0YQ==",
+		Tags:                         []string{"cross-seed"},
+		StartPaused:                  new(true),
+		InheritSourceTags:            true,
+		IndexerName:                  "Indexer",
+		FindIndividualEpisodes:       true,
+		SkipAutoResume:               true,
+		SkipRecheck:                  true,
+		SkipPieceBoundarySafetyCheck: true,
+		sourceFilter:                 sourceFilter{[]string{"in"}, []string{"tag"}, []string{"out"}, []string{"no"}},
 	}, d.request("ZGF0YQ==", "Indexer"))
 }
 

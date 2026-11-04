@@ -1741,6 +1741,7 @@
         "target_not_found": "Cíl nebyl v této instanci nalezen.",
         "incomplete": "Stahování cíle není dokončeno.",
         "not_settled": "Tento torrent se stále přesouvá nebo kontroluje. Zkuste to znovu, až to skončí.",
+        "errored": "Tento torrent má chybu nebo chybějící soubory. Opravte to a zkuste to znovu.",
         "no_episode_identity": "Číslo epizody nelze rozpoznat.",
         "file_list_unavailable": "Seznam souborů cíle není dostupný.",
         "episode_file_invalid": "Cíl musí obsahovat jeden přehratelný soubor s identitou vybrané epizody.",

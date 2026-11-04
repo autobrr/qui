@@ -22,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatTimestamp as formatStoredTimestamp, isNeverCompletedTimestamp } from "@/lib/dateTimeUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { formatReannounceIn, getStateLabel } from "@/lib/torrent-state-utils"
 import {
   extractTrackerHost,
   resolveTrackerDisplay,
@@ -74,32 +74,6 @@ function formatEta(seconds: number): string {
   }
 
   return `${secs}s`
-}
-
-function formatReannounce(seconds: number, t: TFunction): string {
-  // Negative values mean "never" or "not applicable"
-  if (seconds < 0) return "-"
-
-  // Zero means "now" (just announced or about to announce)
-  if (seconds === 0) return t("tableColumns.now")
-
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-
-  if (minutes < 1) {
-    return "< 1m"
-  }
-
-  if (hours < 1) {
-    return `${minutes}m`
-  }
-
-  const remainingMinutes = minutes % 60
-  if (remainingMinutes === 0) {
-    return `${hours}h`
-  }
-
-  return `${hours}h ${remainingMinutes}m`
 }
 
 // Calculate minimum column width based on header text
@@ -643,7 +617,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {row.original.popularity.toFixed(2)}
+            {row.original.popularity?.toFixed(2) ?? "—"}
           </div>
         )
       },
@@ -1015,7 +989,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {formatReannounce(row.original.reannounce, t)}
+            {formatReannounceIn(row.original.state, row.original.reannounce, t)}
           </div>
         )
       },
@@ -1027,7 +1001,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {row.original.private ? t("tableColumns.yes") : t("tableColumns.no")}
+            {row.original.private === undefined ? "—" : row.original.private ? t("tableColumns.yes") : t("tableColumns.no")}
           </div>
         )
       },

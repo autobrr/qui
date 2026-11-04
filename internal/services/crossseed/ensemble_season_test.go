@@ -105,6 +105,15 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 				{Hash: "partial", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 0.5},
 			},
 		},
+		// regression: #3707
+		{
+			name: "moving episode does not count toward the group",
+			torrents: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				{Hash: "moving", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 1, State: qbt.TorrentStateMoving},
+			},
+		},
 		{
 			// The two-parter must not suppress the group as a seeded pack, and it
 			// must count episodes 1 and 2, or the group stays below the floor.

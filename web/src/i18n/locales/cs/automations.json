@@ -217,6 +217,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Vyžaduje qBittorrent 5.1+",
+      "qbittorrent50": "Vyžaduje qBittorrent 5.0+",
+      "qbittorrent52": "Vyžaduje qBittorrent 5.2+",
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému",
       "remoteInstance": "Není dostupné pro vzdálené instance"
     },
@@ -229,6 +231,7 @@
       "error": "Chyba",
       "tracker_error": "Chyba trackeru",
       "unreachable": "Nedostupné"
-    }
+    },
+    "ruleSkip": "V této instanci se nespustí: {{field}} vyžaduje {{requires}}."
   }
 }

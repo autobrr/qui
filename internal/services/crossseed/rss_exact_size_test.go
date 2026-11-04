@@ -82,10 +82,10 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	require.True(t, *captured.StartPaused)
 	require.True(t, captured.SkipAutoResume)
 	require.True(t, captured.SkipPieceBoundarySafetyCheck)
-	require.Equal(t, []string{"tv"}, captured.SourceFilterCategories)
-	require.Equal(t, []string{"seed"}, captured.SourceFilterTags)
-	require.Equal(t, []string{"excluded"}, captured.SourceFilterExcludeCategories)
-	require.Equal(t, []string{"blocked"}, captured.SourceFilterExcludeTags)
+	require.Equal(t, []string{"tv"}, captured.sourceFilter.categories)
+	require.Equal(t, []string{"seed"}, captured.sourceFilter.tags)
+	require.Equal(t, []string{"excluded"}, captured.sourceFilter.excludeCategories)
+	require.Equal(t, []string{"blocked"}, captured.sourceFilter.excludeTags)
 }
 
 func TestProcessAutomationCandidateExactSizeFallbackRequiresPositiveEqualSizes(t *testing.T) {
