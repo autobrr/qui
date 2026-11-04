@@ -387,7 +387,7 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
-		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) {
+		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) || (cond.Field == FieldPrivate && qbittorrent.PrivateUnknown(&torrent)) {
 			return false, false
 		}
 		result = evaluateLeaf(cond, torrent, ctx)

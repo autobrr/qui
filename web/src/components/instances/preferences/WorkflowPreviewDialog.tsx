@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { getRuleSkipReason } from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
 import { PathCell } from "@/components/ui/path-cell"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
@@ -355,6 +356,12 @@ export function WorkflowPreviewDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        {preview?.skipped && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+            {getRuleSkipReason(preview.skipped, t)}
+          </p>
+        )}
 
         {preview && preview.examples.length > 0 && (
           <div className="flex-1 min-h-0 overflow-hidden border rounded-lg relative">

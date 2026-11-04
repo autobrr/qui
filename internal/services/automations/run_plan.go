@@ -5,6 +5,7 @@ package automations
 
 import (
 	"context"
+	"encoding/json/v2"
 	"maps"
 	"slices"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // runPlan is what one run of the Automation rules does: for each Action, the torrents it
@@ -33,6 +35,137 @@ type runPlan struct {
 	programs       []pendingProgramExec
 	exports        []pendingExportToInstance
 	deletions      *deletionSelection
+	skipped        []skippedRule // the rules that get no Action on this instance
+}
+
+// RuleSkip says why a rule gets no Action on an instance: it reads a field that the instance
+// does not send. ADR 0039.
+type RuleSkip struct {
+	Field    string `json:"field"`
+	Requires string `json:"requires"` // what the field needs, for example "qBittorrent 5.0+"
+}
+
+type skippedRule struct {
+	RuleSkip
+
+	rule ruleRef
+}
+
+// reportedSkipKey keeps the dry-run entry of a rule apart from its live entry, so that a dry
+// run does not hide the entry of the live run.
+type reportedSkipKey struct {
+	ruleKey
+
+	dryRun bool
+}
+
+// versionedFields holds the fields that need a qBittorrent version, in a fixed order, so that
+// a rule always reports the same field.
+var versionedFields = func() []ConditionField {
+	var fields []ConditionField
+	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
+		if ConditionFields[field].Requires.Capability != nil {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}()
+
+// instanceSupports answers for the current qBittorrent version of the instance. While the
+// version is unknown, every answer is no.
+func (s *Service) instanceSupports(ctx context.Context, instanceID int) func(qbittorrent.Capability) bool {
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: no client to read the instance capabilities")
+		return func(qbittorrent.Capability) bool { return false }
+	}
+	// A failed read on a full sync update leaves the version unknown until something reads it again.
+	if err := client.EnsureCapabilities(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: could not read the qBittorrent version")
+	}
+	return client.Supports
+}
+
+// ruleSkipOf reports the first field that the rule reads, in a condition or in its sort, and
+// that the instance does not send.
+func ruleSkipOf(rule *models.Automation, supports func(qbittorrent.Capability) bool) (RuleSkip, bool) {
+	for _, field := range versionedFields {
+		requires := ConditionFields[field].Requires
+		if !supports(*requires.Capability) && ruleUsesCondition(rule, field) {
+			return RuleSkip{Field: string(field), Requires: requires.Label}, true
+		}
+	}
+	return RuleSkip{}, false
+}
+
+// skipRulesWithUnknownFields splits the rules of one run. A rule that reads a field that the
+// instance does not send never reaches evaluation, because the "not" switch of a condition
+// turns a value that never matches into a value that always matches. A skipped rule stamps
+// its run, so that it does not fetch the torrent list on each tick.
+func (s *Service) skipRulesWithUnknownFields(ctx context.Context, instanceID int, rules []*models.Automation, now time.Time) ([]*models.Automation, []skippedRule) {
+	supports := s.instanceSupports(ctx, instanceID)
+	runnable := make([]*models.Automation, 0, len(rules))
+	var skipped []skippedRule
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rule := range rules {
+		key := ruleKey{instanceID, rule.ID}
+		skip, ok := ruleSkipOf(rule, supports)
+		if !ok {
+			delete(s.reportedSkips, reportedSkipKey{ruleKey: key})
+			delete(s.reportedSkips, reportedSkipKey{ruleKey: key, dryRun: true})
+			runnable = append(runnable, rule)
+			continue
+		}
+		s.lastRuleRun[key] = now
+		skipped = append(skipped, skippedRule{RuleSkip: skip, rule: ruleRef{id: rule.ID, name: rule.Name}})
+	}
+	return runnable, skipped
+}
+
+// recordRuleSkips writes one activity entry for each skip in the plan. A scheduled run writes
+// it once for each rule on each instance, as long as the reason stays. qui keeps this state in
+// memory, so after a restart it writes the entry again. A run that a person starts always
+// writes the entry, because the person waits for the reason.
+func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, plan runPlan, force, dryRun bool) []*models.AutomationActivity {
+	if s.activityStore == nil {
+		return nil
+	}
+	outcome := models.ActivityOutcomeSkipped
+	if dryRun {
+		outcome = models.ActivityOutcomeDryRun
+	}
+	var activities []*models.AutomationActivity
+	for _, skipped := range plan.skipped {
+		key := reportedSkipKey{instanceID: instanceID, ruleID: skipped.rule.id, dryRun: dryRun}
+		s.mu.RLock()
+		reported := s.reportedSkips[key] == skipped.RuleSkip
+		s.mu.RUnlock()
+		if reported && !force {
+			continue
+		}
+		details, _ := json.Marshal(skipped.RuleSkip) //nolint:errchkjson // string fields cannot fail to encode
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Action:     models.ActivityActionRuleSkipped,
+			RuleID:     &skipped.rule.id,
+			RuleName:   skipped.rule.name,
+			Outcome:    outcome,
+			Details:    details,
+			CreatedAt:  time.Now().UTC(),
+		}
+		id, err := s.activityStore.CreateWithID(ctx, activity)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", skipped.rule.id).Msg("automations: failed to record a skipped rule")
+			continue
+		}
+		activity.ID = id
+		activities = append(activities, activity)
+		s.mu.Lock()
+		s.reportedSkips[key] = skipped.RuleSkip
+		s.mu.Unlock()
+	}
+	return activities
 }
 
 // targetLookup asks the target instance of an export if it already has the torrent. ADR 0005.
@@ -100,6 +233,7 @@ type runPlanInput struct {
 	ruleByID      map[int]*models.Automation
 	crossSeeds    crossSeedGroups
 	evalCtx       *EvalContext
+	skipped       []skippedRule
 }
 
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
@@ -118,6 +252,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		},
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
+		skipped:   in.skipped,
 	}
 	// A torrent that the run deletes passes no tag to its cross-seeds, as for category.
 	// Injected sibling states go through the same delete skips below.
@@ -667,6 +802,14 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 
 	states := make(map[string]*torrentDesiredState)
 	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, s.syncManager, nil, nil, states)
+	// keep can leave out the action that reads Private, but the run reads the whole rule.
+	if ruleUsesCondition(rule, FieldPrivate) {
+		for i := range torrents {
+			if qbittorrent.PrivateUnknown(&torrents[i]) {
+				delete(states, torrents[i].Hash)
+			}
+		}
+	}
 
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, t := range torrents {

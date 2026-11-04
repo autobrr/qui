@@ -3447,6 +3447,7 @@ paths:
         Run one saved automation on the instance now and apply its actions. The run ignores the interval of the automation, and it also runs a disabled automation.
         An automation with dryRun set stays a simulation and writes dry-run activity rows.
         Only one run applies actions on an instance at a time. If a run is in progress, the request returns 409 and applies nothing.
+        If the automation reads a field that the qBittorrent version of the instance does not send, the run applies nothing and writes one `rule_skipped` activity row. Its details give the `field` and the version that the field `requires`.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - in: path

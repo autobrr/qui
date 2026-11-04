@@ -44,6 +44,13 @@ describe("WorkflowPreviewDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
+  it("says why the rule does not run on the instance", () => {
+    const preview = { totalMatches: 0, examples: [], skipped: { field: "PRIVATE", requires: "qBittorrent 5.0+" } }
+    render(<WorkflowPreviewDialog {...baseProps} onConfirm={() => {}} preview={preview} />)
+
+    expect(screen.getByText("queryBuilder.ruleSkip")).toBeTruthy()
+  })
+
   it("keeps the dialog open with the error when the preview fails", () => {
     const onConfirm = vi.fn()
     render(<WorkflowPreviewDialog {...baseProps} onConfirm={onConfirm} previewError="HTTP error status 504" />)

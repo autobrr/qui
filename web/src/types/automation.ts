@@ -361,10 +361,10 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match" | "rule_skipped"
   ruleId?: number
   ruleName?: string
-  outcome: "success" | "failed" | "dry-run"
+  outcome: "success" | "failed" | "dry-run" | "skipped"
   reason?: string
   details?: {
     ratio?: number
@@ -376,6 +376,9 @@ export interface AutomationActivity {
     limitKiB?: number
     count?: number
     type?: string
+    // Why a rule did not run on the instance
+    field?: string
+    requires?: string
     programId?: number
     programName?: string
     // Tag activity details
@@ -446,10 +449,17 @@ export interface AutomationPreviewTorrent {
   score?: number
 }
 
+/** Why a rule gets no action on an instance: it reads a field that the instance does not send. */
+export interface AutomationRuleSkip {
+  field: string
+  requires: string
+}
+
 export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
+  skipped?: AutomationRuleSkip
   warnings?: string[] // Warnings explaining why certain operations were skipped
 }
 

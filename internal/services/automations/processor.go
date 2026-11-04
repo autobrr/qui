@@ -208,6 +208,15 @@ func processTorrents(
 		states = make(map[string]*torrentDesiredState)
 	}
 
+	// Only the rules that read Private, so the map stays empty before qBittorrent 5.0, where
+	// each torrent reaches the lookup and such a rule does not get here.
+	readsPrivate := make(map[int]bool)
+	for _, rule := range rules {
+		if ruleUsesCondition(rule, FieldPrivate) {
+			readsPrivate[rule.ID] = true
+		}
+	}
+
 	for _, torrent := range torrents {
 		// Skip if recently processed
 		if skipCheck != nil && skipCheck(torrent.Hash) {
@@ -238,6 +247,10 @@ func processTorrents(
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
+			// A torrent without a private value drops out of a rule that reads it. ADR 0039.
+			if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
+				continue
+			}
 			ruleStats := getOrCreateRuleStats(stats, rule)
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++

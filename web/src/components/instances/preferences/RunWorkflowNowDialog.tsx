@@ -42,6 +42,8 @@ export function RunWorkflowNowDialog({ target, onClose }: RunWorkflowNowDialogPr
       const name = { name: rule.name }
       if (result.status === "dry-run-completed") {
         toast.success(t("preferences.runWorkflowNow.toast.dryRunCompleted", name), { id: toastId })
+      } else if (result.activities?.some(activity => activity.outcome === "skipped")) {
+        toast.warning(t("preferences.runWorkflowNow.toast.skipped", name), { id: toastId })
       } else if (result.activities?.some(activity => activity.outcome === "failed")) {
         toast.error(t("preferences.runWorkflowNow.toast.completedWithErrors", name), { id: toastId })
       } else if (!result.activities?.length && !rule.conditions?.externalProgram?.enabled && !rule.conditions?.exportToInstance?.enabled) {

@@ -555,7 +555,8 @@
         "move": "Verschieben",
         "externalProgram": "Externes Programm",
         "dryRun": "Probelauf",
-        "exportToInstance": "In Instanz exportieren"
+        "exportToInstance": "In Instanz exportieren",
+        "ruleSkipped": "Regel nicht ausgeführt"
       },
       "shareLimit": {
         "global": "Global",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "{{count}} Aktivitätseinträge gelöscht",
         "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden"
       },
-      "exported": "Exportiert"
+      "exported": "Exportiert",
+      "skipped": "Übersprungen"
     },
     "runWorkflowNow": {
       "action": "Jetzt ausführen",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Ausführung für \"{{name}}\" mit Fehlern abgeschlossen. Siehe Aktivitätsprotokoll.",
         "dryRunCompleted": "Probelauf für \"{{name}}\" abgeschlossen",
         "inProgress": "Eine Ausführung läuft bereits. Versuche es gleich noch einmal.",
-        "failed": "Workflow konnte nicht ausgeführt werden"
+        "failed": "Workflow konnte nicht ausgeführt werden",
+        "skipped": "\"{{name}}\" wurde nicht ausgeführt. Siehe Aktivitätsprotokoll."
       }
     },
     "workflowPreview": {
@@ -962,7 +965,8 @@
         "external_program": "Externes Programm",
         "auto_managed": "Automatisch verwaltet",
         "dry_run_no_match": "Probelauf (keine Übereinstimmung)",
-        "exported_to_instance": "Export zur Instanz"
+        "exported_to_instance": "Export zur Instanz",
+        "rule_skipped": "Regel nicht ausgeführt"
       }
     },
     "reannounceOverview": {
@@ -1432,7 +1436,8 @@
           "moved": "Verschieben",
           "externalProgram": "Externes Programm",
           "noMatches": "Keine Treffer",
-          "exportedToInstance": "In Instanz exportieren"
+          "exportedToInstance": "In Instanz exportieren",
+          "ruleSkipped": "Regel nicht ausgeführt"
         },
         "actionFallback": "Unbekannte Aktion ({{action}})",
         "summary": {
