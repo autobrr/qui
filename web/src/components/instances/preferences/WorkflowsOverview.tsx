@@ -473,6 +473,7 @@ export function WorkflowsOverview() {
         trackerPattern: rule.trackerPattern,
         conditions: rule.conditions,
         freeSpaceSource: rule.freeSpaceSource,
+        sortingConfig: rule.sortingConfig,
         enabled: true,
         dryRun: true,
         sortOrder: rule.sortOrder,

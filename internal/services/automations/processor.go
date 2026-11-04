@@ -249,6 +249,7 @@ func processTorrents(
 		for _, rule := range matchingRules {
 			// A torrent without a private value drops out of a rule that reads it. ADR 0039.
 			if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
+				keepResetTagsOfRule(rule, state)
 				continue
 			}
 			ruleStats := getOrCreateRuleStats(stats, rule)
@@ -753,18 +754,10 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
 	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
 	// As category: a group whose file check did not complete gets no decision,
-	// so the copies never diverge. A managed reset deletes the tag from every
-	// torrent first, so such a torrent keeps the tags it has.
+	// so the copies never diverge.
 	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
 		if resetFromClient && rule != nil {
-			for _, managedTag := range tagsToManage {
-				_, hasTag := state.currentTags[managedTag]
-				if _, pending := state.tagActions[managedTag]; hasTag && !pending {
-					state.tagActions[managedTag] = "add"
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-					markTagReset(state, managedTag, true)
-				}
-			}
+			keepCurrentTags(rule, tagsToManage, state)
 		}
 		return false
 	}
@@ -851,6 +844,28 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 	}
 
 	return matchesCondition
+}
+
+// keepResetTagsOfRule keeps the tags of a torrent that dropped out of the rule. ADR 0039.
+func keepResetTagsOfRule(rule *models.Automation, state *torrentDesiredState) {
+	for _, action := range rule.Conditions.TagActions() {
+		if shouldResetTagActionInClient(action) {
+			keepCurrentTags(rule, action.Tags, state)
+		}
+	}
+}
+
+// keepCurrentTags adds back each of the tags that the torrent has. A managed reset deletes the
+// tag from every torrent first, so a torrent that gets no decision keeps the tags it has.
+func keepCurrentTags(rule *models.Automation, tags []string, state *torrentDesiredState) {
+	for _, tag := range tags {
+		_, hasTag := state.currentTags[tag]
+		if _, pending := state.tagActions[tag]; hasTag && !pending {
+			state.tagActions[tag] = "add"
+			state.tagRuleByTag[tag] = ruleRef{id: rule.ID, name: rule.Name}
+			markTagReset(state, tag, true)
+		}
+	}
 }
 
 // markTagReset records or clears a managed-reset re-add for tag, so the preview

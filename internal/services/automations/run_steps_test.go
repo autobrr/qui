@@ -124,7 +124,7 @@ func TestPlanSteps_DryRunMatchesLiveRun(t *testing.T) {
 // A new Action adds a field to the Run plan (ADR 0028). It needs a step, so that the live
 // run and the dry run cannot drift for it.
 func TestPlanSteps_CoverEveryRunPlanField(t *testing.T) {
-	ownCode := map[string]bool{"programs": true, "exports": true, "deletions": true, "skipped": true}
+	ownCode := map[string]bool{"programs": true, "exports": true, "deletions": true}
 	covered := make(map[string]bool)
 	for _, step := range planSteps {
 		for _, field := range step.fields {

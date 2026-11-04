@@ -98,6 +98,16 @@ describe("RunWorkflowNowDialog", () => {
     expect(mocks.toast.success).not.toHaveBeenCalled()
   })
 
+  it("says when a saved dry-run rule did not run on the instance", async () => {
+    mocks.apply.mockResolvedValue({ status: "dry-run-completed", activities: [{ action: "rule_skipped", outcome: "dry-run" }] })
+    renderDialog()
+
+    fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
+
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.skipped", { id: "toast-id" }))
+    expect(mocks.toast.success).not.toHaveBeenCalled()
+  })
+
   it("lists an auto-management action that turns management off", () => {
     renderDialog(vi.fn(), { ...rule, conditions: { schemaVersion: "1", autoManagement: { enabled: false } } })
 

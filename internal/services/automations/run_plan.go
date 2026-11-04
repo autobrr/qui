@@ -35,7 +35,6 @@ type runPlan struct {
 	programs       []pendingProgramExec
 	exports        []pendingExportToInstance
 	deletions      *deletionSelection
-	skipped        []skippedRule // the rules that get no Action on this instance
 }
 
 // RuleSkip says why a rule gets no Action on an instance: it reads a field that the instance
@@ -123,11 +122,11 @@ func (s *Service) skipRulesWithUnknownFields(ctx context.Context, instanceID int
 	return runnable, skipped
 }
 
-// recordRuleSkips writes one activity entry for each skip in the plan. A scheduled run writes
+// recordRuleSkips writes one activity entry for each skipped rule. A scheduled run writes
 // it once for each rule on each instance, as long as the reason stays. qui keeps this state in
 // memory, so after a restart it writes the entry again. A run that a person starts always
 // writes the entry, because the person waits for the reason.
-func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, plan runPlan, force, dryRun bool) []*models.AutomationActivity {
+func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, rules []skippedRule, force, dryRun bool) []*models.AutomationActivity {
 	if s.activityStore == nil {
 		return nil
 	}
@@ -136,7 +135,7 @@ func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, plan runP
 		outcome = models.ActivityOutcomeDryRun
 	}
 	var activities []*models.AutomationActivity
-	for _, skipped := range plan.skipped {
+	for _, skipped := range rules {
 		key := reportedSkipKey{instanceID: instanceID, ruleID: skipped.rule.id, dryRun: dryRun}
 		s.mu.RLock()
 		reported := s.reportedSkips[key] == skipped.RuleSkip
@@ -233,7 +232,6 @@ type runPlanInput struct {
 	ruleByID      map[int]*models.Automation
 	crossSeeds    crossSeedGroups
 	evalCtx       *EvalContext
-	skipped       []skippedRule
 }
 
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
@@ -252,7 +250,6 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		},
 		tags:      make(map[string]*tagChange),
 		deletions: deletions,
-		skipped:   in.skipped,
 	}
 	// A torrent that the run deletes passes no tag to its cross-seeds, as for category.
 	// Injected sibling states go through the same delete skips below.

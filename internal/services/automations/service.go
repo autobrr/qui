@@ -1752,8 +1752,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// After the fetch: a full sync update reads the qBittorrent version again.
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
+	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)
 	if len(torrents) == 0 || len(eligibleRules) == 0 {
-		return s.recordRuleSkips(ctx, instanceID, runPlan{skipped: skipped}, force, dryRun), nil
+		return skipActivities, nil
 	}
 
 	needs := NeedsFor(eligibleRules)
@@ -2026,9 +2027,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		ruleByID:      ruleByID,
 		crossSeeds:    crossSeeds,
 		evalCtx:       evalCtx,
-		skipped:       skipped,
 	})
-	skipActivities := s.recordRuleSkips(ctx, instanceID, plan, force, dryRun)
 
 	if dryRun {
 		return append(s.recordDryRunActivities(ctx, instanceID, plan, torrentByHash, force), skipActivities...), nil

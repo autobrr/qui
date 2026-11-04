@@ -5,12 +5,14 @@ package automations
 
 import (
 	"encoding/json/v2"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 const (
@@ -427,4 +429,69 @@ func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testi
 	require.Nil(t, preview.Skipped)
 	require.Equal(t, 1, preview.TotalMatches)
 	require.Equal(t, "withmeta", preview.Examples[0].Hash)
+}
+
+// regression: #3763
+// A managed reset deletes the tag from every torrent, so the run adds it back to a torrent that
+// dropped out of the rule. The torrent stays as it was.
+func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
+	const torrents = `{
+		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
+		"magnet":   {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "managed"}
+	}`
+	tagAction := func(cond *models.RuleCondition) *models.TagAction {
+		return &models.TagAction{Enabled: true, Tags: []string{"managed"}, Mode: models.TagModeFull, DeleteFromClient: true, Condition: cond}
+	}
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+	}{
+		{"the tag action reads Private", &models.ActionConditions{Tags: []*models.TagAction{tagAction(privateIs("false", false))}}},
+		{"another action reads Private", &models.ActionConditions{
+			Tags:  []*models.TagAction{tagAction(nil)},
+			Pause: &models.PauseAction{Enabled: true, Condition: privateIs("false", false)},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := newStubQbt(t, torrents)
+			stub.webAPIVersion = webAPIQbit52
+			svc, _, instanceIDs := newStubService(t, nil, stub)
+			rule := &models.Automation{ID: 1, Name: "tags", TrackerPattern: "*", Enabled: true, Conditions: tt.conditions}
+
+			_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, []*models.Automation{rule}, false)
+
+			require.NoError(t, err)
+			var reset, kept bool
+			for _, write := range stub.recordedWrites() {
+				reset = reset || write.path == "torrents/deleteTags"
+				if write.path == "torrents/addTags" || write.path == "torrents/setTags" {
+					kept = kept || (strings.Contains(write.form.Get("hashes"), "magnet") && strings.Contains(write.form.Get("tags"), "managed"))
+				}
+			}
+			require.True(t, reset)
+			require.True(t, kept, "the magnet link lost its tag: %+v", stub.recordedWrites())
+		})
+	}
+}
+
+// regression: #3763
+// The skip is known before the run reads other data, so a failure for another rule does not hide it.
+func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
+	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
+	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))
+	require.NoError(t, err)
+	svc.instanceStore = emptyStore
+	skippedRule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
+	skippedRule.ID = 1
+	runnable := parityDeleteRule(DeleteModeKeepFiles, parityDeleteTag)
+	runnable.ID = 2
+
+	_, err = svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{skippedRule, runnable}, false)
+
+	require.Error(t, err)
+	activities, err := svc.activityStore.ListByInstance(t.Context(), instanceID, 100)
+	require.NoError(t, err)
+	require.Len(t, activities, 1)
+	require.Equal(t, models.ActivityActionRuleSkipped, activities[0].Action)
 }
