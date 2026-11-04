@@ -858,8 +858,7 @@ func keepResetTagsOfRule(rule *models.Automation, state *torrentDesiredState) {
 // keepCurrentTags adds back each of the tags that the torrent has. A managed reset deletes the
 // tag from every torrent first, so a torrent that gets no decision keeps the tags it has.
 func keepCurrentTags(rule *models.Automation, tags []string, state *torrentDesiredState) {
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
+	for tag := range parseTorrentTags(strings.Join(tags, ",")) {
 		_, hasTag := state.currentTags[tag]
 		if _, pending := state.tagActions[tag]; hasTag && !pending {
 			state.tagActions[tag] = "add"

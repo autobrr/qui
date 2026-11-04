@@ -477,8 +477,8 @@ func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 }
 
 // regression: #3763
-// The reset deletes the trimmed tag, so a space around the configured tag must not lose it. The
-// torrent keeps the spelling of its own tag.
+// The reset splits and trims the configured tags, so an entry written that way must not lose
+// them. The torrent keeps the spelling of its own tag.
 func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -487,6 +487,7 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 	}{
 		{"a space around the configured tag", " managed ", "managed"},
 		{"an upper-case tag", "Managed", "Managed"},
+		{"two tags in one entry", "one,two", "one,two"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -503,7 +504,8 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 			var kept bool
 			for _, write := range stub.recordedWrites() {
 				if write.path == "torrents/setTags" {
-					kept = kept || (write.form.Get("hashes") == "magnet" && write.form.Get("tags") == tt.onTorrent)
+					kept = kept || (write.form.Get("hashes") == "magnet" &&
+						slices.Equal(slices.Sorted(strings.SplitSeq(write.form.Get("tags"), ",")), slices.Sorted(strings.SplitSeq(tt.onTorrent, ","))))
 				}
 			}
 			require.True(t, kept, "the magnet link lost its tag: %+v", stub.recordedWrites())
