@@ -15,6 +15,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type {
+  Category,
   CrossInstanceTorrent,
   QBittorrentAppInfo,
   Torrent,
@@ -45,6 +46,11 @@ export const LOADED_WINDOW_POLL_INTERVAL_MS = 10000
 // avoids tearing the stream down on quick tab switches; on refocus it resumes at once
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
+
+// The API omits empty categories and tags. One identity per value stops the
+// table from sending the parent the same update on each render.
+const NO_CATEGORIES: Record<string, Category> = {}
+const NO_TAGS: string[] = []
 
 // Drop duplicate rows, keeping the first occurrence's position with the last
 // occurrence's data (Map insertion order is first-set, values are last-set): in
@@ -790,8 +796,9 @@ export function useTorrentsList(
     stats,
     counts: effectiveCounts,
     appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
-    categories: activeData?.categories ?? data?.categories,
-    tags: activeData?.tags ?? data?.tags,
+    // undefined means that no response has arrived for this view.
+    categories: activeData ? activeData.categories ?? NO_CATEGORIES : undefined,
+    tags: activeData ? activeData.tags ?? NO_TAGS : undefined,
     trackerHealthSupported: activeData?.trackerHealthSupported ?? data?.trackerHealthSupported ?? false,
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,
