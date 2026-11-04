@@ -5,6 +5,7 @@ package automations
 
 import (
 	"encoding/json/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -508,6 +509,50 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 			require.True(t, kept, "the magnet link lost its tag: %+v", stub.recordedWrites())
 		})
 	}
+}
+
+// regression: #3763
+// A grouped action is all or none, so a member that dropped out of the rule stops it. The
+// condition of the grouped action matches both torrents. A delete cannot share a rule with
+// another action, so it reads Private in an OR. The other rules read it in their pause action.
+func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T) {
+	name := &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "m"}
+	grouping := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}}
+	pause := &models.PauseAction{Enabled: true, Condition: privateIs("false", false)}
+	tests := []struct {
+		name  string
+		cond  *models.ActionConditions
+		write string
+	}{
+		{"delete", &models.ActionConditions{Grouping: grouping, Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeKeepFiles, GroupID: "bysave", Condition: &models.RuleCondition{
+			Operator: models.OperatorOr, Conditions: []*models.RuleCondition{privateIs("false", false), name},
+		}}}, "torrents/delete"},
+		{"category", &models.ActionConditions{Grouping: grouping, Pause: pause, Category: &models.CategoryAction{Enabled: true, Category: "new", GroupID: "bysave", Condition: name}}, "torrents/setCategory"},
+		{"move", &models.ActionConditions{Grouping: grouping, Pause: pause, Move: &models.MoveAction{Enabled: true, Path: "/new", GroupID: "bysave", Condition: name}}, "torrents/setLocation"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
+			rule := &models.Automation{ID: 1, Name: "group", TrackerPattern: "*", Enabled: true, Conditions: tt.cond}
+
+			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
+
+			require.NoError(t, err)
+			require.False(t, slices.ContainsFunc(stub.recordedWrites(), func(write stubWrite) bool { return write.path == tt.write }))
+		})
+	}
+
+	t.Run("a rule that does not read Private keeps the member", func(t *testing.T) {
+		svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
+		rule := &models.Automation{ID: 1, Name: "group", TrackerPattern: "*", Enabled: true, Conditions: &models.ActionConditions{
+			Grouping: grouping, Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeKeepFiles, GroupID: "bysave", Condition: name},
+		}}
+
+		_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
+
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"magnet", "withmeta"}, strings.Split(strings.Join(deletedHashes(stub), "|"), "|"))
+	})
 }
 
 // regression: #3763

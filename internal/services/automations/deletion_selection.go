@@ -339,7 +339,8 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
-		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) {
+		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
+			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return
 		}

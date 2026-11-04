@@ -122,6 +122,15 @@ func (s *Service) skipRulesWithUnknownFields(ctx context.Context, instanceID int
 	return runnable, skipped
 }
 
+// groupHasDroppedMember reports whether a member has no private value in a rule that reads it.
+// That member drops out of the rule, and a grouped action is all or none. ADR 0039.
+func groupHasDroppedMember(rule *models.Automation, members []string, torrentByHash map[string]qbt.Torrent) bool {
+	return ruleUsesCondition(rule, FieldPrivate) && slices.ContainsFunc(members, func(hash string) bool {
+		member := torrentByHash[hash]
+		return qbittorrent.PrivateUnknown(&member)
+	})
+}
+
 // recordRuleSkips writes one activity entry for each skipped rule. A scheduled run writes
 // it once for each rule on each instance, as long as the reason stays. qui keeps this state in
 // memory, so after a restart it writes the entry again. A run that a person starts always
@@ -586,7 +595,8 @@ func (s *Service) categoryGroupEligible(ctx context.Context, in runPlanInput, ru
 	}
 	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
 	members := idx.MembersForHash(hash)
-	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds)
+	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds) &&
+		!groupHasDroppedMember(rule, members, in.torrentByHash)
 }
 
 // addMembers adds the other members of the expanded groups to the category.
@@ -740,7 +750,8 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
-	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) {
+	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
+		groupHasDroppedMember(rule, members, in.torrentByHash) {
 		return nil
 	}
 
