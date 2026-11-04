@@ -372,7 +372,6 @@ type CrossSeedFeedItem struct {
 	FirstSeenAt time.Time               `json:"firstSeenAt"`
 	LastSeenAt  time.Time               `json:"lastSeenAt"`
 	LastStatus  CrossSeedFeedItemStatus `json:"lastStatus"`
-	LastRunID   *int64                  `json:"lastRunId,omitempty"`
 	InfoHash    *string                 `json:"infoHash,omitempty"`
 }
 
@@ -1786,13 +1785,12 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	query := `
 		INSERT INTO cross_seed_feed_items (
 			guid, indexer_id, title, first_seen_at,
-			last_seen_at, last_status, last_run_id, info_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			last_seen_at, last_status, info_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(guid, indexer_id) DO UPDATE SET
 			title = excluded.title,
 			last_seen_at = excluded.last_seen_at,
 			last_status = excluded.last_status,
-			last_run_id = excluded.last_run_id,
 			info_hash = COALESCE(excluded.info_hash, cross_seed_feed_items.info_hash)
 	`
 
@@ -1803,7 +1801,6 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.FirstSeenAt,
 		lastSeenAt,
 		item.LastStatus,
-		item.LastRunID,
 		item.InfoHash,
 	)
 	if err != nil {
