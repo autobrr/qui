@@ -71,7 +71,7 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
 
-The run details show a Skipped row with no cooldown if qBittorrent moves or checks a torrent at its turn. The same applies to a torrent with an error or missing files when error recovery is off.
+The run details show a Skipped row with no cooldown if qBittorrent moves or checks a torrent at its turn. The same applies to a torrent that is not complete at its turn, and to a torrent with an error or missing files when error recovery is off.
 
 #### What the scan card counts
 

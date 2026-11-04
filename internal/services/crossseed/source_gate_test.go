@@ -152,6 +152,8 @@ func TestSearchRunLoop_SkipsSourceThatCannotGiveFilesAtItsTurn(t *testing.T) {
 		{"starts to move after the queue build", picked, withState(qbt.TorrentStateMoving, 1), ErrSourceNotSettled.Error()},
 		{"checked below 100% at its turn", withState(qbt.TorrentStateCheckingUp, 0.4), withState(qbt.TorrentStateCheckingUp, 0.4), ErrSourceNotSettled.Error()},
 		{"errors after the queue build", picked, withState(qbt.TorrentStateMissingFiles, 1), ErrSourceErrored.Error()},
+		{"check ends below 100% before its turn", withState(qbt.TorrentStateCheckingDl, 0.4), withState(qbt.TorrentStateDownloading, 0.4), ErrTorrentNotComplete.Error()},
+		{"becomes incomplete after the queue build", picked, withState(qbt.TorrentStateDownloading, 0.4), ErrTorrentNotComplete.Error()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

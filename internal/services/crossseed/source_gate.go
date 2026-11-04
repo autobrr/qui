@@ -122,6 +122,8 @@ func sourceTurnRefusal(err error) error {
 		return ErrSourceNotSettled
 	case errors.Is(err, ErrSourceErrored):
 		return ErrSourceErrored
+	case errors.Is(err, ErrTorrentNotComplete):
+		return ErrTorrentNotComplete
 	default:
 		return nil
 	}
