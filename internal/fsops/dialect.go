@@ -63,6 +63,9 @@ func (hostPaths) Separator() string         { return string(filepath.Separator) 
 // separator would change, such as \\host with no share, stays as it is.
 func shareRootWithSeparator(p string) string {
 	vol := filepath.VolumeName(p)
+	if vol == "" {
+		return p
+	}
 	withSeparator := vol + string(filepath.Separator)
 	if filepath.Clean(p) == vol && filepath.VolumeName(withSeparator) == vol {
 		return withSeparator
