@@ -6,6 +6,7 @@
 import { makeTorrent } from "@/test/mockTorrent"
 import type { Torrent, TorrentFilters } from "@/types"
 import {
+  actionTargetInstanceIds,
   buildActionTarget,
   EMPTY_SELECTION,
   getSelectionIdentity,
@@ -267,5 +268,29 @@ describe("rememberTickedTorrents", () => {
     expect(rememberTickedTorrents(cache, new Set(["a"]), [b], key)).toEqual([a])
     expect(rememberTickedTorrents(cache, new Set(["b"]), [b], key)).toEqual([b])
     expect(rememberTickedTorrents(cache, new Set(), [a, b], key)).toEqual([])
+  })
+})
+
+// regression: #3764
+describe("actionTargetInstanceIds", () => {
+  const filters = {} as TorrentFilters
+  const ticks = (targets: Array<{ instanceId: number; hash: string }>): ActionTarget => ({ kind: "ticks", hashes: [], targets, count: targets.length, previewTorrents: [] })
+
+  it("reaches the one instance of a single-instance view", () => {
+    expect(actionTargetInstanceIds({ kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [] }, 4)).toEqual([4])
+  })
+
+  it("reaches each instance of the ticked rows when the cross-seed filter lists other instances on a single-instance page", () => {
+    expect(actionTargetInstanceIds(ticks([{ instanceId: 4, hash: "a" }, { instanceId: 7, hash: "a" }]), 4)).toEqual([4, 7])
+  })
+
+  it("reaches each instance of the ticked rows in the Unified view", () => {
+    expect(actionTargetInstanceIds(ticks([{ instanceId: 1, hash: "a" }, { instanceId: 2, hash: "b" }, { instanceId: 1, hash: "c" }]), 0)).toEqual([1, 2])
+  })
+
+  it("reaches the instance subset, or every active instance, on a Unified select-all", () => {
+    const selectAll = (instanceIds?: number[]): ActionTarget => ({ kind: "selectAll", selectAll: { filters, search: "", instanceIds, excludeTargets: [] }, count: 9, previewTorrents: [] })
+    expect(actionTargetInstanceIds(selectAll([2, 3]), 0)).toEqual([2, 3])
+    expect(actionTargetInstanceIds(selectAll(), 0)).toBeUndefined()
   })
 })

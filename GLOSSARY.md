@@ -40,6 +40,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Layout**: The form of the UI that qui shows for the current viewport width: the *mobile layout* when the viewport is less than 768 px wide, or the *desktop layout*. It is not the device type. _Avoid_: device, platform.
 - **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
+- **Free theme**: A theme that qui ships from its own repo. It needs no license.
+- **Community theme**: A theme from the `autobrr/qui-community-themes` repo. qui ships it built in, and it needs the license. _Avoid_: premium theme, user theme.
+- **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. It needs the license. _Avoid_: sideloaded theme.
+- **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
 
 ## Client settings
 
@@ -156,11 +160,16 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
 - **Preference catalog**: The qui list of qBittorrent preferences that says, for each key, where qui shows it and whether a user can change it. _Avoid_: Preference schema, field registry.
 - **Network binding**: The network interface and the IP address that qBittorrent uses for peer connections. _Avoid_: Bind interface, outgoing interface.
+- **Capability**: something an instance can do or send because of its qBittorrent version, for example editing trackers or sending Popularity in the torrent list. A field that the instance does not send is unknown, not zero. _Avoid_: support flag, feature flag.
 
 ## Allowed Hosts
 
 - **Allowed Hosts**: The optional list of hostnames and IP addresses a request may use to reach qui. Empty means every host. _Avoid_: Host allowlist, host filter.
 - **Received Host**: The `Host` header, or the HTTP/2 `:authority`, as the main listener sees it. Never `X-Forwarded-Host`. _Avoid_: Forwarded host, original host.
+
+## Authentication
+
+- **Allowed OIDC user**: The one identity that can log in to qui through OIDC, named by its subject identifier or by its verified email. When it is not set, every identity that the provider authenticates for qui can log in. _Avoid_: OIDC allowlist, allowed users.
 
 ## Updating qui
 

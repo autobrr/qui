@@ -297,6 +297,27 @@ func TestShouldSkipLiveExportForBackup(t *testing.T) {
 	}
 }
 
+// Without the version, qui cannot tell if qBittorrent 4.6 left out the
+// trackers, so it saves no backup.
+// regression: #3765
+func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "version-unknown")
+	store := models.NewBackupStore(db)
+	sm := &stubBackupSyncManager{
+		torrents:   []qbt.Torrent{{Hash: "abc", Name: "Show.S01E01-GRP", TotalSize: 123}},
+		versionErr: errors.New("read the qBittorrent version: 502"),
+	}
+	svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+
+	_, err := svc.executeBackup(ctx, job{runID: 44, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.ErrorContains(t, err, "502")
+	require.Equal(t, 0, sm.exportCalls)
+}
+
 func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
 	t.Parallel()
 
@@ -1564,12 +1585,12 @@ type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent
 	categories  map[string]qbt.Category
 	tags        []string
-	webAPIVer   string
 	exportData  []byte
 	exportName  string
 	exportTrack string
 	exportErr   error
 	exportCalls int
+	versionErr  error
 }
 
 func (s *stubBackupSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
@@ -1590,8 +1611,8 @@ func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) 
 	return append([]string(nil), s.tags...), nil
 }
 
-func (s *stubBackupSyncManager) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
-	return s.webAPIVer, nil
+func (s *stubBackupSyncManager) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, s.versionErr
 }
 
 func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {

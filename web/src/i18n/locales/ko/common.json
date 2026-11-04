@@ -152,11 +152,10 @@
     "dark": "어둡게",
     "system": "시스템",
     "theme": "테마",
-    "premium": "프리미엄",
     "switchedToMode": "{{mode}} 모드로 전환했습니다",
     "switchedToTheme": "{{theme}} 테마로 전환했습니다",
     "switchedToThemeVariation": "{{theme}} 테마({{variation}})로 전환했습니다",
-    "premiumThemeError": "프리미엄 테마입니다. 설정 → 테마에서 라이선스를 활성화하세요."
+    "premiumThemeError": "이 테마에는 라이선스가 필요합니다. 설정 → 테마에서 라이선스를 활성화하세요."
   },
   "updateBanner": {
     "updateAvailable": "업데이트 사용 가능",
@@ -239,7 +238,7 @@
     "perkSuffix": "역할과 저희의 영원한 감사를 받습니다.",
     "yearly": "{{price}} / 년",
     "monthly": "{{price}} / 월",
-    "notLicense": "프리미엄 테마는 별도의 일회성 구매입니다."
+    "notLicense": "테마 라이선스는 별도의 일회성 구매입니다."
   },
   "labels": {
     "path": "경로"

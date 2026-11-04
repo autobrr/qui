@@ -57,3 +57,33 @@ describe("reannounce column", () => {
     expect(reannounceCell("stalledUP", 840)).toBe("14m")
   })
 })
+
+// regression: #3761
+describe("popularity and private columns", () => {
+  afterEach(cleanup)
+
+  function cellText(accessorKey: "popularity" | "private", original: Partial<Torrent>): string {
+    const column = createColumns({ incognitoMode: false }, i18n.getFixedT(null, "torrents"))
+      .find(col => "accessorKey" in col && col.accessorKey === accessorKey)!
+    const cell = column.cell as (ctx: { row: { original: Torrent } }) => ReactElement
+    return render(cell({ row: { original: original as Torrent } })).container.textContent ?? ""
+  }
+
+  it("shows a dash when the row does not carry popularity", () => {
+    expect(cellText("popularity", {})).toBe("—")
+  })
+
+  it("shows a popularity of 0 as a value", () => {
+    expect(cellText("popularity", { popularity: 0 })).toBe("0.00")
+  })
+
+  it("shows a dash when the row does not carry private", () => {
+    expect(cellText("private", {})).toBe("—")
+  })
+
+  it("shows the private value", () => {
+    expect(cellText("private", { private: true })).toBe("Yes")
+    cleanup()
+    expect(cellText("private", { private: false })).toBe("No")
+  })
+})

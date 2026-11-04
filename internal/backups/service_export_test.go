@@ -182,8 +182,8 @@ func (s *concurrentExportStub) GetTags(context.Context, int) ([]string, error) {
 	return nil, nil
 }
 
-func (s *concurrentExportStub) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
-	return "", nil
+func (s *concurrentExportStub) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, nil
 }
 
 func (s *concurrentExportStub) ExportTorrent(ctx context.Context, _ int, hash string) ([]byte, string, string, error) {

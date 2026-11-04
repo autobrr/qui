@@ -106,8 +106,10 @@ export interface Torrent {
   hash: string
   infohash_v1: string
   infohash_v2: string
-  popularity: number
-  private: boolean
+  // The server leaves out popularity and private before qBittorrent 5.0, which
+  // does not send them in the torrent list, and private for a torrent without metadata.
+  popularity?: number
+  private?: boolean
   last_activity: number
   max_ratio: number
   max_seeding_time: number
@@ -278,6 +280,8 @@ export interface TorrentResponse {
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE
+  /** Web API version of each instance in the response, keyed by instance ID; "" while unknown. */
+  webAPIVersions?: Record<number, string>
   /** Frontend-assembled only: number of pages combined into this loaded-window response. */
   windowPageCount?: number
 }

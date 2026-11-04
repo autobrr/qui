@@ -23,6 +23,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -44,7 +46,7 @@ func TestNormalizeConnectionStatus(t *testing.T) {
 func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{trackerIncludeSupported: true}
+	client := &Client{version: semver.MustParse("2.11.4")}
 
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
 	require.True(t, trackerHealthSupported)
@@ -53,7 +55,7 @@ func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
 func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{trackerIncludeSupported: false}
+	client := &Client{}
 
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
 	require.False(t, trackerHealthSupported)
@@ -295,7 +297,7 @@ func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupporte
 	sm := &SyncManager{
 		trackerHealthCache: map[int]*TrackerHealthSnapshot{7: trackerHealthSnapshotOf(1, 2, 3)},
 	}
-	client := &Client{instanceID: 7, trackerIncludeSupported: false}
+	client := &Client{instanceID: 7}
 	torrents := []qbt.Torrent{
 		{Hash: "hash-a", Tracker: "https://tracker.example/announce"},
 	}
@@ -3030,7 +3032,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
 		trackerHealthCache:      map[int]*TrackerHealthSnapshot{},
 	}
-	client := &Client{instanceID: 1, trackerIncludeSupported: true}
+	client := &Client{instanceID: 1, version: semver.MustParse("2.11.4")}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
 	stored := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
@@ -3094,7 +3096,7 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
 		trackerHealthCache:      map[int]*TrackerHealthSnapshot{1: trackerHealthSnapshotOf(4, 2, 1)},
 	}
-	client := &Client{instanceID: 1, trackerIncludeSupported: true}
+	client := &Client{instanceID: 1, version: semver.MustParse("2.11.4")}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
 	supported := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)

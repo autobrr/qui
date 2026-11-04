@@ -52,6 +52,11 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 				return
 			}
 
+			if cfg != nil && !oidcSessionAllowed(r, sessionManager, cfg) {
+				http.Error(w, "Unauthorized", http.StatusForbidden)
+				return
+			}
+
 			// A cookie rides along on cross-site form posts; a custom header
 			// does not. Reserve cookie writes for the qui web UI.
 			switch r.Method {
@@ -69,6 +74,24 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// oidcSessionAllowed destroys an OIDC session whose user is no longer allowed.
+// Sessions outlive a config change, so the check runs on each request. The
+// caller's 403 "Unauthorized" logs the web UI out.
+func oidcSessionAllowed(r *http.Request, sessionManager *scs.SessionManager, cfg *domain.Config) bool {
+	if sessionManager.GetString(r.Context(), "auth_method") != "oidc" {
+		return true
+	}
+	subject := sessionManager.GetString(r.Context(), "oidc_subject")
+	if cfg.IsOIDCUserAllowed(subject, sessionManager.GetString(r.Context(), "oidc_verified_email")) {
+		return true
+	}
+	log.Warn().Str("sub", subject).Str("remote_addr", r.RemoteAddr).Msg("OIDC session user is no longer allowed, destroying session")
+	if err := sessionManager.Destroy(r.Context()); err != nil {
+		log.Error().Err(err).Msg("failed to destroy session")
+	}
+	return false
 }
 
 // RequireSetup middleware ensures initial setup is complete

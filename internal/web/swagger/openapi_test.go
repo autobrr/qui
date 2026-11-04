@@ -8,7 +8,6 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -116,13 +115,9 @@ func TestOpenAPISecuritySchemes(t *testing.T) {
 // This catches mismatches like savePath vs savepath or torrentFile vs torrent
 // that cause silent API failures.
 func TestAddTorrentFormFieldsDocumented(t *testing.T) {
-	// Locate torrents.go relative to this test file so the test works
-	// regardless of the working directory used by `go test`.
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	handlerPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "api", "handlers", "torrents.go")
+	// go test runs in the package directory. runtime.Caller is not used
+	// because -trimpath turns its result into a module path.
+	handlerPath := filepath.Join("..", "..", "api", "handlers", "torrents.go")
 
 	// Parse the handler source with go/parser so we only inspect the
 	// AddTorrent method and extract FormValue string arguments from the AST.

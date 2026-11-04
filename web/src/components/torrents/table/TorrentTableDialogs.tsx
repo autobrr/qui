@@ -15,7 +15,7 @@ import {
 import type { useTorrentListActions } from "@/hooks/useTorrentListController"
 import type { useTorrentsList } from "@/hooks/useTorrentsList"
 import { api } from "@/lib/api"
-import { actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
+import { actionTargetInstanceIds, actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
 import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
 import type { Category, CrossInstanceTorrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -200,6 +200,7 @@ export function TorrentTableDialogs({
   const { t } = useTranslation("torrents")
   const { count, previewTorrents } = actionTarget
   const isAllSelected = actionTarget.kind === "selectAll"
+  const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
 
   const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(renameHash)
 
@@ -319,8 +320,7 @@ export function TorrentTableDialogs({
         torrents={previewTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
-        supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
-        supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
+        instanceIds={actionInstanceIds}
       />
 
       <SpeedLimitsDialog

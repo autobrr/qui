@@ -32,7 +32,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { useDebounce } from "@/hooks/useDebounce"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstanceCapabilities, useInstancesSupport } from "@/hooks/useInstanceCapabilities"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
@@ -46,7 +46,7 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
-import { cn, formatBytes } from "@/lib/utils"
+import { cn, formatBytes, takeTurns } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -87,6 +87,7 @@ import {
 import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
+import { type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -115,6 +116,8 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
+  // The instance subset of the Unified view. Undefined means every active instance.
+  instanceIds?: number[]
   readOnly?: boolean
   supportsTrackerHealth?: boolean
   selectedFilters: TorrentFilters
@@ -185,6 +188,7 @@ const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon 
 
 const FilterSidebarComponent = ({
   instanceId,
+  instanceIds,
   readOnly = false,
   supportsTrackerHealth: supportsTrackerHealthProp,
   selectedFilters,
@@ -219,7 +223,11 @@ const FilterSidebarComponent = ({
     { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
-  const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
+  // Tracker editing reaches every instance in scope, so the Unified view offers it too.
+  const supportsTrackerEditing = useInstancesSupport(
+    isConcreteInstanceScope ? (isReadOnly || !isInstanceActive ? [] : [instanceId]) : instanceIds,
+    "supportsTrackerEditing"
+  )
   const instanceSubcategoriesEnabled = useSubcategoriesEnabled(
     instanceId,
     capabilities,
@@ -347,12 +355,30 @@ const FilterSidebarComponent = ({
         expr: "",
       }
 
-      const torrentsList = await api.getTorrents(instanceId, {
-        filters: trackerFilters,
-        limit: 100, // Fetch more torrents to find all unique tracker URLs
-      })
+      // Fetch more torrents to find all unique tracker URLs. The Unified view asks
+      // each instance in scope and takes turns, so one instance cannot fill the sample.
+      let trackerTorrents: TorrentActionTarget[]
+      if (isConcreteInstanceScope) {
+        trackerTorrents = (await api.getTorrents(instanceId, { filters: trackerFilters, limit: 100 })).torrents
+          .map(torrent => ({ instanceId, hash: torrent.hash }))
+      } else {
+        const scopeIds = instanceIds ?? instances?.filter(instance => instance.isActive).map(instance => instance.id) ?? []
+        let instanceFailed = false
+        trackerTorrents = takeTurns(await Promise.all(scopeIds.map(id =>
+          api.getTorrents(id, { filters: trackerFilters, limit: 50 })
+            .then(response => response.torrents.map(torrent => ({ instanceId: id, hash: torrent.hash })))
+            .catch(() => {
+              instanceFailed = true
+              return []
+            })
+        )))
+        // The list can then miss a URL, so say so and still show the URLs found.
+        if (instanceFailed) {
+          toast.error(t("filterSidebar.toast.fetchTrackerUrlsFailed"))
+        }
+      }
 
-      if (torrentsList.torrents && torrentsList.torrents.length > 0) {
+      if (trackerTorrents.length > 0) {
         // Collect unique URLs from multiple torrents
         const allUrls = new Set<string>()
 
@@ -375,14 +401,14 @@ const FilterSidebarComponent = ({
         // Fetch trackers from up to 50 torrents with concurrency limit of 10
         // This handles cases where one torrent has wrong passkey while others are correct
         // Also helps discover different URL variants (http vs https, different ports)
-        const torrentsToCheck = torrentsList.torrents.slice(0, 50)
+        const torrentsToCheck = trackerTorrents.slice(0, 50)
         const concurrencyLimit = 10
         const normalizedDomain = trackerDomain.toLowerCase()
 
         for (let i = 0; i < torrentsToCheck.length; i += concurrencyLimit) {
           const batch = torrentsToCheck.slice(i, i + concurrencyLimit)
           const batchPromises = batch.map(t =>
-            api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
+            api.getTorrentTrackers(t.instanceId, t.hash).catch(() => [])
           )
           const batchResults = await Promise.all(batchPromises)
 
@@ -404,7 +430,7 @@ const FilterSidebarComponent = ({
     } finally {
       setLoadingTrackerURLs(false)
     }
-  }, [instanceId, supportsTrackerHealth, t])
+  }, [instanceId, instanceIds, instances, isConcreteInstanceScope, supportsTrackerHealth, t])
 
   // Mutation for editing trackers
   const editTrackersMutation = useMutation({
@@ -416,6 +442,7 @@ const FilterSidebarComponent = ({
         trackerOldURL: oldURL,
         trackerNewURL: newURL,
         selectAll: true,
+        instanceIds,
         filters: {
           status: [],
           excludeStatus: [],
@@ -502,6 +529,7 @@ const FilterSidebarComponent = ({
           trackerOldURL: oldURL,
           trackerNewURL: newURL,
           selectAll: true,
+          instanceIds,
           filters: {
             status: [],
             excludeStatus: [],
@@ -535,7 +563,7 @@ const FilterSidebarComponent = ({
         description: firstError ?? undefined,
       })
     }
-  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs, t])
+  }, [trackerFullURLs, trackerToEdit, instanceId, instanceIds, fetchTrackerURLs, t])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -3091,7 +3119,7 @@ const FilterSidebarComponent = ({
       />
 
       <EditTrackerDialog
-        open={!isReadOnly && showEditTrackerDialog}
+        open={supportsTrackerEditing && showEditTrackerDialog}
         onOpenChange={(open) => {
           setShowEditTrackerDialog(open)
           if (!open) {
@@ -3115,6 +3143,7 @@ const FilterSidebarComponent = ({
 // Memoize the component to prevent unnecessary re-renders during polling
 export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps) => {
   if (prevProps.instanceId !== nextProps.instanceId) return false
+  if (prevProps.instanceIds !== nextProps.instanceIds) return false
   if (prevProps.className !== nextProps.className) return false
   if (prevProps.isStaleData !== nextProps.isStaleData) return false
   if (prevProps.isLoading !== nextProps.isLoading) return false

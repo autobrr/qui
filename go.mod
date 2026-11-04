@@ -12,7 +12,7 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.1-0.20261026220743-38712c703028
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20261103133017-12d1c2f08d0d
 	github.com/autobrr/go-torrent v1.1.1
 	github.com/autobrr/rls v0.10.0
 	github.com/avast/retry-go v3.0.0+incompatible
@@ -43,7 +43,7 @@ require (
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0

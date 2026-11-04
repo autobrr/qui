@@ -508,7 +508,7 @@ func (s *Service) applyTagChanges(ctx context.Context, instanceID int, tagChange
 		return nil
 	}
 
-	if client.SupportsSetTags() {
+	if client.Supports(qbittorrent.CapSetTags) {
 		return s.setTagsByTagSet(ctx, instanceID, tagChanges)
 	}
 

@@ -12,7 +12,7 @@
     "externalPrograms": "Programas Externos",
     "notifications": "Notificações",
     "dateTime": "Data e Hora",
-    "premiumThemes": "Temas Premium",
+    "premiumThemes": "Temas",
     "security": "Segurança",
     "logs": "Logs"
   },
@@ -420,38 +420,37 @@
     "selector": {
       "title": "Seleção de Tema",
       "loadingDescription": "Carregando temas disponíveis...",
-      "description": "Escolha entre os temas disponíveis. Temas premium requerem uma licença válida.",
-      "verificationUnavailable": "Verificação de licença indisponível. A troca de tema premium está temporariamente desativada.",
-      "notLoaded": "Temas premium não carregados",
-      "notLoadedDescription": "Configurar",
-      "notLoadedAnd": "e executar",
-      "premium": "Premium",
-      "pro": "Pro",
+      "description": "Escolha entre os temas disponíveis. Alguns temas requerem uma licença válida.",
+      "verificationUnavailable": "Verificação de licença indisponível. A troca para um tema licenciado está temporariamente desativada.",
+      "notLoaded": "Temas licenciados não carregados",
+      "notLoadedDescription": "Execute",
       "free": "Grátis",
       "locked": "Bloqueado",
-      "lock": "Bloquear"
+      "lock": "Bloquear",
+      "showTheme": "Mostrar",
+      "hideTheme": "Ocultar"
     },
     "toasts": {
-      "premiumRequired": "Licença Premium necessária",
-      "premiumRequiredDescription": "Desbloqueie temas premium adicionando uma licença premium válida."
+      "premiumRequired": "Licença necessária",
+      "premiumRequiredDescription": "Adicione uma licença válida para desbloquear todos os temas."
     },
     "license": {
       "loadingTitle": "Gerenciamento de Licenças",
       "loadingDescription": "Carregando licenças de temas...",
       "managementTitle": "Gerenciamento de Licenças",
-      "managementDescription": "Gerencie sua licença de tema e acesso premium",
+      "managementDescription": "Gerencie sua licença de temas",
       "providers": {
         "licensePortal": "portal de licenças"
       },
       "status": {
-        "unlockTitle": "Desbloquear Temas Premium",
+        "unlockTitle": "Desbloquear todos os temas",
         "unlockDescription": "Pague o que quiser (mínimo $9.99) • Licença vitalícia • Todos os temas",
-        "activeTitle": "Acesso Premium Ativo",
-        "activeDescription": "Você tem acesso a todos os temas premium atuais e futuros",
+        "activeTitle": "Licença Ativa",
+        "activeDescription": "Você tem acesso a todos os temas atuais e futuros",
         "activationRequiredTitle": "Ativação de Licença Necessária",
         "activationRequiredDescription": "Sua licença precisa ser ativada nesta máquina",
         "offlineTitle": "Serviço de licenças inacessível",
-        "offlineDescription": "O qui não conseguiu acessar o serviço de licenças por 7 dias, então os temas premium estão bloqueados. O qui verifica na inicialização e uma vez por dia. Os temas são desbloqueados quando o serviço responder. Você não precisa reativar a licença."
+        "offlineDescription": "O qui não conseguiu acessar o serviço de licenças por 7 dias, então os temas licenciados estão bloqueados. O qui verifica na inicialização e uma vez por dia. Os temas são desbloqueados quando o serviço responder. Você não precisa reativar a licença."
       },
       "portalHelp": {
         "prefix": "Compre no DodoPayments, depois insira sua chave de licença aqui. Se você perder a chave, recupere-a através do",
@@ -503,7 +502,7 @@
         "addLicense": "Adicionar Licença",
         "remove": "Remover",
         "removing": "Removendo...",
-        "getPremium": "Obter Premium",
+        "getPremium": "Obter uma licença",
         "reactivate": "Reativar Licença",
         "activating": "Ativando...",
         "copyLicenseKey": "Copiar Chave de Licença",
@@ -519,17 +518,17 @@
         "recoverPrefix": "Se necessário, você pode recuperá-la mais tarde no seu"
       },
       "addDialog": {
-        "title": "Adicionar Licença Premium",
-        "description": "Insira sua chave de licença de tema premium para desbloquear todos os temas premium.",
+        "title": "Adicionar Licença",
+        "description": "Insira sua chave de licença para desbloquear todos os temas.",
         "label": "Chave de Licença",
-        "placeholder": "Insira sua chave de licença de tema premium",
+        "placeholder": "Insira sua chave de licença",
         "recoverKey": "Recuperar chave?",
         "validation": {
           "required": "A chave de licença é obrigatória"
         }
       },
       "paymentDialog": {
-        "title": "Obter Licença Premium",
+        "title": "Obter uma Licença",
         "description": "Pague o que quiser (mínimo $9.99) • Licença vitalícia • Todos os temas",
         "steps": {
           "choosePaymentMethod": {
@@ -561,10 +560,10 @@
       "copiedVerify": "Comando de verificação copiado",
       "failedCopyVerify": "Falha ao copiar comando de verificação",
       "toasts": {
-        "activationSuccessPremium": "Acesso premium ativado! Obrigado!",
-        "paymentCompleted": "Pagamento concluído. Adicione sua chave de licença premium para finalizar a configuração.",
+        "activationSuccessPremium": "Licença ativada! Obrigado!",
+        "paymentCompleted": "Pagamento concluído. Adicione sua chave de licença para finalizar a configuração.",
         "paymentNotCompleted": "Pagamento não concluído com sucesso.",
-        "returnedFromCheckout": "Retornou do checkout. Adicione sua chave de licença premium quando estiver pronto.",
+        "returnedFromCheckout": "Retornou do checkout. Adicione sua chave de licença quando estiver pronto.",
         "keyCopied": "Chave de licença copiada para a área de transferência",
         "copyFailed": "Falha ao copiar a chave de licença",
         "removedFromMachine": "Licença removida desta máquina"
@@ -573,9 +572,9 @@
     "custom": {
       "badge": "Personalizado",
       "title": "Temas Personalizados",
-      "lockedTitle": "Temas personalizados são um recurso premium",
-      "lockedDescription": "Desbloqueie o premium para fazer o sideload de seus próprios arquivos CSS de tema de um diretório no disco.",
-      "unlockCta": "Desbloquear premium",
+      "lockedTitle": "Temas personalizados precisam de uma licença",
+      "lockedDescription": "Obtenha uma licença para fazer o sideload de seus próprios arquivos CSS de tema de um diretório no disco.",
+      "unlockCta": "Obter uma licença",
       "refresh": "Atualizar",
       "detectedCount": "Temas encontrados: {{total}}",
       "parseErrorsTitle": "Não foi possível analisar estes arquivos:",
