@@ -146,6 +146,12 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Other: Repack available, or grab internal:",
 			want:    true,
 		},
+		// regression: #3725
+		{
+			name:    "other removal reason",
+			message: "Other: No b-frame comps provided to coexist with current releases",
+			want:    true,
+		},
 		{
 			name:    "torrent has been rejected",
 			message: "Torrent has been rejected.",
