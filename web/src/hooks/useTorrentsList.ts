@@ -15,6 +15,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type {
+  Category,
   CrossInstanceTorrent,
   QBittorrentAppInfo,
   Torrent,
@@ -23,7 +24,7 @@ import type {
   TorrentResponse,
   TorrentStreamPayload
 } from "@/types"
-import { replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
+import { hashKey, replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 /** Fallback REST polling interval used while the torrent SSE stream is unavailable. */
@@ -45,6 +46,11 @@ export const LOADED_WINDOW_POLL_INTERVAL_MS = 10000
 // avoids tearing the stream down on quick tab switches; on refocus it resumes at once
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
+
+// The API omits empty categories and tags. One identity per value stops the
+// table from sending the parent the same update on each render.
+const NO_CATEGORIES: Record<string, Category> = {}
+const NO_TAGS: string[] = []
 
 // Drop duplicate rows, keeping the first occurrence's position with the last
 // occurrence's data (Map insertion order is first-set, values are last-set): in
@@ -575,8 +581,15 @@ export function useTorrentsList(
     // A recent window refresh already covers every loaded page on tab return.
     staleTime: currentPage > 0 ? LOADED_WINDOW_POLL_INTERVAL_MS : 0,
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
-    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
-    placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state.
+    // Key part 3 is the page. Data from another view stays out: the parent keeps the categories and tags
+    // of one render, and a switch from a scrolled list renders once before the page resets.
+    placeholderData: currentPage > 0
+      ? (previousData, previousQuery) =>
+        previousQuery && hashKey(previousQuery.queryKey.map((part, index) => index === 3 ? 0 : part)) === hashKey(streamQueryKey)
+          ? previousData
+          : undefined
+      : undefined,
     // SSE owns only page zero. Healthy streams let later pages refresh more
     // slowly. A stream that is not usable sets the poll for every page.
     refetchInterval: !pollingEnabled
@@ -790,8 +803,9 @@ export function useTorrentsList(
     stats,
     counts: effectiveCounts,
     appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
-    categories: activeData?.categories ?? data?.categories,
-    tags: activeData?.tags ?? data?.tags,
+    // undefined means that no response has arrived for this view.
+    categories: activeData ? activeData.categories ?? NO_CATEGORIES : undefined,
+    tags: activeData ? activeData.tags ?? NO_TAGS : undefined,
     trackerHealthSupported: activeData?.trackerHealthSupported ?? data?.trackerHealthSupported ?? false,
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,

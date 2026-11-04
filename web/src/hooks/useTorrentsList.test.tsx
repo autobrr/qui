@@ -76,6 +76,8 @@ vi.mock("@/contexts/SyncStreamContext", () => ({
 import { api } from "@/lib/api"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
+import { EMPTY_ACTION_TARGET } from "@/lib/torrent-selection"
 import {
   LOADED_WINDOW_POLL_INTERVAL_MS,
   STREAM_HIDDEN_PAUSE_DELAY_MS,
@@ -2117,6 +2119,241 @@ describe("useTorrentsList", () => {
       expect.any(AbortSignal)
     )
     expect(result.current.torrents[0].hash).toBe("r")
+  })
+})
+
+// regression: #3807
+describe("useTorrentsList categories and tags", () => {
+  it("stays undefined until the first response, then reads missing fields as empty", async () => {
+    let resolve!: (response: TorrentResponse) => void
+    mockedApi.getTorrents.mockReturnValue(new Promise(r => { resolve = r }))
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+
+    expect(result.current.categories).toBeUndefined()
+    expect(result.current.tags).toBeUndefined()
+
+    await act(async () => {
+      resolve(makeResponse())
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it("keeps the values that a response has when it leaves out the other field", async () => {
+    const categories = { movies: { name: "movies", savePath: "" } }
+    mockedApi.getTorrents.mockImplementation(async instanceId =>
+      makeResponse(instanceId === 1 ? { categories } : { tags: ["linux"] })
+    )
+
+    const { result, rerender } = renderHook(({ id }) => useTorrentsList(id), {
+      wrapper: makeWrapper(),
+      initialProps: { id: 1 },
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual(categories)
+    expect(result.current.tags).toEqual([])
+
+    rerender({ id: 2 })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual(["linux"])
+  })
+
+  it("removes old values after a switch to an instance that has none", async () => {
+    let resolveSecond!: (response: TorrentResponse) => void
+    mockedApi.getTorrents.mockImplementation(instanceId =>
+      instanceId === 1
+        ? Promise.resolve(makeResponse({ categories: { movies: { name: "movies", savePath: "" } }, tags: ["linux"] }))
+        : new Promise(resolve => { resolveSecond = resolve })
+    )
+
+    const { result, rerender } = renderHook(({ id }) => useTorrentsList(id), {
+      wrapper: makeWrapper(),
+      initialProps: { id: 1 },
+    })
+    await flush()
+    expect(result.current.tags).toEqual(["linux"])
+
+    rerender({ id: 2 })
+    await flush()
+    expect(result.current.categories).toBeUndefined()
+    expect(result.current.tags).toBeUndefined()
+
+    await act(async () => {
+      resolveSecond(makeResponse())
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it("keeps the values while a later page of the same view loads", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) =>
+      params.page === 0
+        ? Promise.resolve(makeResponse({ tags: ["linux"], total: 3, hasMore: true }))
+        : new Promise(() => undefined)
+    )
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+
+    expect(result.current.isLoadingMore).toBe(true)
+    expect(result.current.tags).toEqual(["linux"])
+  })
+
+  it("shows no old values after a switch from a list past its first page", async () => {
+    let resolveSecond!: (response: TorrentResponse) => void
+    mockedApi.getTorrents.mockImplementation(instanceId =>
+      instanceId === 1
+        ? Promise.resolve(makeResponse({
+          categories: { movies: { name: "movies", savePath: "" } },
+          tags: ["linux"],
+          total: 3,
+          hasMore: true,
+        }))
+        : new Promise(resolve => { resolveSecond = resolve })
+    )
+
+    const rendered: Pick<ReturnType<typeof useTorrentsList>, "tags" | "categories">[] = []
+    const { result, rerender } = renderHook(({ id }) => {
+      const list = useTorrentsList(id)
+      rendered.push({ tags: list.tags, categories: list.categories })
+      return list
+    }, { wrapper: makeWrapper(), initialProps: { id: 1 } })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1 }), expect.any(AbortSignal))
+
+    rendered.length = 0
+    rerender({ id: 2 })
+    await flush()
+
+    // The parent keeps the last values that it gets, so one render is enough to show old values.
+    expect(rendered.length).toBeGreaterThan(0)
+    expect(rendered).toEqual(rendered.map(() => ({ tags: undefined, categories: undefined })))
+
+    await act(async () => {
+      resolveSecond(makeResponse())
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it.each([
+    ["a full frame", "update", {}],
+    ["a delta frame", "delta", { delta: {} }],
+  ] as const)("removes old values when %s leaves them out", async (_name, type, frame) => {
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    const old = { categories: { movies: { name: "movies", savePath: "" } }, tags: ["linux"] }
+    mockedApi.getTorrents.mockResolvedValue(makeResponse(old))
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+    expect(result.current.tags).toEqual(old.tags)
+
+    act(() => {
+      capturedOnMessage?.({ type: "init", data: makeResponse(old) })
+    })
+    await flush()
+    act(() => {
+      capturedOnMessage?.({ type, data: makeResponse(), ...frame } as TorrentStreamPayload)
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it("removes old values when a frame leaves them out while a later page is loaded", async () => {
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    const old = { categories: { movies: { name: "movies", savePath: "" } }, tags: ["linux"] }
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => makeResponse({
+      ...old,
+      torrents: [makeTorrent({ hash: `page-${params.page}` })],
+      total: 2,
+      hasMore: params.page === 0,
+    }))
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents).toHaveLength(2)
+    expect(result.current.tags).toEqual(old.tags)
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "page-0" })], total: 2, hasMore: true }),
+      })
+    })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it("reads missing fields as empty in the All Instances view", async () => {
+    const { result } = renderHook(() => useTorrentsList(0), { wrapper: makeWrapper() })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    expect(result.current.tags).toEqual([])
+  })
+
+  it("does not send the parent a new update for a repeated response", async () => {
+    const onFilteredDataUpdate = vi.fn()
+    const { result, rerender } = renderHook(() => {
+      const list = useTorrentsList(1)
+      useTorrentTableNotifications({
+        onFilteredDataUpdate,
+        isLoading: list.isLoading,
+        instanceId: 1,
+        counts: list.counts,
+        categories: list.categories,
+        tags: list.tags,
+        totalCount: list.totalCount,
+        torrents: list.torrents,
+        allowSubcategories: false,
+        supportsTrackerHealth: false,
+        actionTarget: EMPTY_ACTION_TARGET,
+        selectedTotalSize: 0,
+      })
+      return list
+    }, { wrapper: makeWrapper() })
+    await flush()
+
+    expect(result.current.categories).toEqual({})
+    const calls = onFilteredDataUpdate.mock.calls.length
+    expect(calls).toBeGreaterThan(0)
+
+    // A new response object with the same empty fields, on the REST poll.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+    })
+    await flush()
+    rerender()
+    await flush()
+
+    expect(mockedApi.getTorrents.mock.calls.length).toBeGreaterThan(1)
+    expect(onFilteredDataUpdate).toHaveBeenCalledTimes(calls)
   })
 })
 
