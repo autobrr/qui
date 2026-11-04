@@ -265,7 +265,7 @@ lint:
 	@echo "Linting changed Go code..."
 	golangci-lint run --new-from-merge-base=develop --timeout=5m
 	@echo "Finding unused Go code in the whole repo..."
-	golangci-lint run --default=none --enable=unused --timeout=5m ./...
+	golangci-lint run --enable-only=unused --timeout=5m ./...
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
