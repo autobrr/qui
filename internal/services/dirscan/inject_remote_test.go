@@ -122,6 +122,24 @@ func TestInjectRegularOnRemoteInstance(t *testing.T) {
 	}
 }
 
+// Without the walked row nothing could tell whether this row is still the server the searchee's paths came from.
+func TestInjectRefusesARequestWithNoScanInstance(t *testing.T) {
+	t.Parallel()
+
+	row := remoteInstance(models.SSHTierSFTP)
+	host := &fakeRemoteHost{d: fsops.SlashPaths}
+	manager := &recordingTorrentManager{}
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, (&settleFake{}).idle(), nil), nil, nil, remotePoolOver(row, host, &remoteSpy{}))
+
+	// Not the inject helper, which fills in a nil ScanInstance.
+	result, err := injector.Inject(t.Context(), remoteInjectRequest(fsops.SlashPaths, nil))
+
+	require.EqualError(t, err, "inject request missing scan instance")
+	require.False(t, result.Success)
+	require.Zero(t, host.calls, "the request is refused before any read")
+	require.Nil(t, manager.addOptions)
+}
+
 func TestInjectHardlinkTreeOnRemoteInstance(t *testing.T) {
 	t.Parallel()
 

@@ -46,6 +46,7 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 	}{
 		{name: "exec row, every identity read", tier: models.SSHTierExec, walk: []fsops.WalkEntry{identified}},
 		{name: "exec row, identity missing", tier: models.SSHTierExec, walk: []fsops.WalkEntry{identified, slashEntry("/data/scan/Film/b.mkv", "Film/b.mkv", 0), slashEntry("/data/scan/Film/c.mkv", "Film/c.mkv", 0)}, want: `"files":2`},
+		{name: "exec row, one identity missing", tier: models.SSHTierExec, walk: []fsops.WalkEntry{identified, slashEntry("/data/scan/Film/b.mkv", "Film/b.mkv", 0)}, want: `"files":1`},
 		{name: "sftp row never has identity", tier: models.SSHTierSFTP, walk: []fsops.WalkEntry{slashEntry("/data/scan/Film/b.mkv", "Film/b.mkv", 0)}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -162,11 +163,13 @@ func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 	otherPin.SSHHostKeyEncrypted = "enc-hostkey-2"
 	localNow := *walked
 	localNow.HasLocalFilesystemAccess = true
+	editedByTheWalk := &fakeInstanceStore{instance: walked}
 	for _, tt := range []struct {
-		name    string
-		store   instanceGetter
-		wantOK  bool
-		wantErr string
+		name       string
+		store      instanceGetter
+		duringWalk func()
+		wantOK     bool
+		wantErr    string
 	}{
 		{name: "unchanged", store: &fakeInstanceStore{instance: walked}, wantOK: true},
 		{name: "other host", store: &fakeInstanceStore{instance: &otherHost}, wantErr: errRemoteTargetChanged.Error()},
@@ -174,6 +177,7 @@ func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 		{name: "local access turned on", store: &fakeInstanceStore{instance: &localNow}, wantErr: errRemoteTargetChanged.Error()},
 		{name: "credentials removed", store: &fakeInstanceStore{instance: &models.Instance{ID: walked.ID}}, wantErr: errRemoteTargetChanged.Error()},
 		{name: "row unreadable", store: failingInstanceStore{}, wantErr: "database is locked"},
+		{name: "row reads as walked until the walk runs", store: editedByTheWalk, duringWalk: func() { editedByTheWalk.instance = &otherHost }, wantErr: errRemoteTargetChanged.Error()},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
@@ -182,7 +186,7 @@ func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 			require.NoError(t, err)
 			svc.torrentFiles = stubTorrentFiles{empty: true}
 			svc.backendPool = fsops.NewPoolWithRemote(tt.store, local.NewBackend(), func(*models.Instance) fsops.Backend { return &remoteSpy{} })
-			backend := newSlashBackend(slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/film.mkv", "film.mkv", 0))
+			backend := &rowEditedDuringWalk{slashBackend: newSlashBackend(slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/film.mkv", "film.mkv", 0)), edit: tt.duringWalk}
 			l := zerolog.Nop()
 
 			result, _, ok := svc.runScanPhase(ctx, dir, &scanTarget{backend: backend, instance: walked}, "/data/scan", runID, &l)
@@ -203,6 +207,19 @@ func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 
 type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
+// rowEditedDuringWalk runs edit when the walk starts, so a read of the row before the walk sees the old one.
+type rowEditedDuringWalk struct {
+	*slashBackend
+	edit func()
+}
+
+func (b *rowEditedDuringWalk) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	if b.edit != nil {
+		b.edit()
+	}
+	return b.slashBackend.WalkDir(ctx, root, opts)
 }
 
 // remoteRunSearcher answers by search query and records every query.

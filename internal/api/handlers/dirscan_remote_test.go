@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -32,6 +33,7 @@ import (
 // dirScanRemoteFixture has one instance of each filesystem mode behind a real handler and store.
 type dirScanRemoteFixture struct {
 	router                *chi.Mux
+	db                    *database.DB
 	store                 *models.DirScanStore
 	local, none, sftp, ex *models.Instance
 }
@@ -70,6 +72,7 @@ func newDirScanRemoteFixture(t *testing.T) *dirScanRemoteFixture {
 
 	return &dirScanRemoteFixture{
 		router: router,
+		db:     db,
 		store:  store,
 		local:  create("local", true),
 		none:   create("none", false),
@@ -170,8 +173,18 @@ func TestDirScanRemotePathMustBeAbsolute(t *testing.T) {
 		{name: "moving to a remote target with a new absolute path", want: http.StatusOK, run: func(t *testing.T) *httptest.ResponseRecorder {
 			return patch(t, f.directory(t, "data/move-me-too", f.local), fmt.Sprintf(`{"targetInstanceId":%d,"path":"/data/moved"}`, f.ex.ID))
 		}},
-		{name: "an update that names neither reads nothing", want: http.StatusOK, run: func(t *testing.T) *httptest.ResponseRecorder {
-			return patch(t, f.directory(t, "/data/other-field", f.ex), `{"category":"movies"}`)
+		{name: "an update that names neither skips the path check", want: http.StatusOK, run: func(t *testing.T) *httptest.ResponseRecorder {
+			return patch(t, f.directory(t, "data/other-field", f.ex), `{"category":"movies"}`)
+		}},
+		{name: "path only update of a missing directory", want: http.StatusNotFound, run: func(t *testing.T) *httptest.ResponseRecorder {
+			return f.send(t, http.MethodPatch, "/api/dir-scan/directories/999999", `{"path":"/data/other"}`)
+		}},
+		{name: "path only update with a target that can't be read", want: http.StatusInternalServerError, run: func(t *testing.T) *httptest.ResponseRecorder {
+			broken := newDirScanRemoteFixture(t)
+			dir := broken.directory(t, "/data/unreadable-target", broken.ex)
+			_, err := broken.db.ExecContext(t.Context(), "DROP VIEW instances_view")
+			require.NoError(t, err)
+			return broken.send(t, http.MethodPatch, "/api/dir-scan/directories/"+strconv.Itoa(dir.ID), `{"path":"/data/other"}`)
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,8 +226,20 @@ func (h *webhookHost) WalkDir(_ context.Context, root string, _ fsops.WalkOption
 	return ch, nil
 }
 
+// webhookDir is a directory on the remote instance, or with local set, on a local one.
+type webhookDir struct {
+	path  string
+	local bool
+}
+
 // webhookRun posts a webhook payload at a remote directory and waits for the scan it starts.
 func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
+	t.Helper()
+	return webhookRunIn(t, host, []webhookDir{{path: dirPath}}, payload)
+}
+
+// webhookRunIn is webhookRun with the directories created in the given order.
+func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
 	t.Helper()
 	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "dirscan-remote-webhook")
@@ -224,6 +249,8 @@ func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*
 	require.NoError(t, err)
 	require.NoError(t, instances.SetSSHCredentials(ctx, instance.ID, "box.example", 22, "qui", sshtest.PrivateKey("")))
 	require.NoError(t, instances.SetHostKeyPin(ctx, instance.ID, "box.example", 22, sshtest.NewSigner().PublicKey().Marshal()))
+	localInstance, err := instances.Create(ctx, "local", "http://localhost:8080", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
 	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
@@ -231,8 +258,14 @@ func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*
 	hub, events := newActivityHub(t)
 	service.SetActivityPublisher(hub)
 	handler := NewDirScanHandler(service, instances)
-	dir, err := service.CreateDirectory(ctx, &models.DirScanDirectory{Path: dirPath, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
-	require.NoError(t, err)
+	for _, dir := range dirs {
+		target := instance.ID
+		if dir.local {
+			target = localInstance.ID
+		}
+		_, err := service.CreateDirectory(ctx, &models.DirScanDirectory{Path: dir.path, Enabled: true, TargetInstanceID: target, ScanIntervalMinutes: 60})
+		require.NoError(t, err)
+	}
 
 	rec := httptest.NewRecorder()
 	handler.WebhookTriggerScan(rec, httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/dir-scan/webhook/scan", dirScanWebhookJSONBody(t, payload)))
@@ -241,7 +274,7 @@ func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*
 	}
 	var resp dirScanTriggerResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	waitDirScanIdle(t, service, events, dir.ID)
+	waitDirScanIdle(t, service, events, resp.DirectoryID)
 	return rec, &resp
 }
 
@@ -307,6 +340,27 @@ func TestWebhookRoutingKeepsSlashPaths(t *testing.T) {
 			if tt.wantCode == http.StatusAccepted {
 				require.Equal(t, tt.wantRoot, resp.ScanRoot)
 			}
+		})
+	}
+}
+
+// A shorter local match on a Windows qui host cleans the path to backslashes, and the scan root must stay
+// the one the remote directory read. Linux reads both grammars the same, so only Windows can tell.
+func TestWebhookRoutingTakesThePathFromTheBestMatch(t *testing.T) {
+	local, remote := webhookDir{path: "/lib", local: true}, webhookDir{path: "/lib/sub"}
+	for _, tt := range []struct {
+		name string
+		dirs []webhookDir
+	}{
+		{name: "the shorter local match listed first", dirs: []webhookDir{local, remote}},
+		{name: "the shorter local match listed last", dirs: []webhookDir{remote, local}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			host := &webhookHost{files: map[string]bool{"/lib/sub/x": true}}
+			rec, resp := webhookRunIn(t, host, tt.dirs, webhookPayloadSimple{Path: "/lib/sub/x"})
+			require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+			require.Equal(t, remote.path, resp.DirectoryPath)
+			require.Equal(t, "/lib/sub/x", resp.ScanRoot)
 		})
 	}
 }

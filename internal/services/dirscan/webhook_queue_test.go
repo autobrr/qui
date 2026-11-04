@@ -126,6 +126,46 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
+// On Windows only the slash grammar keeps these roots as the remote host writes them. Linux reads both the same.
+func TestStartWebhookScan_MergesInTheDirectorysOwnGrammar(t *testing.T) {
+	ctx := t.Context()
+	service, store, created := newDirScanTestService(t)
+	host := newSlashBackend()
+	service.backendPool = fsops.NewPoolWithRemote(&fakeInstanceStore{instance: remoteInstance(models.SSHTierExec)}, host, func(*models.Instance) fsops.Backend { return host })
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{Path: "/data/lib", Enabled: true, TargetInstanceID: created.TargetInstanceID, ScanIntervalMinutes: 60})
+	require.NoError(t, err)
+
+	activeRunID, err := store.CreateRun(ctx, dir.ID, triggeredByWebhook, "/data/lib/Show/Season 01")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, activeRunID, models.DirScanRunStatusScanning))
+	dirMu := service.getDirectoryMutex(dir.ID, true)
+	dirMu.Lock()
+
+	queuedID, err := service.StartWebhookScan(ctx, dir.ID, "/data/lib/Show/Season 01")
+	require.NoError(t, err)
+	_, err = service.StartWebhookScan(ctx, dir.ID, "/data/lib/Show/Season 02")
+	require.NoError(t, err)
+
+	queued, err := store.GetRun(ctx, queuedID)
+	require.NoError(t, err)
+	require.Equal(t, "/data/lib/Show", queued.ScanRoot)
+
+	require.NoError(t, service.CancelScan(ctx, dir.ID))
+	dirMu.Unlock()
+	require.Eventually(t, func() bool {
+		run, getErr := store.GetRun(ctx, queuedID)
+		require.NoError(t, getErr)
+		return run != nil && run.Status == models.DirScanRunStatusCanceled
+	}, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestWebhookScanRootWithoutABackendPool(t *testing.T) {
+	t.Parallel()
+
+	const path = "/data/lib/Show/ep01.mkv"
+	require.Equal(t, path, (&Service{}).WebhookScanRoot(t.Context(), &models.DirScanDirectory{TargetInstanceID: 1}, path))
+}
+
 // waitForRunFailed waits until the run fails and returns it. The test service
 // has no filesystem backend, so each run that starts fails at validation.
 func waitForRunFailed(t *testing.T, store *models.DirScanStore, runID int64) *models.DirScanRun {
