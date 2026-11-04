@@ -58,11 +58,14 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 		if normalizeHash(torrent.Hash) != want {
 			continue
 		}
-		if torrent.Progress < 1 {
+		switch s.sourceGate().check(&torrent, sourceFilter{}) {
+		case sourceIncomplete:
 			return nil, fmt.Errorf("%w: manual match target %q is not complete", ErrTorrentNotComplete, torrent.Name)
-		}
-		if !isSettledSource(&torrent) {
+		case sourceErrored:
+			return nil, ErrSourceErrored
+		case sourceMovingOrChecking:
 			return nil, ErrSourceNotSettled
+		default:
 		}
 		return &FindCandidatesResponse{
 			SourceTorrent: &TorrentInfo{Name: req.TorrentName},
@@ -193,7 +196,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 			requestedTorrent = &torrent
 			continue
 		}
-		if !s.canGiveFiles(&torrent) {
+		if s.sourceGate().check(&torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		entry := coarseEntry{torrent: torrent}

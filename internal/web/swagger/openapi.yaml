@@ -9222,7 +9222,7 @@ components:
               reason:
                 type: string
                 description: Empty for a paired target. Otherwise names why the target was rejected or dropped at apply.
-                enum: ['', target_not_found, incomplete, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
+                enum: ['', target_not_found, incomplete, errored, not_settled, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
         matched_episodes:
           type: integer
         total_episodes:

@@ -60,3 +60,8 @@ func TestWebhookResponseStatus(t *testing.T) {
 		})
 	}
 }
+
+// regression: #3707
+func TestMapCrossSeedErrorStatus_SourceErroredIsBadRequest(t *testing.T) {
+	require.Equal(t, http.StatusBadRequest, mapCrossSeedErrorStatus(crossseed.ErrSourceErrored))
+}

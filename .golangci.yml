@@ -95,6 +95,9 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(isSourceMovingOrChecking|isSourceErrored)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: ask the Source gate in internal/services/crossseed/source_gate.go
         - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
@@ -195,6 +198,13 @@ linters:
         linters:
           - forbidigo
         text: Search scope module
+
+      # Only the Source gate reads the moving and errored helpers. The rule cannot
+      # catch an inline read of progress, because the package has many valid reads.
+      - path: internal/services/crossseed/source_gate\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Source gate
 
       # Only the source apply module runs normal matches, then title rescue.
       - path: internal/services/crossseed/source_apply\.go$|_test\.go$
