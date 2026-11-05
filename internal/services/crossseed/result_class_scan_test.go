@@ -62,6 +62,11 @@ func TestStatusScanFailsOnUnknownOrUnresolvedStatus(t *testing.T) {
 		"status copied from another type": `func build(input struct{ Status string }) InstanceCrossSeedResult {
 			return InstanceCrossSeedResult{Status: input.Status}
 		}`,
+		"status copied from a field name that two types share": `type other struct{ Result struct{ Status string } }
+		type held struct{ Result AddResult }
+		func build(input other) InstanceCrossSeedResult {
+			return InstanceCrossSeedResult{Status: input.Result.Status}
+		}`,
 	}
 	for name, src := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -170,7 +175,12 @@ func (s *statusScan) readFieldTypes(decl *ast.GenDecl) {
 			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 				for _, field := range structType.Fields.List {
 					for _, name := range field.Names {
-						s.fieldTypes[name.Name] = typeName(field.Type)
+						// A field name with two types has no type that the scan can trust.
+						fieldType := typeName(field.Type)
+						if prior, ok := s.fieldTypes[name.Name]; ok && prior != fieldType {
+							fieldType = ""
+						}
+						s.fieldTypes[name.Name] = fieldType
 					}
 				}
 			}
