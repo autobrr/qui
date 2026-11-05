@@ -412,7 +412,7 @@ func TestMissingSavePathEdges(t *testing.T) {
 			files := map[string]qbt.TorrentFiles{"aaaa": {{Name: "f.bin"}}}
 			missing := map[string]error{tt.savePath: fs.ErrNotExist}
 
-			paths, owners, statErrors := collectIndexedFiles(index, files, map[string]string{"aaaa": tt.savePath}, missing, fsops.SlashPaths)
+			paths, owners, statErrors := indexMissingAndListRest(index, files, map[string]string{"aaaa": tt.savePath}, missing, fsops.SlashPaths)
 
 			require.Len(t, paths, tt.wantPaths)
 			require.Len(t, owners, tt.wantPaths)
