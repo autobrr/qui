@@ -274,7 +274,6 @@ func indexMissingAndListRest(index *seedingIndex, filesByHash map[string]qbt.Tor
 	return paths, owners, statErrors
 }
 
-// addStat applies the answer to one torrent file's stat.
 func (idx *seedingIndex) addStat(owner indexedFile, absPath string, info *fsops.LstatInfo, err error) {
 	hash, file := owner.hash, owner.file
 	if err != nil {
