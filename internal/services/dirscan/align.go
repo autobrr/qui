@@ -5,7 +5,6 @@ package dirscan
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -54,7 +53,7 @@ func detectTorrentRoot(files []TorrentFile) string {
 // on-disk files. It uses the exact torrent->disk file mapping from MatchResult, so no size
 // heuristics are needed. searcheeIsDir reports whether the on-disk searchee is a directory (vs a
 // single loose file), which decides the qBittorrent save-path layout the torrent must line up with.
-func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
+func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	var plan alignmentPlan
 	if req == nil || req.ParsedTorrent == nil || req.Searchee == nil || req.MatchResult == nil {
 		return plan
@@ -74,8 +73,8 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	}
 
 	if rooted {
-		targetRoot := filepath.Base(filepath.Clean(req.Searchee.Path))
-		if targetRoot == "" || targetRoot == "." || targetRoot == string(filepath.Separator) {
+		targetRoot := d.Base(d.Clean(req.Searchee.Path))
+		if targetRoot == "" || targetRoot == "." || targetRoot == d.Separator() {
 			return plan
 		}
 		plan.sourceRoot = sourceRoot
@@ -91,7 +90,7 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 		if plan.stripRoot {
 			oldPath = strings.TrimPrefix(oldPath, plan.sourceRoot+"/")
 		}
-		desiredRel := filepath.ToSlash(pair.SearcheeFile.RelPath)
+		desiredRel := d.ToSlash(pair.SearcheeFile.RelPath)
 		if oldPath == "" || desiredRel == "" {
 			continue
 		}

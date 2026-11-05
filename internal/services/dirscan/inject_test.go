@@ -32,6 +32,10 @@ func testBackendPool(instance *models.Instance) *fsops.Pool {
 	return fsops.NewPool(&fakeInstanceStore{instance: instance}, local.NewBackend())
 }
 
+func localScanTarget() *scanTarget {
+	return &scanTarget{backend: local.NewBackend(), instance: &models.Instance{ID: 1, HasLocalFilesystemAccess: true}}
+}
+
 type fakeInstanceStore struct {
 	instance *models.Instance
 }
