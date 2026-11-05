@@ -19,10 +19,10 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 )
 
-// slashBackend answers like a remote: slash dialect, a canned walk, and it
-// records every path it is asked to stat, alone or in a batch, so a test can
-// see the exact bytes the caller built.
-type slashBackend struct {
+// recordingBackend answers with a canned walk, in the slash dialect unless d
+// names another, and records every path it is asked to stat, alone or in a
+// batch, so a test can see the exact bytes the caller built.
+type recordingBackend struct {
 	fsops.Backend
 	d       fsops.PathDialect
 	walk    []fsops.WalkEntry
@@ -30,18 +30,18 @@ type slashBackend struct {
 	batches [][]string
 }
 
-func newSlashBackend(walk ...fsops.WalkEntry) *slashBackend {
-	return &slashBackend{Backend: localbackend.NewBackend(), walk: walk}
+func newRecordingBackend(walk ...fsops.WalkEntry) *recordingBackend {
+	return &recordingBackend{Backend: localbackend.NewBackend(), walk: walk}
 }
 
-func (b *slashBackend) Paths() fsops.PathDialect {
+func (b *recordingBackend) Paths() fsops.PathDialect {
 	if b.d != nil {
 		return b.d
 	}
 	return fsops.SlashPaths
 }
 
-func (b *slashBackend) WalkDir(context.Context, string, fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+func (b *recordingBackend) WalkDir(context.Context, string, fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
 	ch := make(chan fsops.WalkEntry, len(b.walk))
 	for _, e := range b.walk {
 		ch <- e
@@ -50,12 +50,12 @@ func (b *slashBackend) WalkDir(context.Context, string, fsops.WalkOptions) (<-ch
 	return ch, nil
 }
 
-func (b *slashBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+func (b *recordingBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	b.stated = append(b.stated, p)
 	return &fsops.LstatInfo{Path: p, Size: 4, Nlinks: 1}, nil
 }
 
-func (b *slashBackend) StatBatch(_ context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+func (b *recordingBackend) StatBatch(_ context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	b.batches = append(b.batches, paths)
 	infos := make([]*fsops.LstatInfo, len(paths))
 	for i, p := range paths {
@@ -64,7 +64,7 @@ func (b *slashBackend) StatBatch(_ context.Context, paths []string) ([]*fsops.Ls
 	return infos, make([]error, len(paths))
 }
 
-func (b *slashBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+func (b *recordingBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	return b.StatBatch(ctx, paths)
 }
 
@@ -84,7 +84,7 @@ func slashEntry(p, rel string, mode fs.FileMode) fsops.WalkEntry {
 func TestScanDirectoryUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 
-	b := newSlashBackend(
+	b := newRecordingBackend(
 		slashEntry("/data/torrents", ".", fs.ModeDir),
 		slashEntry("/data/torrents/Linked.2024.1080p.WEB.x264-GRP.mkv", "Linked.2024.1080p.WEB.x264-GRP.mkv", fs.ModeSymlink),
 		slashEntry("/data/torrents/Other.2023.1080p.WEB.x264-GRP.mkv", "Other.2023.1080p.WEB.x264-GRP.mkv", fs.ModeSymlink),
@@ -112,7 +112,7 @@ func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 	for _, tt := range dialects() {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			b := newSlashBackend()
+			b := newRecordingBackend()
 			b.d = tt.d
 			index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
 			files := qbt.TorrentFiles{{Name: "Show.S01/episode.mkv"}, {Name: "Show.S01/sample/s.mkv"}}

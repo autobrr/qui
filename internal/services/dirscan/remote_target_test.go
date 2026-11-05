@@ -57,7 +57,7 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 			var buf bytes.Buffer
 			l := zerolog.New(&buf)
 
-			_, _, ok := svc.runScanPhase(t.Context(), &models.DirScanDirectory{TargetInstanceID: row.ID}, &scanTarget{backend: newSlashBackend(walk...), instance: row}, "/data/scan", 1, &l)
+			_, _, ok := svc.runScanPhase(t.Context(), &models.DirScanDirectory{TargetInstanceID: row.ID}, &scanTarget{backend: newRecordingBackend(walk...), instance: row}, "/data/scan", 1, &l)
 
 			require.True(t, ok)
 			if tt.want == "" {
@@ -186,7 +186,7 @@ func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 			require.NoError(t, err)
 			svc.torrentFiles = stubTorrentFiles{empty: true}
 			svc.backendPool = fsops.NewPoolWithRemote(tt.store, local.NewBackend(), func(*models.Instance) fsops.Backend { return &remoteSpy{} })
-			backend := &rowEditedDuringWalk{slashBackend: newSlashBackend(slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/film.mkv", "film.mkv", 0)), edit: tt.duringWalk}
+			backend := &rowEditedDuringWalk{recordingBackend: newRecordingBackend(slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/film.mkv", "film.mkv", 0)), edit: tt.duringWalk}
 			l := zerolog.Nop()
 
 			result, _, ok := svc.runScanPhase(ctx, dir, &scanTarget{backend: backend, instance: walked}, "/data/scan", runID, &l)
@@ -211,7 +211,7 @@ type instanceGetter interface {
 
 // rowEditedDuringWalk runs edit when the walk starts, so a read of the row before the walk sees the old one.
 type rowEditedDuringWalk struct {
-	*slashBackend
+	*recordingBackend
 	edit func()
 }
 
@@ -219,7 +219,7 @@ func (b *rowEditedDuringWalk) WalkDir(ctx context.Context, root string, opts fso
 	if b.edit != nil {
 		b.edit()
 	}
-	return b.slashBackend.WalkDir(ctx, root, opts)
+	return b.recordingBackend.WalkDir(ctx, root, opts)
 }
 
 // remoteRunSearcher answers by search query and records every query.

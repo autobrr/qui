@@ -32,7 +32,6 @@ func testBackendPool(instance *models.Instance) *fsops.Pool {
 	return fsops.NewPool(&fakeInstanceStore{instance: instance}, local.NewBackend())
 }
 
-// localScanTarget is the scan target of a run on a local instance.
 func localScanTarget() *scanTarget {
 	return &scanTarget{backend: local.NewBackend(), instance: &models.Instance{ID: 1, HasLocalFilesystemAccess: true}}
 }

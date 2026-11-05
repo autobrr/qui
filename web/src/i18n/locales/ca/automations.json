@@ -226,9 +226,12 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",
+      "qbittorrent50": "Requereix qBittorrent 5.0+",
+      "qbittorrent52": "Requereix qBittorrent 5.2+",
       "localFilesystemAccess": "Requereix accés al sistema de fitxers local",
       "remoteInstance": "No disponible en instàncies remotes"
     },
-    "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}."
+    "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}.",
+    "ruleSkip": "No s'executa en aquesta instància: {{field}} necessita {{requires}}."
   }
 }

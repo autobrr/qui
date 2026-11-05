@@ -12,7 +12,7 @@
     "externalPrograms": "Programmes Externes",
     "notifications": "Notifications",
     "dateTime": "Heure et Langue",
-    "premiumThemes": "Thèmes Premium",
+    "premiumThemes": "Thèmes",
     "security": "Sécurité",
     "logs": "Logs"
   },
@@ -420,38 +420,37 @@
     "selector": {
       "title": "Sélection de thème",
       "loadingDescription": "Chargement des thèmes disponibles...",
-      "description": "Choisissez parmi les thèmes. Les thèmes premium nécessitent une licence valide.",
-      "verificationUnavailable": "Vérification de licence indisponible. Le changement de thème premium est désactivé.",
-      "notLoaded": "Thèmes premium non chargés",
-      "notLoadedDescription": "Configurer",
-      "notLoadedAnd": "et exécutez",
-      "premium": "Premium",
-      "pro": "Pro",
+      "description": "Choisissez parmi les thèmes. Certains thèmes nécessitent une licence valide.",
+      "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est temporairement désactivé.",
+      "notLoaded": "Thèmes sous licence non chargés",
+      "notLoadedDescription": "Exécutez",
       "free": "Gratuit",
       "locked": "Verrouillé",
-      "lock": "Verrouillé"
+      "lock": "Verrouillé",
+      "showTheme": "Afficher",
+      "hideTheme": "Masquer"
     },
     "toasts": {
-      "premiumRequired": "Licence Premium requise",
-      "premiumRequiredDescription": "Débloquez les thèmes premium en ajoutant une licence valide."
+      "premiumRequired": "Licence requise",
+      "premiumRequiredDescription": "Ajoutez une licence valide pour débloquer tous les thèmes."
     },
     "license": {
       "loadingTitle": "Gestion de Licence",
       "loadingDescription": "Chargement des licences...",
       "managementTitle": "Gestion de Licence",
-      "managementDescription": "Gérez votre licence et l'accès premium",
+      "managementDescription": "Gérez votre licence de thèmes",
       "providers": {
         "licensePortal": "portail des licences"
       },
       "status": {
-        "unlockTitle": "Débloquer les Thèmes Premium",
+        "unlockTitle": "Débloquer tous les thèmes",
         "unlockDescription": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
-        "activeTitle": "Accès Premium Actif",
-        "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
+        "activeTitle": "Licence active",
+        "activeDescription": "Vous avez accès à tous les thèmes actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
         "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
         "offlineTitle": "Service de licences injoignable",
-        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes premium sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
+        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes sous licence sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
       },
       "portalHelp": {
         "prefix": "Achetez sur DodoPayments, puis saisissez votre clé ici. Si vous la perdez, récupérez-la via",
@@ -503,7 +502,7 @@
         "addLicense": "Ajouter la licence",
         "remove": "Retirer",
         "removing": "Suppression...",
-        "getPremium": "Obtenir Premium",
+        "getPremium": "Obtenir une licence",
         "reactivate": "Ré-activer la licence",
         "activating": "Activation...",
         "copyLicenseKey": "Copier la clé de licence",
@@ -519,17 +518,17 @@
         "recoverPrefix": "Si besoin, vous pourrez la récupérer plus tard depuis votre"
       },
       "addDialog": {
-        "title": "Ajouter une Licence Premium",
-        "description": "Saisissez votre clé de licence premium pour débloquer tous les thèmes.",
+        "title": "Ajouter une licence",
+        "description": "Saisissez votre clé de licence pour débloquer tous les thèmes.",
         "label": "Clé de Licence",
-        "placeholder": "Saisissez votre clé premium",
+        "placeholder": "Saisissez votre clé de licence",
         "recoverKey": "Clé perdue ?",
         "validation": {
           "required": "La clé de licence est requise"
         }
       },
       "paymentDialog": {
-        "title": "Obtenir une Licence Premium",
+        "title": "Obtenir une licence",
         "description": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "steps": {
           "choosePaymentMethod": {
@@ -561,8 +560,8 @@
       "copiedVerify": "Commande de vérification copiée",
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
-        "activationSuccessPremium": "Accès Premium activé ! Merci !",
-        "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence premium pour terminer.",
+        "activationSuccessPremium": "Licence activée ! Merci !",
+        "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
         "keyCopied": "Clé copiée dans le presse-papiers",
@@ -573,9 +572,9 @@
     "custom": {
       "badge": "Personnalisé",
       "title": "Thèmes personnalisés",
-      "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
-      "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
-      "unlockCta": "Débloquer le premium",
+      "lockedTitle": "Les thèmes personnalisés nécessitent une licence",
+      "lockedDescription": "Obtenez une licence pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
+      "unlockCta": "Obtenir une licence",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",

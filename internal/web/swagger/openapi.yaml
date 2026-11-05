@@ -1851,6 +1851,11 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
     post:
       tags:
         - Torrents
@@ -3442,6 +3447,7 @@ paths:
         Run one saved automation on the instance now and apply its actions. The run ignores the interval of the automation, and it also runs a disabled automation.
         An automation with dryRun set stays a simulation and writes dry-run activity rows.
         Only one run applies actions on an instance at a time. If a run is in progress, the request returns 409 and applies nothing.
+        If the automation reads a field that the qBittorrent version of the instance does not send, the run applies nothing and writes one `rule_skipped` activity row. Its details give the `field` and the version that the field `requires`.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - in: path
@@ -4127,6 +4133,11 @@ paths:
                   partialResults:
                     type: boolean
                     description: Indicates if some instances failed to respond
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
         '400':
           description: Missing or invalid filters parameter
           content:
@@ -7895,6 +7906,15 @@ components:
         supportsShareLimitsMode:
           type: boolean
           description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
+        supportsLiveReannounce:
+          type: boolean
+          description: Whether the torrent list has the seconds until the next announce (Web API 2.10.0+, qBittorrent 5.0+).
+        supportsListFieldsV5:
+          type: boolean
+          description: Whether the torrent list has popularity, private and comment (Web API 2.11.2+, qBittorrent 5.0.0rc1+).
+        supportsListCreatedBy:
+          type: boolean
+          description: Whether the torrent list has created_by (Web API 2.15.1+, qBittorrent 5.2+).
         webAPIVersion:
           type: string
           nullable: true
@@ -7964,6 +7984,16 @@ components:
           type: integer
         completedOn:
           type: integer
+        reannounce:
+          type: integer
+          format: int64
+          description: Seconds until qBittorrent next announces the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
+        popularity:
+          type: number
+          description: Popularity of the torrent. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list.
+        private:
+          type: boolean
+          description: Whether the torrent is private. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list, and for a torrent without metadata, such as a magnet link.
         savePath:
           type: string
 
@@ -9192,7 +9222,7 @@ components:
               reason:
                 type: string
                 description: Empty for a paired target. Otherwise names why the target was rejected or dropped at apply.
-                enum: ['', target_not_found, incomplete, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
+                enum: ['', target_not_found, incomplete, errored, not_settled, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
         matched_episodes:
           type: integer
         total_episodes:

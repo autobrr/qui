@@ -222,7 +222,7 @@ func addTorrentsToFileIDIndex(ctx context.Context, index *seedingIndex, filesByH
 	if err != nil {
 		return 0, err
 	}
-	paths, owners, statErrors := collectIndexedFiles(index, filesByHash, savePaths, missing, backend.Paths())
+	paths, owners, statErrors := indexMissingAndListRest(index, filesByHash, savePaths, missing, backend.Paths())
 	if len(paths) == 0 {
 		return statErrors, nil
 	}
@@ -243,8 +243,8 @@ func addTorrentsToFileIDIndex(ctx context.Context, index *seedingIndex, filesByH
 	return statErrors, nil
 }
 
-// collectIndexedFiles lists the files to stat, and a file under a missing save path takes that stat's failure without one.
-func collectIndexedFiles(index *seedingIndex, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, missing map[string]error, d fsops.PathDialect) (paths []string, owners []indexedFile, statErrors int) {
+// indexMissingAndListRest gives a file under a missing save path the failure of that path's stat, and lists the others to stat.
+func indexMissingAndListRest(index *seedingIndex, filesByHash map[string]qbt.TorrentFiles, savePaths map[string]string, missing map[string]error, d fsops.PathDialect) (paths []string, owners []indexedFile, statErrors int) {
 	total := 0
 	for _, files := range filesByHash {
 		total += len(files)
@@ -256,15 +256,15 @@ func collectIndexedFiles(index *seedingIndex, filesByHash map[string]qbt.Torrent
 		if savePath == "" {
 			continue
 		}
-		gone, under := missing[savePath]
+		savePathErr, savePathMissing := missing[savePath]
 		prefix := d.Clean(savePath) + d.Separator()
 		for i := range files {
 			owner := indexedFile{hash: hash, file: &files[i]}
 			absPath := d.Join(savePath, d.FromSlash(files[i].Name))
 			// A name with a .. element joins to a path outside the save path, which can exist when that is gone.
-			if under && strings.HasPrefix(absPath, prefix) {
+			if savePathMissing && strings.HasPrefix(absPath, prefix) {
 				statErrors++
-				index.addStat(owner, absPath, nil, gone)
+				index.addStat(owner, absPath, nil, savePathErr)
 				continue
 			}
 			paths = append(paths, absPath)
@@ -274,7 +274,6 @@ func collectIndexedFiles(index *seedingIndex, filesByHash map[string]qbt.Torrent
 	return paths, owners, statErrors
 }
 
-// addStat applies the answer to one torrent file's stat.
 func (idx *seedingIndex) addStat(owner indexedFile, absPath string, info *fsops.LstatInfo, err error) {
 	hash, file := owner.hash, owner.file
 	if err != nil {

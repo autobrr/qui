@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   return {
     translation: { t, i18n: { t, language: "en" } },
     apply: vi.fn(),
-    toast: { loading: vi.fn(() => "toast-id"), success: vi.fn(), error: vi.fn() },
+    toast: { loading: vi.fn(() => "toast-id"), success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   }
 })
 
@@ -86,6 +86,26 @@ describe("RunWorkflowNowDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
 
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.noChanges", { id: "toast-id" }))
+  })
+
+  it("says when the rule did not run on the instance", async () => {
+    mocks.apply.mockResolvedValue({ status: "applied", activities: [{ action: "rule_skipped", outcome: "skipped" }] })
+    renderDialog()
+
+    fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
+
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.skipped", { id: "toast-id" }))
+    expect(mocks.toast.success).not.toHaveBeenCalled()
+  })
+
+  it("says when a saved dry-run rule did not run on the instance", async () => {
+    mocks.apply.mockResolvedValue({ status: "dry-run-completed", activities: [{ action: "rule_skipped", outcome: "dry-run" }] })
+    renderDialog()
+
+    fireEvent.click(screen.getByRole("button", { name: "preferences.runWorkflowNow.confirm" }))
+
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith("preferences.runWorkflowNow.toast.skipped", { id: "toast-id" }))
+    expect(mocks.toast.success).not.toHaveBeenCalled()
   })
 
   it("lists an auto-management action that turns management off", () => {

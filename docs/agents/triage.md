@@ -25,6 +25,16 @@ Extra labels with a role in triage:
 
 The workflow cannot read the rls source, so decide `rls` from the qui code: the wrong value comes from the rls parse result, also when qui changes that value later. Do not add `rls` when qui logic makes the wrong value. The label goes on a `bug` and on an `enhancement`, for example a request that needs rls to detect a new tag or content type.
 
+An `rls` report gets one mention of the rls-review team. If triage created an issue, the mention goes on the issue. If not, it goes on the discussion when the discussion stays open with `ready-for-human`. A `needs-info`, duplicate, or closed discussion gets no mention. The comment is:
+
+```
+cc @autobrr/rls-review: triage found that this needs a change in autobrr/rls.
+
+<!-- qui-triage:rls-review -->
+```
+
+Post it only when the thread has no comment with that marker. In the workflow, a step after the agent posts it as the `qui-rabbit` app, because a team mention from `GITHUB_TOKEN` notifies nobody. The agent does not post it. In a local session, post it yourself after you apply the outcome.
+
 Area labels (`cross-seed`, `web`, `backend`, and more) are extra. Add the ones that fit.
 
 ## Writes

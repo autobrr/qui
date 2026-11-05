@@ -67,6 +67,11 @@ archives:
     # Only the Windows zip holds qui-tray.exe. A Self-update takes both exes
     # from that one zip, so the archives stay combined.
     allow_different_binary_count: true
+    files:
+      - LICENSE
+      - README.md
+      # The release workflow writes this file with scripts/notices.
+      - THIRD_PARTY_NOTICES
     format_overrides:
       - goos: windows
         formats: ['zip']
@@ -85,6 +90,7 @@ msi:
     wxs: ./distrib/windows/qui.wxs
     extra_files:
       - internal/tray/qui.ico
+      - THIRD_PARTY_NOTICES
     name: qui_{{ .Version }}_windows_x86_64
 
 release:

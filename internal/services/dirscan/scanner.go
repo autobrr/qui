@@ -235,7 +235,8 @@ func checkScanRoot(entry *fsops.WalkEntry, rootPath string) error {
 
 // resolveRootSymlinks stats every root-level link in one batch and keeps
 // the ones whose target is a regular file. A lost connection fails the scan,
-// since the links it left unread would be dropped as if they led nowhere.
+// since the links it left unread would be dropped as if they led nowhere, or
+// kept with no identity.
 func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) error {
 	var links []*rootEntry
 	var paths []string
@@ -251,8 +252,8 @@ func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) e
 
 	infos, errs := fsops.StatAll(ctx, s.backend, paths)
 	for i, top := range links {
-		if errors.Is(errs[i], fsops.ErrConnectionLost) {
-			return fmt.Errorf("scan directory: %w", errs[i])
+		if lost := lostConnectionErr(infos[i], errs[i]); lost != nil {
+			return fmt.Errorf("scan directory: %w", lost)
 		}
 		if errs[i] != nil || !infos[i].Mode.IsRegular() {
 			top.failed = true

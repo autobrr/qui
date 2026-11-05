@@ -566,6 +566,10 @@ func (app *Application) runServer() {
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
 	}
+	if err := cfg.Config.ValidateOIDCAllowedUser(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
+	}
+	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {

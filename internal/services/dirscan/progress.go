@@ -188,7 +188,8 @@ func buildTrackedFileUpsert(
 	unchanged := false
 
 	if existing != nil {
-		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Equal(scanned.ModTime)
+		// Whole seconds, because the database column and the filesystem keep different precision.
+		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Unix() == scanned.ModTime.Unix()
 		if unchanged {
 			status = existing.Status
 			matchedTorrentHash = existing.MatchedTorrentHash

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"path"
 	"slices"
 	"sync/atomic"
 	"syscall"
@@ -38,7 +39,7 @@ func remoteID(ino byte) hardlink.FileID {
 
 // answerBackend is a remote host with slash paths, recorded batches and one answer per path.
 type answerBackend struct {
-	*slashBackend
+	*recordingBackend
 	answer func(p string) (*fsops.LstatInfo, error)
 }
 
@@ -58,7 +59,7 @@ func (b answerBackend) StatBatch(_ context.Context, paths []string) ([]*fsops.Ls
 }
 
 func newAnswerBackend(answer func(p string) (*fsops.LstatInfo, error), walk ...fsops.WalkEntry) answerBackend {
-	return answerBackend{slashBackend: newSlashBackend(walk...), answer: answer}
+	return answerBackend{recordingBackend: newRecordingBackend(walk...), answer: answer}
 }
 
 // seededTorrents is qBittorrent for the seeding index, by torrent hash.
@@ -100,6 +101,24 @@ func answerWithID(id hardlink.FileID) func(string) (*fsops.LstatInfo, error) {
 	return func(p string) (*fsops.LstatInfo, error) {
 		return &fsops.LstatInfo{Path: p, Size: 1, FileID: id, Nlinks: 1}, nil
 	}
+}
+
+// remoteFileModTime is the mtime both trackRemoteFile and scanOfRemoteFile use, so a scan reads the file as unchanged.
+var remoteFileModTime = time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+
+func trackRemoteFile(t *testing.T, store *models.DirScanStore, dirID int, filePath string, status models.DirScanFileStatus) {
+	t.Helper()
+	require.NoError(t, store.UpsertFile(t.Context(), &models.DirScanFile{
+		DirectoryID: dirID, FilePath: filePath, FileSize: 100, FileModTime: remoteFileModTime,
+		FileID: append(remoteID(1).Bytes(), endpointTag(remoteInstance(models.SSHTierExec))...), Status: status,
+	}))
+}
+
+func scanOfRemoteFile(filePath string) *ScanResult {
+	base := path.Base(filePath)
+	return &ScanResult{Searchees: []*Searchee{{Name: base, Path: filePath, Files: []*ScannedFile{
+		{Path: filePath, RelPath: base, Size: 100, ModTime: remoteFileModTime, FileID: remoteID(1)},
+	}}}}
 }
 
 // An index built without its instance has no key for a remote identity, so every file reads as unknown.
@@ -162,14 +181,8 @@ func TestTorrentGoneClearsRemoteAlreadySeeding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
 			svc, store, dir := newDirScanTestService(t)
-			modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
-			require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
-				DirectoryID: dir.ID, FilePath: "/data/film.mkv", FileSize: 100, FileModTime: modTime,
-				FileID: remoteID(1).Bytes(), Status: models.DirScanFileStatusAlreadySeeding,
-			}))
-			scanned := &ScanResult{Searchees: []*Searchee{{Name: "film", Path: "/data/film.mkv", Files: []*ScannedFile{
-				{Path: "/data/film.mkv", RelPath: "film.mkv", Size: 100, ModTime: modTime, FileID: remoteID(1)},
-			}}}}
+			trackRemoteFile(t, store, dir.ID, "/data/film.mkv", models.DirScanFileStatusAlreadySeeding)
+			scanned := scanOfRemoteFile("/data/film.mkv")
 			l := zerolog.Nop()
 
 			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, row, scanned, &seedingIndex{byKey: tt.byKey, instance: row, complete: true}, &l)
@@ -187,14 +200,8 @@ func TestRemoteRenameKeepsVerdictByFileID(t *testing.T) {
 	ctx := t.Context()
 	svc, store, dir := newDirScanTestService(t)
 	row := remoteInstance(models.SSHTierExec)
-	modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
-		DirectoryID: dir.ID, FilePath: "/data/old/film.mkv", FileSize: 100, FileModTime: modTime,
-		FileID: append(remoteID(1).Bytes(), endpointTag(row)...), Status: models.DirScanFileStatusNoMatch,
-	}))
-	scanned := &ScanResult{Searchees: []*Searchee{{Name: "new", Path: "/data/new", Files: []*ScannedFile{
-		{Path: "/data/new/film.mkv", RelPath: "film.mkv", Size: 100, ModTime: modTime, FileID: remoteID(1)},
-	}}}}
+	trackRemoteFile(t, store, dir.ID, "/data/old/film.mkv", models.DirScanFileStatusNoMatch)
+	scanned := scanOfRemoteFile("/data/new/film.mkv")
 	l := zerolog.Nop()
 
 	tracked, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, row, scanned, &seedingIndex{instance: row}, &l)
@@ -279,12 +286,11 @@ func TestFileIDIndexBatchesAcrossTorrents(t *testing.T) {
 // Without identity qui reads no torrent list or stat, and the index cannot clear an already seeding file.
 func TestFileIDIndexSkippedWithoutIdentity(t *testing.T) {
 	for _, tt := range []struct {
-		name         string
-		row          *models.Instance
-		wantBuilt    bool
-		wantComplete bool
+		name      string
+		row       *models.Instance
+		wantBuilt bool
 	}{
-		{name: "remote exec tier", row: remoteInstance(models.SSHTierExec), wantBuilt: true, wantComplete: true},
+		{name: "remote exec tier", row: remoteInstance(models.SSHTierExec), wantBuilt: true},
 		{name: "remote sftp tier", row: remoteInstance(models.SSHTierSFTP)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -303,7 +309,7 @@ func TestFileIDIndexSkippedWithoutIdentity(t *testing.T) {
 
 			require.True(t, ok)
 			require.Len(t, result.Searchees, 1, "the walk runs either way")
-			require.Equal(t, tt.wantComplete, index.complete)
+			require.Equal(t, tt.wantBuilt, index.complete)
 			if tt.wantBuilt {
 				require.Equal(t, 1, index.len())
 				require.EqualValues(t, 1, torrents.reads.Load())
@@ -322,17 +328,17 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 	const seeded = "/other/f.bin"
 	row := remoteInstance(models.SSHTierExec)
 	for _, tt := range []struct {
-		name         string
-		savePath     string
-		fileName     string
-		wantComplete bool
-		wantBatches  int
-		wantIndexed  int
-		wantStatus   models.DirScanFileStatus
+		name        string
+		savePath    string
+		fileName    string
+		wantBatches int
+		wantIndexed int
+		wantStatus  models.DirScanFileStatus
 	}{
-		{name: "seeded_then_dotdot_missing_prio0", savePath: "/gone", fileName: "../other/f.bin", wantComplete: true, wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
-		{name: "save_path_through_a_missing_folder", savePath: "/gone/../other", fileName: "f.bin", wantComplete: true, wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
-		{name: "dots_inside_an_element_stay_under_the_save_path", savePath: "/gone", fileName: "sub..../x.bin", wantComplete: true, wantBatches: 1, wantStatus: models.DirScanFileStatusPending},
+		{name: "name_climbs_out_of_a_missing_save_path", savePath: "/gone", fileName: "../other/f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
+		{name: "name_climbs_to_a_sibling_sharing_the_prefix", savePath: "/oth", fileName: "../other/f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
+		{name: "save_path_through_a_missing_folder", savePath: "/gone/../other", fileName: "f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
+		{name: "dots_inside_an_element_stay_under_the_save_path", savePath: "/gone", fileName: "sub..../x.bin", wantBatches: 1, wantStatus: models.DirScanFileStatusPending},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
@@ -350,14 +356,8 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 				}
 				return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
 			})
-			modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
-			require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
-				DirectoryID: dir.ID, FilePath: seeded, FileSize: 100, FileModTime: modTime,
-				FileID: remoteID(1).Bytes(), Status: models.DirScanFileStatusAlreadySeeding,
-			}))
-			scanned := &ScanResult{Searchees: []*Searchee{{Name: "f", Path: seeded, Files: []*ScannedFile{
-				{Path: seeded, RelPath: "f.bin", Size: 100, ModTime: modTime, FileID: remoteID(1)},
-			}}}}
+			trackRemoteFile(t, store, dir.ID, seeded, models.DirScanFileStatusAlreadySeeding)
+			scanned := scanOfRemoteFile(seeded)
 			l := zerolog.Nop()
 
 			index, err := svc.buildFileIDIndex(ctx, row, backend, nil)
@@ -365,7 +365,7 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, row, scanned, index, &l)
 			require.NoError(t, err)
 
-			require.Equal(t, tt.wantComplete, index.complete, index.incompleteReason)
+			require.True(t, index.complete, index.incompleteReason)
 			require.Equal(t, tt.wantIndexed, index.len())
 			require.Len(t, backend.batches, tt.wantBatches)
 			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
@@ -412,7 +412,7 @@ func TestMissingSavePathEdges(t *testing.T) {
 			files := map[string]qbt.TorrentFiles{"aaaa": {{Name: "f.bin"}}}
 			missing := map[string]error{tt.savePath: fs.ErrNotExist}
 
-			paths, owners, statErrors := collectIndexedFiles(index, files, map[string]string{"aaaa": tt.savePath}, missing, fsops.SlashPaths)
+			paths, owners, statErrors := indexMissingAndListRest(index, files, map[string]string{"aaaa": tt.savePath}, missing, fsops.SlashPaths)
 
 			require.Len(t, paths, tt.wantPaths)
 			require.Len(t, owners, tt.wantPaths)

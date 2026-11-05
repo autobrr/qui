@@ -238,6 +238,24 @@ export function buildActionTarget(
   }
 }
 
+// The instances that an action on the target reaches. Ticked rows with targets
+// reach their own instances: the cross-seed filter lists other instances also
+// on a single-instance page, and Export follows each row. Any other target on a
+// single instance reaches that instance. In the Unified view a select-all
+// reaches the instance subset, and undefined means every active instance.
+export function actionTargetInstanceIds(target: ActionTarget, instanceId: number): number[] | undefined {
+  if (target.kind === "ticks" && target.targets?.length) {
+    return [...new Set(target.targets.map(t => t.instanceId))]
+  }
+  if (instanceId > 0) {
+    return [instanceId]
+  }
+  if (target.kind === "selectAll") {
+    return target.selectAll.instanceIds
+  }
+  return []
+}
+
 // The request fields of an Action target, for a bulk action and the tag editor baseline.
 export function actionTargetRequest(target: ActionTarget) {
   if (target.kind === "selectAll") {

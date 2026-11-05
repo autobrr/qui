@@ -42,26 +42,25 @@ build/docker:
 build/dockerx:
 	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
-# Fetch premium themes from private repository
+# Fetch the community themes into the licensed folder. The repo is public, so no token.
+# Without network, warn and build with the free themes only.
 themes-fetch:
-	@echo "Fetching premium themes..."
-	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
-		rm -rf .themes-temp && \
-		git clone --depth=1 --filter=blob:none --sparse \
-			https://x-access-token:$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
-		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
-		mkdir -p internal/themes/assets/premium && \
-		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
-		rm -rf .themes-temp && \
-		echo "Premium themes fetched successfully"; \
+	@echo "Fetching community themes..."
+	@rm -rf .themes-temp internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
+	@if git clone --quiet --depth=1 --branch main --filter=blob:none --sparse \
+			https://github.com/autobrr/qui-community-themes.git .themes-temp && \
+		git -C .themes-temp sparse-checkout set --cone themes; then \
+		cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/ && \
+		echo "Community themes fetched"; \
 	else \
-		echo "THEMES_REPO_TOKEN not set, skipping premium themes"; \
+		echo "WARNING: could not fetch the community themes, building with the free themes only"; \
 	fi
+	@rm -rf .themes-temp
 
-# Clean premium themes
+# Clean community themes
 themes-clean:
-	@echo "Cleaning premium themes..."
-	rm -f internal/themes/assets/premium/*.css
+	@echo "Cleaning community themes..."
+	rm -f internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
 
 # Build frontend
 frontend:
@@ -355,8 +354,8 @@ help:
 	@echo "  make docs-build     - Build documentation for production"
 	@echo ""
 	@echo "Other:"
-	@echo "  make themes-fetch   - Fetch premium themes from private repository"
-	@echo "  make themes-clean   - Clean premium themes"
+	@echo "  make themes-fetch   - Fetch the community themes"
+	@echo "  make themes-clean   - Clean the community themes"
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make deps           - Install dependencies"
 	@echo "  make help           - Show this help message"

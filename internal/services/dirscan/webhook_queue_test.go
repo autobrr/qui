@@ -130,7 +130,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 func TestStartWebhookScan_MergesInTheDirectorysOwnGrammar(t *testing.T) {
 	ctx := t.Context()
 	service, store, created := newDirScanTestService(t)
-	host := newSlashBackend()
+	host := newRecordingBackend()
 	service.backendPool = fsops.NewPoolWithRemote(&fakeInstanceStore{instance: remoteInstance(models.SSHTierExec)}, host, func(*models.Instance) fsops.Backend { return host })
 	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{Path: "/data/lib", Enabled: true, TargetInstanceID: created.TargetInstanceID, ScanIntervalMinutes: 60})
 	require.NoError(t, err)
