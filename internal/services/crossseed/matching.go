@@ -1379,7 +1379,11 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 // video. Real titles begin with keywords ("Trailer.Park.Boys.S01E01"), so a
 // keyword at the start of a release name is a title word.
 func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string, string]) bool {
-	lower := normalizer.Normalize(filename)
+	return isIgnoredFileName(normalizer.Normalize(filename))
+}
+
+// isIgnoredFileName is shouldIgnoreFile for a name that is already normalized.
+func isIgnoredFileName(lower string) bool {
 	if slices.Contains(DefaultIgnoredExtensions, path.Ext(lower)) {
 		return true
 	}

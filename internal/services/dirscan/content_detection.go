@@ -6,6 +6,8 @@ package dirscan
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
 var videoExtensions = map[string]struct{}{
@@ -62,10 +64,16 @@ func isContentPath(path string) bool {
 	return isVideoPath(path) || isAudioPath(path)
 }
 
-func filterContentFiles(files []*ScannedFile) []*ScannedFile {
-	contentFiles := make([]*ScannedFile, 0, len(files))
-	for _, f := range files {
-		if f == nil || !isContentPath(f.Path) {
+// filterContentFiles returns the files that count for the age cutoff. For an
+// archived release, only its archive volumes count, not its sample.
+func filterContentFiles(searchee *Searchee) []*ScannedFile {
+	isContent := isContentPath
+	if searchee.IsArchived {
+		isContent = crossseed.IsArchiveVolume
+	}
+	contentFiles := make([]*ScannedFile, 0, len(searchee.Files))
+	for _, f := range searchee.Files {
+		if f == nil || !isContent(f.Path) {
 			continue
 		}
 		contentFiles = append(contentFiles, f)

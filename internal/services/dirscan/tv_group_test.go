@@ -203,3 +203,107 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 		})
 	}
 }
+
+// An added archived pack skips the search of each episode that it holds in
+// full. An episode that the pack does not hold keeps its own search.
+func TestProcessRootSearchee_ArchivedPackSkipsOnlyTheEpisodesItHolds(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "dirscan-archived-pack")
+	key := []byte("01234567890123456789012345678901")
+
+	instanceStore, err := models.NewInstanceStore(db, key)
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://127.0.0.1:8080", "user", "pass", nil, nil, false, new(true))
+	require.NoError(t, err)
+	indexerStore, err := models.NewTorznabIndexerStore(db, key)
+	require.NoError(t, err)
+	indexer, err := indexerStore.Create(ctx, "Indexer", "http://indexer.example.invalid", "api-key", nil, nil, true, 0, 30)
+	require.NoError(t, err)
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path: t.TempDir(), Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	const folder = "Example.Show.S01.720p.HDTV.x264-GRP"
+	root := &Searchee{Name: folder, Path: filepath.Join(dir.Path, folder), IsArchived: true}
+	for ep := 1; ep <= 2; ep++ {
+		epFolder := fmt.Sprintf("Example.Show.S01E%02d.720p.HDTV.x264-GRP", ep)
+		for i, vol := range []string{"show.rar", "show.r00"} {
+			rel := filepath.Join(epFolder, vol)
+			root.Files = append(root.Files, &ScannedFile{
+				Path: filepath.Join(root.Path, rel), RelPath: rel, Size: int64(10000/ep + i), ModTime: time.Now(),
+			})
+		}
+	}
+
+	cache := models.NewTorznabTorrentCacheStore(db)
+	searcher := &episodeSearcher{indexerID: indexer.ID, episodes: map[int][]jackett.SearchResult{}}
+	addResult := func(guid string, info *metainfo.Info) jackett.SearchResult {
+		require.NoError(t, cache.Store(ctx, &models.TorznabTorrentCacheEntry{
+			IndexerID: indexer.ID, CacheKey: guid, TorrentData: buildTorrentBytes(t, info),
+		}))
+		return jackett.SearchResult{
+			Title: info.Name, IndexerID: indexer.ID, GUID: guid, Size: info.TotalLength(),
+			DownloadURL: "http://indexer.example.invalid/dl/" + guid,
+		}
+	}
+	torrentOf := func(name string, files []*ScannedFile, trim string) *metainfo.Info {
+		info := &metainfo.Info{Name: name, PieceLength: 16384, Pieces: []byte(strings.Repeat("p", 20))}
+		for _, f := range files {
+			rel := strings.TrimPrefix(filepath.ToSlash(f.RelPath), trim)
+			info.Files = append(info.Files, metainfo.FileInfo{Length: f.Size, Path: strings.Split(rel, "/")})
+		}
+		return info
+	}
+	// The pack torrent holds only the first episode, and its size is still in the band.
+	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict, StartPaused: true, SizeTolerancePercent: 40}
+	searcher.season = []jackett.SearchResult{addResult("pack", torrentOf(folder, root.Files[:2], ""))}
+	searcher.episodes[2] = []jackett.SearchResult{addResult("ep-2", torrentOf("Example.Show.S01E02.720p.HDTV.x264-GRP", root.Files[2:], "Example.Show.S01E02.720p.HDTV.x264-GRP/"))}
+
+	manager := &recordingTorrentManager{}
+	adder := testAdder(manager, (&settleFake{}).idle(), nil)
+	cacheDB := &cacheTouchDB{DB: db, done: make(chan struct{}, 4)}
+	parser := NewParser(nil)
+	svc := &Service{
+		store:  store,
+		parser: parser,
+		adder:  adder,
+		jackettService: jackett.NewService(indexerStore,
+			jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
+		searcher:    NewSearcher(searcher, parser),
+		searchGate:  searchGate{interval: time.Nanosecond},
+		runProgress: map[int64]*runProgress{},
+		injector: NewInjector(nil, crossseed.NewAligner(manager), adder, nil,
+			&fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
+	}
+
+	l := zerolog.New(io.Discard)
+	scanResult := &ScanResult{Searchees: []*Searchee{root}}
+	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+	require.NoError(t, err)
+	enabled := map[int]struct{}{indexer.ID: {}}
+	work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+	require.Len(t, work.roots, 1)
+
+	_, added := svc.processRootSearchee(ctx, dir, root, work.roots[0].items, &seedingIndex{}, trackedFiles,
+		map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
+	for range searcher.answered {
+		select {
+		case <-cacheDB.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("torrent cache touch did not finish")
+		}
+	}
+
+	require.Equal(t, []string{"season", "E02"}, searcher.searched)
+	require.Equal(t, 2, added)
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, len(root.Files))
+	for _, f := range files {
+		require.Equal(t, models.DirScanFileStatusMatched, f.Status, f.FilePath)
+	}
+}
