@@ -34,6 +34,7 @@ import type {
   CrossSeedRouteStatus,
   CrossSeedRouteTestResult,
   CrossSeedInstanceResult,
+  CrossSeedResultClass,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
   CrossSeedRun,
@@ -490,6 +491,7 @@ type RawCrossSeedInstanceResult = {
   instance_name: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
   cross_seed_instance_id?: number
@@ -502,6 +504,7 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     instanceName: instance.instance_name,
     success: instance.success,
     status: instance.status,
+    class: instance.class,
     message: instance.message,
     crossSeedInstanceId: instance.cross_seed_instance_id,
     crossSeedInstanceName: instance.cross_seed_instance_name,

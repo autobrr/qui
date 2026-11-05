@@ -463,6 +463,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} 个失败 - 请查看结果了解详情",
       "applyCompletedUnavailable": "辅种请求已完成（详情不可用）",
       "applyNoChanges": "未添加任何辅种",
+      "applyAlreadyInClient": "已在客户端中",
       "applyCompletedPart": "，{{count}} 个已完成",
       "applyCompletedPrefix": "{{count}} 个已完成，"
     }

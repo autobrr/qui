@@ -472,6 +472,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} han fallat: mira'n els resultats per als detalls",
       "applyCompletedUnavailable": "La sol·licitud de cross-seed s'ha completat (detalls no disponibles)",
       "applyNoChanges": "No s'ha afegit cap cross-seed",
+      "applyAlreadyInClient": "Ja és al client",
       "applyCompletedPart": ", {{count}} completats",
       "applyCompletedPrefix": "{{count}} completats, "
     }

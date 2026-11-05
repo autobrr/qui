@@ -3,6 +3,8 @@
 
 package crossseed
 
+import "encoding/json"
+
 // resultClass is what one cross-seed result means for its reader.
 type resultClass string
 
@@ -60,4 +62,13 @@ func (r InstanceCrossSeedResult) class() resultClass {
 		return class
 	}
 	return classFailed
+}
+
+// MarshalJSON adds the class, which the result does not store.
+func (r InstanceCrossSeedResult) MarshalJSON() ([]byte, error) {
+	type plainResult InstanceCrossSeedResult
+	return json.Marshal(struct {
+		plainResult
+		Class resultClass `json:"class"`
+	}{plainResult(r), r.class()})
 }

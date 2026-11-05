@@ -463,6 +463,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}}개 실패 - 자세한 내용은 결과를 확인하세요",
       "applyCompletedUnavailable": "cross-seed 요청이 완료되었습니다(세부 정보 사용 불가)",
       "applyNoChanges": "추가된 cross-seed가 없습니다",
+      "applyAlreadyInClient": "이미 클라이언트에 있습니다",
       "applyCompletedPart": ", {{count}}개 완료",
       "applyCompletedPrefix": "{{count}}개 완료, "
     }
