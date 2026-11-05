@@ -38,7 +38,7 @@ func remoteID(ino byte) hardlink.FileID {
 
 // answerBackend is a remote host with slash paths, recorded batches and one answer per path.
 type answerBackend struct {
-	*slashBackend
+	*recordingBackend
 	answer func(p string) (*fsops.LstatInfo, error)
 }
 
@@ -58,7 +58,7 @@ func (b answerBackend) StatBatch(_ context.Context, paths []string) ([]*fsops.Ls
 }
 
 func newAnswerBackend(answer func(p string) (*fsops.LstatInfo, error), walk ...fsops.WalkEntry) answerBackend {
-	return answerBackend{slashBackend: newSlashBackend(walk...), answer: answer}
+	return answerBackend{recordingBackend: newRecordingBackend(walk...), answer: answer}
 }
 
 // seededTorrents is qBittorrent for the seeding index, by torrent hash.

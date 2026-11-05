@@ -225,7 +225,7 @@ func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
 				slashEntry("/data/Other", "Other", fs.ModeDir),
 				slashEntry("/data/Other/b.mkv", "Other/b.mkv", 0),
 			)
-			result, err := NewScanner(newSlashBackend(walk...)).ScanDirectory(t.Context(), "/data")
+			result, err := NewScanner(newRecordingBackend(walk...)).ScanDirectory(t.Context(), "/data")
 			require.NoError(t, err)
 			require.Len(t, result.Searchees, 1)
 			require.Equal(t, "/data/Other", result.Searchees[0].Path)
