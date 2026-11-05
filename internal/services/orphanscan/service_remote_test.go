@@ -374,6 +374,7 @@ func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
 }
 
 // The cut fails the run with no preview, and the next run reads every identity.
+// regression: #3838
 func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	t.Parallel()
 

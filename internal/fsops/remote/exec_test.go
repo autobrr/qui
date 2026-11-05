@@ -281,6 +281,7 @@ func TestExecWalkFallsBackToSFTPOnATornRecord(t *testing.T) {
 }
 
 // The walk ends with nothing but the root sent, because an sftp walk on the redialled connection reads no identity.
+// regression: #3838
 func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 	t.Parallel()
 
