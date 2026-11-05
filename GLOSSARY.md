@@ -12,7 +12,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## API access
 
 - **Client Proxy API key**: A key bound to one instance that reaches only the qBittorrent proxy. _Avoid_: client key, proxy token.
-- **Browser-only route**: A route that refuses every API key and accepts only a signed-in browser. _Avoid_: session-only route.
+- **Browser-only route**: A route that refuses every API key and accepts only a signed-in browser, or any request when authentication is disabled. _Avoid_: session-only route.
 
 ## Torrent filtering
 
