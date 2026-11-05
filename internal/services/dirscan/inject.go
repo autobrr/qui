@@ -574,9 +574,8 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	// Dirscan builds its link destinations with host filepath and walks through
-	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
-	// until #2919 moves it to the backend path dialect.
+	// Injection reads through Pool.LocalBackend, which refuses any other mode, so
+	// a remote instance stays out even with Write (#2942) until #2919.
 	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
