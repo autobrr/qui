@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -171,14 +172,14 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 
 			l := zerolog.New(io.Discard)
 			scanResult := &ScanResult{Searchees: []*Searchee{root}}
-			trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+			trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 			require.NoError(t, err)
 			enabled := map[int]struct{}{indexer.ID: {}}
-			work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+			work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 			require.Len(t, work.roots, 1)
 
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict, StartPaused: true}
-			_, added := svc.processRootSearchee(ctx, dir, root, work.roots[0].items, &seedingIndex{}, trackedFiles,
+			_, added := svc.processRootSearchee(ctx, dir, localScanTarget(), root, work.roots[0].items, &seedingIndex{}, trackedFiles,
 				map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 
 			// Each download is a cache hit that starts a detached touch; join them

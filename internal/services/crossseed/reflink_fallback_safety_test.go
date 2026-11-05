@@ -199,6 +199,54 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	require.Nil(t, sync.addTorrentOpts, "AddTorrent should not be called when reuse safety checks fail")
 }
 
+func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
+	t.Parallel()
+
+	instanceID := 1
+	matchedHash := "matchedhash"
+	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
+
+	sync := &reflinkFallbackSafetySyncManager{
+		files: map[string]qbt.TorrentFiles{
+			normalizeHash(matchedHash): {{Name: "Movie.2024.mkv", Size: 1_000_000}},
+		},
+		props: map[string]*qbt.TorrentProperties{
+			normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
+		},
+	}
+	service := &Service{
+		syncManager: sync,
+		instanceStore: &reflinkFallbackSafetyInstanceStore{
+			instances: map[int]*models.Instance{
+				instanceID: {ID: instanceID, UseReflinks: true, HasLocalFilesystemAccess: true},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "Test",
+		Torrents: []qbt.Torrent{{
+			Hash:        matchedHash,
+			Name:        torrentName,
+			Progress:    1.0,
+			Category:    "movies",
+			ContentPath: "/downloads/movies/" + torrentName,
+		}},
+	}
+	sourceFiles := qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1_000_001}}
+
+	withAdder(service)
+	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+
+	// The rig has no reflink base directory, so the add reaches reflink mode and fails there.
+	require.Equal(t, "reflink_error", result.Status)
+}
+
 func (*reflinkFallbackSafetySyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
 	return nil, nil
 }

@@ -117,7 +117,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
 - **Alignment**: The renames after an add that make the file and folder names of a torrent match the files that are already on disk. _Avoid_: content path alignment, rename alignment.
 - **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
+- **Result class**: What one cross-seed result means for its reader: added, exists, skipped, stranded, or failed. _Avoid_: outcome, status.
+- **Stranded**: The Result class of an add that qBittorrent holds but qui could not finish. _Avoid_: added_failed.
 - **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
+- **Piece boundary check**: The check that refuses an add when a Pending file shares a torrent piece with a file on disk, because the download can change that file. A setting turns it off, but not after a link mode fallback. Reflink mode does not need it. _Avoid_: piece check, unsafe extras.
 - **Partial pool**: Related partial cross-seeds that share one source torrent. qui lets one member download at a time and links each completed file into the other members. _Avoid_: Pooled group.
 - **Pool member**: One torrent in a partial pool.
 - **Pool admission**: The step that makes a new partial add a pool member, and the window after it during which more members can join. _Avoid_: Admission alone (see Admitted Execution and Pre-add check).

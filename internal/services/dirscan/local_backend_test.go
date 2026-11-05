@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -91,6 +93,111 @@ func TestScanFailsForAnInstanceThatLeftLocalMode(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
+	store, dir, runID := newLocalModeRun(t)
+	pool, spy := remotePool()
+	svc := &Service{store: store, backendPool: pool}
+	logger := zerolog.Nop()
+
+	_, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
+
+	require.False(t, ok)
+	require.Nil(t, target)
+	require.Zero(t, spy.calls.Load(), "the scan must not walk the SSH host")
+	run, err := store.GetRun(ctx, runID)
+	require.NoError(t, err)
+	require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+	require.Equal(t, "target instance does not have local filesystem access", run.ErrorMessage)
+}
+
+// failingInstanceStore cannot read any instance.
+type failingInstanceStore struct{}
+
+func (failingInstanceStore) Get(context.Context, int) (*models.Instance, error) {
+	return nil, errors.New("database is locked")
+}
+
+func TestValidateDirectoryFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name  string
+		store interface {
+			Get(context.Context, int) (*models.Instance, error)
+		}
+		want []string
+	}{
+		{
+			name:  "no filesystem access",
+			store: &fakeInstanceStore{instance: &models.Instance{ID: 1}},
+			want:  []string{"target instance does not have local filesystem access"},
+		},
+		{
+			name:  "instance cannot be read",
+			store: failingInstanceStore{},
+			want:  []string{"failed to get target instance: ", "database is locked"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := t.Context()
+			store, dir, runID := newLocalModeRun(t)
+			svc := &Service{store: store, backendPool: fsops.NewPool(tt.store, local.NewBackend())}
+			logger := zerolog.Nop()
+
+			_, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
+
+			require.False(t, ok)
+			require.Nil(t, target)
+			run, err := store.GetRun(ctx, runID)
+			require.NoError(t, err)
+			require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+			for _, want := range tt.want {
+				require.Contains(t, run.ErrorMessage, want)
+			}
+		})
+	}
+}
+
+// flippingStore answers local on the first read and remote after, like local access turned off mid-run.
+type flippingStore struct{ reads atomic.Int32 }
+
+func (s *flippingStore) Get(context.Context, int) (*models.Instance, error) {
+	if s.reads.Add(1) == 1 {
+		return &models.Instance{ID: remoteRow.ID, HasLocalFilesystemAccess: true}, nil
+	}
+	return remoteRow, nil
+}
+
+// A run keeps the backend of the read that admitted it, so a later flip cannot walk the SSH host.
+func TestScanWalksTheBackendOfTheReadThatAdmittedIt(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	store, dir, runID := newLocalModeRun(t)
+	movie := filepath.Join(dir.Path, "Synthetic.Film.2024.1080p.WEB.x264-GRP.mkv")
+	require.NoError(t, os.WriteFile(movie, []byte("synthetic media"), 0o600))
+
+	instances := &flippingStore{}
+	spy := &remoteSpy{}
+	pool := fsops.NewPoolWithRemote(instances, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
+	svc := &Service{store: store, backendPool: pool, torrentFiles: stubTorrentFiles{empty: true}}
+	logger := zerolog.Nop()
+
+	validated, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
+	require.True(t, ok)
+	require.True(t, target.instance.HasLocalFilesystemAccess)
+
+	result, _, ok := svc.runScanPhase(ctx, validated, target, dir.Path, runID, &logger)
+
+	require.True(t, ok)
+	require.Len(t, result.Searchees, 1)
+	require.Equal(t, movie, result.Searchees[0].Path)
+	require.Zero(t, spy.calls.Load(), "the walk must stay on the backend of the admitting read")
+}
+
+func newLocalModeRun(t *testing.T) (*models.DirScanStore, *models.DirScanDirectory, int64) {
+	t.Helper()
+	ctx := t.Context()
 	db := setupDirScanServiceTestDB(t)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -103,17 +210,5 @@ func TestScanFailsForAnInstanceThatLeftLocalMode(t *testing.T) {
 	require.NoError(t, err)
 	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 	require.NoError(t, err)
-
-	pool, spy := remotePool()
-	svc := &Service{store: store, backendPool: pool}
-	logger := zerolog.Nop()
-
-	_, _, ok := svc.runScanPhase(ctx, dir, dir.Path, runID, &logger)
-
-	require.False(t, ok)
-	require.Zero(t, spy.calls.Load(), "the scan must not walk the SSH host")
-	run, err := store.GetRun(ctx, runID)
-	require.NoError(t, err)
-	require.Equal(t, models.DirScanRunStatusFailed, run.Status)
-	require.Contains(t, run.ErrorMessage, fsops.ErrNotLocal.Error())
+	return store, dir, runID
 }

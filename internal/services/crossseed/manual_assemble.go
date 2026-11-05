@@ -98,7 +98,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 	}
 	check, refusal := s.adder.Check(ctx, receiverID, AddFacts{ManualAssembly: true}, collectHashes(prep.meta)...)
 	if refusal != nil {
-		if refusal.Status != "exists" {
+		if refusal.Status != StatusExists {
 			return nil, refusal.Err
 		}
 		resp.Ready, resp.Reason = false, "already_exists"

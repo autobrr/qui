@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -210,7 +209,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
-	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(ctx, backend, req.Searchee.Path))
+	alignPlan := buildAlignmentPlan(backend.Paths(), req, searcheePathIsDir(ctx, backend, req.Searchee.Path))
 	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
@@ -400,7 +399,7 @@ func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend,
 	if savePath == "" {
 		// Default: use the parent directory of the searchee path.
 		// This avoids double-nesting when the incoming torrent already has a root folder.
-		savePath = filepath.Dir(req.Searchee.Path)
+		savePath = backend.Paths().Dir(req.Searchee.Path)
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
@@ -411,7 +410,7 @@ func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend,
 
 	// Apply path prefix mapping for containers
 	if req.QbitPathPrefix != "" {
-		savePath = applyPathMapping(savePath, filepath.Dir(req.Searchee.Path), req.QbitPathPrefix)
+		savePath = applyPathMapping(savePath, backend.Paths().Dir(req.Searchee.Path), req.QbitPathPrefix)
 	}
 
 	return savePath
@@ -575,9 +574,8 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	// Dirscan builds its link destinations with host filepath and walks through
-	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
-	// until #2919 moves it to the backend path dialect.
+	// Injection reads through Pool.LocalBackend, which refuses any other mode, so
+	// a remote instance stays out even with Write (#2942) until #2919.
 	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return errors.New("instance does not have local filesystem access enabled")
 	}

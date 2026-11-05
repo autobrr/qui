@@ -17,6 +17,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -153,7 +154,7 @@ func TestBuildAlignmentPlan(t *testing.T) {
 				Searchee:      &Searchee{Path: tt.searcheePath},
 				MatchResult:   &MatchResult{MatchedFiles: tt.matched},
 			}
-			plan := buildAlignmentPlan(req, tt.searcheeIsDir)
+			plan := buildAlignmentPlan(fsops.HostPaths, req, tt.searcheeIsDir)
 
 			if plan.needed() != tt.wantNeeded {
 				t.Fatalf("needed() = %v, want %v (plan=%+v)", plan.needed(), tt.wantNeeded, plan)

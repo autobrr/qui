@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -150,6 +151,78 @@ func TestAdderAdd(t *testing.T) {
 		{name: "skip recheck refuses disc layout", facts: AddFacts{SkipRecheck: true, DiscMarker: "BDMV"}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses link fallback of partial match", facts: AddFacts{SkipRecheck: true, LinkFallback: true}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses link fallback recheck", facts: AddFacts{SkipRecheck: true, LinkFallback: true, LinkFallbackRecheck: true}, wantStatus: "skipped_recheck"},
+		{name: "size mismatch refuses", facts: AddFacts{SizeMismatch: true}, wantStatus: "rejected", wantMessage: sizeMismatchMessage},
+		{name: "unsafe pieces refuse an unvalidated manual match", facts: AddFacts{UnsafePieces: true, UnvalidatedManual: true}, wantStatus: "skipped_unsafe_pieces", wantMessage: unsafePiecesMessage},
+		{
+			name:        "link fallback refuses unsafe pieces with the switch off",
+			facts:       AddFacts{UnsafeFallbackPieces: true, LinkFallback: true, SkipPieceBoundaryCheck: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafeFallbackPiecesMessage,
+		},
+		{name: "folder to rootless refuses", facts: AddFacts{FolderToRootless: true}, wantStatus: "requires_hardlink_reflink", wantMessage: folderToRootlessMessage},
+		{name: "size mismatch comes before unsafe pieces", facts: AddFacts{SizeMismatch: true, UnsafePieces: true}, wantStatus: "rejected", wantMessage: sizeMismatchMessage},
+		{
+			name:        "unsafe pieces come before the link fallback rule",
+			facts:       AddFacts{UnsafePieces: true, UnsafeFallbackPieces: true, LinkFallback: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafePiecesMessage,
+		},
+		{
+			name:        "link fallback rule comes before skip recheck",
+			facts:       AddFacts{UnsafeFallbackPieces: true, LinkFallback: true, SkipRecheck: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafeFallbackPiecesMessage,
+		},
+		{name: "skip recheck comes before folder to rootless", facts: AddFacts{SkipRecheck: true, Align: true, FolderToRootless: true}, wantStatus: "skipped_recheck"},
+		{
+			name:        "reflink add allows a size mismatch",
+			facts:       AddFacts{ReflinkAdd: true, SizeMismatch: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "reflink add allows unsafe pieces",
+			facts:       AddFacts{ReflinkAdd: true, UnsafePieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unvalidated manual match allows a size mismatch",
+			facts:       AddFacts{UnvalidatedManual: true, SizeMismatch: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unvalidated manual match allows folder to rootless",
+			facts:       AddFacts{UnvalidatedManual: true, FolderToRootless: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "switch off allows unsafe pieces",
+			facts:       AddFacts{UnsafePieces: true, SkipPieceBoundaryCheck: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "exact match in place allows unsafe fallback pieces",
+			facts:       AddFacts{ExactMatch: true, LinkFallback: true, UnsafeFallbackPieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unsafe fallback pieces need a link fallback",
+			facts:       AddFacts{UnsafeFallbackPieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
 		{
 			name:        "skip recheck adds byte-complete link fallback at once",
 			facts:       AddFacts{SkipRecheck: true, ExactMatch: true, LinkFallback: true, LinkFallbackRecheck: true},
@@ -409,7 +482,7 @@ func TestAdderAdd(t *testing.T) {
 			require.Equal(t, tt.wantOutcome, result.Outcome)
 			queued := rig.queued()
 			if tt.wantStatus != "" {
-				require.Equal(t, skippedRecheckMessage, result.Message)
+				require.Equal(t, cmp.Or(tt.wantMessage, skippedRecheckMessage), result.Message)
 				require.Empty(t, rig.sync.added)
 				require.Nil(t, queued)
 				require.Empty(t, rig.programs)

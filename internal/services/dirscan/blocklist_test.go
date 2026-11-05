@@ -153,7 +153,7 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			l := zerolog.New(io.Discard)
 			dir := &models.DirScanDirectory{ID: 1, TargetInstanceID: instance.ID}
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
-			matches, outcome := svc.processSearchee(ctx, dir, searchee, settings, NewMatcher(MatchModeStrict, 0), 0, map[int]struct{}{indexer.ID: {}}, nil, &l)
+			matches, outcome := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 0, map[int]struct{}{indexer.ID: {}}, nil, &l)
 			// Fetch starts a detached cache touch; join it before SQLite and TempDir cleanup.
 			select {
 			case <-cacheDB.done:
