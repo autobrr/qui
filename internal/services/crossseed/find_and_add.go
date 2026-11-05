@@ -109,14 +109,9 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 		return true
 	}
 	for _, result := range response.Results {
-		if result.Success {
-			return true
-		}
-		switch result.Status {
-		case "exists", partialPoolRegistrationErrorStatus,
-			// qBittorrent holds the stranded torrent, so a later source would
-			// only report "exists" and hide the failure.
-			"alignment_failed", "pause_failed":
+		// qBittorrent holds a stranded torrent, so a later source would only
+		// report "exists" and hide the failure.
+		if class := result.class(); class == classAdded || class == classExists || class == classStranded {
 			return true
 		}
 	}

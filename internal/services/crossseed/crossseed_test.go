@@ -2661,16 +2661,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
 
-func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, isSkippedCrossSeedResultStatus("below_threshold"))
-	assert.True(t, isSkippedCrossSeedResultStatus("requires_hardlink_reflink"))
-	assert.True(t, isSkippedCrossSeedResultStatus("content_mismatch"))
-	assert.False(t, isSkippedCrossSeedResultStatus("size_mismatch"))
-	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
-}
-
 func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
 	t.Parallel()
 

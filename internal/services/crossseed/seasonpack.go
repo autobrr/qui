@@ -405,9 +405,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		case refusal == nil:
 			checks[inst.ID] = check
 			unblocked = append(unblocked, inst)
-		case refusal.Status == "blocked":
+		case refusal.Status == StatusBlocked:
 			blockedID = cmp.Or(blockedID, inst.ID)
-		case refusal.Status == "exists":
+		case refusal.Status == StatusExists:
 			message := fmt.Sprintf("torrent already exists on instance %d", receiverID)
 			if refusal.Message != existsInThisInstance {
 				message = refusal.Message
