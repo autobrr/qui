@@ -21,8 +21,14 @@ These rules apply to Go and TypeScript code.
 
 ## Comments
 
-A comment caches what the code cannot show: why this shape, the bug a guard prevents, a coupling to another file. Caching what the line does buys nothing and rots first. One line is the norm.
+Default to no comment. Add one line only for a constraint the code cannot show: a hidden constraint, a workaround (link the issue or upstream bug), or a link to another file.
 
-- Change a line, change its comment, in the same diff. A stale-comment finding from a review bot is right; a docstring coverage percentage is not.
-- An invariant a future change must hold is a test, not a sentence with "must not" in it.
-- Doc-comment an exported identifier when its name leaves the contract unclear.
+- Delete a comment that restates the code, such as step narration, section banners, or the function name above the function.
+- Put the history of an edit in the commit message.
+- Leave out commented-out code and unprompted `TODO` or `FIXME` markers.
+- Older comments are no reason to add more.
+- When you change a line that has a comment, update or delete the comment.
+- A stale-comment finding from a review bot is right.
+- An invariant that a future change must hold is a test.
+
+The markers that a standard in this repo requires stay, for example `// regression: #N` and `// i18n-namespace: <ns>`.
