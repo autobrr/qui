@@ -8,6 +8,11 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,9 +25,12 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -405,6 +413,70 @@ func (f *remoteRunFixture) statuses(t *testing.T) map[string]models.DirScanFileS
 		statuses[file.FilePath] = file.Status
 	}
 	return statuses
+}
+
+// sshCreds is the credential source of a pool that reaches one test server.
+type sshCreds struct {
+	row *models.Instance
+	pin []byte
+}
+
+func (c sshCreds) Get(context.Context, int) (*models.Instance, error) { return c.row, nil }
+func (c sshCreds) GetDecryptedSSHKey(*models.Instance) (string, error) {
+	return sshtest.PrivateKey(""), nil
+}
+func (c sshCreds) GetHostKeyPin(*models.Instance) ([]byte, error) { return c.pin, nil }
+func (sshCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
+	return nil
+}
+
+// Sftp can redial here, so only the walk's cut keeps a seeded file with no row from reading as new and going to the indexers.
+// regression: #3838
+func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake exec handler runs the local GNU find and stat")
+	}
+	ctx := t.Context()
+	f := newRemoteRun(t, fsops.SlashPaths, func(row *models.Instance) instanceGetter { return &fakeInstanceStore{instance: row} })
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	host, port, err := net.SplitHostPort(server.Addr)
+	require.NoError(t, err)
+	f.row.SSHHost = host
+	f.row.SSHPort, err = strconv.Atoi(port)
+	require.NoError(t, err)
+	f.row.SSHUsername = "qui"
+	sshPool := sshpool.NewPool(sshpool.NewDialer(sshCreds{row: f.row, pin: hostKey.PublicKey().Marshal()}))
+	t.Cleanup(sshPool.Close)
+	f.svc.backendPool = fsops.NewPoolWithRemote(&fakeInstanceStore{instance: f.row}, &remoteSpy{}, func(row *models.Instance) fsops.Backend { return remote.New(sshPool, row) })
+
+	lib, seed := t.TempDir(), t.TempDir()
+	const name = "Synthetic.Film.2020.1080p.WEB.x264-GRP.mkv"
+	tracked := filepath.Join(lib, "Tracked.Film.2019.1080p.WEB.x264-GRP.mkv")
+	require.NoError(t, os.WriteFile(filepath.Join(lib, name), []byte("seeded"), 0o600))
+	require.NoError(t, os.WriteFile(tracked, []byte("tracked"), 0o600))
+	require.NoError(t, os.Link(filepath.Join(lib, name), filepath.Join(seed, name)))
+	f.svc.torrentFiles = onlyTorrent(seed, name)
+	f.dir, err = f.store.CreateDirectory(ctx, &models.DirScanDirectory{Path: lib, Enabled: true, TargetInstanceID: f.row.ID, ScanIntervalMinutes: 60})
+	require.NoError(t, err)
+	info, err := os.Stat(tracked)
+	require.NoError(t, err)
+	require.NoError(t, f.store.UpsertFile(ctx, &models.DirScanFile{
+		DirectoryID: f.dir.ID, FilePath: tracked, FileSize: info.Size(), FileModTime: info.ModTime(), Status: models.DirScanFileStatusNoMatch,
+	}))
+	before := f.statuses(t)
+
+	server.DropOnExec("-mindepth", "")
+	run := f.run(t)
+	require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+	require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
+	require.Empty(t, f.searcher.queries, "a failed walk must reach no indexer")
+	require.Equal(t, before, f.statuses(t))
+
+	run = f.run(t)
+	require.Equal(t, models.DirScanRunStatusSuccess, run.Status, run.ErrorMessage)
+	require.Equal(t, models.DirScanFileStatusAlreadySeeding, f.statuses(t)[filepath.Join(lib, name)], "the next run reads the identity again")
 }
 
 // One run on a remote instance in each dialect: the walk, the seeding index, a rename kept by identity, the
