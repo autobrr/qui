@@ -421,60 +421,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if userInfo != nil {
-		// Take the user-info email and its verified flag together, never an
-		// unverified user-info email with the verified flag of the ID token.
-		if userInfo.Email != "" {
-			claims.Email = userInfo.Email
-			claims.EmailVerified = oidcBool(userInfo.EmailVerified)
-		}
-
-		var userInfoClaims struct {
-			PreferredUsername string `json:"preferred_username"`
-			Name              string `json:"name"`
-			Nickname          string `json:"nickname"`
-			Picture           string `json:"picture"`
-		}
-		if err := userInfo.Claims(&userInfoClaims); err != nil {
-			log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
-		} else {
-			log.Trace().
-				Str("userinfo_email", userInfo.Email).
-				Str("userinfo_username", userInfoClaims.PreferredUsername).
-				Str("userinfo_name", userInfoClaims.Name).
-				Str("userinfo_nickname", userInfoClaims.Nickname).
-				Msg("successfully parsed claims from userinfo endpoint")
-
-			// Merge userinfo claims with ID token claims
-			if userInfoClaims.PreferredUsername != "" {
-				claims.PreferredUsername = userInfoClaims.PreferredUsername
-			}
-			if userInfoClaims.Name != "" {
-				claims.Name = userInfoClaims.Name
-			}
-			if userInfoClaims.Nickname != "" {
-				claims.Nickname = userInfoClaims.Nickname
-			}
-			if userInfoClaims.Picture != "" {
-				claims.Picture = userInfoClaims.Picture
-			}
-		}
+		mergeUserInfoClaims(&claims, userInfo)
 	}
 
-	// Determine username from claims
-	username := claims.PreferredUsername
-	if username == "" {
-		if claims.Nickname != "" {
-			username = claims.Nickname
-		} else if claims.Name != "" {
-			username = claims.Name
-		} else if claims.Email != "" {
-			username = claims.Email
-		} else if claims.Sub != "" {
-			username = claims.Sub
-		} else {
-			username = "oidc_user"
-		}
-	}
+	username := oidcUsername(claims)
 
 	log.Trace().
 		Str("email", claims.Email).
@@ -557,6 +507,67 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 // isValidRedirectURL validates that the redirect URL is safe
 // For a self-hosted application, we ensure the URL points to the same host as configured
+// mergeUserInfoClaims overrides the ID token claims with the non-empty claims
+// from the userinfo endpoint.
+func mergeUserInfoClaims(claims *OIDCClaims, userInfo *oidc.UserInfo) {
+	// Take the user-info email and its verified flag together, never an
+	// unverified user-info email with the verified flag of the ID token.
+	if userInfo.Email != "" {
+		claims.Email = userInfo.Email
+		claims.EmailVerified = oidcBool(userInfo.EmailVerified)
+	}
+
+	var userInfoClaims struct {
+		PreferredUsername string `json:"preferred_username"`
+		Name              string `json:"name"`
+		Nickname          string `json:"nickname"`
+		Picture           string `json:"picture"`
+	}
+	if err := userInfo.Claims(&userInfoClaims); err != nil {
+		log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
+		return
+	}
+
+	log.Trace().
+		Str("userinfo_email", userInfo.Email).
+		Str("userinfo_username", userInfoClaims.PreferredUsername).
+		Str("userinfo_name", userInfoClaims.Name).
+		Str("userinfo_nickname", userInfoClaims.Nickname).
+		Msg("successfully parsed claims from userinfo endpoint")
+
+	if userInfoClaims.PreferredUsername != "" {
+		claims.PreferredUsername = userInfoClaims.PreferredUsername
+	}
+	if userInfoClaims.Name != "" {
+		claims.Name = userInfoClaims.Name
+	}
+	if userInfoClaims.Nickname != "" {
+		claims.Nickname = userInfoClaims.Nickname
+	}
+	if userInfoClaims.Picture != "" {
+		claims.Picture = userInfoClaims.Picture
+	}
+}
+
+// oidcUsername picks the username from the claims: preferred username, then
+// nickname, name, email, and subject.
+func oidcUsername(claims OIDCClaims) string {
+	switch {
+	case claims.PreferredUsername != "":
+		return claims.PreferredUsername
+	case claims.Nickname != "":
+		return claims.Nickname
+	case claims.Name != "":
+		return claims.Name
+	case claims.Email != "":
+		return claims.Email
+	case claims.Sub != "":
+		return claims.Sub
+	default:
+		return "oidc_user"
+	}
+}
+
 func isValidRedirectURL(candidateURL, configuredURL string) bool {
 	// Parse both URLs
 	candidate, err := url.Parse(candidateURL)
