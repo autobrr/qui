@@ -373,6 +373,26 @@ func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
+// The cut fails the run with no preview, and the next run reads every identity.
+func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-find-lost", sshtest.ExecGNU, models.SSHTierExec)
+	server.DropOnExec("-mindepth", "")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "failed", run.Status, "run message: %s", run.ErrorMessage)
+	require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
+	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Empty(t, files)
+	f.requireNothingDeleted(t)
+
+	next := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", next.Status, "run message: %s", next.ErrorMessage)
+	require.True(t, next.IdentityComplete)
+}
+
 // flippingBackend calls flip once root has handed out enough entries that the
 // walk is well under way, so a test can change the instance mid-walk.
 type flippingBackend struct {
