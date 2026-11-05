@@ -251,8 +251,8 @@ func (s *Scanner) resolveRootSymlinks(ctx context.Context, order []*rootEntry) e
 
 	infos, errs := fsops.StatAll(ctx, s.backend, paths)
 	for i, top := range links {
-		if errors.Is(errs[i], fsops.ErrConnectionLost) {
-			return fmt.Errorf("scan directory: %w", errs[i])
+		if lost := lostConnectionErr(infos[i], errs[i]); lost != nil {
+			return fmt.Errorf("scan directory: %w", lost)
 		}
 		if errs[i] != nil || !infos[i].Mode.IsRegular() {
 			top.failed = true
