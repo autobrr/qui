@@ -394,6 +394,48 @@ func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	require.True(t, next.IdentityComplete)
 }
 
+// regression: #3838
+func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-find-lost-later-root", sshtest.ExecGNU, models.SSHTierExec)
+	first, cut := filepath.Dir(f.orphan), t.TempDir()
+	cutOrphan := filepath.Join(cut, "orphan.mkv")
+	require.NoError(t, os.WriteFile(filepath.Join(cut, "owned.mkv"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(cutOrphan, []byte("orphan"), 0o600))
+	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{
+			{Hash: "owned", SavePath: first, State: qbt.TorrentStatePausedUp},
+			{Hash: "cut", SavePath: cut, State: qbt.TorrentStatePausedUp},
+		}, nil
+	}
+	stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		files := qbt.TorrentFiles{{Name: "owned.mkv", Size: 1}}
+		return map[string]qbt.TorrentFiles{"owned": files, "cut": files}, nil
+	}
+	// Roots walk in sorted order, and a read right after a cut can land on the dying client and cut the next root too.
+	require.Less(t, first, cut)
+	server.DropOnExec(cut+"' '-mindepth'", "")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run message: %s", run.ErrorMessage)
+	require.True(t, run.Partial)
+	require.False(t, run.IdentityComplete)
+	require.Contains(t, run.ErrorMessage, "Partial scan: 1 path(s) inaccessible")
+	require.Contains(t, run.ErrorMessage, cut)
+	require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
+
+	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, f.orphan, files[0].FilePath)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
+	f.requireNothingDeleted(t)
+	require.FileExists(t, cutOrphan)
+}
+
 // flippingBackend calls flip once root has handed out enough entries that the
 // walk is well under way, so a test can change the instance mid-walk.
 type flippingBackend struct {
