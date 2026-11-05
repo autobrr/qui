@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
@@ -30,14 +31,14 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			// Check for API key first
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" {
-				// Validate API key
-				if _, err := authService.ValidateAPIKey(r.Context(), apiKey); err != nil {
+				key, err := authService.ValidateAPIKey(r.Context(), apiKey)
+				if err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
 
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxkeys.APIKey, key)))
 				return
 			}
 
@@ -74,6 +75,19 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// BrowserOnly refuses every request that an API key authenticated. Register it
+// after IsAuthenticated. The body must not say "unauthorized": the frontend
+// signs the user out on a 403 with that word.
+func BrowserOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
+			http.Error(w, "API key not allowed; use the web UI", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // oidcSessionAllowed destroys an OIDC session whose user is no longer allowed.

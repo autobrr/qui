@@ -7147,7 +7147,12 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API key for authentication
+      description: |
+        API key for authentication. Browser-only routes refuse every API key with
+        403 "API key not allowed; use the web UI": API key and client API key
+        management, system update and restart, instance SSH credential and host-key
+        routes, change password, logout, license routes, and external program
+        create, update, and delete.
     ApiKeyQuery:
       type: apiKey
       in: query

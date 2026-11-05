@@ -441,6 +441,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
+		browserOnly := middleware.BrowserOnly
 		r.With(authMiddleware).Group(func(r chi.Router) {
 			// ServeContent needs the original Range header and writer to preserve byte ranges and Content-Length.
 			r.Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
@@ -497,11 +498,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Post("/stream/subscriptions", s.streamManager.ChangeSubscriptions)
 
 			// Auth routes
-			r.Post("/auth/logout", authHandler.Logout)
+			r.With(browserOnly).Post("/auth/logout", authHandler.Logout)
 			r.Get("/auth/me", authHandler.GetCurrentUser)
-			r.Put("/auth/change-password", authHandler.ChangePassword)
+			r.With(browserOnly).Put("/auth/change-password", authHandler.ChangePassword)
 
-			r.Route("/license", licenseHandler.Routes)
+			r.With(browserOnly).Route("/license", licenseHandler.Routes)
 
 			// Sideloaded custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
@@ -521,6 +522,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// API key management
 			r.Route("/api-keys", func(r chi.Router) {
+				r.Use(browserOnly)
 				r.Get("/", authHandler.ListAPIKeys)
 				r.Post("/", authHandler.CreateAPIKey)
 				r.Delete("/{id}", authHandler.DeleteAPIKey)
@@ -528,6 +530,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Client API key management
 			r.Route("/client-api-keys", func(r chi.Router) {
+				r.Use(browserOnly)
 				r.Get("/", clientAPIKeysHandler.ListClientAPIKeys)
 				r.Post("/", clientAPIKeysHandler.CreateClientAPIKey)
 				r.Delete("/{id}", clientAPIKeysHandler.DeleteClientAPIKey)
@@ -536,9 +539,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// External programs management
 			r.Route("/external-programs", func(r chi.Router) {
 				r.Get("/", externalProgramsHandler.ListExternalPrograms)
-				r.Post("/", externalProgramsHandler.CreateExternalProgram)
-				r.Put("/{id}", externalProgramsHandler.UpdateExternalProgram)
-				r.Delete("/{id}", externalProgramsHandler.DeleteExternalProgram)
+				r.With(browserOnly).Post("/", externalProgramsHandler.CreateExternalProgram)
+				r.With(browserOnly).Put("/{id}", externalProgramsHandler.UpdateExternalProgram)
+				r.With(browserOnly).Delete("/{id}", externalProgramsHandler.DeleteExternalProgram)
 				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
 			})
 
@@ -595,8 +598,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
-			r.Post("/system/restart", systemHandler.Restart)
-			r.Post("/system/update", systemHandler.Update)
+			r.With(browserOnly).Post("/system/restart", systemHandler.Restart)
+			r.With(browserOnly).Post("/system/update", systemHandler.Update)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
@@ -612,11 +615,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
 					// SSH credentials and host-key pinning for remote filesystem access
-					r.Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
-					r.Delete("/ssh-credentials", instancesHandler.DeleteSSHCredentials)
-					r.Post("/ssh-test", instancesHandler.TestSSHConnection)
-					r.Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
-					r.Post("/ssh-host-key/replace", instancesHandler.ReplaceSSHHostKey)
+					r.With(browserOnly).Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
+					r.With(browserOnly).Delete("/ssh-credentials", instancesHandler.DeleteSSHCredentials)
+					r.With(browserOnly).Post("/ssh-test", instancesHandler.TestSSHConnection)
+					r.With(browserOnly).Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
+					r.With(browserOnly).Post("/ssh-host-key/replace", instancesHandler.ReplaceSSHHostKey)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
