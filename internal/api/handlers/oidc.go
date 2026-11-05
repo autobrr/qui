@@ -505,8 +505,6 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, frontendURL, http.StatusFound)
 }
 
-// isValidRedirectURL validates that the redirect URL is safe
-// For a self-hosted application, we ensure the URL points to the same host as configured
 // mergeUserInfoClaims overrides the ID token claims with the non-empty claims
 // from the userinfo endpoint.
 func mergeUserInfoClaims(claims *OIDCClaims, userInfo *oidc.UserInfo) {
@@ -568,6 +566,8 @@ func oidcUsername(claims OIDCClaims) string {
 	}
 }
 
+// isValidRedirectURL validates that the redirect URL is safe
+// For a self-hosted application, we ensure the URL points to the same host as configured
 func isValidRedirectURL(candidateURL, configuredURL string) bool {
 	// Parse both URLs
 	candidate, err := url.Parse(candidateURL)
