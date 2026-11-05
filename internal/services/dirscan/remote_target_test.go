@@ -474,6 +474,14 @@ func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
 	require.Empty(t, f.searcher.queries, "a failed walk must reach no indexer")
 	require.Equal(t, before, f.statuses(t))
 
+	// The pool hands out the dropped client until its watcher clears the entry.
+	backend, _, err := f.svc.backendPool.Require(ctx, f.row.ID, models.CapabilityRead)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, err := backend.Lstat(ctx, lib)
+		return err == nil
+	}, 5*time.Second, 5*time.Millisecond)
+
 	run = f.run(t)
 	require.Equal(t, models.DirScanRunStatusSuccess, run.Status, run.ErrorMessage)
 	require.Equal(t, models.DirScanFileStatusAlreadySeeding, f.statuses(t)[filepath.Join(lib, name)], "the next run reads the identity again")
