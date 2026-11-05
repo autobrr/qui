@@ -31,15 +31,18 @@ vi.mock("sonner", () => ({
   },
 }))
 
-// Near-identity translator: returns the raw key so assertions can target stable
-// strings. When the hook interpolates the original error text via {{message}}
+// Near-identity translator: returns the raw key plus any counts it gets, so
+// assertions can target stable strings. When the hook interpolates the original error text via {{message}}
 // (rate-limit wrapping), we append it so the wrapped string still carries the
 // "rate limit"/"429" substrings the hook re-inspects for toast duration and for
 // preserving the error on close — matching real i18n output behavior.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: { message?: string }) =>
-      opts?.message ? `${key}:${opts.message}` : key,
+    t: (key: string, opts?: { message?: string; count?: number; added?: number; failed?: number; completedPart?: string; completedPrefix?: string }) => {
+      if (opts?.message) return `${key}:${opts.message}`
+      const values = [opts?.count, opts?.added, opts?.failed, opts?.completedPart, opts?.completedPrefix].filter(v => v !== undefined && v !== "")
+      return values.length > 0 ? `${key}:${values.join("/")}` : key
+    },
   }),
 }))
 
@@ -57,7 +60,7 @@ import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { CrossSeedTorrentSearchResponse, TorznabIndexer } from "@/types"
+import type { CrossSeedInstanceResult, CrossSeedTorrentSearchResponse, TorznabIndexer } from "@/types"
 
 const mockedApi = vi.mocked(api, true)
 const mockedToast = vi.mocked(toast, true)
@@ -719,6 +722,7 @@ describe("useCrossSeedSearch", () => {
               instanceName: "inst",
               success: true,
               status: "added",
+              class: "added",
             },
           ],
         },
@@ -755,8 +759,8 @@ describe("useCrossSeedSearch", () => {
     expect(payload.selections).toHaveLength(1)
     expect(payload.selections[0].guid).toBe("guid-apply")
 
-    // status:"added" with no failures -> the addedCount success branch.
-    expect(mockedToast.success).toHaveBeenCalledWith("hooks.search.applySuccess")
+    // class:"added" with no failures -> the addedCount success branch.
+    expect(mockedToast.success).toHaveBeenCalledWith("hooks.search.applySuccess:1")
     expect(mockedToast.warning).not.toHaveBeenCalled()
     expect(mockedToast.error).not.toHaveBeenCalled()
 
@@ -778,7 +782,7 @@ describe("useCrossSeedSearch", () => {
     mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
       results: [{
         title: "Some Release", indexer: "indexer-1", success: true,
-        instanceResults: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }],
+        instanceResults: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", class: "added", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }],
       }],
     } as never)
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -819,12 +823,14 @@ describe("useCrossSeedSearch", () => {
               instanceName: "a",
               success: true,
               status: "added",
+              class: "added",
             },
             {
               instanceId: 2,
               instanceName: "b",
               success: false,
               status: "error",
+              class: "failed",
             },
           ],
         },
@@ -846,7 +852,7 @@ describe("useCrossSeedSearch", () => {
       await (dialogProps(result).onApply as () => Promise<void>)()
     })
 
-    expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.applyPartial")
+    expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.applyPartial:1/1")
     expect(mockedToast.success).not.toHaveBeenCalled()
   })
 
@@ -867,6 +873,7 @@ describe("useCrossSeedSearch", () => {
               instanceName: "a",
               success: false,
               status: "error",
+              class: "failed",
             },
           ],
         },
@@ -888,8 +895,56 @@ describe("useCrossSeedSearch", () => {
       await (dialogProps(result).onApply as () => Promise<void>)()
     })
 
-    expect(mockedToast.error).toHaveBeenCalledWith("hooks.search.applyFailed")
+    expect(mockedToast.error).toHaveBeenCalledWith("hooks.search.applyFailed:1")
     expect(mockedToast.success).not.toHaveBeenCalled()
+  })
+
+  // regression: #3826
+  describe("apply toast", () => {
+    const added: CrossSeedInstanceResult = { instanceId: 1, instanceName: "a", success: true, status: "added_hardlink", class: "added" }
+    const exists: CrossSeedInstanceResult = { instanceId: 2, instanceName: "b", success: false, status: "exists", class: "exists" }
+    const noMatch: CrossSeedInstanceResult = { instanceId: 3, instanceName: "c", success: false, status: "no_match", class: "skipped" }
+    const stranded: CrossSeedInstanceResult = { instanceId: 4, instanceName: "d", success: false, status: "alignment_failed", class: "stranded" }
+    const failed: CrossSeedInstanceResult = { instanceId: 5, instanceName: "e", success: false, status: "error", class: "failed" }
+    const withInstances = (...instanceResults: CrossSeedInstanceResult[]) => ({ title: "t", indexer: "i", success: false, instanceResults })
+    const noDetails = (success: boolean) => ({ title: "t", indexer: "i", success })
+
+    it.each([
+      ["every result exists", [withInstances(exists, exists)], "info", "hooks.search.applyAlreadyInClient"],
+      ["exists with no_match", [withInstances(exists, noMatch)], "info", "hooks.search.applyNoChanges"],
+      ["no results", [], "info", "hooks.search.applyNoChanges"],
+      ["an add with exists and no_match", [withInstances(added, exists, noMatch)], "success", "hooks.search.applySuccess:1"],
+      ["a stranded result", [withInstances(stranded)], "error", "hooks.search.applyFailed:1"],
+      ["stranded and failed beside exists", [withInstances(stranded, failed, exists)], "error", "hooks.search.applyFailed:2"],
+      ["no instance results and no success", [noDetails(false)], "error", "hooks.search.applyFailed:1"],
+      ["exists with a result that has no instance results and no success", [withInstances(exists), noDetails(false)], "error", "hooks.search.applyFailed:1"],
+      ["a result that completed without details", [noDetails(true)], "success", "hooks.search.applyCompletedUnavailable"],
+      ["exists with a result that completed without details", [withInstances(exists), noDetails(true)], "success", "hooks.search.applyCompletedUnavailable"],
+      ["an add with a result that completed without details", [withInstances(added), noDetails(true)], "success", "hooks.search.applySuccessWithCompleted:1"],
+      ["an add and a failure with a result that completed without details", [withInstances(added, failed), noDetails(true)], "warning", "hooks.search.applyPartial:1/1/hooks.search.applyCompletedPart:1"],
+      ["a failure with a result that completed without details", [withInstances(failed), noDetails(true)], "error", "hooks.search.applyFailed:1/hooks.search.applyCompletedPrefix:1"],
+    ] as const)("shows the right toast for %s", async (_name, results, level, message) => {
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-toast" })] }))
+      mockedApi.applyCrossSeedSearchResults.mockResolvedValue({ results } as never)
+
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-toast" }))
+        await Promise.resolve()
+      })
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        await (dialogProps(result).onApply as () => Promise<void>)()
+      })
+
+      const shown = (["info", "success", "warning", "error"] as const).flatMap(l =>
+        mockedToast[l].mock.calls.map(call => [l, call[0]])
+      )
+      expect(shown).toEqual([[level, message]])
+    })
   })
 
   it("warns without calling the API when applying with no selection", async () => {

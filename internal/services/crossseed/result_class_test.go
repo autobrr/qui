@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"regexp"
 	"strings"
@@ -256,4 +257,26 @@ func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+// regression: #3826
+func TestApplyReplyEncodesClassBesideUnchangedStatus(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := json.Marshal(ApplyTorrentSearchResponse{Results: []TorrentSearchAddResult{{
+		Title:   "Cedar.Harbor.S01E01",
+		Indexer: "alpha",
+		InstanceResults: []InstanceCrossSeedResult{
+			{InstanceID: 1, InstanceName: "lib", Status: "alignment_failed", Message: "rename failed"},
+			{InstanceID: 2, InstanceName: "seeds", Success: true, Status: "added_hardlink", CrossSeedInstanceID: 3, CrossSeedInstanceName: "routed"},
+			{InstanceID: 4, InstanceName: "new", Status: "a_status_with_no_table_entry"},
+		},
+	}}})
+	require.NoError(t, err)
+
+	require.JSONEq(t, `{"results":[{"title":"Cedar.Harbor.S01E01","indexer":"alpha","success":false,"instance_results":[
+		{"instance_id":1,"instance_name":"lib","success":false,"status":"alignment_failed","message":"rename failed","class":"stranded"},
+		{"instance_id":2,"instance_name":"seeds","success":true,"status":"added_hardlink","cross_seed_instance_id":3,"cross_seed_instance_name":"routed","class":"added"},
+		{"instance_id":4,"instance_name":"new","success":false,"status":"a_status_with_no_table_entry","class":"failed"}
+	]}]}`, string(encoded))
 }

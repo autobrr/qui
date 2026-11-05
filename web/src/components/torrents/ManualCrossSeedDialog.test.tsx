@@ -123,7 +123,7 @@ it("says where a routed Manual match goes and refreshes the torrent list of the 
   mockRoute()
   const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
-  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }] })
+  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", class: "added", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }] })
   const ui = openDialog()
 
   await waitFor(() => expect(ui.getByText("manualCrossSeed.routedTo:seeds")).toBeTruthy())
@@ -137,7 +137,7 @@ it("refreshes the source list when the result is not routed, also with a cached 
   const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
   // The route was cleared after the dialog read it.
-  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink" }] })
+  vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", class: "added" }] })
   const ui = openDialog()
 
   await waitFor(() => expect(ui.getByText("manualCrossSeed.routedTo:seeds")).toBeTruthy())
@@ -183,7 +183,7 @@ it("labels a failed routed Manual match in the toast", async () => {
   mockRoute()
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
   vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: false, results: [{
-    instanceId: 1, instanceName: "lib", success: false, status: "crossseed_instance_cannot_see_data",
+    instanceId: 1, instanceName: "lib", success: false, status: "crossseed_instance_cannot_see_data", class: "failed",
     message: "backend detail", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds",
   }] })
   const ui = openDialog()

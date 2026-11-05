@@ -436,17 +436,22 @@ export function useCrossSeedSearch(instanceId: number) {
 
       setCrossSeedApplyResult(response)
 
-      // Count successes and failures from instance results
       let addedCount = 0
       let failedCount = 0
+      let existsCount = 0
+      let skippedCount = 0
       let completedWithoutDetails = 0
       for (const result of response.results) {
         const instanceResults = result.instanceResults ?? []
         if (instanceResults.length > 0) {
           for (const ir of instanceResults) {
-            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
+            if (ir.class === "added") {
               addedCount++
-            } else if (!ir.success) {
+            } else if (ir.class === "exists") {
+              existsCount++
+            } else if (ir.class === "skipped") {
+              skippedCount++
+            } else {
               failedCount++
             }
           }
@@ -474,6 +479,8 @@ export function useCrossSeedSearch(instanceId: number) {
         toast.error(t("hooks.search.applyFailed", { completedPrefix, failed: failedCount }))
       } else if (hasCompleted) {
         toast.success(t("hooks.search.applyCompletedUnavailable"))
+      } else if (existsCount > 0 && skippedCount === 0) {
+        toast.info(t("hooks.search.applyAlreadyInClient"))
       } else {
         toast.info(t("hooks.search.applyNoChanges"))
       }

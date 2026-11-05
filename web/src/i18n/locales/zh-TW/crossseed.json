@@ -463,6 +463,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} 個失敗 - 請檢視結果瞭解詳情",
       "applyCompletedUnavailable": "輔種請求已完成（詳情不可用）",
       "applyNoChanges": "未新增任何輔種",
+      "applyAlreadyInClient": "已在用戶端中",
       "applyCompletedPart": "，{{count}} 個已完成",
       "applyCompletedPrefix": "{{count}} 個已完成，"
     }

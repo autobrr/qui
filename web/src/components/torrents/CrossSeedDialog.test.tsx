@@ -154,7 +154,7 @@ describe("CrossSeedDialog routed adds", () => {
   const applyResultFor = (instance: CrossSeedInstanceResult): CrossSeedApplyResponse => ({
     results: [{ indexer: "alpha", title: "Cedar.Harbor.S01E01", success: instance.success, infoHash: "abc", instanceResults: [instance] }],
   })
-  const notRouted: CrossSeedInstanceResult = { instanceId: 1, instanceName: "lib", success: true, status: "added" }
+  const notRouted: CrossSeedInstanceResult = { instanceId: 1, instanceName: "lib", success: true, status: "added", class: "added" }
   const routed: CrossSeedInstanceResult = { ...notRouted, crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }
 
   it("says where the cross-seeds go before the apply", () => {
