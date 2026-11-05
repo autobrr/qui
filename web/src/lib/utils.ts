@@ -211,3 +211,9 @@ export function joinPath(basePath: string, relativePath: string): string {
 export function breakableName(name: string): string {
   return name.replace(/([._-])/g, "$1\u200B")
 }
+
+/** Merges lists one item from each list at a time, so that one long list cannot fill the start. */
+export function takeTurns<T>(lists: T[][]): T[] {
+  const length = Math.max(0, ...lists.map(list => list.length))
+  return Array.from({ length }, (_, i) => lists.flatMap(list => (i < list.length ? [list[i]] : []))).flat()
+}

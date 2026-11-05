@@ -14,7 +14,7 @@ Internal reference for agents and maintainers. Read this before changing cross-m
 - `internal/services/activity/`: in-process publish and subscribe for server activity. A service publishes a kind and IDs, never data. `/api/stream` sends each event to the browser as an `activity` event, and the frontend invalidates the matching react-query key prefix (`web/src/lib/activity-invalidation.ts`). The hub drops events while no stream is open, so after a reconnect the frontend invalidates every activity feed. The files, peers, and pieces of one torrent stay on polling, because qBittorrent does not push them. The file list comes from a database cache that can be up to five minutes old. The files endpoint skips the cache when the request has `refresh=1`.
 - `internal/backups/`: scheduled snapshots.
 - `internal/database/`: SQLite/Postgres migrations and database setup.
-- `internal/models/`: data models and store interfaces.
+- `internal/models/`: data models and their SQL stores, in one or more files for each area. For example, `CrossSeedStore` is in `crossseed.go`, and its partial pool is in `crossseed_partial_pool.go`.
 - `pkg/`: shared utilities.
 - `web/src/`: frontend. Its stack and rules are in `web/AGENTS.md`.
 

@@ -554,7 +554,8 @@
         "move": "이동",
         "externalProgram": "외부 프로그램",
         "dryRun": "모의 실행",
-        "exportToInstance": "인스턴스로 내보내기"
+        "exportToInstance": "인스턴스로 내보내기",
+        "ruleSkipped": "규칙 실행 안 됨"
       },
       "shareLimit": {
         "global": "전역",
@@ -649,7 +650,8 @@
         "deletedActivityEntries": "활동 항목 {{count}}개를 삭제했습니다",
         "deleteActivityFailed": "활동을 삭제하지 못했습니다"
       },
-      "exported": "내보냄"
+      "exported": "내보냄",
+      "skipped": "건너뜀"
     },
     "runWorkflowNow": {
       "action": "지금 실행",
@@ -666,7 +668,8 @@
         "completedWithErrors": "\"{{name}}\" 실행이 오류와 함께 완료되었습니다. 활동 로그를 확인하세요.",
         "dryRunCompleted": "\"{{name}}\"의 모의 실행이 완료되었습니다",
         "inProgress": "다른 실행이 진행 중입니다. 잠시 후 다시 시도하세요.",
-        "failed": "워크플로를 실행하지 못했습니다"
+        "failed": "워크플로를 실행하지 못했습니다",
+        "skipped": "\"{{name}}\"이(가) 실행되지 않았습니다. 활동 로그를 확인하세요."
       }
     },
     "workflowPreview": {
@@ -934,7 +937,8 @@
         "external_program": "외부 프로그램",
         "auto_managed": "자동 관리됨",
         "dry_run_no_match": "모의 실행(일치 없음)",
-        "exported_to_instance": "인스턴스로 내보내기"
+        "exported_to_instance": "인스턴스로 내보내기",
+        "rule_skipped": "규칙 실행 안 됨"
       }
     },
     "reannounceOverview": {
@@ -1403,7 +1407,8 @@
           "moved": "이동",
           "externalProgram": "외부 프로그램",
           "noMatches": "일치 없음",
-          "exportedToInstance": "인스턴스로 내보내기"
+          "exportedToInstance": "인스턴스로 내보내기",
+          "ruleSkipped": "규칙 실행 안 됨"
         },
         "actionFallback": "알 수 없는 작업 ({{action}})",
         "summary": {

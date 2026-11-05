@@ -227,8 +227,11 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Richiede qBittorrent 5.1+",
+      "qbittorrent50": "Richiede qBittorrent 5.0+",
+      "qbittorrent52": "Richiede qBittorrent 5.2+",
       "localFilesystemAccess": "Richiede l'accesso al filesystem locale",
       "remoteInstance": "Non disponibile sulle istanze remote"
-    }
+    },
+    "ruleSkip": "Non viene eseguita su questa istanza: {{field}} richiede {{requires}}."
   }
 }

@@ -35,9 +35,9 @@ qui must work on Windows and Unix-like hosts.
 - Before you plan an issue or a pull request for your user, do the collaborator check in `docs/agents/collaborator-check.md` one time per session.
 - Before you commit, open a PR, add commits to one, post or apply a review suggestion, or show screenshots in a PR, read `docs/agents/pull-requests.md`. Before you open a PR or add commits to one, also do the performance checks in `docs/agents/performance-checks.md` for the full PR diff.
 - When you write or review code, follow the rules for its area in `CODING_STANDARDS.md`. Before changing cross-module data flow, service boundaries, API routing, or long-lived architecture, read `docs/architecture.md`.
-- Before you edit, spec, or review a change to `web/`, i18n, React components, or frontend tests, read `web/AGENTS.md`. Before you change a locale file or a translation, also read `web/src/i18n/AGENTS.md`.
+- Before you plan, edit, spec, or review a change to `web/`, i18n, React components, or frontend tests, read `web/AGENTS.md`. Before you change a locale file or a translation, also read `web/src/i18n/AGENTS.md`.
 - Before you change the database schema or a migration, read `internal/database/AGENTS.md`. Migration rules live there.
-- When lint output is unclear or needs a policy judgment, or before you use a `make` lint target other than `precommit`, read `docs/linting.md`.
+- Read `docs/linting.md` when lint output is unclear or needs a policy judgment, and before you run a `make` lint target other than `precommit`, run `scripts/ratchet`, edit its allowlist, or move Go code into a new file.
 - Before you act on a Dependabot alert, or edit the Docker, compose, or release files at the repo root, read `docs/agents/maintenance.md`.
 - To read a `bin.getqui.com` link in a pull request, a Paste (`/p/`) or an Evidence (`/e/`), run `brrbin fetch <link>`. `docs/agents/issue-tracker.md` describes the sign-in and the files that the command writes.
 - Issue tracker: bug reports and feature requests are GitHub Discussions; a confirmed bug becomes a linked issue. See `docs/agents/issue-tracker.md`.

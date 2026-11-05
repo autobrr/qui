@@ -128,8 +128,8 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 	require.Equal(t, sourceHash, captured.SearchDecision.SourceHash)
 	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
 	require.Equal(t, candidateName, captured.SearchDecision.SearchCandidateName)
-	require.Equal(t, []string{"tv"}, captured.SourceFilterCategories)
-	require.Equal(t, []string{"keep"}, captured.SourceFilterTags)
-	require.Equal(t, []string{"cleanup"}, captured.SourceFilterExcludeCategories)
-	require.Equal(t, []string{"temp"}, captured.SourceFilterExcludeTags)
+	require.Equal(t, []string{"tv"}, captured.sourceFilter.categories)
+	require.Equal(t, []string{"keep"}, captured.sourceFilter.tags)
+	require.Equal(t, []string{"cleanup"}, captured.sourceFilter.excludeCategories)
+	require.Equal(t, []string{"temp"}, captured.sourceFilter.excludeTags)
 }

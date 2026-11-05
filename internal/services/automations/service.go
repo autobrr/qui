@@ -508,7 +508,7 @@ func (s *Service) applyTagChanges(ctx context.Context, instanceID int, tagChange
 		return nil
 	}
 
-	if client.SupportsSetTags() {
+	if client.Supports(qbittorrent.CapSetTags) {
 		return s.setTagsByTagSet(ctx, instanceID, tagChanges)
 	}
 
@@ -648,6 +648,7 @@ type Service struct {
 	// that havent disappeared from sync data yet
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
+	reportedSkips         map[reportedSkipKey]RuleSkip // the skip that the activity log already shows for each rule
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
 	runningInstances      map[int]struct{}             // instances with a run that applies actions
@@ -696,6 +697,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		releaseParser:             releases.NewDefaultParser(),
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
+		reportedSkips:             make(map[reportedSkipKey]RuleSkip),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 		inFlightExports:           make(map[string]struct{}),
 		activityPublisher:         activity.NopPublisher{},
@@ -947,6 +949,7 @@ type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
 	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (category and tag preview)
 	Examples       []PreviewTorrent `json:"examples"`
+	Skipped        *RuleSkip        `json:"skipped,omitempty"` // Why the rule gets no Action on this instance
 }
 
 // PreviewTorrent is a simplified torrent for preview display.
@@ -1184,6 +1187,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
+		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
 	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 	if err != nil {
@@ -1433,6 +1439,9 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
+		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
 	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 	if err != nil {
@@ -1741,8 +1750,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	if len(torrents) == 0 {
-		return nil, nil
+	// After the fetch: a full sync update reads the qBittorrent version again.
+	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
+	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)
+	if len(torrents) == 0 || len(eligibleRules) == 0 {
+		return skipActivities, nil
 	}
 
 	needs := NeedsFor(eligibleRules)
@@ -2018,7 +2030,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	})
 
 	if dryRun {
-		return s.recordDryRunActivities(ctx, instanceID, plan, torrentByHash, force), nil
+		return append(s.recordDryRunActivities(ctx, instanceID, plan, torrentByHash, force), skipActivities...), nil
 	}
 
 	summary := newAutomationSummary()
@@ -2204,7 +2216,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return summary.activities, nil
+	return append(summary.activities, skipActivities...), nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {

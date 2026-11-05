@@ -95,12 +95,18 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(isSourceMovingOrChecking|isSourceErrored)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: ask the Source gate in internal/services/crossseed/source_gate.go
         - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
         - pattern: ^qbittorrent\.Client\.(AddTags|RemoveTags|SetTags|SetCategory|SetLocation|SetAutoManagement|SetForceStart|SetComment|SetTorrentShareLimit|SetTorrentUploadLimit|SetTorrentDownloadLimit|RenameTorrent|SetTorrentName|RenameFile|RenameFolder|EditTracker|AddTrackers|RemoveTrackers|SetFilePriority|AddPeersForTorrents)(Ctx)?$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
           msg: edit torrents through the SyncManager edit methods in internal/qbittorrent/sync_manager.go
+        - pattern: ^qbittorrent\.Client\.GetWebAPIVersion(Ctx)?$
+          pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
+          msg: ask Client.Supports; the version table is in internal/qbittorrent/capabilities.go
         - pattern: ^qbittorrent\.Category(Save|Download)Path$
           pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
           msg: read category folders through SyncManager.InstanceFolders
@@ -158,6 +164,13 @@ linters:
           - forbidigo
         text: SyncManager edit methods
 
+      # Only the qBittorrent package reads the Web API version. The capabilities
+      # handler reports it to the UI.
+      - path: internal/qbittorrent/|internal/api/handlers/capabilities\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Client\.Supports
+
       # Only the Instance folders module resolves category folders.
       - path: internal/qbittorrent/(instance_folders|category_paths)(_test)?\.go$
         linters:
@@ -185,6 +198,13 @@ linters:
         linters:
           - forbidigo
         text: Search scope module
+
+      # Only the Source gate reads the moving and errored helpers. The rule cannot
+      # catch an inline read of progress, because the package has many valid reads.
+      - path: internal/services/crossseed/source_gate\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Source gate
 
       # Only the source apply module runs normal matches, then title rescue.
       - path: internal/services/crossseed/source_apply\.go$|_test\.go$

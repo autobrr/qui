@@ -15,14 +15,14 @@ Volunteers develop and maintain qui. Your support funds continued work on the pr
 
 Subscribe for $5 per month or $50 per year through Dodo Payments. Click the heart icon in the qui header to open the subscription dialog. The subscription unlocks no features. It funds qui development. Supporters get the `qui-patron` role on [Discord](https://discord.autobrr.com/qui).
 
-The subscription never issues a license key. Premium themes are a separate one-time purchase.
+The subscription never issues a license key. The theme license is a separate one-time purchase.
 
-## Premium themes
+## Theme license
 
-Buy premium themes from **Settings → Premium Themes** in your qui instance. The purchase is pay what you want, with a $9.99 minimum, and the license is lifetime. The checkout page shows your license key.
-If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
+Buy a theme license from **Settings → Themes** in your qui instance. The purchase is pay what you want, with a $9.99 minimum, and the license is lifetime. The checkout page shows your license key.
+If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for the theme license.
 To manage activations or move a license to a new server, see [License Management](./licenses.md).
-A license also unlocks [custom themes](./features/custom-themes.md). Write your own or take one from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
+A license also unlocks the themes from [qui-community-themes](https://github.com/autobrr/qui-community-themes), which qui ships built in, and [custom themes](./features/custom-themes.md) that you write yourself.
 
 ## Donations
 
@@ -39,7 +39,7 @@ To give beyond subscriptions and theme purchases, use one of these donation opti
 
 ### Cryptocurrency
 
-Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
+Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for the theme license.
 
 #### Bitcoin (BTC)
 

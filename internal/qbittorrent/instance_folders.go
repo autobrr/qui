@@ -94,14 +94,18 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 	if err := client.RefreshCapabilities(ctx); err != nil {
 		return categoryVersion{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
 	}
-	platform, err := categoryFolderPlatform(ctx, client)
+	// Read the capabilities before the platform lookup: its app info refresh
+	// reads the version again, and a failed read there makes it unknown.
+	nests := client.Supports(CapCategorySavePathNesting)
+	fileNames := client.Supports(CapCategoryFileNames)
+	optional := nests && !client.Supports(CapSubcategoriesAlwaysEnabled)
+	platform, err := categoryFolderPlatform(ctx, client, fileNames)
 	if err != nil {
 		return categoryVersion{}, err
 	}
-	nests := client.NestsCategorySavePaths()
 	v = categoryVersion{
-		rule:     CategoryPathRule{Nest: nests, FileName: client.CategoryFileNames(), Platform: platform, InheritsDownloadPath: nests},
-		optional: nests && !client.SubcategoriesAlwaysEnabled(),
+		rule:     CategoryPathRule{Nest: nests, FileName: fileNames, Platform: platform, InheritsDownloadPath: nests},
+		optional: optional,
 		at:       time.Now(),
 	}
 
@@ -116,8 +120,8 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 
 // categoryFolderPlatform returns the build platform when it changes the folder
 // name of a category (qBittorrent 5.3+), and "" before that.
-func categoryFolderPlatform(ctx context.Context, client *Client) (string, error) {
-	if !client.CategoryFileNames() {
+func categoryFolderPlatform(ctx context.Context, client *Client, fileNames bool) (string, error) {
+	if !fileNames {
 		return "", nil
 	}
 	info, err := client.GetAppInfo(ctx)

@@ -238,19 +238,72 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
-	// Reannounce is nil when the instance does not send reannounce in the
-	// torrent list (before Web API 2.10.0), where the decoded 0 would read as "now".
-	Reannounce *int64 `json:"reannounce,omitempty"`
+	// Reannounce, Popularity and Private are nil when the instance does not
+	// send them in the torrent list (before Web API 2.10.0, and Private also
+	// for a torrent without metadata). The decoded zero would read as "now",
+	// 0.00 and "No".
+	Reannounce *int64   `json:"reannounce,omitempty"`
+	Popularity *float64 `json:"popularity,omitempty"`
+	Private    *bool    `json:"private,omitempty"`
 }
 
-// newTorrentView builds the list/SSE row for t. liveReannounce is
-// Client.SupportsLiveReannounce of the instance that owns t. Reannounce is a
-// copy: a pointer into t would keep the whole source slice alive behind each
-// page that the SSE stream detaches.
-func newTorrentView(t *qbt.Torrent, health TrackerHealth, liveReannounce bool) TorrentView {
+// PrivateUnknown reports whether qBittorrent sent no private value for t, so
+// t.Private holds the false that go-qbittorrent decodes. qBittorrent sends
+// private and has_metadata from 5.0, and sends private only for a torrent with
+// metadata: a magnet link has none until its metadata arrives.
+func PrivateUnknown(t *qbt.Torrent) bool {
+	return t.HasMetadata == nil || !*t.HasMetadata
+}
+
+// rowValues holds copies of the optional values of one row, so that a row does
+// not point into the torrent. The SSE stream copies them again for the page
+// that it keeps.
+type rowValues struct {
+	reannounce int64
+	popularity float64
+	private    bool
+}
+
+// rowBuilder builds the list/SSE rows of one instance. The optional values of
+// all its rows share one allocation.
+type rowBuilder struct {
+	reannounce, popularity bool // the instance sends them in the torrent list
+	values                 []rowValues
+}
+
+// newRowBuilder returns a builder for n rows of the instance of c.
+func (c *Client) newRowBuilder(n int) rowBuilder {
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
+	if b.reannounce || b.popularity {
+		b.values = make([]rowValues, n)
+	}
+	return b
+}
+
+// view builds row i for t. A builder without values, for an instance that
+// sends neither Reannounce nor Popularity, allocates for a row with a known
+// Private.
+func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
 	tv := TorrentView{Torrent: t, TrackerHealth: health}
-	if liveReannounce {
-		tv.Reannounce = new(t.Reannounce)
+	privateKnown := !PrivateUnknown(t)
+	if !b.reannounce && !b.popularity && !privateKnown {
+		return tv
+	}
+	var v *rowValues
+	if b.values != nil {
+		v = &b.values[i]
+	} else {
+		v = new(rowValues)
+	}
+	*v = rowValues{reannounce: t.Reannounce, popularity: t.Popularity, private: t.Private}
+	if b.reannounce {
+		tv.Reannounce = &v.reannounce
+	}
+	if b.popularity {
+		tv.Popularity = &v.popularity
+	}
+	if privateKnown {
+		tv.Private = &v.private
 	}
 	return tv
 }
@@ -307,6 +360,8 @@ type TorrentResponse struct {
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
+	// WebAPIVersions maps each instance in the response to its Web API version, "" while unknown.
+	WebAPIVersions map[int]string `json:"webAPIVersions,omitempty"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -733,7 +788,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	mainData := resolveMainData(syncManager, mainDataReadCached)
 
 	// Only refresh for clients that support IncludeTrackers (qBittorrent 5.1+)
-	if !client.supportsTrackerInclude() {
+	if !client.Supports(CapTrackerHealth) {
 		if sm.storeTrackerMapping(instanceID, sm.trackerMappingFromMainData(torrents, mainData)) {
 			sm.notifyTrackerHealthUpdated(instanceID)
 		}
@@ -747,7 +802,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	hydrated := torrents
 	var fetchErr error
-	if client.announceFlagsSupported() {
+	if client.Supports(CapAnnounceFlags) {
 		fetchErr = sm.hydrateTrackerDetails(refreshCtx, client, sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID), torrents, true)
 	} else {
 		hydrated, fetchErr = client.refreshTrackers(refreshCtx, torrents)
@@ -777,7 +832,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	if sm.applyTrackerHealthRefreshResult(instanceID, hydrated, mainData, started, client.announceFlagsSupported()) {
+	if sm.applyTrackerHealthRefreshResult(instanceID, hydrated, mainData, started, client.Supports(CapAnnounceFlags)) {
 		sm.notifyTrackerHealthUpdated(instanceID)
 	}
 }
@@ -1288,27 +1343,28 @@ func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, fil
 	return syncManager.GetTorrentsUnchecked(filter), nil
 }
 
-// GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
-func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
+// OmitsTrackersOnExport reports whether the instance exports .torrent files
+// without their trackers (qBittorrent 4.6.x).
+func (sm *SyncManager) OmitsTrackersOnExport(ctx context.Context, instanceID int) (bool, error) {
 	if sm == nil || sm.clientPool == nil {
-		return "", errors.New("client pool unavailable")
+		return false, errors.New("client pool unavailable")
 	}
 
-	if client, err := sm.clientPool.GetClientOffline(ctx, instanceID); err == nil {
-		return strings.TrimSpace(client.GetWebAPIVersion()), nil
-	}
-
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	client, err := sm.clientPool.GetClientOffline(ctx, instanceID)
 	if err != nil {
-		return "", err
+		if client, err = sm.clientPool.GetClient(ctx, instanceID); err != nil {
+			return false, err
+		}
 	}
-
-	return strings.TrimSpace(client.GetWebAPIVersion()), nil
+	if err := client.EnsureCapabilities(ctx); err != nil {
+		return false, fmt.Errorf("read the qBittorrent version: %w", err)
+	}
+	return client.Supports(CapExportOmitsTrackers), nil
 }
 
 // trackerHealthSupportedByClient reports whether qBittorrent supports tracker health.
 func trackerHealthSupportedByClient(client *Client) bool {
-	return client != nil && client.supportsTrackerInclude()
+	return client != nil && client.Supports(CapTrackerHealth)
 }
 
 // getClientAndSyncManager gets both client and sync manager with error handling
@@ -1511,8 +1567,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		tags = []string{}
 	}
 
-	supportsSubcategories := client.SupportsSubcategories()
-	subcategoriesAlwaysEnabled := client.SubcategoriesAlwaysEnabled()
+	supportsSubcategories := client.Supports(CapSubcategories)
+	subcategoriesAlwaysEnabled := client.Supports(CapSubcategoriesAlwaysEnabled)
 	useSubcategories := resolveUseSubcategories(supportsSubcategories, subcategoriesAlwaysEnabled, mainData, categories)
 
 	switch {
@@ -1673,9 +1729,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		liveReannounce := client.SupportsLiveReannounce()
+		rows := client.newRowBuilder(len(paginatedTorrents))
 		for i := range paginatedTorrents {
-			paginatedViews[i] = newTorrentView(&paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash), liveReannounce)
+			paginatedViews[i] = rows.view(i, &paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 
@@ -1720,6 +1776,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
 		TrackerHealthSupported: trackerHealthSupported,
+		WebAPIVersions:         map[int]string{instanceID: client.GetWebAPIVersion()},
 	}
 
 	// Always compute from fresh all_torrents data
@@ -1772,11 +1829,11 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
-	liveReannounce := client.SupportsLiveReannounce()
+	rows := client.newRowBuilder(len(torrents))
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
-			TorrentView:  new(newTorrentView(&torrents[i], cachedHealth.Health(torrents[i].Hash), liveReannounce)),
+			TorrentView:  new(rows.view(i, &torrents[i], cachedHealth.Health(torrents[i].Hash))),
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -1829,6 +1886,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var useSubcategories bool
 	aggregatedCategories := make(map[string]qbt.Category)
 	aggregatedTagSet := make(map[string]struct{})
+	webAPIVersions := make(map[int]string)
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
@@ -1899,6 +1957,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
 		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
 		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
+		maps.Copy(webAPIVersions, instanceResponse.WebAPIVersions)
 
 		totalCount += len(instanceResponse.Torrents)
 	}
@@ -1950,6 +2009,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		TrackerHealthSupported: trackerHealthSupported,
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
+		WebAPIVersions:         webAPIVersions,
 	}
 
 	return response, nil
@@ -3135,7 +3195,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	// PERFORMANCE FIX: Only support tracker health for qBittorrent 5.1+ (Web API 2.11.4+)
 	// that has the IncludeTrackers option. Older versions would require individual API
 	// calls per torrent which is catastrophic for performance on large instances.
-	if !client.supportsTrackerInclude() {
+	if !client.Supports(CapTrackerHealth) {
 		log.Trace().
 			Int("instanceID", client.instanceID).
 			Str("webAPIVersion", client.GetWebAPIVersion()).
@@ -4216,7 +4276,7 @@ func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qb
 // does, so the tracker conditions keep reading only the primary tracker there.
 func (sm *SyncManager) AttachTrackerURLs(ctx context.Context, instanceID int, torrents []qbt.Torrent) []qbt.Torrent {
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
-	if err != nil || !client.supportsTrackerInclude() {
+	if err != nil || !client.Supports(CapTrackerHealth) {
 		return torrents
 	}
 	mainData := resolveMainData(syncManager, mainDataReadCached)
@@ -4253,7 +4313,7 @@ func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID in
 		return torrents, nil
 	}
 
-	if client.announceFlagsSupported() {
+	if client.Supports(CapAnnounceFlags) {
 		// On qBittorrent 5.2+ no health pass fetches the whole library, so
 		// automations keep their own cache of every torrent's details.
 		cache := sm.trackerDetailsFor(sm.automationTrackerDetails, instanceID)
@@ -5362,7 +5422,7 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
 	return sm.editTorrents(ctx, instanceID, hashes, "set tags", nil, func(client *Client) error {
 		// Check version support before attempting API call
-		if client.SupportsSetTags() {
+		if client.Supports(CapSetTags) {
 			if err := client.SetTags(ctx, hashes, tags); err != nil {
 				return err
 			}
@@ -5423,7 +5483,7 @@ func (sm *SyncManager) setTagsFallback(ctx context.Context, instanceID int, clie
 // SetComment sets the comment on the specified torrents (qBittorrent 5.2+, Web API 2.12.1+).
 func (sm *SyncManager) SetComment(ctx context.Context, instanceID int, hashes []string, comment string) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsSetComment() {
+		if !client.Supports(CapSetComment) {
 			return fmt.Errorf("set comment requires qBittorrent 5.2 and Web API 2.12.1 or newer (current: %s)", client.GetWebAPIVersion())
 		}
 		return nil
@@ -5541,7 +5601,7 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 
 	edit := func() error { return client.EditCategoryCtx(ctx, name, path) }
 	existed := false
-	if !client.EditsCategoriesPartially() {
+	if !client.Supports(CapPartialCategoryEdit) {
 		categories, err := client.GetCategoriesCtx(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to read category %q before editing it: %w", name, err)
@@ -5797,13 +5857,16 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 // Action and mode must be qBittorrent/Qt meta enum names (Default, Stop, Remove, …).
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	return sm.editTorrents(ctx, instanceID, hashes, "set share limits", nil, func(client *Client) error {
+		if err := client.EnsureCapabilities(ctx); err != nil {
+			return fmt.Errorf("read the qBittorrent version: %w", err)
+		}
 		action := strings.TrimSpace(shareLimitAction)
-		if !client.SupportsShareLimitsAction() {
+		if !client.Supports(CapShareLimitsAction) {
 			action = ""
 		}
 
 		mode := strings.TrimSpace(shareLimitsMode)
-		if !client.SupportsShareLimitsMode() {
+		if !client.Supports(CapShareLimitsMode) {
 			mode = ""
 		}
 
@@ -5873,7 +5936,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 // SetTorrentFilePriority updates the download priority for one or more files within a torrent.
 func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID int, hash string, indices []int, priority int) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsFilePriority() {
+		if !client.Supports(CapFilePriority) {
 			return errors.New("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
 		}
 		return nil
@@ -5925,7 +5988,7 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 // RenameTorrent renames a torrent by hash
 func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, name string) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsRenameTorrent() {
+		if !client.Supports(CapRenameTorrent) {
 			return errors.New("qBittorrent instance does not support torrent renaming (requires WebAPI 2.0.0+, qBittorrent 4.1.0+)")
 		}
 		return nil
@@ -5949,7 +6012,7 @@ func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, 
 // RenameTorrentFile renames a file inside a torrent
 func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsRenameFile() {
+		if !client.Supports(CapRenameFile) {
 			return errors.New("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
 		}
 		return nil
@@ -5986,7 +6049,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 // RenameTorrentFolder renames a folder inside a torrent
 func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsRenameFolder() {
+		if !client.Supports(CapRenameFolder) {
 			return errors.New("qBittorrent instance does not support folder renaming (requires WebAPI 2.7.0+, qBittorrent 4.3.3+)")
 		}
 		return nil
@@ -6108,7 +6171,7 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 // BulkEditTrackers edits tracker URLs for multiple torrents
 func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, hashes []string, oldURL, newURL string) error {
 	if err := sm.checkVersion(ctx, instanceID, func(client *Client) error {
-		if !client.SupportsTrackerEditing() {
+		if !client.Supports(CapTrackerEditing) {
 			return errors.New("tracker editing is not supported by this qBittorrent instance")
 		}
 		return nil

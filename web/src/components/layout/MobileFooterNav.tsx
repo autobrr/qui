@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { getThemeById, isThemePremium, themes } from "@/config/themes"
+import { getThemeById, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -38,6 +39,7 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -67,6 +69,7 @@ import {
   Home,
   Loader2,
   Globe,
+  Lock,
   LogOut,
   Monitor,
   Moon,
@@ -83,7 +86,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
 
@@ -103,6 +106,10 @@ const useThemeChange = () => {
     }
   }, [checkTheme])
 
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes])
+
   return { currentMode, currentTheme }
 }
 
@@ -117,11 +124,12 @@ export function MobileFooterNav() {
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
-  const { currentMode, currentTheme } = useThemeChange()
   const { customThemes } = useCustomThemes()
+  const { currentMode, currentTheme } = useThemeChange(customThemes)
+  const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
-  const themeCatalog = buildThemeCatalog(themes, customThemes)
+  const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -667,7 +675,6 @@ export function MobileFooterNav() {
               <div className="text-sm font-medium mb-2">{t("themeToggle.theme")}</div>
               <div className="space-y-1">
                 {themeCatalog.map((theme) => {
-                  const isPremium = isThemePremium(theme.id)
                   const isLocked = !!theme.locked
                   const colors = getThemeColors(theme)
                   const currentVariation = getThemeVariation(theme.id)
@@ -700,10 +707,11 @@ export function MobileFooterNav() {
                           />
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="truncate">{theme.name}</span>
-                            {isPremium && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                                {t("themeToggle.premium")}
-                              </span>
+                            {isLocked && (
+                              <>
+                                <Lock aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                <span className="sr-only">{t("settings:themes.selector.locked")}</span>
+                              </>
                             )}
                           </div>
                         </div>

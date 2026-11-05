@@ -169,7 +169,7 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
-	require.True(t, client.supportsTrackerInclude(), "state sort must see tracker health")
+	require.True(t, client.Supports(CapTrackerHealth), "state sort must see tracker health")
 	return client
 }
 

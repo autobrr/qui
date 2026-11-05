@@ -23,7 +23,7 @@ There are two ways to install qui. The MSI is the easier one. Use the zip when y
 
 The MSI installs qui for your Windows account only. It needs no administrator rights and shows no setup wizard. It does these things:
 
-- It puts `qui.exe` and `qui-tray.exe` in `%LOCALAPPDATA%\Programs\qui`.
+- It puts `qui.exe`, `qui-tray.exe`, and `THIRD_PARTY_NOTICES` in `%LOCALAPPDATA%\Programs\qui`.
 - It adds a **qui** entry to the Start Menu. The entry starts the Tray.
 - It adds the install folder to your `PATH`, so `qui.exe` works in a new terminal.
 - It adds qui to **Settings → Apps → Installed apps**, where you can uninstall it.

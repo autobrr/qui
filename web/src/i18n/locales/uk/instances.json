@@ -557,7 +557,8 @@
         "move": "Перемістити",
         "externalProgram": "Зовнішня програма",
         "dryRun": "Тестовий запуск",
-        "exportToInstance": "Експорт в екземпляр"
+        "exportToInstance": "Експорт в екземпляр",
+        "ruleSkipped": "Правило не запущено"
       },
       "shareLimit": {
         "global": "Глобальний",
@@ -703,7 +704,8 @@
         "deletedActivityEntries": "Видалено {{count}} записів активності",
         "deleteActivityFailed": "Не вдалося видалити активність"
       },
-      "exported": "Експортовано"
+      "exported": "Експортовано",
+      "skipped": "Пропущено"
     },
     "runWorkflowNow": {
       "action": "Запустити зараз",
@@ -720,7 +722,8 @@
         "completedWithErrors": "Запуск для \"{{name}}\" завершено з помилками. Перегляньте журнал активності.",
         "dryRunCompleted": "Тестовий запуск завершено для \"{{name}}\"",
         "inProgress": "Інший запуск уже триває. Спробуйте ще раз за мить.",
-        "failed": "Не вдалося запустити робочий процес"
+        "failed": "Не вдалося запустити робочий процес",
+        "skipped": "«{{name}}» не запущено. Перегляньте журнал активності."
       }
     },
     "workflowPreview": {
@@ -1018,7 +1021,8 @@
         "external_program": "Зовнішня програма",
         "auto_managed": "Автоматичне керування",
         "dry_run_no_match": "Тестовий запуск (не відповідає)",
-        "exported_to_instance": "Експорт в екземпляр"
+        "exported_to_instance": "Експорт в екземпляр",
+        "rule_skipped": "Правило не запущено"
       }
     },
     "reannounceOverview": {
@@ -1490,7 +1494,8 @@
           "moved": "Перемістити",
           "externalProgram": "Зовнішня програма",
           "noMatches": "Немає збігів",
-          "exportedToInstance": "Експорт в екземпляр"
+          "exportedToInstance": "Експорт в екземпляр",
+          "ruleSkipped": "Правило не запущено"
         },
         "actionFallback": "Невідома дія ({{action}})",
         "summary": {

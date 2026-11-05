@@ -40,7 +40,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Category | qBittorrent category |
 | Tags | Set-based tag matching |
 | State | Status filter (see State Values below) |
-| Created By | Torrent creator metadata |
+| Created By | Torrent creator metadata (requires qBittorrent 5.2+) |
 
 #### Path fields
 
@@ -73,7 +73,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Inactive Time | Time since last activity |
 | Seen Complete Age | Time since torrent was last complete |
 | ETA | Estimated time to completion |
-| Reannounce In | Seconds until next announce |
+| Reannounce In | Seconds until next announce (requires qBittorrent 5.0+) |
 | Seeding Time | Time spent seeding |
 | Time Active | Total active time |
 | Max Seeding Time | Configured max seeding time |
@@ -110,7 +110,7 @@ System Day and System Year do not wrap. A month boundary depends on the length o
 | Uploaded / Size | Uploaded bytes divided by total torrent size. For cross-seeded torrents, use this instead of Ratio. |
 | Progress | Download progress (0-100%) |
 | Availability | Distributed copies available |
-| Popularity | Swarm popularity metric |
+| Popularity | Swarm popularity metric (requires qBittorrent 5.0+) |
 
 #### Speed fields (bytes/s)
 
@@ -137,11 +137,15 @@ System Day and System Year do not wrap. A month boundary depends on the length o
 | Field | Description |
 | --- | --- |
 | Tracker | Any tracker of the torrent (URL, domain, or customization display name) |
-| Private | Boolean: the torrent uses a private tracker |
+| Private | Boolean: the torrent uses a private tracker (requires qBittorrent 5.0+) |
 | Unregistered | Boolean: the tracker reports unregistered (requires qBittorrent 5.1+) |
 | Tracker status | Per-tracker announce status. See [Tracker status values](#tracker-status-values) (requires qBittorrent 5.1+). |
 | Tracker message | Per-tracker status message. Use `nil` for an empty message (requires qBittorrent 5.1+). |
-| Comment | Torrent comment field |
+| Comment | Torrent comment field (requires qBittorrent 5.0+) |
+
+A workflow does not run on an instance if it reads a field that the instance does not send. This applies to the conditions and to the sort of the workflow. qui writes one `rule_skipped` entry to the activity log with the field and the qBittorrent version that it needs. The dry-run and the previews show the same reason. qui keeps the workflow, and the workflow runs again after you upgrade qBittorrent.
+
+A torrent without metadata, such as a new magnet link, has no Private value. It drops out of each workflow that reads Private until its metadata arrives. The workflow still runs for the other torrents. A grouped action of that workflow skips each group that has such a torrent.
 
 **Tracker** matches every tracker the torrent announces to, including trackers that do not work. qui ignores the DHT, PeX, and LSD pseudo-trackers.
 
