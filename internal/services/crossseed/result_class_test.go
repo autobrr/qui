@@ -5,6 +5,9 @@ package crossseed
 
 import (
 	"context"
+	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +52,6 @@ func TestReadersSortEachStatus(t *testing.T) {
 		{"added_reflink", true, rssAdded, searchAdded, hookAdded},
 		{"exists", true, rssExisting, searchSkipped, hookNone},
 		{"no_match", false, rssSkipped, searchSkipped, hookNone},
-		{"skipped", false, rssSkipped, searchSkipped, hookNone},
 		{"rejected", false, rssSkipped, searchSkipped, hookNone},
 		{"blocked", false, rssSkipped, searchSkipped, hookNone},
 		{"requires_hardlink_reflink", false, rssSkipped, searchSkipped, hookNone},
@@ -65,10 +67,10 @@ func TestReadersSortEachStatus(t *testing.T) {
 		{"invalid_content_path", false, rssFailed, searchFailed, hookFailed},
 		{"hardlink_error", false, rssFailed, searchFailed, hookFailed},
 		{"reflink_error", false, rssFailed, searchFailed, hookFailed},
-		{"size_mismatch", false, rssFailed, searchFailed, hookNone},
+		{"size_mismatch", false, rssFailed, searchFailed, hookFailed},
 		{"crossseed_instance_unavailable", false, rssFailed, searchFailed, hookFailed},
 		{"crossseed_instance_cannot_see_data", false, rssFailed, searchFailed, hookFailed},
-		{"synthetic_unknown_status", false, rssFailed, searchFailed, hookNone},
+		{"synthetic_unknown_status", false, rssFailed, searchFailed, hookFailed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.status, func(t *testing.T) {
@@ -179,4 +181,79 @@ func readWebhook(t *testing.T, respond crossSeedResponder) string {
 	}
 	t.Fatalf("unexpected webhook events: %+v", events)
 	return ""
+}
+
+// TestTroubleshootingPageMatchesClasses reads the status table on the
+// troubleshooting page.
+func TestTroubleshootingPageMatchesClasses(t *testing.T) {
+	t.Parallel()
+
+	page, err := os.ReadFile("../../../documentation/docs/features/cross-seed/troubleshooting.md")
+	require.NoError(t, err)
+	_, table, found := strings.Cut(string(page), "| Status or message | Outcome |")
+	require.True(t, found, "the troubleshooting page has no status table")
+	_, table, _ = strings.Cut(table, "\n")
+
+	allowed := map[string][]resultClass{
+		"Skipped": {classExists, classSkipped},
+		"Failed":  {classStranded, classFailed},
+	}
+	read := 0
+	for line := range strings.Lines(table) {
+		if !strings.HasPrefix(line, "|") {
+			break
+		}
+		cells := strings.Split(line, "|")
+		statuses := regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(cells[1], -1)
+		outcome := strings.TrimSpace(cells[2])
+		for _, match := range statuses {
+			status := match[1]
+			class, ok := resultClasses[status]
+			require.True(t, ok, "status %s on the page has no entry in resultClasses", status)
+			require.Contains(t, allowed[outcome], class, "status %s has the outcome %q on the page and the class %s", status, outcome, class)
+			read++
+		}
+	}
+	require.NotZero(t, read)
+}
+
+// TestWebhookNotificationCountsOnlyFailures sends a stranded result beside
+// harmless results in one response.
+func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		statuses []string
+		want     []notifications.EventType
+	}{
+		{name: "stranded beside exists and no match", statuses: []string{"alignment_failed", "exists", "no_match"}, want: []notifications.EventType{notifications.EventCrossSeedWebhookFailed}},
+		{name: "exists and skipped only", statuses: []string{"exists", "no_match", "blocked"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			results := make([]InstanceCrossSeedResult, 0, len(tt.statuses))
+			for i, status := range tt.statuses {
+				results = append(results, InstanceCrossSeedResult{InstanceID: i + 1, InstanceName: status, Status: status})
+			}
+			notifier := &recordingNotifier{}
+			service := &Service{notifier: notifier, crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+				return &CrossSeedResponse{Results: results}, nil
+			}}
+			_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+			require.NoError(t, err)
+
+			events := notifier.Events()
+			types := make([]notifications.EventType, 0, len(events))
+			for _, event := range events {
+				types = append(types, event.Type)
+			}
+			require.ElementsMatch(t, tt.want, types)
+			if len(events) == 1 {
+				require.Equal(t, 1, events[0].CrossSeed.Failed)
+				require.Equal(t, []string{"alignment_failed"}, events[0].CrossSeed.Samples)
+			}
+		})
+	}
 }

@@ -312,7 +312,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 			Str("existingHash", existing.Hash).
 			Str("existingName", existing.Name).
 			Msg("Cross-seed apply skipped: torrent already exists in instance")
-		return PreAddCheck{}, &AddResult{Status: "exists", Message: existsInThisInstance, Existing: existing}
+		return PreAddCheck{}, &AddResult{Status: StatusExists, Message: existsInThisInstance, Existing: existing}
 	}
 	if a.routes != nil {
 		linked, where, err := a.routes.FindLinked(ctx, a.sync, instanceID, check.hashes)
@@ -327,7 +327,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 				Str("existingName", linked.Name).
 				Str("linkedInstance", where).
 				Msg("Cross-seed apply skipped: torrent already exists in a linked instance")
-			return PreAddCheck{}, &AddResult{Status: "exists", Message: "Torrent already exists in " + where, Existing: linked}
+			return PreAddCheck{}, &AddResult{Status: StatusExists, Message: "Torrent already exists in " + where, Existing: linked}
 		}
 	}
 
@@ -342,7 +342,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 				Strs("torrentHashes", check.hashes).
 				Str("blockedHash", blockedHash).
 				Msg("Cross-seed apply skipped: infohash is blocked")
-			return PreAddCheck{}, &AddResult{Status: "blocked", Message: "Blocked by cross-seed blocklist"}
+			return PreAddCheck{}, &AddResult{Status: StatusBlocked, Message: "Blocked by cross-seed blocklist"}
 		}
 	}
 	return check, nil

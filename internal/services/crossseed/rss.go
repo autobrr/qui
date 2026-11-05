@@ -956,13 +956,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 		run.Results = append(run.Results, mapped)
 
-		switch {
-		case instanceResult.Success:
+		switch instanceResult.class() {
+		case classAdded:
 			itemHasSuccess = true
 			run.CrossSeedsAdded++
-		case instanceResult.Status == "exists":
+		case classExists:
 			itemHadExisting = true
-		case isSkippedCrossSeedResultStatus(instanceResult.Status):
+		case classSkipped:
 		default:
 			itemHasFailure = true
 		}
