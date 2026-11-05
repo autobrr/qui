@@ -59,6 +59,9 @@ func TestStatusScanFailsOnUnknownOrUnresolvedStatus(t *testing.T) {
 			var result InstanceCrossSeedResult
 			result.Status = "added_" + mode
 		}`,
+		"status copied from another type": `func build(input struct{ Status string }) InstanceCrossSeedResult {
+			return InstanceCrossSeedResult{Status: input.Status}
+		}`,
 	}
 	for name, src := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -284,8 +287,10 @@ func (s *statusScan) resolve(decl *ast.FuncDecl, expr ast.Expr, index int) []str
 	case *ast.SelectorExpr:
 		switch {
 		case expr.Sel.Name == "Status":
-			// A copy of a status that another build site set.
-			return nil
+			// A copy from a result type reads a status that its build site set.
+			if s.isResultExpr(decl, expr.X) {
+				return nil
+			}
 		case s.isImported(expr):
 		case len(s.fields[expr.Sel.Name]) > 0:
 			var statuses []string
@@ -445,10 +450,18 @@ func (s *statusScan) isResult(decl *ast.FuncDecl, name string) (isResult, known 
 		}
 		return true
 	})
-	if len(names) == 0 || slices.Contains(names, "") {
-		return false, false
+	isResult = slices.ContainsFunc(names, func(name string) bool { return resultStatusTypes[name] })
+	return isResult, len(names) > 0 && !slices.Contains(names, "")
+}
+
+func (s *statusScan) isResultExpr(decl *ast.FuncDecl, expr ast.Expr) bool {
+	if id, ok := expr.(*ast.Ident); ok {
+		// The scan does not track scopes, so one binding of the name with a
+		// result type is enough.
+		isResult, _ := s.isResult(decl, id.Name)
+		return isResult
 	}
-	return slices.ContainsFunc(names, func(name string) bool { return resultStatusTypes[name] }), true
+	return resultStatusTypes[s.exprType(expr, 0)]
 }
 
 func (s *statusScan) exprType(expr ast.Expr, index int) string {
