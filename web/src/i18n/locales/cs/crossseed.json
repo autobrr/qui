@@ -483,6 +483,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} selhalo - zkontrolujte výsledky pro detaily",
       "applyCompletedUnavailable": "Žádost o křížové sdílení dokončena (detaily nejsou dostupné)",
       "applyNoChanges": "Žádné křížové sdílení nebyly přidány",
+      "applyAlreadyInClient": "Již je v klientovi",
       "applyCompletedPart": ", {{count}} dokončeno",
       "applyCompletedPrefix": "{{count}} dokončeno, "
     }

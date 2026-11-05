@@ -657,15 +657,6 @@ func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
 	}
 }
 
-func isSkippedCrossSeedResultStatus(status string) bool {
-	switch status {
-	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces", contentPrefilterRejectedContentStatus:
-		return true
-	default:
-		return false
-	}
-}
-
 func dedupeHashes(hashes ...string) []string {
 	if len(hashes) == 0 {
 		return nil

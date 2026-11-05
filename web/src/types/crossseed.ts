@@ -29,11 +29,14 @@ export interface CrossSeedTorrentInfo {
   contentMatches?: string[]
 }
 
+export type CrossSeedResultClass = "added" | "exists" | "skipped" | "stranded" | "failed"
+
 export interface CrossSeedInstanceResult {
   instanceId: number
   instanceName: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
   /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
   crossSeedInstanceId?: number

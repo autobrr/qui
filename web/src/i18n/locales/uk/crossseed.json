@@ -486,6 +486,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} невдалих — перевірте результати для деталей",
       "applyCompletedUnavailable": "Запит крос-сіду завершено (деталі недоступні)",
       "applyNoChanges": "Крос-сідів додано не було",
+      "applyAlreadyInClient": "Уже є в клієнті",
       "applyCompletedPart": ", {{count}} завершено",
       "applyCompletedPrefix": "{{count}} завершено, ",
       "applySuccess_few": "Додано {{count}} крос-сіди",

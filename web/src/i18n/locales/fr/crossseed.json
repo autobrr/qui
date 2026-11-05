@@ -472,6 +472,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} échoué(s) - vérifiez les résultats",
       "applyCompletedUnavailable": "Requête de cross-seed terminée (détails indisponibles)",
       "applyNoChanges": "Aucun cross-seed n'a été ajouté",
+      "applyAlreadyInClient": "Déjà dans le client",
       "applyCompletedPart": ", {{count}} terminé(s)",
       "applyCompletedPrefix": "{{count}} terminé(s), "
     }

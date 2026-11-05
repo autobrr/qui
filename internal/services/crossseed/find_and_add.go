@@ -109,7 +109,9 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 		return true
 	}
 	for _, result := range response.Results {
-		if result.Success || result.Status == "exists" || result.Status == partialPoolRegistrationErrorStatus {
+		// qBittorrent holds a stranded torrent, so a later source would only
+		// report "exists" and hide the failure.
+		if class := result.class(); class == classAdded || class == classExists || class == classStranded {
 			return true
 		}
 	}
@@ -795,9 +797,10 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	facts := AddFacts{
-		SkipRecheck:    req.SkipRecheck,
-		SkipAutoResume: req.SkipAutoResume,
-		StartRunning:   req.StartPaused != nil && !*req.StartPaused,
+		SkipRecheck:            req.SkipRecheck,
+		SkipAutoResume:         req.SkipAutoResume,
+		StartRunning:           req.StartPaused != nil && !*req.StartPaused,
+		SkipPieceBoundaryCheck: req.SkipPieceBoundarySafetyCheck,
 	}
 	refused := func(f AddFacts) bool {
 		v := f.Verdict()
@@ -854,6 +857,7 @@ func (s *Service) processCrossSeedCandidate(
 	manualUnvalidated := matchType == manualMatchType
 	facts.Verify = verifyReason(candidate, matchedTorrent.Hash, req)
 	facts.ExactMatch = matchType == "exact"
+	facts.UnvalidatedManual = manualUnvalidated
 	if refused(facts) {
 		return result
 	}
@@ -898,8 +902,6 @@ func (s *Service) processCrossSeedCandidate(
 	facts.PendingFiles = hasExtraFiles
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
-	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
-	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
 	var instance *models.Instance
 	var instanceErr error
 	if candidate.route != nil {
@@ -920,16 +922,19 @@ func (s *Service) processCrossSeedCandidate(
 	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks && !manualUnvalidated
 	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks && !manualUnvalidated
 
-	runReuseSafetyChecks := func() bool {
-		// SAFETY: Reject cross-seeds where main content file sizes don't match.
-		// This prevents corrupting existing good data with potentially different or corrupted files.
-		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
-		// it indicates either corruption or a different release that shouldn't be cross-seeded.
-		// An unvalidated Manual match skips this heuristic by design (the UI already
-		// warned about the overlap); the piece-boundary check below still applies.
-		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch && !manualUnvalidated {
-			result.Status = "rejected"
-			result.Message = "Content file sizes do not match - possible corruption or different release"
+	facts.ReflinkAdd = useReflinkMode
+
+	var fileSizeMismatches []contentFileSizeMismatch
+	facts.SizeMismatch, fileSizeMismatches = hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer)
+
+	var pieceSafety PieceBoundarySafetyResult
+	if hasExtraFiles && torrentInfo != nil {
+		facts.UnsafePieces, pieceSafety = HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
+	}
+
+	logSafetyRefusal := func() {
+		switch result.Status {
+		case "rejected":
 			log.WithLevel(s.sizeMismatchLogLevel(torrentHash, matchedTorrent.Hash)).
 				Int("instanceID", candidate.InstanceID).
 				Str("instanceName", candidate.InstanceName).
@@ -939,81 +944,52 @@ func (s *Service) processCrossSeedCandidate(
 				Strs("mismatchedFiles", contentFileSizeMismatchSourceFiles(fileSizeMismatches)).
 				Interface("fileSizeMismatches", fileSizeMismatches).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
-			return false
-		}
+		case "skipped_unsafe_pieces":
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Str("matchedHash", matchedTorrent.Hash).
+				Str("matchType", matchType).
+				Int("violationCount", len(pieceSafety.UnsafeBoundaries)).
+				Int64("pieceLength", torrentInfo.PieceLength).
+				Msg("[CROSSSEED] Skipped: piece boundary violation - extra files share pieces with content files")
 
-		// SAFETY: Check piece-boundary alignment when source has extra files.
-		// If extra/ignored files share pieces with content files, downloading those pieces
-		// could corrupt the existing content data (piece hashes span both file types).
-		// In this case, we must skip - only reflink/copy mode could safely handle it.
-		if !hasExtraFiles || torrentInfo == nil {
-			return true
-		}
-
-		// Build set of missing file paths using the same matcher as hasExtraSourceFiles,
-		// so a sole-candidate renamed file is not miscounted as missing on disk.
-		missingPaths := unmaterializedSourceFilePaths(sourceFiles, candidateFiles)
-
-		// isMissingOnDisk returns true if the file has no match in candidate files.
-		// These files will be downloaded by qBittorrent during recheck.
-		// Note: ignore patterns are NOT checked here - the piece-boundary check applies
-		// to ALL missing files regardless of whether they match ignore patterns.
-		isMissingOnDisk := func(path string) bool {
-			return missingPaths[path]
-		}
-
-		// Check piece boundary safety unless user opted out
-		if !req.SkipPieceBoundarySafetyCheck {
-			unsafe, safetyResult := HasUnsafeIgnoredExtras(torrentInfo, isMissingOnDisk)
-			if unsafe {
-				result.Status = "skipped_unsafe_pieces"
-				result.Message = "Skipped: extra files share pieces with content. Disable 'Piece boundary safety check' in Cross-Seed settings to allow"
-				log.Warn().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Str("matchedHash", matchedTorrent.Hash).
-					Int("violationCount", len(safetyResult.UnsafeBoundaries)).
-					Int64("pieceLength", torrentInfo.PieceLength).
-					Msg("[CROSSSEED] Skipped: piece boundary violation - extra files share pieces with content files")
-
-				// Log first violation for actionable debugging
-				if len(safetyResult.UnsafeBoundaries) > 0 {
-					v := safetyResult.UnsafeBoundaries[0]
-					log.Debug().
-						Int64("boundaryOffset", v.Offset).
-						Int("pieceIndex", v.PieceIndex).
-						Str("contentFile", v.ContentFile).
-						Str("ignoredFile", v.IgnoredFile).
-						Msg("[CROSSSEED] First piece boundary violation detail")
-				}
-				return false
+			// Log first violation for actionable debugging
+			if len(pieceSafety.UnsafeBoundaries) > 0 {
+				v := pieceSafety.UnsafeBoundaries[0]
+				log.Debug().
+					Int64("boundaryOffset", v.Offset).
+					Int("pieceIndex", v.PieceIndex).
+					Str("contentFile", v.ContentFile).
+					Str("ignoredFile", v.IgnoredFile).
+					Msg("[CROSSSEED] First piece boundary violation detail")
 			}
-		} else {
+		}
+	}
+	logPieceBoundaryCheckOff := func() {
+		if hasExtraFiles && torrentInfo != nil && req.SkipPieceBoundarySafetyCheck {
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Piece boundary safety check skipped by user setting")
 		}
-
-		return true
-	}
-
-	// NOTE: Reflink mode bypasses these checks only when reflink mode is actually used.
-	if !useReflinkMode {
-		if !runReuseSafetyChecks() {
-			return result
-		}
 	}
 
 	if refused(facts) {
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Str("discMarker", addPolicy.DiscMarker).
-			Bool("requiresAlignment", requiresAlignment).
-			Bool("hasExtraFiles", hasExtraFiles).
-			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
+		if result.Status == "skipped_recheck" {
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Str("discMarker", addPolicy.DiscMarker).
+				Bool("requiresAlignment", requiresAlignment).
+				Bool("hasExtraFiles", hasExtraFiles).
+				Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
+		}
+		logSafetyRefusal()
 		return result
+	}
+	if !useReflinkMode {
+		logPieceBoundaryCheckOff()
 	}
 
 	// Detect folder structure for contentLayout decisions
@@ -1110,11 +1086,10 @@ func (s *Service) processCrossSeedCandidate(
 		facts.LinkFallbackRecheck = facts.LinkFallbackRecheck || rlResult.RequiresFullRecheck
 		facts.LinkFallback = facts.LinkFallback || rlResult.FallbackToRegular
 
-		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
-		// before continuing into hardlink/regular modes.
-		if !runReuseSafetyChecks() {
-			return result
-		}
+		// Reflink mode was enabled but not used (e.g., fallback on error), so no clone
+		// protects the original files, and the size and piece rules apply at the last ask.
+		facts.ReflinkAdd = false
+		logPieceBoundaryCheckOff()
 	}
 
 	// Try hardlink mode if enabled - this bypasses the regular reuse+rename alignment
@@ -1150,72 +1125,43 @@ func (s *Service) processCrossSeedCandidate(
 		categoryCreationFailed = true
 	}
 
-	exactInPlace := matchType == "exact" && !requiresAlignment && !hasExtraFiles
-	if facts.LinkFallback && !exactInPlace {
-		if torrentInfo != nil {
-			unsafe, safetyResult := HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
-			if unsafe {
-				result.Status = "skipped_unsafe_pieces"
-				result.Message = "Skipped: link-mode fallback files share pieces with unmaterialized files"
-				log.Warn().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Str("matchedHash", matchedTorrent.Hash).
-					Str("matchType", matchType).
-					Int("violationCount", len(safetyResult.UnsafeBoundaries)).
-					Int64("pieceLength", torrentInfo.PieceLength).
-					Msg("[CROSSSEED] Link-mode fallback skipped: piece boundary violation")
-				if len(safetyResult.UnsafeBoundaries) > 0 {
-					v := safetyResult.UnsafeBoundaries[0]
-					log.Debug().
-						Int64("boundaryOffset", v.Offset).
-						Int("pieceIndex", v.PieceIndex).
-						Str("contentFile", v.ContentFile).
-						Str("ignoredFile", v.IgnoredFile).
-						Msg("[CROSSSEED] First link-mode fallback piece boundary violation detail")
-				}
-				return result
-			}
-		} else {
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Str("matchType", matchType).
-				Msg("[CROSSSEED] Link-mode fallback piece boundary check skipped because torrent metadata is unavailable")
-		}
-	}
-
-	if refused(facts) {
-		log.Info().
+	if facts.LinkFallback && torrentInfo != nil {
+		// UnsafePieces reads the same files, so this result also has its violations.
+		facts.UnsafeFallbackPieces, pieceSafety = HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
+	} else if facts.LinkFallback && !facts.exactInPlace() {
+		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
-			Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
-		return result
+			Str("matchType", matchType).
+			Msg("[CROSSSEED] Link-mode fallback piece boundary check skipped because torrent metadata is unavailable")
 	}
 
 	// Regular mode: continue with reuse+rename alignment
 
-	// SAFETY: Guard against folder->rootless adds with extra files in regular mode.
-	// When the incoming torrent has a top-level folder, the existing torrent is rootless,
-	// and the incoming torrent has extra files (sample, nfo, srr), using contentLayout=NoSubfolder
-	// would cause those extra files to be downloaded into the base directory (e.g., /downloads/)
-	// instead of being contained in a folder (e.g., /downloads/Movie/). This creates a messy
-	// directory structure and can cause collisions across torrents.
-	//
-	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
-	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
-	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles && !manualUnvalidated {
-		result.Status = "requires_hardlink_reflink"
-		result.Message = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Str("matchedHash", matchedTorrent.Hash).
-			Str("matchType", matchType).
-			Str("sourceRoot", sourceRoot).
-			Str("candidateRoot", candidateRoot).
-			Bool("hasExtraFiles", hasExtraFiles).
-			Msg("[CROSSSEED] Skipped folder->rootless regular add: NoSubfolder would scatter extra files in base directory. Enable hardlink or reflink mode.")
+	// Hardlink/reflink modes use contentLayout=Original and preserve the incoming
+	// torrent's layout through a link tree, so only regular mode has this fact.
+	facts.FolderToRootless = sourceRoot != "" && candidateRoot == "" && hasExtraFiles
+
+	if refused(facts) {
+		switch result.Status {
+		case "skipped_recheck":
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
+		case "requires_hardlink_reflink":
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Str("matchedHash", matchedTorrent.Hash).
+				Str("matchType", matchType).
+				Str("sourceRoot", sourceRoot).
+				Str("candidateRoot", candidateRoot).
+				Bool("hasExtraFiles", hasExtraFiles).
+				Msg("[CROSSSEED] Skipped folder->rootless regular add: NoSubfolder would scatter extra files in base directory. Enable hardlink or reflink mode.")
+		default:
+			logSafetyRefusal()
+		}
 		return result
 	}
 

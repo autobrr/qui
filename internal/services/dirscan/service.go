@@ -2389,10 +2389,10 @@ func (s *Service) tryMatchAndInject(
 	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
 	switch {
 	case refusal == nil:
-	case refusal.Status == "blocked":
+	case refusal.Status == crossseed.StatusBlocked:
 		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
 		return nil, false
-	case refusal.Status != "exists":
+	case refusal.Status != crossseed.StatusExists:
 		// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
 		l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
 		return nil, errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
