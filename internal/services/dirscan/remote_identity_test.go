@@ -336,6 +336,7 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 		wantStatus  models.DirScanFileStatus
 	}{
 		{name: "name_climbs_out_of_a_missing_save_path", savePath: "/gone", fileName: "../other/f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
+		{name: "name_climbs_to_a_sibling_sharing_the_prefix", savePath: "/oth", fileName: "../other/f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
 		{name: "save_path_through_a_missing_folder", savePath: "/gone/../other", fileName: "f.bin", wantBatches: 2, wantIndexed: 1, wantStatus: models.DirScanFileStatusAlreadySeeding},
 		{name: "dots_inside_an_element_stay_under_the_save_path", savePath: "/gone", fileName: "sub..../x.bin", wantBatches: 1, wantStatus: models.DirScanFileStatusPending},
 	} {
