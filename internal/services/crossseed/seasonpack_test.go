@@ -2168,29 +2168,48 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 		},
 	}
 
-	svc := &Service{
-		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
-		syncManager:              sm,
-		releaseCache:             NewReleaseCache(),
-		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			return &fsops.TreeCreateResult{}, nil
-		},
+	tests := []struct {
+		name        string
+		skipRecheck bool
+		wantReason  string
+		wantMessage string
+	}{
+		{name: "unsafe piece", wantReason: "layout_mismatch", wantMessage: "piece boundary"},
+		{name: "skip recheck wins over an unsafe piece", skipRecheck: true, wantReason: "skipped_recheck", wantMessage: "Skip Recheck"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:   sm,
+				releaseCache:  NewReleaseCache(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{
+						SeasonPackEnabled:           true,
+						SeasonPackCoverageThreshold: 0.75,
+						SkipRecheck:                 tt.skipRecheck,
+					}, nil
+				},
+				seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					return &fsops.TreeCreateResult{}, nil
+				},
+			}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
-	adds := withLinkAdder(svc)
-	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
-		TorrentName: packName,
-		TorrentData: torrentData,
-		InstanceIDs: []int{inst.ID},
-	})
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+			adds := withLinkAdder(svc)
+			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+				TorrentName: packName,
+				TorrentData: torrentData,
+				InstanceIDs: []int{inst.ID},
+			})
 
-	require.NoError(t, err)
-	require.False(t, resp.Applied)
-	require.Equal(t, "layout_mismatch", resp.Reason)
-	require.Contains(t, resp.Message, "piece boundary")
-	require.Empty(t, adds.added)
+			require.NoError(t, err)
+			require.False(t, resp.Applied)
+			require.Equal(t, tt.wantReason, resp.Reason)
+			require.Contains(t, resp.Message, tt.wantMessage)
+			require.Empty(t, adds.added)
+		})
+	}
 }
 
 func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.T) {
