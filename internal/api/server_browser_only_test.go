@@ -82,15 +82,18 @@ func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 	})
 
 	t.Run("API key reaches other routes", func(t *testing.T) {
-		for _, tc := range []struct{ method, path, key string }{
-			{http.MethodGet, "/api/version", apiKey},
-			{http.MethodPost, "/api/external-programs/execute", apiKey},
-			{http.MethodPost, "/api/cross-seed/webhook/check?apikey=" + apiKey, ""},
-			{http.MethodPost, "/api/dir-scan/webhook/scan?apikey=" + apiKey, ""},
+		// 400: the handler read the empty body.
+		for _, tc := range []struct {
+			method, path, key string
+			want              int
+		}{
+			{http.MethodGet, "/api/version", apiKey, http.StatusOK},
+			{http.MethodPost, "/api/external-programs/execute", apiKey, http.StatusBadRequest},
+			{http.MethodPost, "/api/cross-seed/webhook/check?apikey=" + apiKey, "", http.StatusBadRequest},
+			{http.MethodPost, "/api/dir-scan/webhook/scan?apikey=" + apiKey, "", http.StatusBadRequest},
 		} {
-			status, body := send(t, tc.method, tc.path, tc.key, nil)
-			require.NotEqual(t, http.StatusUnauthorized, status, tc.path)
-			require.NotEqual(t, browserOnlyBody, body, tc.path)
+			status, _ := send(t, tc.method, tc.path, tc.key, nil)
+			require.Equal(t, tc.want, status, tc.path)
 		}
 	})
 
@@ -107,6 +110,7 @@ func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 
 		for _, route := range browserOnlyRoutes {
 			status, body := send(t, route.Method, route.Path, "", cookies[0])
+			require.NotContains(t, []int{http.StatusNotFound, http.StatusMethodNotAllowed}, status, "%s %s", route.Method, route.Path)
 			require.NotEqual(t, browserOnlyBody, body, "%s %s", route.Method, route.Path)
 			require.NotEqual(t, "Unauthorized\n", body, "%s %s: session lost (status %d)", route.Method, route.Path, status)
 		}
