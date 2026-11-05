@@ -9,6 +9,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Admitted Execution**: An Execution Request accepted for future execution. It does not mean the program started. _Avoid_: Successful execution, started execution.
 - **Running Execution**: An Admitted Execution whose External Program has started and has not exited. _Avoid_: Queued execution.
 
+## API access
+
+- **Client Proxy API key**: A key bound to one instance that reaches only the qBittorrent proxy. _Avoid_: client key, proxy token.
+- **Browser-only route**: A route that refuses every API key and accepts only a signed-in browser, or any request when authentication is disabled. _Avoid_: session-only route.
+
 ## Torrent filtering
 
 - **Sidebar filters**: Torrent conditions shown in the filter sidebar, including status, category, tag, tracker, and custom expression filters. _Avoid_: All filters when referring only to sidebar filters.

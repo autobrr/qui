@@ -135,6 +135,8 @@ paths:
         - Authentication
       summary: Logout
       description: End the current session
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Logged out successfully
@@ -178,6 +180,8 @@ paths:
                   minLength: 8
                   writeOnly: true
                   description: New password will be hashed and never returned in responses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Password changed. Every session is ended, including the caller's.
@@ -215,6 +219,8 @@ paths:
         - API Keys
       summary: List API keys
       description: Get all API keys for the current user
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of API keys
@@ -241,6 +247,8 @@ paths:
                 name:
                   type: string
                   description: Descriptive name for the API key
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: API key created
@@ -274,6 +282,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: API key deleted successfully
@@ -286,6 +296,8 @@ paths:
         - Client API Keys
       summary: List client API keys
       description: Get all client API keys for external applications
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of client API keys
@@ -316,6 +328,8 @@ paths:
                 instanceId:
                   type: integer
                   description: ID of the qBittorrent instance to proxy to
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: Client API key created
@@ -351,6 +365,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Client API key deleted successfully
@@ -410,6 +426,8 @@ paths:
                     $ref: '#/components/schemas/PathMapping'
                   default: []
                   description: Path mappings to convert remote paths to local paths (useful for remote instances)
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: External program created
@@ -462,6 +480,8 @@ paths:
                   items:
                     $ref: '#/components/schemas/PathMapping'
                   description: Path mappings to convert remote paths to local paths
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: External program updated
@@ -484,6 +504,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: External program deleted successfully
@@ -1255,6 +1277,8 @@ paths:
                 privateKey:
                   type: string
                   description: PEM-encoded private key without a passphrase. Write-only.
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials stored
@@ -1277,6 +1301,8 @@ paths:
         an orphan scan deletion runs on the instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials cleared
@@ -1301,6 +1327,8 @@ paths:
         failed request.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Dial result
@@ -1333,6 +1361,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pinned
@@ -1367,6 +1397,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pin replaced
@@ -3674,6 +3706,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License activated successfully
@@ -3716,6 +3750,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License validated successfully
@@ -3749,6 +3785,8 @@ paths:
         - Licenses
       summary: Check premium access
       description: Check if any active licenses grant premium access
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Premium access status
@@ -3766,6 +3804,8 @@ paths:
         - Licenses
       summary: List licenses
       description: List all stored licenses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses retrieved
@@ -3798,6 +3838,8 @@ paths:
           required: true
           schema:
             type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License deleted successfully
@@ -3810,6 +3852,8 @@ paths:
         - Licenses
       summary: Refresh licenses
       description: Refresh all stored licenses from the licensing service
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses refreshed successfully
@@ -6097,6 +6141,8 @@ paths:
         - System
       summary: Restart qui
       description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      security:
+        - SessionAuth: []
       responses:
         '202':
           description: The restart started
@@ -6131,6 +6177,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SelfUpdateRequest'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: The new binary is in place. qui restarts next.
@@ -7147,7 +7195,13 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API key for authentication
+      description: |
+        API key for authentication. Browser-only routes refuse every API key with
+        403 "API key not allowed; use the web UI": API key and client API key
+        management, system update and restart, instance SSH credential and host-key
+        routes, change password, logout, license routes, and external program
+        create, update, and delete. When authentication is disabled, qui ignores
+        API keys and these routes accept the request.
     ApiKeyQuery:
       type: apiKey
       in: query
