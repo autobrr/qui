@@ -724,14 +724,19 @@ func (s *Service) planSeasonPack(
 		}
 		return nil, nil
 	}
-	if seasonPackFacts(prep, planBuild).Verdict().Refused {
+	facts := seasonPackFacts(prep, planBuild)
+	if facts.Verdict().Refused {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
 
-	if linkMode == "hardlink" && !prep.settings.SkipPieceBoundarySafetyCheck {
-		if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
-			return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, result.Reason)
-		}
+	// A second ask, so Skip recheck wins over an unsafe piece. The error keeps
+	// layout_mismatch in run history and the plan that the preview shows.
+	var pieceSafety PieceBoundarySafetyResult
+	facts.UnsafePieces, pieceSafety = hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths)
+	facts.ReflinkAdd = linkMode == "reflink"
+	facts.SkipPieceBoundaryCheck = prep.settings.SkipPieceBoundarySafetyCheck
+	if facts.Verdict().Refused {
+		return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, pieceSafety.Reason)
 	}
 
 	return planBuild, episodes, nil
