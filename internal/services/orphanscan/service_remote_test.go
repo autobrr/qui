@@ -389,6 +389,14 @@ func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	require.Empty(t, files)
 	f.requireNothingDeleted(t)
 
+	// The pool hands out the dropped client until its watcher clears the entry.
+	backend, _, err := f.svc.backendPool.Require(t.Context(), 1, models.CapabilityRead)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, err := backend.Lstat(t.Context(), sftpPath(f.owned))
+		return err == nil
+	}, 5*time.Second, 5*time.Millisecond)
+
 	next := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", next.Status, "run message: %s", next.ErrorMessage)
 	require.True(t, next.IdentityComplete)

@@ -311,8 +311,11 @@ func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 			cut := entries[1]
 			require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
 			require.Equal(t, root, cut.Path)
-			_, err = backend.Lstat(t.Context(), root)
-			require.NoError(t, err, "sftp can redial, so only the cut ends this walk")
+			// The pool hands out the dropped client until its watcher clears the entry.
+			require.Eventually(t, func() bool {
+				_, err := backend.Lstat(t.Context(), root)
+				return err == nil
+			}, 5*time.Second, 5*time.Millisecond, "sftp can redial, so only the cut ends this walk")
 		})
 	}
 }
