@@ -110,7 +110,8 @@ func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 
 		for _, route := range browserOnlyRoutes {
 			status, body := send(t, route.Method, route.Path, "", cookies[0])
-			require.NotContains(t, []int{http.StatusNotFound, http.StatusMethodNotAllowed}, status, "%s %s", route.Method, route.Path)
+			require.NotEqual(t, http.StatusMethodNotAllowed, status, "%s %s", route.Method, route.Path)
+			require.NotEqual(t, "404 page not found\n", body, "%s %s", route.Method, route.Path)
 			require.NotEqual(t, browserOnlyBody, body, "%s %s", route.Method, route.Path)
 			require.NotEqual(t, "Unauthorized\n", body, "%s %s: session lost (status %d)", route.Method, route.Path, status)
 		}

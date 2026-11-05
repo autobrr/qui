@@ -192,7 +192,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AuthService:               authService,
 		SessionManager:            sessionManager,
 		InstanceStore:             &models.InstanceStore{},
-		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
+		ClientAPIKeyStore:         models.NewClientAPIKeyStore(db),
 		ClientPool:                &qbittorrent.ClientPool{},
 		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
 		WebHandler:                &web.Handler{},
