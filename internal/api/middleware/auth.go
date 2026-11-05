@@ -90,6 +90,43 @@ func BrowserOnly(next http.Handler) http.Handler {
 	})
 }
 
+// RequirePermission refuses an API key that lacks the Permission. Register it
+// after IsAuthenticated. A session or auth-disabled request has no key and passes.
+func RequirePermission(area models.PermissionArea, level models.PermissionLevel) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if HasPermission(w, r, area, level) {
+				next.ServeHTTP(w, r)
+			}
+		})
+	}
+}
+
+// AreaPermissions holds the RequirePermission checks of one area.
+type AreaPermissions struct {
+	Read, Run, Write func(http.Handler) http.Handler
+}
+
+func Permissions(area models.PermissionArea) AreaPermissions {
+	return AreaPermissions{
+		Read:  RequirePermission(area, models.LevelRead),
+		Run:   RequirePermission(area, models.LevelRun),
+		Write: RequirePermission(area, models.LevelWrite),
+	}
+}
+
+// HasPermission reports whether the request may use the Permission, and writes
+// the 403 when it may not. The body must not say "unauthorized": the frontend
+// signs the user out on a 403 with that word.
+func HasPermission(w http.ResponseWriter, r *http.Request, area models.PermissionArea, level models.PermissionLevel) bool {
+	key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey)
+	if !ok || key.Allows(area, level) {
+		return true
+	}
+	http.Error(w, "API key needs "+models.Permission{Area: area, Level: level}.String(), http.StatusForbidden)
+	return false
+}
+
 // oidcSessionAllowed destroys an OIDC session whose user is no longer allowed.
 // Sessions outlive a config change, so the check runs on each request. The
 // caller's 403 "Unauthorized" logs the web UI out.

@@ -516,9 +516,29 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 // API Key Management
 
-// CreateAPIKeyRequest represents a request to create an API key
-type CreateAPIKeyRequest struct {
-	Name string `json:"name"`
+// APIKeyRequest is the body of the create and update API key routes.
+type APIKeyRequest struct {
+	Name        string              `json:"name"`
+	Permissions []models.Permission `json:"permissions"`
+	InstanceIDs []int               `json:"instanceIds"`
+}
+
+// createWithoutPermissionsGetsAll lets the create dialog, which sends only a
+// name, keep working until it sends Permissions (#3843).
+var createWithoutPermissionsGetsAll = true
+
+func (req *APIKeyRequest) validate() string {
+	if req.Name == "" {
+		return "API key name is required"
+	}
+	if err := models.ValidatePermissions(req.Permissions); err != nil {
+		return err.Error()
+	}
+	// qui must never store an Instance limit that it does not check (#3842).
+	if len(req.InstanceIDs) > 0 {
+		return "API key instance limit is not supported yet"
+	}
+	return ""
 }
 
 // CreateAPIKey creates a new API key
@@ -527,19 +547,21 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req CreateAPIKeyRequest
+	var req APIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if req.Name == "" {
-		RespondError(w, http.StatusBadRequest, "API key name is required")
+	if req.Permissions == nil && createWithoutPermissionsGetsAll {
+		req.Permissions = models.AllPermissions()
+	}
+	if msg := req.validate(); msg != "" {
+		RespondError(w, http.StatusBadRequest, msg)
 		return
 	}
 
-	// Create API key
-	rawKey, apiKey, err := h.authService.CreateAPIKey(r.Context(), req.Name)
+	rawKey, apiKey, err := h.authService.CreateAPIKey(r.Context(), req.Name, req.Permissions, req.InstanceIDs)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create API key")
 		RespondError(w, http.StatusInternalServerError, "Failed to create API key")
@@ -547,12 +569,50 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusCreated, map[string]any{
-		"id":        apiKey.ID,
-		"name":      apiKey.Name,
-		"key":       rawKey, // Only shown once
-		"createdAt": apiKey.CreatedAt,
-		"message":   "Save this key securely - it will not be shown again",
+		"id":          apiKey.ID,
+		"name":        apiKey.Name,
+		"key":         rawKey, // Only shown once
+		"createdAt":   apiKey.CreatedAt,
+		"permissions": apiKey.Permissions,
+		"instanceIds": apiKey.InstanceIDs,
+		"message":     "Save this key securely - it will not be shown again",
 	})
+}
+
+// UpdateAPIKey sets the name, the Permissions, and the Instance limit of an API key
+func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid API key ID")
+		return
+	}
+
+	var req APIKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if msg := req.validate(); msg != "" {
+		RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+
+	apiKey, err := h.authService.UpdateAPIKey(r.Context(), id, req.Name, req.Permissions, req.InstanceIDs)
+	if errors.Is(err, models.ErrAPIKeyNotFound) {
+		RespondError(w, http.StatusNotFound, "API key not found")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("id", id).Msg("Failed to update API key")
+		RespondError(w, http.StatusInternalServerError, "Failed to update API key")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, apiKey)
 }
 
 // ListAPIKeys returns all API keys

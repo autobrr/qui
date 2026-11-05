@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestAllowedHostsAdmission(t *testing.T) {
@@ -68,7 +70,7 @@ func TestAllowedHostsWithCredentials(t *testing.T) {
 	deps.Config.Config.AllowedHosts = []string{"localhost"}
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
-	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "allowed-hosts-test")
+	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "allowed-hosts-test", models.AllPermissions(), nil)
 	require.NoError(t, err)
 	session, err := deps.SessionManager.Load(t.Context(), "")
 	require.NoError(t, err)

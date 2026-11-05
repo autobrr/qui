@@ -14,6 +14,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/redact"
 )
@@ -32,25 +34,27 @@ func NewRSSHandler(syncManager *qbittorrent.SyncManager) *RSSHandler {
 
 // Routes registers RSS routes on the given router
 func (h *RSSHandler) Routes(r chi.Router) {
+	rss := middleware.Permissions(models.AreaRSS)
+
 	// Feed and folder management
-	r.Get("/items", h.GetItems)
-	r.Post("/folders", h.AddFolder)
-	r.Post("/feeds", h.AddFeed)
-	r.Put("/feeds/url", h.SetFeedURL)
-	r.Post("/items/move", h.MoveItem)
-	r.Delete("/items", h.RemoveItem)
-	r.Post("/items/refresh", h.RefreshItem)
+	r.With(rss.Read).Get("/items", h.GetItems)
+	r.With(rss.Write).Post("/folders", h.AddFolder)
+	r.With(rss.Write).Post("/feeds", h.AddFeed)
+	r.With(rss.Write).Put("/feeds/url", h.SetFeedURL)
+	r.With(rss.Write).Post("/items/move", h.MoveItem)
+	r.With(rss.Write).Delete("/items", h.RemoveItem)
+	r.With(rss.Run).Post("/items/refresh", h.RefreshItem)
 
 	// Article management
-	r.Post("/articles/read", h.MarkAsRead)
+	r.With(rss.Write).Post("/articles/read", h.MarkAsRead)
 
 	// Auto-download rules
-	r.Get("/rules", h.GetRules)
-	r.Post("/rules", h.SetRule)
-	r.Put("/rules/{ruleName}/rename", h.RenameRule)
-	r.Delete("/rules/{ruleName}", h.RemoveRule)
-	r.Get("/rules/{ruleName}/preview", h.GetMatchingArticles)
-	r.Post("/rules/reprocess", h.ReprocessRules)
+	r.With(rss.Read).Get("/rules", h.GetRules)
+	r.With(rss.Write).Post("/rules", h.SetRule)
+	r.With(rss.Write).Put("/rules/{ruleName}/rename", h.RenameRule)
+	r.With(rss.Write).Delete("/rules/{ruleName}", h.RemoveRule)
+	r.With(rss.Read).Get("/rules/{ruleName}/preview", h.GetMatchingArticles)
+	r.With(rss.Run).Post("/rules/reprocess", h.ReprocessRules)
 }
 
 // Request/Response types

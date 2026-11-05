@@ -25,6 +25,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tmaxmax/go-sse"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -982,8 +983,9 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	m.server.ServeHTTP(sessionWriter, req)
 }
 
-// validateInstances checks that each instance of the requests exists. It writes
-// the error response and returns false when one does not.
+// validateInstances checks that the API key may read torrents and that each
+// instance of the requests exists. It writes the error response and returns
+// false when a check fails.
 func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request, requests []streamRequest) bool {
 	instanceIDs := make(map[int]struct{}, len(requests))
 	for _, req := range requests {
@@ -992,6 +994,9 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 		for _, instanceID := range req.options.instanceIDs() {
 			instanceIDs[instanceID] = struct{}{}
 		}
+	}
+	if len(instanceIDs) > 0 && !middleware.HasPermission(w, r, models.AreaTorrents, models.LevelRead) {
+		return false
 	}
 
 	for instanceID := range instanceIDs {

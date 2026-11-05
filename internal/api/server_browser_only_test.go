@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 const browserOnlyBody = "API key not allowed; use the web UI\n"
@@ -18,6 +20,7 @@ const browserOnlyBody = "API key not allowed; use the web UI\n"
 var browserOnlyRoutes = []routeKey{
 	{http.MethodGet, "/api/api-keys"},
 	{http.MethodPost, "/api/api-keys"},
+	{http.MethodPut, "/api/api-keys/1"},
 	{http.MethodDelete, "/api/api-keys/1"},
 	{http.MethodGet, "/api/client-api-keys"},
 	{http.MethodPost, "/api/client-api-keys"},
@@ -45,7 +48,7 @@ var browserOnlyRoutes = []routeKey{
 
 func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 	deps := newTestDependencies(t)
-	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "script")
+	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "script", models.AllPermissions(), nil)
 	require.NoError(t, err)
 
 	router, err := NewServer(deps).Handler()

@@ -234,22 +234,18 @@ paths:
       tags:
         - API Keys
       summary: Create API key
-      description: Generate a new API key
+      description: Generate a new API key with the Permissions it holds.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  description: Descriptive name for the API key
+              $ref: '#/components/schemas/ApiKeyRequest'
       security:
         - SessionAuth: []
       responses:
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit that is not empty
         '201':
           description: API key created
           content:
@@ -267,10 +263,48 @@ paths:
                   createdAt:
                     type: string
                     format: date-time
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyPermission'
+                  instanceIds:
+                    type: array
+                    items:
+                      type: integer
                   message:
                     type: string
 
   /api/api-keys/{id}:
+    put:
+      tags:
+        - API Keys
+      summary: Update API key
+      description: Set the name, the Permissions, and the Instance limit of an API key. The change applies on the next request of the key.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyRequest'
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit that is not empty
+        '404':
+          description: API key not found
     delete:
       tags:
         - API Keys
@@ -7415,6 +7449,49 @@ components:
           type: string
           format: date-time
           nullable: true
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: The Instance limit. An empty list means every instance.
+          items:
+            type: integer
+
+    ApiKeyPermission:
+      type: object
+      description: One area and one level. Write includes read and run. Run does not include read.
+      required:
+        - area
+        - level
+      properties:
+        area:
+          type: string
+          enum: [instances, torrents, crossSeed, dirScan, automations, rss, backups, orphanScan, externalPrograms, indexers, arr, notifications, settings, logs, system]
+        level:
+          type: string
+          enum: [read, run, write]
+
+    ApiKeyRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+          description: Descriptive name for the API key
+        permissions:
+          type: array
+          description: Each area allows only some levels. The list must not be empty.
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: The Instance limit. Only an empty list is accepted for now.
+          items:
+            type: integer
 
     ClientApiKey:
       type: object
