@@ -47,7 +47,6 @@
     "internal/api/handlers/backups.go": 3,
     "internal/api/handlers/crossseed.go": 2,
     "internal/api/handlers/jackett.go": 2,
-    "internal/api/handlers/orphan_scan.go": 1,
     "internal/api/handlers/rss.go": 1,
     "internal/api/handlers/torrents.go": 2,
     "internal/api/sse/manager.go": 1,
