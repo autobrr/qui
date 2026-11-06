@@ -219,7 +219,7 @@ func (h *OIDCHandler) client(ctx context.Context) (*oidcClient, error) {
 }
 
 func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
-	cfg := h.config
+	cfg := h.config.Live()
 	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
 	if err != nil {
 		log.Warn().Err(err).Str("issuer", cfg.OIDCIssuer).Msg("OIDC provider discovery failed; the next OIDC login request retries it")
@@ -311,7 +311,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 		// The login page reads disableBuiltInLogin from this body to keep the password form hidden.
 		RespondJSON(w, http.StatusServiceUnavailable, oidcUnavailableResponse{
 			Error:               errOIDCProviderUnavailable.Error(),
-			DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
+			DisableBuiltInLogin: h.config.Live().OIDCDisableBuiltInLogin,
 		})
 		return
 	}
@@ -434,10 +434,11 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Str("sub", claims.Sub).
 		Msg("successfully processed OIDC claims")
 
-	if !h.config.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
+	cfg := h.config.Live()
+	if !cfg.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
 		// Only the email check depends on user info. The error is logged above
 		// and can hold the provider response body, so it stays out of the reply.
-		if userInfoErr != nil && h.config.OIDCAllowedEmail != "" {
+		if userInfoErr != nil && cfg.OIDCAllowedEmail != "" {
 			RespondError(w, http.StatusBadGateway, "could not verify user: failed to get userinfo")
 			return
 		}
@@ -474,19 +475,19 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	frontendURL := "/dashboard" // Safe default
 
 	// Only construct absolute URLs if explicitly configured
-	if h.config.OIDCRedirectURL != "" {
+	if cfg.OIDCRedirectURL != "" {
 		// Parse the redirect URL to get the frontend base
-		if idx := strings.Index(h.config.OIDCRedirectURL, "/api/auth/oidc/callback"); idx > 0 {
-			candidateURL := h.config.OIDCRedirectURL[:idx] + "/dashboard"
+		if idx := strings.Index(cfg.OIDCRedirectURL, "/api/auth/oidc/callback"); idx > 0 {
+			candidateURL := cfg.OIDCRedirectURL[:idx] + "/dashboard"
 
 			// Validate the URL to ensure it's pointing to our application
-			if isValidRedirectURL(candidateURL, h.config.OIDCRedirectURL) {
+			if isValidRedirectURL(candidateURL, cfg.OIDCRedirectURL) {
 				frontendURL = candidateURL
 			}
 		}
-	} else if h.config.BaseURL != "" && h.config.BaseURL != "/" {
+	} else if cfg.BaseURL != "" && cfg.BaseURL != "/" {
 		// Use configured base URL
-		base := strings.TrimSuffix(h.config.BaseURL, "/")
+		base := strings.TrimSuffix(cfg.BaseURL, "/")
 		if base == "" {
 			base = "/"
 		}
@@ -495,8 +496,8 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	log.Trace().
 		Str("redirect_url", frontendURL).
-		Str("oidc_redirect_url", h.config.OIDCRedirectURL).
-		Str("base_url", h.config.BaseURL).
+		Str("oidc_redirect_url", cfg.OIDCRedirectURL).
+		Str("base_url", cfg.BaseURL).
 		Str("x_forwarded_proto", r.Header.Get("X-Forwarded-Proto")).
 		Str("x_forwarded_host", r.Header.Get("X-Forwarded-Host")).
 		Str("host", r.Host).
@@ -639,10 +640,11 @@ func (h *OIDCHandler) GetConfigResponse(ctx context.Context) (OIDCConfigResponse
 		authURL = client.oauthConfig.AuthCodeURL(state)
 	}
 
+	cfg := h.config.Live()
 	return OIDCConfigResponse{
-		Enabled:             h.config.OIDCEnabled,
+		Enabled:             cfg.OIDCEnabled,
 		AuthorizationURL:    authURL,
-		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
-		IssuerURL:           h.config.OIDCIssuer,
+		DisableBuiltInLogin: cfg.OIDCDisableBuiltInLogin,
+		IssuerURL:           cfg.OIDCIssuer,
 	}, state, verifier, nil
 }

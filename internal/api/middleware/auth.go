@@ -24,7 +24,7 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// When authentication is disabled, set a synthetic user and pass through
-			if cfg != nil && cfg.IsAuthDisabled() {
+			if cfg != nil && cfg.Live().IsAuthDisabled() {
 				ctx := context.WithValue(r.Context(), ctxkeys.Username, "admin")
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -188,7 +188,7 @@ func oidcSessionAllowed(r *http.Request, sessionManager *scs.SessionManager, cfg
 		return true
 	}
 	subject := sessionManager.GetString(r.Context(), "oidc_subject")
-	if cfg.IsOIDCUserAllowed(subject, sessionManager.GetString(r.Context(), "oidc_verified_email")) {
+	if cfg.Live().IsOIDCUserAllowed(subject, sessionManager.GetString(r.Context(), "oidc_verified_email")) {
 		return true
 	}
 	log.Warn().Str("sub", subject).Str("remote_addr", r.RemoteAddr).Msg("OIDC session user is no longer allowed, destroying session")
@@ -204,12 +204,12 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// When authentication is disabled or OIDC is enabled we don't require
 			// a local user to exist, so skip the setup precondition entirely.
-			if cfg != nil && cfg.IsAuthDisabled() {
+			if cfg != nil && cfg.Live().IsAuthDisabled() {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			if cfg != nil && cfg.OIDCEnabled {
+			if cfg != nil && cfg.Live().OIDCEnabled {
 				next.ServeHTTP(w, r)
 				return
 			}
