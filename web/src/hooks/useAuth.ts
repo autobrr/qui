@@ -4,6 +4,7 @@
  */
 
 import { navigateAfterAuth } from "@/lib/add-intent"
+import { saveDesktopAccount } from "@/lib/desktop-account"
 import { markPendingDesktopBiometricGate } from "@/lib/desktop-biometric-intent"
 import { api } from "@/lib/api"
 import type { User } from "@/types"
@@ -24,11 +25,12 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: ({ username, password, rememberMe = false }: { username: string; password: string; rememberMe?: boolean }) =>
       api.login(username, password, rememberMe),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.setQueryData(["auth", "user"], data.user)
       // Refetch the theme catalog now that the session can unlock the full
       // premium CSS: the pre-login fetch only carried the selected theme.
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      void saveDesktopAccount(variables)
       markPendingDesktopBiometricGate()
       navigateAfterAuth(navigate)
     },
@@ -37,9 +39,10 @@ export function useAuth() {
   const setupMutation = useMutation({
     mutationFn: ({ username, password }: { username: string; password: string }) =>
       api.setup(username, password),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.setQueryData(["auth", "user"], data.user)
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      void saveDesktopAccount(variables)
       markPendingDesktopBiometricGate()
       navigateAfterAuth(navigate)
     },

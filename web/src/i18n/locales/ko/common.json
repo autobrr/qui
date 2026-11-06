@@ -152,6 +152,7 @@
     "dark": "어둡게",
     "system": "시스템",
     "theme": "테마",
+    "glass": "Glassmorphism",
     "switchedToMode": "{{mode}} 모드로 전환했습니다",
     "switchedToTheme": "{{theme}} 테마로 전환했습니다",
     "switchedToThemeVariation": "{{theme}} 테마({{variation}})로 전환했습니다",

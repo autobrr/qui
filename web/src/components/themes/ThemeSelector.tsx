@@ -15,6 +15,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { buildThemeCatalog, isThemeShown } from "@/lib/theme-catalog"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
+import { GlassOpacityControl } from "@/components/themes/GlassOpacityControl"
 import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff } from "lucide-react"
 import { useId } from "react"
 import { useTranslation } from "react-i18next"
@@ -272,6 +273,8 @@ export function ThemeSelector() {
             </p>
           </div>
         )}
+
+        <GlassOpacityControl layout="settings" />
 
         <div
           role="list"

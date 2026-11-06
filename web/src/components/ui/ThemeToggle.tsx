@@ -31,6 +31,7 @@ import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
 import { useThemeVisibility } from "@/hooks/useThemeVisibility";
+import { GlassOpacityControl } from "@/components/themes/GlassOpacityControl";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -183,6 +184,10 @@ export const ThemeToggle: React.FC = () => {
           <span className="flex-1">{t("themeToggle.system")}</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        <GlassOpacityControl layout="menu" />
 
         <DropdownMenuSeparator />
 

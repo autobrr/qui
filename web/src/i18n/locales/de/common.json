@@ -152,6 +152,7 @@
     "dark": "Dunkel",
     "system": "System",
     "theme": "Design",
+    "glass": "Glassmorphism",
     "switchedToMode": "Zu Modus {{mode}} gewechselt",
     "switchedToTheme": "Zu Design {{theme}} gewechselt",
     "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",

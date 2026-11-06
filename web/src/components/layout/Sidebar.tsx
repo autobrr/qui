@@ -48,7 +48,7 @@ import {
   Settings,
   Zap
 } from "lucide-react"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NavItem {
@@ -172,23 +172,30 @@ export function Sidebar() {
 
   const appVersion = getAppVersion()
 
-  const brand = (
+  const desktopShell = typeof window !== "undefined" && window.quiDesktop !== undefined
+  const mark = theme === "swizzin" ? (
+    <SwizzinLogo className="h-5 w-5" />
+  ) : theme === "napster" ? (
+    <NapsterLogo className="h-5 w-5" />
+  ) : (
+    <Logo className="h-5 w-5" />
+  )
+  const brand = desktopShell ? (
+    <span className="ml-auto flex items-center">{mark}</span>
+  ) : (
     <span className="flex items-center gap-2">
-      {theme === "swizzin" ? (
-        <SwizzinLogo className="h-5 w-5" />
-      ) : theme === "napster" ? (
-        <NapsterLogo className="h-5 w-5" />
-      ) : (
-        <Logo className="h-5 w-5" />
-      )}
+      {mark}
       qui
     </span>
   )
+  const brandRowStyle: CSSProperties | undefined = desktopShell
+    ? ({ WebkitAppRegion: "drag" } as CSSProperties)
+    : undefined
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
-      <div className="p-6">
-        <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
+      <div className={desktopShell ? "flex h-12 items-center px-4" : "p-6"} style={brandRowStyle}>
+        <h2 className="flex w-full items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (
             <a href="/" target="_top" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
           ) : brand}

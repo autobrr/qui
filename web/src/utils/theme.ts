@@ -5,6 +5,7 @@
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { isDemo } from "@/lib/demo";
+import { applyGlassOpacity, migrateLegacyGlassTheme, readGlassOpacity } from "@/lib/glass";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
@@ -72,7 +73,7 @@ const getSystemTheme = (): typeof THEME_DARK | typeof THEME_LIGHT => {
   return getSystemPreference().matches ? THEME_DARK : THEME_LIGHT;
 };
 
-const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: boolean, variant?: string | null): void => {
+const dispatchThemeChange = async (mode: ThemeMode, theme: Theme, isSystemChange: boolean, variant?: string | null): Promise<void> => {
   const event = new CustomEvent("themechange", {
     detail: { mode, theme, isSystemChange, variant },
   }) as ThemeChangeEvent;
@@ -212,6 +213,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
   root.setAttribute("data-theme", theme.id);
   applyCriticalBackground(root, cssVars);
+  applyGlassOpacity(readGlassOpacity());
   cacheAppliedTheme(theme);
 
   // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme
@@ -240,7 +242,7 @@ const handleSystemThemeChange = async (event: MediaQueryListEvent): Promise<void
     const theme = getCurrentTheme();
     const variation = getThemeVariation(theme.id);
     await applyTheme(theme, variation, event.matches, true);
-    dispatchThemeChange(THEME_AUTO, theme, true, variation);
+    await dispatchThemeChange(THEME_AUTO, theme, true, variation);
   }
 };
 
@@ -328,7 +330,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     await applyTheme(defaultTheme, currentVariation, isDark, false);
     // System-driven fallback, not a user selection: flagged so the server
     // sync never overwrites the stored selection with the default.
-    dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
+    await dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
     return;
   }
 
@@ -350,7 +352,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, currentVariation, isDark, false);
-  dispatchThemeChange(currentMode, theme, isSystemChange, currentVariation);
+  await dispatchThemeChange(currentMode, theme, isSystemChange, currentVariation);
 };
 
 export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
@@ -362,15 +364,13 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
     (mode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, variation, isDark, false);
-  dispatchThemeChange(mode, theme, false, variation);
+  await dispatchThemeChange(mode, theme, false, variation);
 };
 
 export const initializeTheme = async (): Promise<void> => {
   injectThemeStyles();
 
   const storedMode = getStoredMode();
-  const theme = getCurrentTheme();
-  const variation = getThemeVariation(theme.id);
   const systemPreference = getSystemPreference();
 
   // Determine initial theme
@@ -386,7 +386,8 @@ export const initializeTheme = async (): Promise<void> => {
     }
   }
 
-  await applyTheme(theme, variation, isDark, false);
+  migrateLegacyGlassTheme(getStoredThemeId(), setStoredThemeId);
+  await applyTheme(getCurrentTheme(), getThemeVariation(getCurrentTheme().id), isDark, false);
 
   // Always listen for system theme changes
   addMediaQueryListener(systemPreference, handleSystemThemeChange);
@@ -408,7 +409,7 @@ export const setThemeVariation = async (variation: string): Promise<void> => {
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, variation, isDark, false);
-  dispatchThemeChange(currentMode, theme, false, variation);
+  await dispatchThemeChange(currentMode, theme, false, variation);
 };
 
 export const getThemeVariation = (themeId?: string): string | null => {

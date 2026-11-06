@@ -40,6 +40,7 @@ const namespaces = [
 // These technical terms, brand names, and abbreviations can stay untranslated.
 const passthroughTerms = new Set([
   "qBittorrent", "BitTorrent", "libtorrent", "autobrr", "qui", "GitHub", "WebUI",
+  "Glassmorphism",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
   "OpenID Connect", "OIDC", "OpenID",
   "DHT", "PEX", "UPnP", "NAT-PMP", "RSS", "SSE", "PWA",

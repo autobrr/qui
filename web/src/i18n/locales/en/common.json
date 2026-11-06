@@ -152,6 +152,7 @@
     "dark": "Dark",
     "system": "System",
     "theme": "Theme",
+    "glass": "Glassmorphism",
     "switchedToMode": "Switched to {{mode}} mode",
     "switchedToTheme": "Switched to {{theme}} theme",
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",

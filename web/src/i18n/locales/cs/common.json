@@ -152,6 +152,7 @@
     "dark": "Tmavý",
     "system": "Systém",
     "theme": "Vzhled",
+    "glass": "Glassmorphism",
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",

@@ -152,6 +152,7 @@
     "dark": "Темна",
     "system": "Системна",
     "theme": "Тема",
+    "glass": "Glassmorphism",
     "switchedToMode": "Перемкнуто на {{mode}} режим",
     "switchedToTheme": "Перемкнуто на тему {{theme}}",
     "switchedToThemeVariation": "Перемкнуто на тему {{theme}} ({{variation}})",

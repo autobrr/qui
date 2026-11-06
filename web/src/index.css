@@ -418,3 +418,37 @@
     background-color: var(--muted-foreground);
   }
 }
+
+/* Glass is a frost on the active theme. --glass-surface is the theme-color
+   amount (below 100%). The shell, sidebar, cards, and popovers keep that
+   amount and blur what is behind them. */
+html[data-glass="on"],
+html[data-glass="on"] body,
+html[data-glass="on"] .bg-background,
+html[data-glass="on"] .bg-sidebar,
+html[data-glass="on"] .bg-card,
+html[data-glass="on"] .bg-popover,
+html[data-glass="on"] .bg-muted {
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+html[data-glass="on"] .bg-background {
+  background-color: color-mix(in oklab, var(--background) var(--glass-surface), transparent);
+}
+
+html[data-glass="on"] .bg-sidebar {
+  background-color: color-mix(in oklab, var(--sidebar) var(--glass-surface), transparent);
+}
+
+html[data-glass="on"] .bg-card {
+  background-color: color-mix(in oklab, var(--card) var(--glass-surface), transparent);
+}
+
+html[data-glass="on"] .bg-popover {
+  background-color: color-mix(in oklab, var(--popover) var(--glass-surface), transparent);
+}
+
+html[data-glass="on"] .bg-muted {
+  background-color: color-mix(in oklab, var(--muted) var(--glass-surface), transparent);
+}

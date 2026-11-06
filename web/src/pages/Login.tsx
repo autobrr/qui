@@ -16,11 +16,12 @@ import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/useAuth"
 import { navigateAfterAuth } from "@/lib/add-intent"
 import { api } from "@/lib/api"
+import { unlockDesktopAccount } from "@/lib/desktop-account"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "@tanstack/react-form"
 import { useNavigate } from "@tanstack/react-router"
 import { Fingerprint } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
@@ -58,6 +59,28 @@ export function Login() {
       toast.info(t("login.ssoRecovered"))
     }
   }, [t])
+
+  const fingerprintAttempted = useRef(false)
+  useEffect(() => {
+    if (fingerprintAttempted.current || setupRequired !== false || isAuthenticated) {
+      return
+    }
+    fingerprintAttempted.current = true
+    let cancelled = false
+    void unlockDesktopAccount().then(account => {
+      if (!account || cancelled) {
+        return
+      }
+      login({
+        username: account.username,
+        password: account.password,
+        rememberMe: true,
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [setupRequired, isAuthenticated, login])
 
   useEffect(() => {
     // Redirect to homepage if user is already authenticated

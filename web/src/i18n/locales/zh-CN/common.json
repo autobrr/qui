@@ -152,6 +152,7 @@
     "dark": "深色",
     "system": "跟随系统",
     "theme": "主题",
+    "glass": "Glassmorphism",
     "switchedToMode": "已切换到{{mode}}模式",
     "switchedToTheme": "已切换到{{theme}}主题",
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",

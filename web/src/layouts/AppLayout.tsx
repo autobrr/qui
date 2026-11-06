@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+import { useEffect } from "react"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
@@ -22,6 +23,17 @@ function AppLayoutContent() {
   const { t } = useTranslation("common")
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
   const { isFooterVisible } = useMobileScroll()
+
+  useEffect(() => {
+    const setSidebarChrome = window.quiDesktop?.setSidebarChrome
+    if (!setSidebarChrome) {
+      return
+    }
+    void setSidebarChrome(!sidebarCollapsed)
+    return () => {
+      void setSidebarChrome(false)
+    }
+  }, [sidebarCollapsed])
 
   return (
     <div className="flex h-[100dvh] bg-background">

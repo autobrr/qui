@@ -12,6 +12,11 @@ declare global {
     /** Injected by the Qui Electron shell preload (optional). */
     quiDesktop?: {
       requestTouchId?: (reason?: string) => Promise<{ success: boolean; error?: string }>
+      setWindowMaterial?: (glass: boolean) => Promise<void>
+      setSidebarChrome?: (visible: boolean) => Promise<void>
+      saveAccount?: (username: string, password: string) => Promise<void>
+      hasSavedAccount?: () => Promise<boolean>
+      unlockAccount?: () => Promise<{ username: string; password: string } | null>
     }
   }
 

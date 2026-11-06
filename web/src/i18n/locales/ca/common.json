@@ -152,6 +152,7 @@
     "dark": "Fosc",
     "system": "Sistema",
     "theme": "Tema",
+    "glass": "Glassmorphism",
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
