@@ -115,6 +115,12 @@ func Permissions(area models.PermissionArea) AreaPermissions {
 	}
 }
 
+// CanReadTrackerPasskeys matches the Permission of a .torrent export, which holds the same passkey (ADR 0040).
+func CanReadTrackerPasskeys(r *http.Request) bool {
+	key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey)
+	return !ok || key.Allows(models.AreaTorrents, models.LevelWrite)
+}
+
 // HasPermission reports whether the request may use the Permission, and writes
 // the 403 when it may not. The body must not say "unauthorized": the frontend
 // signs the user out on a 403 with that word.
