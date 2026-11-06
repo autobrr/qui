@@ -1,0 +1,14 @@
+---
+description: USE WHEN Prettier Biome format TypeScript CSS rustfmt
+alwaysApply: false
+---
+
+# Code style (formatters)
+
+- ALWAYS Biome for JS/TS packages when `biome.json` is present.
+- ALWAYS `rustfmt` for Rust when `rustfmt.toml` / Cargo project is present.
+- ALWAYS Ruff format for Python when Ruff is configured (`uv run ruff format`).
+- React projects sort Tailwind classes with Prettier and
+  `prettier-plugin-tailwindcss`. Biome still formats JS/TS.
+- After large edits: run the project format script (`pnpm format` / `npm run format`
+  / `cargo fmt`) before validate.

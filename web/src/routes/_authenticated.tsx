@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DesktopBiometricGate } from "@/components/DesktopBiometricGate"
 import { useAuth } from "@/hooks/useAuth"
 import { AppLayout } from "@/layouts/AppLayout"
 import { isDemo } from "@/lib/demo"
@@ -31,5 +32,10 @@ function AuthLayout() {
     return <Navigate to="/login" />
   }
 
-  return <AppLayout />
+  return (
+    <>
+      <DesktopBiometricGate />
+      <AppLayout />
+    </>
+  )
 }

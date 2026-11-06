@@ -1,0 +1,17 @@
+---
+description: No Rust shortcuts — newtypes honest Results
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust no shortcuts
+
+Same bar as root `000-always.mdc`. Prefer Result + `?` over unwrap/expect/panic.
+
+- NEVER weaken Clippy or re-add broad `allow(...)` to dodge lints.
+- Prefer newtypes + validated constructors over bare `String` / `u64` domain IDs.
+- NEVER blind-copy wire/API payloads into domain — validate at the boundary.
+- Prefer injected time/RNG over hidden `SystemTime::now` / `OsRng` in library
+  crates when the project uses that pattern.
+- Under **strict** profile: NEVER `.unwrap()` / `.expect()` / `panic!` in tests —
+  use `Result` + `?` on `#[test]` / `#[tokio::test]`.

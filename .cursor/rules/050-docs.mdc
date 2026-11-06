@@ -1,0 +1,55 @@
+---
+description: Docs wiki and spec catalog, written before implementation
+alwaysApply: true
+---
+
+# Docs before implementation
+
+The detailed wiki lives in `docs/`. Package READMEs stay short and point at it.
+A new feature or behavior change updates that wiki and its tests before any
+production code.
+
+## Order
+
+1. Add or update the page for the concern. Set **Status** to `planned`. Link it
+   from that area's `overview.md` and from `docs/README.md`.
+2. Add a row to `docs/specs/catalog.md`: ID, one-line rule, source page, owner,
+   test name, kind.
+3. Write the failing test under that name.
+4. Then implement.
+5. When the test passes and the page matches the code, set **Status** to
+   `in progress` or `shipped`.
+
+Done means the page, the catalog row, and the test existed before the
+production change, and the status now matches what the code delivers.
+
+## Wiki shape
+
+- `docs/README.md` is the index: status legend, a topology diagram, one row per
+  area linking every page, a link to the spec catalog, and links to package
+  READMEs.
+- One directory per area. Each area has `overview.md` plus one page per concern.
+- Every page opens with **Status:** `shipped`, `in progress`, or `planned`.
+  A page claims only what the code delivers.
+- Decisions that will not ship go on `docs/product/unshipped.md` with **Why**,
+  not in the backlog and not marked shipped.
+- Use a mermaid diagram when the point is a topology, sequence, or decision flow.
+- Keep the index and area overviews in sync when a page is added.
+
+## Spec catalog
+
+`docs/specs/catalog.md` traces each claim to a test.
+
+| Prefix | Meaning |
+| ------ | ------- |
+| `BR-<area>-<nn>` | Invariant |
+| `UC-<area>-<nn>` | Acceptance journey |
+
+| Kind | Meaning |
+| ---- | ------- |
+| `asserted-unit` | One module |
+| `asserted-integration` | Across modules, or UI to domain |
+| `asserted-loopback` | Live protocol on loopback |
+| `fail-closed` | Deferred or refused; the test proves refusal |
+
+The catalog is this repo's traceability index. Leave other products' rows out of it.

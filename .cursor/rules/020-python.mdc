@@ -1,0 +1,14 @@
+---
+description: USE WHEN Python uv pip poetry ruff pyright type hints
+globs: "**/*.py,**/pyproject.toml"
+alwaysApply: false
+---
+
+# Python
+
+- ALWAYS `uv` for install, lock, and run: `uv sync`, `uv add`, `uv run`.
+- NEVER pip, Poetry, or PDM as the working path once this stack is installed.
+- ALWAYS Ruff for lint and format. ALWAYS basedpyright with
+  `typeCheckingMode = "strict"`.
+- NEVER `# type: ignore` or `# noqa` without user **yes**
+  (`800-lint-suppression-beg`).

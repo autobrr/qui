@@ -1,6 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
+const scriptPath = fileURLToPath(import.meta.url)
 const webRoot = path.resolve(import.meta.dirname, "..")
 const defaultLocalesRoot = path.join(webRoot, "src", "i18n", "locales")
 
@@ -47,7 +49,18 @@ export function findLegacyPluralKeys(localesRoot = defaultLocalesRoot) {
   return found
 }
 
-if (process.argv[1] === import.meta.filename) {
+/** ESM main check; realpath avoids `/var` vs `/private/var` mismatch on macOS. */
+let runAsMain = false
+try {
+	runAsMain =
+		process.argv[1] != null &&
+		fs.realpathSync.native(scriptPath) ===
+			fs.realpathSync.native(process.argv[1])
+} catch {
+	runAsMain = false
+}
+
+if (runAsMain) {
   const found = findLegacyPluralKeys()
 
   if (found.length === 0) {

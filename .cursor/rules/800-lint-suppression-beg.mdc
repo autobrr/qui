@@ -1,0 +1,63 @@
+---
+description: USE WHEN lint Clippy Biome tsconfig suppression approval
+alwaysApply: false
+---
+
+# Lint suppression Beg Ritual
+
+Until the user replies **yes / approved**, NEVER apply a suppression.
+
+## Request template (all sections mandatory)
+
+```markdown
+## Lint suppression request (I failed to fix this properly)
+
+I am asking permission to weaken enforcement. That is a last resort and a mark
+against this change.
+
+### What I broke / cannot satisfy
+
+- **Tool + rule:** …
+- **Location:** `path:line`
+- **Exact diagnostic:** (paste)
+
+### What I already tried
+
+1. …
+2. … (Real attempts only—not “it would be hard”.)
+
+### Why a correct fix is not viable in this change
+
+(Concrete constraint—not convenience.)
+
+### What I want you to approve
+
+- Exact artifact (single site)
+- How we will remove it later
+
+### Closing
+
+I should have made the code satisfy the lint. I will not apply anything until
+you say so.
+```
+
+## If rejected or silent
+
+ALWAYS acknowledge, then try a **new** real fix (no re-beg without new attempts):
+
+```markdown
+## Suppression refused — I will fix it properly
+
+You rejected (or did not approve) weakening the lint. That was the right call. I
+was wrong to ask for an exception before exhausting a real fix. Next I will try:
+(specific new approach). I will not add ignores.
+```
+
+## If accepted
+
+- Rust: `#[expect(clippy::…, reason = "User-approved: <what>; chat approval <how>; remove when <condition>")]`
+- Biome/ESLint: document approval in the ignore comment (`User-approved: …`) and
+  a short allowlist note if the project has one.
+- Python: `# type: ignore[code]  # User-approved: …` or
+  `# noqa: CODE  # User-approved: …`
+- NEVER silent `allow` / bare ignore.

@@ -1,0 +1,51 @@
+{
+  "name": "qui-desktop",
+  "productName": "Qui",
+  "version": "1.0.0",
+  "description": "Qui Desktop - Native qBittorrent WebUI with Electron",
+  "main": "dist/main/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && mkdir -p dist/assets/branding && cp src/assets/branding/logo.png dist/assets/branding/",
+    "lint": "biome check src tests && eslint src tests",
+    "format": "biome check --write src tests",
+    "test": "vitest run",
+    "start": "pnpm build && electron dist/main/index.js",
+    "dev": "tsc -w",
+    "package:mac": "pnpm build && electron-builder --mac --dir -c.mac.identity=null",
+    "install:local": "pnpm package:mac && rm -rf /Applications/Qui.app && cp -R dist/mac-arm64/Qui.app /Applications/ && echo 'Qui.app successfully installed to /Applications/Qui.app'"
+  },
+  "build": {
+    "appId": "com.autobrr.qui.desktop",
+    "productName": "Qui",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dir"
+      ],
+      "identity": null
+    }
+  },
+  "dependencies": {
+    "effect": "^3.13.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^24.19.2",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.18.0",
+    "eslint": "^9.20.0",
+    "globals": "^16.0.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.25.0",
+    "vitest": "^3.0.7"
+  }
+}

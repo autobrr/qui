@@ -4,6 +4,7 @@
  */
 
 import { navigateAfterAuth } from "@/lib/add-intent"
+import { markPendingDesktopBiometricGate } from "@/lib/desktop-biometric-intent"
 import { api } from "@/lib/api"
 import type { User } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -28,6 +29,7 @@ export function useAuth() {
       // Refetch the theme catalog now that the session can unlock the full
       // premium CSS: the pre-login fetch only carried the selected theme.
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      markPendingDesktopBiometricGate()
       navigateAfterAuth(navigate)
     },
   })
@@ -38,6 +40,7 @@ export function useAuth() {
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      markPendingDesktopBiometricGate()
       navigateAfterAuth(navigate)
     },
   })

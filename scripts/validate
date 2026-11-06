@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Combined validation script for Qui
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$ROOT"
+
+echo "=== [1/3] Validating Go Backend Themes ==="
+go test ./internal/themes
+
+echo "=== [2/3] Validating Web Themes Config ==="
+cd "$ROOT/web"
+pnpm test src/config/themes.test.ts
+
+echo "=== [3/3] Validating Qui Desktop ==="
+cd "$ROOT/desktop"
+pnpm lint
+pnpm test
+pnpm build
+
+echo "validate: ok"

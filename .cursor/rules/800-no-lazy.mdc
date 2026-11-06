@@ -1,0 +1,18 @@
+---
+description: USE WHEN lazy sleep catch void sentinel race floating promise
+alwaysApply: false
+---
+
+# No lazy shortcuts
+
+Fix the failure. Do not hide it.
+
+- NEVER empty `catch`, blind `catch`, or `catch` / `catchAll` that returns
+  `null` or `false` to suppress an error. Use `Data.TaggedError`, `Match`, or
+  `Option`.
+- NEVER `new Promise` to wrap an API that already returns a promise or Effect.
+- NEVER fire-and-forget (`void promise`, ignored calls). Await the promise or
+  return the Effect.
+- NEVER `sleep` / `setTimeout` to paper over a race. Wait on the real signal.
+- NEVER tautological tests (`expect(true)`, asserting a value the test just
+  assigned).

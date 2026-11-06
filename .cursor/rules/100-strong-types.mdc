@@ -1,0 +1,24 @@
+---
+description: USE WHEN types Schema any Zod newtype annotation pyright
+alwaysApply: false
+---
+
+# Strong types
+
+## JS/TS
+
+- ALWAYS `effect/Schema` at boundaries: `Schema.Struct` and
+  `Schema.decodeUnknown`. Prefer `typeof schema.Type` over a second hand-written
+  interface for the same payload.
+- NEVER Zod. NEVER `any`. NEVER non-null assertions (`!`). NEVER `as` to brand
+  or accept unvalidated data. `as const` on a literal is fine.
+
+## Rust
+
+- ALWAYS newtypes and validated constructors for domain ids. See
+  `020-no-shortcuts-rust`.
+
+## Python
+
+- ALWAYS annotate parameters and return values. basedpyright `strict` must pass.
+  See `020-python`.

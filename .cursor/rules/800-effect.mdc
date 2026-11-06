@@ -1,0 +1,18 @@
+---
+description: USE WHEN Effect Schema try catch throw Promise async fetch Match TaggedError
+alwaysApply: false
+---
+
+# Effect (JS/TS)
+
+Effect is how JS/TS does async work, errors, and validation.
+
+- ALWAYS `Effect.gen` / `Effect.tryPromise` / `Data.TaggedError` / `Match` for
+  async work, failures, and tagged unions.
+- A server cache (Query or the project’s equivalent) stays a cache. `run*`
+  functions are the only edge runners that call `Effect.runPromise`.
+- NEVER `new Promise`. NEVER export `async` from `api/` or `domain/` except
+  `run*` edge runners. NEVER raw `fetch` outside one `api-client` module.
+  NEVER `throw` in `api/` or `domain/`.
+- NEVER Zod, neverthrow, or hand-rolled boundary validation. Use `effect/Schema`
+  (`100-strong-types`).

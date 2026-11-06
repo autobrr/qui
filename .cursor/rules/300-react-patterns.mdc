@@ -1,0 +1,21 @@
+---
+description: React component and hook patterns
+globs: "**/*.tsx,**/*.jsx"
+alwaysApply: false
+---
+
+# React patterns
+
+- Functional components only.
+- Named exports for shared components; default export only for route/page entry.
+- Reusable logic → custom hooks; keep page orchestration in the feature/page.
+- Ephemeral UI state (open, hover, draft text) may use `useState`. Shared or
+  async client state goes through Effect. Do not introduce another state
+  library without asking.
+- Server data stays in the project’s cache (Query or equivalent). The cache
+  calls a `run*` edge runner; it does not own validation or errors.
+- Payloads, env, and API responses use `effect/Schema`. Async work and failures
+  use Effect (`800-effect`). NEVER Zod.
+- Prefer accessibility-friendly markup; follow ESLint jsx-a11y when enabled.
+- Style with Tailwind utility classes. Theme changes go in CSS (`@theme` on
+  Tailwind v4, or the existing `tailwind.config` on v3).

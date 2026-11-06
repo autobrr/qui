@@ -1,0 +1,33 @@
+---
+description: Core always-on quality invariants
+alwaysApply: true
+---
+
+# Always
+
+## No shortcuts
+
+- NEVER weaken ESLint/Biome/Clippy/Ruff/basedpyright/hooks or edit `tsconfig*` /
+  `pyproject.toml` tool tables to dodge errors (unless the user explicitly asks).
+  NEVER `--no-verify`.
+- NEVER add `eslint-disable*` / `biome-ignore` / `@ts-ignore` /
+  `@ts-expect-error` / `@ts-nocheck` / `#[allow(clippy::…)]` / `# type: ignore` /
+  `# noqa` without user **yes**. Fix the code, or follow `800-lint-suppression-beg`.
+- NEVER paper over races or errors (empty catch, sentinel null/false, sleep,
+  fire-and-forget). See `800-no-lazy`.
+- JS/TS: NEVER vanilla Promise/async/throw/Zod where Effect and Schema apply.
+  See `800-effect` and `100-strong-types`.
+- Python: ALWAYS `uv`. See `020-python`.
+- ALWAYS complete work 100% or stop and ask.
+
+## Validate
+
+- After mid-feature edits: run the root `validate` script. Read **all**
+  failures; fix every diagnostic; one confirm.
+- NEVER skip the gate; NEVER stop at first error.
+
+## Tests and docs first
+
+- ALWAYS update the docs wiki and write the failing test before production code
+  when adding a feature or changing behavior. See `050-docs`.
+- NEVER implement behavior first and retrofit tests or docs afterward.

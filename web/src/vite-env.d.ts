@@ -9,6 +9,10 @@
 declare global {
   interface Window {
     __QUI_VERSION__?: string
+    /** Injected by the Qui Electron shell preload (optional). */
+    quiDesktop?: {
+      requestTouchId?: (reason?: string) => Promise<{ success: boolean; error?: string }>
+    }
   }
 
   interface ImportMetaEnv {
