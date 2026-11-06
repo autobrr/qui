@@ -1023,6 +1023,7 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
+// regression: #3860
 func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
