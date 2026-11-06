@@ -63,7 +63,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 2. Read `GLOSSARY.md`, `docs/architecture.md`, and the ADRs in `docs/adr/` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
-5. For a request for new behavior, search the codebase for an existing implementation. For a report about existing behavior, find the code path and decide whether the report still agrees with the code. If it does not, search merged pull requests in that area with `gh search prs --repo <owner/repo> --merged` for the fix. The current release is `gh release list --limit 1 --exclude-pre-releases`. Pass search terms with no quotes: `gh search prs` treats one quoted argument as an exact phrase, so an empty result from a quoted search does not show that no pull request exists. `gh issue view <number> --json title,body,author` reads a pull request.
+5. For a request for new behavior, search the codebase for an existing implementation. For a report about existing behavior, find the code path and decide whether the report still agrees with the code. If it does not, search merged pull requests in that area with `gh search prs --repo <owner/repo> --merged` for the fix. The current release is `gh release list --limit 1 --exclude-drafts --exclude-pre-releases`. Pass search terms with no quotes: `gh search prs` treats one quoted argument as an exact phrase, so an empty result from a quoted search does not show that no pull request exists. `gh issue view <number> --json title,body,author` reads a pull request.
 6. Pick one outcome from the list that follows. If two outcomes fit and a missing fact from the reporter decides between them, pick `needs-info`. If what is missing is a decision about intent, use "Bug or enhancement".
 7. Apply the outcome with the write operations named for it.
 
@@ -123,7 +123,7 @@ Use this test when no duplicate, mechanical wontfix, or missing fact decides the
 
 A report that matches the code is not a confirmed bug, because deliberate behavior also matches the code. `bug` needs positive evidence. A source that says nothing is not evidence of a fault, and it is not evidence of intent.
 
-Ask these questions in order. Stop at the first yes.
+Ask these questions in order. Stop at the first yes. If sources disagree about the behavior, the `Intent conflict:` rule below decides the outcome, even if question 2, 3, 4, or 5 gets a yes.
 
 1. Fault: Does qui crash, hang, return a server error for valid input, or corrupt or delete data that the user did not select? The category is `bug`.
 2. Promise: Does the behavior contradict a statement in the current user docs, the UI text, the API schema, `GLOSSARY.md`, an accepted ADR, or a test that names the behavior? For a state or filter that qui shows under the same name as qBittorrent, does it differ from the qBittorrent source? Find that source with `gh search code --repo qbittorrent/qBittorrent <term>`. Quote the statement. The category is `bug`.
