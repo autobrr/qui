@@ -152,8 +152,16 @@
       "title": "Permissões",
       "help": "A escrita inclui leitura e execução. A execução não inclui leitura, porque as configurações guardam credenciais.",
       "required": "Escolha pelo menos uma permissão.",
+      "access": "Acesso",
+      "everything": "Tudo",
+      "everythingExcept": "Tudo exceto {{areas}}",
       "refusedByLimit": "Cross-Seed e o Scanner de Diretório recusam uma chave com limite de instâncias, então o qui não salva essas permissões.",
       "entry": "{{area}}: {{level}}",
+      "noAccess": "{{area}}: sem acesso",
+      "legend": {
+        "title": "Cada bloco é uma área:",
+        "none": "Sem acesso"
+      },
       "levels": {
         "read": "leitura",
         "run": "execução",
@@ -180,9 +188,9 @@
     "instanceLimit": {
       "title": "Limite de instâncias",
       "help": "Escolha as instâncias que esta chave pode alcançar. Sem escolha, a chave alcança todas as instâncias, inclusive as adicionadas depois.",
-      "summary": "Limite de instâncias: {{instances}}",
+      "reaches": "Alcance",
       "all": "Todas as instâncias",
-      "none": "nenhuma instância",
+      "none": "Nenhuma instância. O limite contém apenas instâncias excluídas.",
       "deleted": "Instância excluída {{id}}"
     },
     "newKey": {

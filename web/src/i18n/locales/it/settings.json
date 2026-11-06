@@ -152,8 +152,16 @@
       "title": "Permessi",
       "help": "La scrittura include lettura ed esecuzione. L'esecuzione non include la lettura, perché le impostazioni contengono credenziali.",
       "required": "Scegli almeno un permesso.",
+      "access": "Accesso",
+      "everything": "Tutto",
+      "everythingExcept": "Tutto tranne {{areas}}",
       "refusedByLimit": "Cross-Seed e lo scanner di directory rifiutano una chiave con un limite di istanze, quindi qui non salva questi permessi.",
       "entry": "{{area}}: {{level}}",
+      "noAccess": "{{area}}: nessun accesso",
+      "legend": {
+        "title": "Ogni blocco è un'area:",
+        "none": "Nessun accesso"
+      },
       "levels": {
         "read": "lettura",
         "run": "esecuzione",
@@ -180,9 +188,9 @@
     "instanceLimit": {
       "title": "Limite di istanze",
       "help": "Scegli le istanze che questa chiave può raggiungere. Senza una scelta, la chiave raggiunge tutte le istanze, anche quelle aggiunte in seguito.",
-      "summary": "Limite di istanze: {{instances}}",
+      "reaches": "Ambito",
       "all": "Tutte le istanze",
-      "none": "nessuna istanza",
+      "none": "Nessuna istanza. Il limite contiene solo istanze eliminate.",
       "deleted": "Istanza eliminata {{id}}"
     },
     "newKey": {

@@ -32,6 +32,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import {
+  accessByArea,
   holdsLevel,
   isAreaRefusedByInstanceLimit,
   PERMISSION_AREA_LABELS,
@@ -39,14 +40,16 @@ import {
   PERMISSION_LEVEL_LABELS,
   PERMISSION_LEVELS,
   permissionsToSave,
+  summarizePermissions,
   togglePermission,
-  type ApiKeyPermission
+  type ApiKeyPermission,
+  type PermissionArea
 } from "@/lib/api-key-permissions"
 import { cn } from "@/lib/utils"
 import type { ApiKey, ApiKeyRequest, ApplicationInfo, InstanceResponse } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -60,6 +63,52 @@ function usePermissionText() {
     area: t(PERMISSION_AREA_LABELS[area].labelKey),
     level: t(PERMISSION_LEVEL_LABELS[level].labelKey),
   })
+}
+
+const BLOCK_STYLES = {
+  write: "bg-primary",
+  run: "bg-primary/65",
+  read: "bg-primary/30",
+  none: "border border-foreground/15",
+} as const
+
+function AccessMap({ permissions, listText }: { permissions: readonly ApiKeyPermission[]; listText: (items: string[]) => string }) {
+  const { t } = useTranslation("settings")
+  return (
+    <div aria-hidden className="!mt-2 grid h-2 max-w-52 auto-cols-fr grid-flow-col gap-0.5">
+      {accessByArea(permissions).map(({ area, levels }) => {
+        const areaLabel = t(PERMISSION_AREA_LABELS[area].labelKey)
+        return (
+          <span
+            key={area}
+            title={levels.length > 0
+              ? t("apiKeys.permissions.entry", { area: areaLabel, level: listText(levels.map(level => t(PERMISSION_LEVEL_LABELS[level].labelKey))) })
+              : t("apiKeys.permissions.noAccess", { area: areaLabel })}
+            className={cn("rounded-[2px]", BLOCK_STYLES[levels.at(-1) ?? "none"])}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function AccessMapLegend() {
+  const { t } = useTranslation("settings")
+  const entries = [
+    ...(["write", "run", "read"] as const).map(level => ({ style: BLOCK_STYLES[level], label: t(PERMISSION_LEVEL_LABELS[level].labelKey) })),
+    { style: BLOCK_STYLES.none, label: t("apiKeys.permissions.legend.none") },
+  ]
+  return (
+    <div aria-hidden className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span>{t("apiKeys.permissions.legend.title")}</span>
+      {entries.map(({ style, label }) => (
+        <span key={label} className="flex items-center gap-1.5">
+          <span className={cn("h-2 w-3.5 rounded-[2px]", style)} />
+          <span className="inline-block first-letter:uppercase">{label}</span>
+        </span>
+      ))}
+    </div>
+  )
 }
 
 interface ApiKeyFormProps {
@@ -188,8 +237,7 @@ interface ApiKeysManagerProps {
 }
 
 export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
-  const { t } = useTranslation("settings")
-  const permissionText = usePermissionText()
+  const { t, i18n } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
@@ -208,15 +256,20 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
 
   const keys = apiKeys || []
 
+  const listText = (items: string[]) => new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(items)
+  const areaList = (areas: readonly PermissionArea[]) => listText(areas.map(area => t(PERMISSION_AREA_LABELS[area].labelKey)))
+
   const instanceLimitText = (key: ApiKey) => {
     if (key.instanceIds.length === 0) {
-      return t("apiKeys.instanceLimit.all")
+      return { text: t("apiKeys.instanceLimit.all"), reachesNone: false }
     }
     if (!instances) {
       return null
     }
     const names = instances.filter(instance => key.instanceIds.includes(instance.id)).map(instance => instance.name)
-    return names.length > 0 ? names.join(", ") : t("apiKeys.instanceLimit.none")
+    return names.length > 0
+      ? { text: listText(names), reachesNone: false }
+      : { text: t("apiKeys.instanceLimit.none"), reachesNone: true }
   }
 
   const createMutation = useMutation({
@@ -342,7 +395,9 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
         </Dialog>
       </div>
 
-      <div className="space-y-2">
+      {keys.length > 0 && <AccessMapLegend />}
+
+      <div className="@container divide-y rounded-lg border bg-muted/40">
         {isLoading ? (
           <p className="text-center text-sm text-muted-foreground py-8">
             {t("apiKeys.loading")}
@@ -350,40 +405,54 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
         ) : (
           <>
             {keys.map((key) => {
-              const limitText = instanceLimitText(key)
+              const limit = instanceLimitText(key)
+              const { except, rows } = summarizePermissions(key.permissions)
               return (
                 <div
                   key={key.id}
                   data-testid="api-key-row"
-                  className="flex items-center bg-muted/40 justify-between gap-2 rounded-lg border p-4"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-3 p-4 @2xl:grid-cols-[14rem_minmax(0,1fr)_auto] @2xl:gap-x-6"
                 >
-                  <div className="min-w-0 space-y-2">
+                  <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{key.name}</span>
-                      <Badge variant="outline" className="text-xs">
+                      <span className="min-w-0 break-words font-medium">{key.name}</span>
+                      <Badge variant="outline" className="flex-shrink-0 text-xs">
                         {t("clientApiKeys.idLabel", { id: key.id })}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
+                    <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                      <span>{t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}</span>
                       {key.lastUsedAt && (
-                        <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
+                        <span>{t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</span>
                       )}
                     </p>
-                    <div className="flex flex-wrap gap-1">
-                      {key.permissions.map((permission) => (
-                        <Badge key={`${permission.area}-${permission.level}`} variant="secondary" className="text-xs font-normal">
-                          {permissionText(permission)}
-                        </Badge>
-                      ))}
-                    </div>
-                    {limitText && (
-                      <p className="text-sm text-muted-foreground">
-                        {t("apiKeys.instanceLimit.summary", { instances: limitText })}
-                      </p>
-                    )}
+                    <AccessMap permissions={key.permissions} listText={listText} />
                   </div>
-                  <div className="flex flex-shrink-0 items-center gap-1">
+                  <dl className="col-span-2 row-start-2 grid grid-cols-[5.5rem_minmax(0,1fr)] content-start items-baseline gap-x-3 gap-y-1 text-sm @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1">
+                    {except && (
+                      <>
+                        <dt className="break-words text-muted-foreground">{t("apiKeys.permissions.access")}</dt>
+                        <dd>
+                          {except.length === 0
+                            ? t("apiKeys.permissions.everything")
+                            : t("apiKeys.permissions.everythingExcept", { areas: areaList(except) })}
+                        </dd>
+                      </>
+                    )}
+                    {rows.map(({ level, areas }) => (
+                      <Fragment key={level}>
+                        <dt className="break-words text-muted-foreground first-letter:uppercase">{t(PERMISSION_LEVEL_LABELS[level].labelKey)}</dt>
+                        <dd>{areaList(areas)}</dd>
+                      </Fragment>
+                    ))}
+                    {limit && (
+                      <>
+                        <dt className="break-words text-muted-foreground">{t("apiKeys.instanceLimit.reaches")}</dt>
+                        <dd className={cn(limit.reachesNone && "text-destructive")}>{limit.text}</dd>
+                      </>
+                    )}
+                  </dl>
+                  <div className="col-start-2 row-start-1 flex items-center gap-1 self-start @2xl:col-start-3">
                     <Button
                       size="icon"
                       variant="ghost"

@@ -204,11 +204,21 @@ describe("ApiKeysManager key list", () => {
     ]
     renderManager()
 
-    expect((await keyRow("open")).textContent).toContain("Torrents: read")
-    await waitFor(async () => expect((await keyRow("open")).textContent).toContain("Instance limit: All instances"))
-    expect((await keyRow("limited")).textContent).toContain("Logs: write")
-    expect((await keyRow("limited")).textContent).toContain("Instance limit: archive")
-    expect((await keyRow("gone")).textContent).toContain("Instance limit: no instances")
+    expect((await keyRow("open")).textContent).toContain("readTorrents")
+    await waitFor(async () => expect((await keyRow("open")).textContent).toContain("ReachesAll instances"))
+    expect((await keyRow("limited")).textContent).toContain("writeLogs")
+    expect((await keyRow("limited")).textContent).toContain("Reachesarchive")
+    expect((await keyRow("gone")).textContent).toContain("ReachesNo instances.")
+  })
+
+  it("names the area and the level on each block of the access map", async () => {
+    stubs.keys = [{ ...key, permissions: [{ area: "rss", level: "run" }] }]
+    renderManager()
+
+    const row = await keyRow("dashboard")
+    expect(row.querySelector("[title='RSS: run']")?.className).toContain("bg-primary/65")
+    expect(row.querySelector("[title='Logs: no access']")?.className).toContain("border")
+    expect(row.querySelectorAll("[aria-hidden] > [title]").length).toBe(15)
   })
 
   it("does not call a limit empty before the instances load", async () => {
@@ -217,7 +227,7 @@ describe("ApiKeysManager key list", () => {
     renderManager()
 
     const row = await keyRow("dashboard")
-    expect(row.textContent).not.toContain("no instances")
+    expect(row.textContent).not.toContain("No instances")
   })
 
   // regression: #3858
@@ -282,8 +292,8 @@ describe("ApiKeysManager edit dialog", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     expect(stubs.updated).toEqual([{ name: "wallboard", permissions: [{ area: "logs", level: "read" }], instanceIds: [2] }])
     const row = await keyRow("wallboard")
-    await waitFor(() => expect(row.textContent).toContain("Logs: read"))
-    expect(row.textContent).toContain("Instance limit: archive")
+    await waitFor(() => expect(row.textContent).toContain("readLogs"))
+    expect(row.textContent).toContain("Reachesarchive")
     expect(row.textContent).not.toContain("the-raw-key")
   })
 

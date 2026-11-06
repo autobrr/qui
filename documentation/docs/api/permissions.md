@@ -65,7 +65,7 @@ A key with an Instance limit follows these rules:
 
 The create and edit dialogs grey out the Cross-seed and Dir Scan rows when you pick an instance. qui does not save a Permission on a greyed-out row.
 
-A new instance does not join an existing limit. A deleted instance stays in the stored list and matches nothing. If a limit holds only deleted instances, the key reaches no instance, and Settings shows "no instances" for it.
+A new instance does not join an existing limit. A deleted instance stays in the stored list and matches nothing. If a limit holds only deleted instances, the key reaches no instance, and Settings shows "No instances" for it.
 
 ## Browser-only routes
 
