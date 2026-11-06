@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -678,7 +679,17 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	hideMatchPasskeys(r, response.Matches)
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
+	if middleware.CanReadTrackerPasskeys(r) {
+		return
+	}
+	for i := range matches {
+		matches[i].Tracker = qbittorrent.TrackerOrigin(matches[i].Tracker)
+	}
 }
 
 // SearchTorrentMatches godoc

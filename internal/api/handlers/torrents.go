@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -238,6 +239,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		response = response.WithoutTrackerPasskeys()
+	}
 	RespondJSON(w, http.StatusOK, response)
 }
 
@@ -287,6 +291,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" && req.Field != "magnet_uri" {
 		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, tags, or magnet_uri")
+		return
+	}
+	if req.Field == "magnet_uri" && !middleware.HasPermission(w, r, models.AreaTorrents, models.LevelWrite) {
 		return
 	}
 
@@ -1443,6 +1450,7 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	hideMatchPasskeys(r, response.Matches)
 	RespondJSON(w, http.StatusOK, response)
 }
 
@@ -1723,6 +1731,11 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for domain, trackerURL := range trackers {
+			trackers[domain] = qbittorrent.TrackerOrigin(trackerURL)
+		}
+	}
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
@@ -1853,6 +1866,9 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		trackers = qbittorrent.TrackersWithoutPasskeys(trackers)
+	}
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
@@ -2542,6 +2558,11 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for i := range tasks {
+			qbittorrent.HideTrackerURLs(tasks[i].Trackers)
+		}
+	}
 	RespondJSON(w, http.StatusOK, tasks)
 }
 
@@ -2744,6 +2765,9 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		response = response.WithoutTrackerPasskeys()
+	}
 	RespondJSON(w, http.StatusOK, response)
 }
 

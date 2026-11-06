@@ -109,6 +109,8 @@ type StreamOptions struct {
 	Filters     qbittorrent.FilterOptions
 	// Summary asks for the totals of the view without its rows.
 	Summary bool
+	// hideTrackerPasskeys makes its own group, because the subscribers of a group share one payload.
+	hideTrackerPasskeys bool
 }
 
 // isMultiInstance reports whether the subscription aggregates multiple instances.
@@ -172,6 +174,14 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(filtersKey),
 		opts.Summary,
 	)
+}
+
+func streamGroupKey(opts StreamOptions) string {
+	key := streamOptionsKey(opts)
+	if opts.hideTrackerPasskeys {
+		key += "|hideTrackerPasskeys"
+	}
+	return key
 }
 
 // syncProvider is the subset of *qbittorrent.SyncManager that the StreamManager
@@ -649,7 +659,7 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 		id:        id,
 		options:   opts,
 		created:   time.Now(),
-		groupKey:  streamOptionsKey(opts),
+		groupKey:  streamGroupKey(opts),
 		clientKey: clientKey,
 		conn:      conn,
 		joining:   joining,
@@ -915,6 +925,7 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	if !m.validateInstances(w, r, requests) {
 		return
 	}
+	applyPasskeyAccess(r, requests)
 
 	conn := m.openConnection(activityRequested, requestAPIKeyID(r))
 	defer m.closeConnection(conn)
@@ -1018,6 +1029,13 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 	return true
 }
 
+func applyPasskeyAccess(r *http.Request, requests []streamRequest) {
+	hide := !middleware.CanReadTrackerPasskeys(r)
+	for i := range requests {
+		requests[i].options.hideTrackerPasskeys = hide
+	}
+}
+
 func requestAPIKeyID(r *http.Request) int {
 	if key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
 		return key.ID
@@ -1055,6 +1073,7 @@ func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Reque
 	if !m.validateInstances(w, r, requests) {
 		return
 	}
+	applyPasskeyAccess(r, requests)
 
 	remove := make(map[string]struct{}, len(change.Remove)+len(requests))
 	for _, key := range change.Remove {
@@ -1905,6 +1924,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
 	}
 
+	if opts.hideTrackerPasskeys {
+		response = response.WithoutTrackerPasskeys()
+	}
 	return response, nil
 }
 

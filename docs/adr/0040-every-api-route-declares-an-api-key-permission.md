@@ -19,4 +19,5 @@ An API key with an Instance limit reaches only routes under one instance in its 
 
 - `run` does not include `read`, because settings hold credentials. autobrr calls this level `invoke`.
 - Exporting a .torrent file and downloading a backup need write, because those files hold passkeys.
+- A key without `Torrents: write` gets no tracker passkey from any route that returns announce URLs: each URL shows only its scheme and host, and a magnet link needs `Torrents: write`. A backup download also holds passkeys, and it needs `Backups: write`. A key without write and a key with write on the same live stream are in separate groups, because the subscribers of a group share one payload.
 - Existing keys got every Permission and no Instance limit on upgrade, so no integration broke.
