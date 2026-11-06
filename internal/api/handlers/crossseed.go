@@ -71,6 +71,25 @@ type automationSettingsRequest struct {
 	SeasonPackCategory             string                          `json:"seasonPackCategory"`
 	SeasonPackCategoryRules        []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
 	CategoryMappingRules           []models.CategoryMappingRule    `json:"categoryMappingRules"`
+	RSSSourceCategories            []string                        `json:"rssSourceCategories"`
+	RSSSourceTags                  []string                        `json:"rssSourceTags"`
+	RSSSourceExcludeCategories     []string                        `json:"rssSourceExcludeCategories"`
+	RSSSourceExcludeTags           []string                        `json:"rssSourceExcludeTags"`
+	WebhookSourceCategories        []string                        `json:"webhookSourceCategories"`
+	WebhookSourceTags              []string                        `json:"webhookSourceTags"`
+	WebhookSourceExcludeCategories []string                        `json:"webhookSourceExcludeCategories"`
+	WebhookSourceExcludeTags       []string                        `json:"webhookSourceExcludeTags"`
+	// nil keeps a default that is not the zero value.
+	RSSAutomationTags            *[]string `json:"rssAutomationTags"`
+	SeededSearchTags             *[]string `json:"seededSearchTags"`
+	CompletionSearchTags         *[]string `json:"completionSearchTags"`
+	WebhookTags                  *[]string `json:"webhookTags"`
+	InheritSourceTags            bool      `json:"inheritSourceTags"`
+	SkipAutoResumeRSS            bool      `json:"skipAutoResumeRss"`
+	SkipAutoResumeSeededSearch   bool      `json:"skipAutoResumeSeededSearch"`
+	SkipAutoResumeCompletion     bool      `json:"skipAutoResumeCompletion"`
+	SkipAutoResumeWebhook        bool      `json:"skipAutoResumeWebhook"`
+	SkipPieceBoundarySafetyCheck *bool     `json:"skipPieceBoundarySafetyCheck"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool    `json:"gazelleEnabled"`
 	RedactedAPIKey       *string `json:"redactedApiKey"`
@@ -137,6 +156,13 @@ type automationSettingsPatchRequest struct {
 	OrpheusAPIKey                *string                          `json:"orpheusApiKey,omitempty"`
 	SeasonPackTVDBAPIKey         *string                          `json:"seasonPackTvdbApiKey,omitempty"`
 	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
+}
+
+func valueOrDefault[T any](v *T, def T) T {
+	if v == nil {
+		return def
+	}
+	return *v
 }
 
 type optionalInt struct {
@@ -1030,14 +1056,13 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 
 	// nil keeps the default so PUT clients without the field do not silently
 	// switch to "only complete torrents" (0).
-	autoResumeMaxDownloadMB := models.DefaultAutoResumeMaxDownloadMB
-	if req.AutoResumeMaxDownloadMB != nil {
-		autoResumeMaxDownloadMB = *req.AutoResumeMaxDownloadMB
-	}
+	autoResumeMaxDownloadMB := valueOrDefault(req.AutoResumeMaxDownloadMB, models.DefaultAutoResumeMaxDownloadMB)
 	if autoResumeMaxDownloadMB < 0 {
 		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
 		return
 	}
+
+	defaults := models.DefaultCrossSeedAutomationSettings()
 
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                        req.Enabled,
@@ -1068,6 +1093,24 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackCategory:             strings.TrimSpace(req.SeasonPackCategory),
 		SeasonPackCategoryRules:        normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
 		CategoryMappingRules:           normalizeCategoryMappingRules(req.CategoryMappingRules),
+		RSSSourceCategories:            req.RSSSourceCategories,
+		RSSSourceTags:                  req.RSSSourceTags,
+		RSSSourceExcludeCategories:     req.RSSSourceExcludeCategories,
+		RSSSourceExcludeTags:           req.RSSSourceExcludeTags,
+		WebhookSourceCategories:        req.WebhookSourceCategories,
+		WebhookSourceTags:              req.WebhookSourceTags,
+		WebhookSourceExcludeCategories: req.WebhookSourceExcludeCategories,
+		WebhookSourceExcludeTags:       req.WebhookSourceExcludeTags,
+		RSSAutomationTags:              valueOrDefault(req.RSSAutomationTags, defaults.RSSAutomationTags),
+		SeededSearchTags:               valueOrDefault(req.SeededSearchTags, defaults.SeededSearchTags),
+		CompletionSearchTags:           valueOrDefault(req.CompletionSearchTags, defaults.CompletionSearchTags),
+		WebhookTags:                    valueOrDefault(req.WebhookTags, defaults.WebhookTags),
+		InheritSourceTags:              req.InheritSourceTags,
+		SkipAutoResumeRSS:              req.SkipAutoResumeRSS,
+		SkipAutoResumeSeededSearch:     req.SkipAutoResumeSeededSearch,
+		SkipAutoResumeCompletion:       req.SkipAutoResumeCompletion,
+		SkipAutoResumeWebhook:          req.SkipAutoResumeWebhook,
+		SkipPieceBoundarySafetyCheck:   valueOrDefault(req.SkipPieceBoundarySafetyCheck, defaults.SkipPieceBoundarySafetyCheck),
 		GazelleEnabled:                 req.GazelleEnabled,
 		RedactedAPIKey:                 patchSecret(req.RedactedAPIKey),
 		OrpheusAPIKey:                  patchSecret(req.OrpheusAPIKey),
