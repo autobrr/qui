@@ -102,16 +102,13 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 // a single failure (advances backoff once), not once per caller (adversarial review of #2096).
 // The instance is dead (connection refused): a hard failure, so it must back off.
 func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
-	// Closed listener: probes fail fast with a hard connection error.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-	srv.Close()
-
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 	pool.mu.Lock()
-	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: instanceID}
 	pool.mu.Unlock()
 
 	const callers = 8
