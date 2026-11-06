@@ -130,6 +130,7 @@
     "description": "Mit API-Keys können externe Anwendungen auf deine qBittorrent-Instanzen zugreifen.",
     "createButton": "API-Key erstellen",
     "editButton": "{{name}} bearbeiten",
+    "deleteButton": "{{name}} löschen",
     "loading": "API-Keys werden geladen...",
     "empty": "Noch keine API-Keys erstellt",
     "createDialog": {

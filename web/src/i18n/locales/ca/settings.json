@@ -130,6 +130,7 @@
     "description": "Les claus API permeten que les aplicacions externes accedeixin a les teves instàncies de qBittorrent.",
     "createButton": "Crea una clau API",
     "editButton": "Edita {{name}}",
+    "deleteButton": "Elimina {{name}}",
     "loading": "S'estan carregant les claus API...",
     "empty": "Encara no s'ha creat cap clau API",
     "createDialog": {

@@ -130,6 +130,7 @@
     "description": "Ключі API дозволяють зовнішнім програмам отримувати доступ до ваших екземплярів qBittorrent.",
     "createButton": "Створіть ключ API",
     "editButton": "Редагувати {{name}}",
+    "deleteButton": "Видалити {{name}}",
     "loading": "Завантаження ключів API...",
     "empty": "Ключі API ще не створено",
     "createDialog": {

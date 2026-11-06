@@ -130,6 +130,7 @@
     "description": "API 密钥允许外部应用访问您的 qBittorrent 实例。",
     "createButton": "创建 API 密钥",
     "editButton": "编辑 {{name}}",
+    "deleteButton": "删除 {{name}}",
     "loading": "正在加载 API 密钥...",
     "empty": "尚未创建任何 API 密钥",
     "createDialog": {

@@ -393,6 +393,7 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
                     <Button
                       size="icon"
                       variant="ghost"
+                      aria-label={t("apiKeys.deleteButton", { name: key.name })}
                       onClick={() => setDeleteKeyId(key.id)}
                     >
                       <Trash2 className="h-4 w-4" />

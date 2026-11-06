@@ -13,6 +13,8 @@ A key must hold at least one Permission. `POST /api/api-keys` returns `400` to a
 
 Keys that existed before the upgrade to this feature hold every Permission and have no Instance limit. Edit each of these keys to remove the access that the key does not need.
 
+When authentication is disabled, qui ignores API keys. Permissions and Instance limits then do not restrict a request.
+
 ## Levels
 
 A Permission is one area and one level, for example `Torrents: read`. There are three levels:
@@ -67,7 +69,9 @@ A new instance does not join an existing limit. A deleted instance stays in the 
 
 ## Browser-only routes
 
-A Browser-only route refuses every API key, also a key that holds every Permission. It accepts only a signed-in browser. When authentication is disabled, qui ignores API keys and these routes accept the request.
+A Browser-only route refuses every API key, also a key that holds every Permission. It accepts only a signed-in browser.
+
+When authentication is disabled, qui ignores API keys, so this refusal does not apply. API key management, change password, and logout still return `403 Endpoint disabled when authentication is disabled`. The other Browser-only routes accept the request.
 
 The Browser-only routes are:
 

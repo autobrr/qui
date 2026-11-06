@@ -130,6 +130,7 @@
     "description": "API 키를 사용하면 외부 애플리케이션이 qBittorrent 인스턴스에 접근할 수 있습니다.",
     "createButton": "API 키 생성",
     "editButton": "{{name}} 편집",
+    "deleteButton": "{{name}} 삭제",
     "loading": "API 키 불러오는 중...",
     "empty": "아직 생성된 API 키가 없습니다",
     "createDialog": {

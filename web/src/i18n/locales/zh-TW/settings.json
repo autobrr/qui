@@ -130,6 +130,7 @@
     "description": "API 金鑰允許外部應用程式存取您的 qBittorrent 實例。",
     "createButton": "建立 API 金鑰",
     "editButton": "編輯 {{name}}",
+    "deleteButton": "刪除 {{name}}",
     "loading": "正在載入 API 金鑰...",
     "empty": "尚未建立任何 API 金鑰",
     "createDialog": {

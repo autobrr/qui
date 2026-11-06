@@ -130,6 +130,7 @@
     "description": "API klíče umožňují externím aplikacím přístup k vašim qBittorrent instancem.",
     "createButton": "Vytvořit API klíč",
     "editButton": "Upravit {{name}}",
+    "deleteButton": "Smazat {{name}}",
     "loading": "Načítám API klíče...",
     "empty": "Žádné API klíče vytvořeny",
     "createDialog": {

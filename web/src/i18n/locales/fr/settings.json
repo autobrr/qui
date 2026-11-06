@@ -130,6 +130,7 @@
     "description": "Les clés API permettent aux applications externes d'accéder à vos instances qBittorrent.",
     "createButton": "Créer une clé API",
     "editButton": "Modifier {{name}}",
+    "deleteButton": "Supprimer {{name}}",
     "loading": "Chargement des clés API...",
     "empty": "Aucune clé API créée pour le moment",
     "createDialog": {

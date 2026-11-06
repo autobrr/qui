@@ -198,6 +198,13 @@ describe("ApiKeysManager key list", () => {
     const row = await keyRow("dashboard")
     expect(row.textContent).not.toContain("no instances")
   })
+
+  it("names the delete button after the key", async () => {
+    stubs.keys = [key]
+    renderManager()
+    await keyRow("dashboard")
+    expect(screen.getByRole("button", { name: "Delete dashboard" })).toBeTruthy()
+  })
 })
 
 describe("ApiKeysManager edit dialog", () => {

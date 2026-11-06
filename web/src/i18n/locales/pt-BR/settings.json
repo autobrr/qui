@@ -130,6 +130,7 @@
     "description": "As chaves de API permitem que aplicativos externos acessem suas instâncias do qBittorrent.",
     "createButton": "Criar Chave API",
     "editButton": "Editar {{name}}",
+    "deleteButton": "Excluir {{name}}",
     "loading": "Carregando chaves API...",
     "empty": "Nenhuma chave API criada ainda",
     "createDialog": {

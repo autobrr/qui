@@ -42,4 +42,4 @@ In a delta, omitted counts and preferences retain their previous values. Explici
 
 - qui shows an API key only once, at creation. Save it in a safe place.
 - You can revoke each key on its own. Other keys remain active.
-- A key can reach only the routes that its [Permissions](./permissions.md) allow. A Browser-only route refuses every key and returns `403 API key not allowed; use the web UI`.
+- A key can reach only the routes that its [Permissions](./permissions.md) allow. A Browser-only route refuses every key and returns `403 API key not allowed; use the web UI`. When authentication is disabled, qui ignores API keys, so Permissions, Instance limits, and this refusal do not apply.
