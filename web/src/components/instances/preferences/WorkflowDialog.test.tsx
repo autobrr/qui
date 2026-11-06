@@ -440,6 +440,28 @@ describe("WorkflowDialog Save flow", () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it("does not ask after the check when the user changed the form during the check", async () => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.pause })
+
+    rename("First name")
+    clickButton(key("save"))
+    rename("Second name")
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+
+    await clickSave()
+    expect(mocks.validateRegex).toHaveBeenCalledTimes(2)
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: key("save") }))
+    await settle()
+    expect(mocks.save).toHaveBeenCalledTimes(1)
+    expect(mocks.save.mock.calls[0][2]).toMatchObject({ name: "Second name" })
+  })
+
   it("counts a flip of the switch and a flip back as no change", async () => {
     const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
 

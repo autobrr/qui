@@ -76,9 +76,9 @@ export function DryRunToggle({ checked, onCheckedChange }: { checked: boolean; o
   const { t } = useTranslation("instances")
   const id = useId()
   return (
-    <div className="flex items-center gap-2">
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    <div className="flex items-center justify-between gap-2">
       <Label htmlFor={id} className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.dryRun")}</Label>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   )
 }

@@ -588,6 +588,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const loadedForm = useRef<FormState | null>(null)
+  const currentForm = useRef(formState)
   const [saveFlow, dispatchSaveFlow] = useReducer(workflowSaveFlowReducer, EDITING)
   const preview = saveFlow.step === "previewing" ? saveFlow.preview : null
   const previewResult = preview?.status === "loaded" ? preview.result : null
@@ -1190,6 +1191,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
+
+  useEffect(() => {
+    currentForm.current = formState
+  }, [formState])
 
   useEffect(() => {
     if (!open) {
@@ -2100,6 +2105,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         // If validation endpoint fails, let the save attempt proceed
         // The backend will still reject invalid regexes
       }
+      // The user edited the form during the check. The next Save checks the new values.
+      if (JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return
     }
 
     if (!submitState.enabled) {
