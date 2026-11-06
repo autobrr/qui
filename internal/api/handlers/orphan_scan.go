@@ -193,7 +193,6 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, savedSettings)
 }
 
-// applyOrphanScanSettingsPayload applies the set fields of payload to settings.
 // It returns a validation error message, or "" when every field is valid.
 func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload *OrphanScanSettingsPayload) string {
 	if payload.Enabled != nil {
