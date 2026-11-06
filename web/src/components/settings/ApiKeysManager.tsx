@@ -66,15 +66,16 @@ function usePermissionText() {
   })
 }
 
+const PARTIAL_BLOCK = "bg-gradient-to-t from-foreground to-foreground bg-bottom bg-no-repeat"
 const BLOCK_STYLES = {
-  write: "bg-primary",
-  run: "bg-primary/65",
-  read: "bg-primary/35",
-  none: "border border-foreground/25",
+  write: "bg-foreground",
+  run: `${PARTIAL_BLOCK} bg-[length:100%_66.67%]`,
+  read: `${PARTIAL_BLOCK} bg-[length:100%_33.34%]`,
+  none: "",
 } as const
 
 function AccessBlock({ levels, className, title }: { levels: readonly PermissionLevel[]; className?: string; title?: string }) {
-  return <span aria-hidden title={title} className={cn("rounded-[2px] forced-color-adjust-none", BLOCK_STYLES[levels.at(-1) ?? "none"], className)} />
+  return <span aria-hidden title={title} className={cn("rounded-[2px] border border-foreground/75 forced-color-adjust-none", BLOCK_STYLES[levels.at(-1) ?? "none"], className)} />
 }
 
 function AccessMap({ name, permissions, listText }: { name: string; permissions: readonly ApiKeyPermission[]; listText: (items: string[]) => string }) {
@@ -470,8 +471,8 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
                         <dt>{t("apiKeys.permissions.access")}</dt>
                         <dd>
                           {except.length === 0
-                            ? t("apiKeys.permissions.everything")
-                            : t("apiKeys.permissions.everythingExcept", {
+                            ? t("apiKeys.permissions.allAreas")
+                            : t("apiKeys.permissions.allAreasExcept", {
                               areas: listText(except.map(({ area, levels }) => {
                                 const areaLabel = t(PERMISSION_AREA_LABELS[area].labelKey)
                                 return levels.length > 0

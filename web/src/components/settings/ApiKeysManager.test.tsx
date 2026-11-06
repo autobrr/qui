@@ -236,7 +236,7 @@ describe("ApiKeysManager key list", () => {
     }]
     renderManager()
 
-    expect((await keyRow("dashboard")).textContent).toContain("Everything except Settings (read only)")
+    expect((await keyRow("dashboard")).textContent).toContain("All areas except Settings (read only)")
   })
 
   it("does not call a limit empty before the instances load", async () => {

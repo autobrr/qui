@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { accessByArea, PERMISSION_AREAS, summarizePermissions, type ApiKeyPermission, type PermissionArea } from "./api-key-permissions"
+import { accessByArea, PERMISSION_AREAS, summarizePermissions, type ApiKeyPermission, type PermissionArea } from "../api-key-permissions"
 
 const everything: ApiKeyPermission[] = PERMISSION_AREAS.flatMap(({ area, levels }) => levels.includes("write")
   ? [{ area, level: "write" as const }]
