@@ -80,7 +80,9 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
   const [instanceIds, setInstanceIds] = useState<readonly number[]>(initial?.instanceIds ?? [])
   const toSave = permissionsToSave(permissions, instanceIds)
   // A deleted instance stays in the list: dropping it can empty the limit, and an empty limit means all instances.
-  const deletedIds = instances ? (initial?.instanceIds ?? []).filter(id => !instances.some(instance => instance.id === id)) : []
+  const deletedIds = instances
+    ? [...new Set([...(initial?.instanceIds ?? []), ...instanceIds])].filter(id => !instances.some(instance => instance.id === id))
+    : []
   const instanceRows = [
     ...(instances ?? []).map(instance => ({ id: instance.id, label: instance.name })),
     ...deletedIds.map(id => ({ id, label: t("apiKeys.instanceLimit.deleted", { id }) })),
@@ -137,7 +139,7 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
           {instanceIds.length > 0 && (
             <p className="text-sm text-muted-foreground">{t("apiKeys.permissions.refusedByLimit")}</p>
           )}
-          <div className="grid grid-cols-[1fr_repeat(3,3.5rem)] items-center gap-x-2 gap-y-2 text-sm">
+          <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.5rem)] items-center gap-x-2 gap-y-2 text-sm">
             <span />
             {PERMISSION_LEVELS.map((level) => (
               <span key={level} className="text-center text-xs capitalize text-muted-foreground">{t(PERMISSION_LEVEL_LABELS[level].labelKey)}</span>
@@ -145,7 +147,7 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
             {PERMISSION_AREAS.map(({ area, levels }) => {
               const refused = isAreaRefusedByInstanceLimit(area, instanceIds)
               return [
-                <span key={area} className={cn(refused && "text-muted-foreground opacity-50")}>
+                <span key={area} className={cn("break-words", refused && "text-muted-foreground opacity-50")}>
                   {t(PERMISSION_AREA_LABELS[area].labelKey)}
                 </span>,
                 ...PERMISSION_LEVELS.map((level) => {
@@ -231,9 +233,9 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: ApiKeyRequest }) => api.updateApiKey(id, data),
-    onSuccess: () => {
+    onSuccess: (_key, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      setEditingKey(null)
+      setEditingKey(current => current?.id === id ? null : current)
       toast.success(t("apiKeys.toasts.updated"))
     },
     onError: (error) => {

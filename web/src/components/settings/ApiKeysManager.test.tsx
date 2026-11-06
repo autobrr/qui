@@ -16,6 +16,7 @@ const stubs = vi.hoisted(() => ({
   instances: [] as { id: number; name: string }[],
   created: [] as unknown[],
   updated: [] as unknown[],
+  updateGate: null as Promise<void> | null,
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/lib/api", () => ({
     },
     updateApiKey: async (id: number, req: ApiKeyRequest) => {
       stubs.updated.push(req)
+      await stubs.updateGate
       stubs.keys = stubs.keys.map(key => key.id === id ? { ...key, ...req } : key)
       return stubs.keys.find(key => key.id === id)
     },
@@ -56,6 +58,7 @@ function renderManager() {
       </TooltipProvider>
     </QueryClientProvider>
   )
+  return queryClient
 }
 
 async function openCreateDialog() {
@@ -75,11 +78,28 @@ beforeEach(() => {
   stubs.instances = [{ id: 1, name: "seedbox" }, { id: 2, name: "archive" }]
   stubs.created = []
   stubs.updated = []
+  stubs.updateGate = null
 })
 
 afterEach(cleanup)
 
 describe("ApiKeysManager create dialog", () => {
+  it("shows a picked instance that another session deleted, so the user can untick it", async () => {
+    const user = userEvent.setup()
+    const queryClient = renderManager()
+    await user.click(screen.getByRole("button", { name: "Create API Key" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(await within(dialog).findByRole("checkbox", { name: "seedbox" }))
+
+    stubs.instances = [{ id: 2, name: "archive" }]
+    await queryClient.invalidateQueries({ queryKey: ["instances"] })
+
+    const gone = await within(dialog).findByRole("checkbox", { name: "Deleted instance 1" })
+    expect(isChecked(gone)).toBe(true)
+    await user.click(gone)
+    expect(within(dialog).queryByRole("checkbox", { name: "Deleted instance 1" })).toBeNull()
+  })
+
   it("offers only the levels that each area allows", async () => {
     const { dialog } = await openCreateDialog()
 
@@ -208,6 +228,31 @@ describe("ApiKeysManager key list", () => {
 })
 
 describe("ApiKeysManager edit dialog", () => {
+  it("keeps the dialog of another key open when an earlier save finishes", async () => {
+    stubs.keys = [
+      { ...key, permissions: [{ area: "logs", level: "read" }] },
+      { ...key, id: 2, name: "wallboard", permissions: [{ area: "logs", level: "read" }] },
+    ]
+    let finishSave = () => {}
+    stubs.updateGate = new Promise<void>((resolve) => { finishSave = resolve })
+    const user = userEvent.setup()
+    const queryClient = renderManager()
+
+    await user.click(await screen.findByRole("button", { name: "Edit dashboard" }))
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Save changes" }))
+    await waitFor(() => expect(stubs.updated).toHaveLength(1))
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    await user.click(screen.getByRole("button", { name: "Edit wallboard" }))
+    const second = await screen.findByRole("dialog")
+    expect((within(second).getByLabelText("Name") as HTMLInputElement).value).toBe("wallboard")
+
+    finishSave()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(screen.queryByRole("dialog")).not.toBeNull()
+  })
+
   async function openEditDialog() {
     const user = userEvent.setup()
     renderManager()
