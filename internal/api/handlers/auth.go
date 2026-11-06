@@ -524,10 +524,6 @@ type APIKeyRequest struct {
 	InstanceIDs []int               `json:"instanceIds"`
 }
 
-// createWithoutPermissionsGetsAll lets the create dialog, which sends only a
-// name, keep working until it sends Permissions (#3843).
-var createWithoutPermissionsGetsAll = true
-
 func (req *APIKeyRequest) validate() string {
 	if req.Name == "" {
 		return "API key name is required"
@@ -586,9 +582,6 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Permissions == nil && createWithoutPermissionsGetsAll {
-		req.Permissions = models.AllPermissions()
-	}
 	if msg := req.validate(); msg != "" {
 		RespondError(w, http.StatusBadRequest, msg)
 		return

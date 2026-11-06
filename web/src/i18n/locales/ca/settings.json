@@ -129,16 +129,61 @@
     "apiDocs": "Documentació de l'API",
     "description": "Les claus API permeten que les aplicacions externes accedeixin a les teves instàncies de qBittorrent.",
     "createButton": "Crea una clau API",
+    "editButton": "Edita {{name}}",
+    "deleteButton": "Elimina {{name}}",
     "loading": "S'estan carregant les claus API...",
     "empty": "Encara no s'ha creat cap clau API",
     "createDialog": {
       "title": "Crea una clau API",
-      "description": "Posa un nom descriptiu a la clau API per recordar per a què serveix.",
+      "description": "Posa un nom a la clau i tria només l'accés que necessita.",
       "nameLabel": "Nom",
       "namePlaceholder": "p. ex., Script d'automatització",
       "nameRequired": "El nom és obligatori",
       "submit": "Crea la clau API",
       "creating": "S'està creant..."
+    },
+    "editDialog": {
+      "title": "Edita la clau API",
+      "description": "Els canvis s'apliquen a la següent petició d'aquesta clau. qui no torna a mostrar mai la clau.",
+      "submit": "Desa els canvis",
+      "saving": "S'està desant..."
+    },
+    "permissions": {
+      "title": "Permisos",
+      "help": "L'escriptura inclou la lectura i l'execució. L'execució no inclou la lectura, perquè la configuració conté credencials.",
+      "required": "Tria almenys un permís.",
+      "refusedByLimit": "Cross-Seed i l'explorador de directoris rebutgen una clau amb límit d'instàncies, de manera que qui no desa aquests permisos.",
+      "entry": "{{area}}: {{level}}",
+      "levels": {
+        "read": "lectura",
+        "run": "execució",
+        "write": "escriptura"
+      },
+      "areas": {
+        "instances": "Instàncies",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Explorador de directoris",
+        "automations": "Automatitzacions",
+        "rss": "RSS",
+        "backups": "Còpies de seguretat",
+        "orphanScan": "Exploració d'orfes",
+        "externalPrograms": "Programes externs",
+        "indexers": "Indexadors",
+        "arr": "Arr",
+        "notifications": "Notificacions",
+        "settings": "Configuració",
+        "logs": "Registres",
+        "system": "Sistema"
+      }
+    },
+    "instanceLimit": {
+      "title": "Límit d'instàncies",
+      "help": "Tria les instàncies a què pot accedir aquesta clau. Si no en tries cap, són totes les instàncies, també les que afegeixis més endavant.",
+      "summary": "Límit d'instàncies: {{instances}}",
+      "all": "Totes les instàncies",
+      "none": "cap instància",
+      "deleted": "Instància eliminada {{id}}"
     },
     "newKey": {
       "label": "La teva clau API nova",
@@ -156,7 +201,9 @@
       "created": "S'ha creat la clau API correctament",
       "createFailed": "No s'ha pogut crear la clau API",
       "deleted": "S'ha eliminat la clau API correctament",
-      "deleteFailed": "No s'ha pogut eliminar la clau API"
+      "deleteFailed": "No s'ha pogut eliminar la clau API",
+      "updated": "S'ha actualitzat la clau API correctament",
+      "updateFailed": "No s'ha pogut actualitzar la clau API"
     }
   },
   "externalPrograms": {

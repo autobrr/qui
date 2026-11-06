@@ -13,7 +13,7 @@ qui serves interactive API documentation with Swagger UI at `/api/docs`. You can
 
 ## API keys
 
-API keys give programmatic access to the qui API without session cookies. Create and manage them in Settings → API Keys.
+API keys give programmatic access to the qui API without session cookies. Create and manage them in Settings → API Keys. Each key holds a list of Permissions and an optional Instance limit. See [API key permissions](./permissions.md).
 
 qui also has client proxy API keys. Those keys let external applications, for example Sonarr or autobrr, reach your qBittorrent instances through the qui proxy. They do not grant access to the qui API. See [Reverse Proxy](../features/reverse-proxy.md).
 
@@ -42,4 +42,4 @@ In a delta, omitted counts and preferences retain their previous values. Explici
 
 - qui shows an API key only once, at creation. Save it in a safe place.
 - You can revoke each key on its own. Other keys remain active.
-- A key has the same permissions as the main user account, except on Browser-only routes. A Browser-only route accepts only a signed-in browser and returns `403 API key not allowed; use the web UI` to a key. When authentication is disabled, qui ignores API keys and these routes accept the request. The Browser-only routes are API key management, client proxy API key management, system update and restart, the SSH credential and host-key routes of an instance, change password, logout, the license routes, and external program create, update, and delete.
+- A key can reach only the routes that its [Permissions](./permissions.md) allow. A Browser-only route refuses every key and returns `403 API key not allowed; use the web UI`. When authentication is disabled, qui ignores API keys, so Permissions, Instance limits, and this refusal do not apply.

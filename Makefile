@@ -252,7 +252,7 @@ check-mojibake:
 		exit 1; \
 	fi
 
-# Write the generated files: the automation rule JSON reference in the docs and the query builder field table
+# Write the generated files: the automation rule JSON reference in the docs, the query builder field table, and the API key area table
 generate:
 	go run ./internal/automationsgen
 
@@ -346,7 +346,7 @@ help:
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
-	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
+	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
 	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet)"
 	@echo ""
 	@echo "Documentation:"

@@ -46,16 +46,18 @@ type Permission struct {
 	Level PermissionLevel `json:"level"`
 }
 
-type permissionAreaInfo struct {
-	area   PermissionArea
-	label  string
-	levels []PermissionLevel
+// PermissionAreaInfo is one row of the area table. `make generate` writes a
+// TypeScript copy of the table for the Settings dialog.
+type PermissionAreaInfo struct {
+	Area   PermissionArea
+	Label  string
+	Levels []PermissionLevel
 }
 
 var (
 	readWrite       = []PermissionLevel{LevelRead, LevelWrite}
 	readRunWrite    = []PermissionLevel{LevelRead, LevelRun, LevelWrite}
-	permissionAreas = []permissionAreaInfo{
+	PermissionAreas = []PermissionAreaInfo{
 		{AreaInstances, "Instances", readWrite},
 		{AreaTorrents, "Torrents", readWrite},
 		{AreaCrossSeed, "Cross-seed", readRunWrite},
@@ -74,19 +76,19 @@ var (
 	}
 )
 
-func lookupPermissionArea(area PermissionArea) (permissionAreaInfo, bool) {
-	i := slices.IndexFunc(permissionAreas, func(a permissionAreaInfo) bool { return a.area == area })
+func lookupPermissionArea(area PermissionArea) (PermissionAreaInfo, bool) {
+	i := slices.IndexFunc(PermissionAreas, func(a PermissionAreaInfo) bool { return a.Area == area })
 	if i < 0 {
-		return permissionAreaInfo{}, false
+		return PermissionAreaInfo{}, false
 	}
-	return permissionAreas[i], true
+	return PermissionAreas[i], true
 }
 
 // String names the Permission as a user reads it, for example "Torrents: write".
 func (p Permission) String() string {
 	label := string(p.Area)
 	if info, ok := lookupPermissionArea(p.Area); ok {
-		label = info.label
+		label = info.Label
 	}
 	return label + ": " + string(p.Level)
 }
@@ -94,14 +96,14 @@ func (p Permission) String() string {
 // AllPermissions returns the list that grants every route a key can reach: the
 // highest level of each area. Existing keys got this list on upgrade.
 func AllPermissions() []Permission {
-	perms := make([]Permission, 0, len(permissionAreas)+1)
-	for _, info := range permissionAreas {
-		if slices.Contains(info.levels, LevelWrite) {
-			perms = append(perms, Permission{info.area, LevelWrite})
+	perms := make([]Permission, 0, len(PermissionAreas)+1)
+	for _, info := range PermissionAreas {
+		if slices.Contains(info.Levels, LevelWrite) {
+			perms = append(perms, Permission{info.Area, LevelWrite})
 			continue
 		}
-		for _, level := range info.levels {
-			perms = append(perms, Permission{info.area, level})
+		for _, level := range info.Levels {
+			perms = append(perms, Permission{info.Area, level})
 		}
 	}
 	return perms
@@ -118,7 +120,7 @@ func ValidatePermissions(perms []Permission) error {
 		if !ok {
 			return fmt.Errorf("unknown permission area %q", p.Area)
 		}
-		if !slices.Contains(info.levels, p.Level) {
+		if !slices.Contains(info.Levels, p.Level) {
 			return fmt.Errorf("permission area %q does not allow level %q", p.Area, p.Level)
 		}
 	}

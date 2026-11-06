@@ -129,16 +129,61 @@
     "apiDocs": "Docs API",
     "description": "Les clés API permettent aux applications externes d'accéder à vos instances qBittorrent.",
     "createButton": "Créer une clé API",
+    "editButton": "Modifier {{name}}",
+    "deleteButton": "Supprimer {{name}}",
     "loading": "Chargement des clés API...",
     "empty": "Aucune clé API créée pour le moment",
     "createDialog": {
       "title": "Créer une clé API",
-      "description": "Donnez à votre clé API un nom descriptif pour mémoriser son utilité.",
+      "description": "Donnez un nom à la clé et choisissez uniquement l'accès dont elle a besoin.",
       "nameLabel": "Nom",
       "namePlaceholder": "ex: Script d'automatisation",
       "nameRequired": "Le nom est requis",
       "submit": "Créer une clé API",
       "creating": "Création..."
+    },
+    "editDialog": {
+      "title": "Modifier la clé API",
+      "description": "Les modifications s'appliquent à la prochaine requête de cette clé. qui n'affiche plus jamais la clé elle-même.",
+      "submit": "Enregistrer les modifications",
+      "saving": "Enregistrement..."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "L'écriture inclut la lecture et l'exécution. L'exécution n'inclut pas la lecture, car les paramètres contiennent des identifiants.",
+      "required": "Choisissez au moins une permission.",
+      "refusedByLimit": "Cross-Seed et l'analyse de répertoires refusent une clé avec une limite d'instances : qui n'enregistre donc pas ces permissions.",
+      "entry": "{{area}} : {{level}}",
+      "levels": {
+        "read": "lecture",
+        "run": "exécution",
+        "write": "écriture"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Analyse de répertoires",
+        "automations": "Automatisations",
+        "rss": "RSS",
+        "backups": "Sauvegardes",
+        "orphanScan": "Analyse d'orphelins",
+        "externalPrograms": "Programmes externes",
+        "indexers": "Indexeurs",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Paramètres",
+        "logs": "Logs",
+        "system": "Système"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite d'instances",
+      "help": "Choisissez les instances que cette clé peut atteindre. Sans choix, la clé atteint toutes les instances, y compris celles ajoutées plus tard.",
+      "summary": "Limite d'instances : {{instances}}",
+      "all": "Toutes les instances",
+      "none": "aucune instance",
+      "deleted": "Instance supprimée {{id}}"
     },
     "newKey": {
       "label": "Votre nouvelle clé API",
@@ -156,7 +201,9 @@
       "created": "Clé API créée avec succès",
       "createFailed": "Échec de la création de la clé API",
       "deleted": "Clé API supprimée avec succès",
-      "deleteFailed": "Échec de la suppression de la clé API"
+      "deleteFailed": "Échec de la suppression de la clé API",
+      "updated": "Clé API mise à jour avec succès",
+      "updateFailed": "Échec de la mise à jour de la clé API"
     }
   },
   "externalPrograms": {

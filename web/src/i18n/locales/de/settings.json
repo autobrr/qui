@@ -129,16 +129,61 @@
     "apiDocs": "API-Dokumentation",
     "description": "Mit API-Keys können externe Anwendungen auf deine qBittorrent-Instanzen zugreifen.",
     "createButton": "API-Key erstellen",
+    "editButton": "{{name}} bearbeiten",
+    "deleteButton": "{{name}} löschen",
     "loading": "API-Keys werden geladen...",
     "empty": "Noch keine API-Keys erstellt",
     "createDialog": {
       "title": "API-Key erstellen",
-      "description": "Gib deinem API-Key einen aussagekräftigen Namen, um seinen Zweck zu erkennen.",
+      "description": "Gib dem Key einen Namen und wähle nur den Zugriff aus, den er braucht.",
       "nameLabel": "Name",
       "namePlaceholder": "z. B. Automatisierungsskript",
       "nameRequired": "Name ist erforderlich",
       "submit": "API-Key erstellen",
       "creating": "Wird erstellt..."
+    },
+    "editDialog": {
+      "title": "API-Key bearbeiten",
+      "description": "Änderungen gelten ab der nächsten Anfrage dieses Keys. qui zeigt den Key selbst nie wieder an.",
+      "submit": "Änderungen speichern",
+      "saving": "Wird gespeichert..."
+    },
+    "permissions": {
+      "title": "Berechtigungen",
+      "help": "Schreiben umfasst Lesen und Ausführen. Ausführen umfasst nicht Lesen, weil Einstellungen Zugangsdaten enthalten.",
+      "required": "Wähle mindestens eine Berechtigung aus.",
+      "refusedByLimit": "Cross-Seed und Verzeichnis-Scanner lehnen einen Key mit Instanzlimit ab, daher speichert qui diese Berechtigungen nicht.",
+      "entry": "{{area}}: {{level}}",
+      "levels": {
+        "read": "lesen",
+        "run": "ausführen",
+        "write": "schreiben"
+      },
+      "areas": {
+        "instances": "Instanzen",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Verzeichnis-Scanner",
+        "automations": "Automatisierungen",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan-Scan",
+        "externalPrograms": "Externe Programme",
+        "indexers": "Indexer",
+        "arr": "Arr",
+        "notifications": "Benachrichtigungen",
+        "settings": "Einstellungen",
+        "logs": "Protokolle",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instanzlimit",
+      "help": "Wähle die Instanzen aus, die dieser Key erreichen kann. Ohne Auswahl gilt der Key für alle Instanzen, auch für später hinzugefügte.",
+      "summary": "Instanzlimit: {{instances}}",
+      "all": "Alle Instanzen",
+      "none": "keine Instanzen",
+      "deleted": "Gelöschte Instanz {{id}}"
     },
     "newKey": {
       "label": "Dein neuer API-Key",
@@ -156,7 +201,9 @@
       "created": "API-Key erfolgreich erstellt",
       "createFailed": "API-Key konnte nicht erstellt werden",
       "deleted": "API-Key erfolgreich gelöscht",
-      "deleteFailed": "API-Key konnte nicht gelöscht werden"
+      "deleteFailed": "API-Key konnte nicht gelöscht werden",
+      "updated": "API-Key erfolgreich aktualisiert",
+      "updateFailed": "API-Key konnte nicht aktualisiert werden"
     }
   },
   "externalPrograms": {

@@ -4,6 +4,8 @@
  */
 
 import type {
+  ApiKey,
+  ApiKeyRequest,
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
@@ -2193,20 +2195,21 @@ class ApiClient {
   }
 
   // API Key endpoints
-  async getApiKeys(): Promise<{
-    id: number
-    name: string
-    key?: string
-    createdAt: string
-    lastUsedAt?: string
-  }[]> {
+  async getApiKeys(): Promise<ApiKey[]> {
     return this.request("/api-keys")
   }
 
-  async createApiKey(name: string): Promise<{ id: number; key: string; name: string }> {
+  async createApiKey(data: ApiKeyRequest): Promise<{ id: number; key: string; name: string }> {
     return this.request("/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateApiKey(id: number, data: ApiKeyRequest): Promise<ApiKey> {
+    return this.request(`/api-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 

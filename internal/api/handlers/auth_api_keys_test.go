@@ -48,11 +48,13 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(body), v))
 	}
 
-	status, body := send(t, http.MethodPost, "/api-keys", `{"name":"old dialog"}`)
+	status, body := send(t, http.MethodPost, "/api-keys", `{"name":"no list"}`)
+	require.Equal(t, http.StatusBadRequest, status, "a create with no Permission list is refused: %s", body)
+
+	status, body = send(t, http.MethodPost, "/api-keys", `{"name":"script","permissions":[{"area":"torrents","level":"read"}]}`)
 	require.Equal(t, http.StatusCreated, status, body)
 	var created apiKeyResponse
 	decode(t, body, &created)
-	require.Equal(t, models.AllPermissions(), created.Permissions, "a create with no Permission list gets every Permission while the switch is on")
 	require.Equal(t, []int{}, created.InstanceIDs)
 
 	invalid := map[string]string{
@@ -92,12 +94,4 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 
 	status, _ = send(t, http.MethodPut, "/api-keys/99", `{"name":"k","permissions":[{"area":"torrents","level":"read"}]}`)
 	require.Equal(t, http.StatusNotFound, status)
-
-	t.Run("switch off", func(t *testing.T) {
-		createWithoutPermissionsGetsAll = false
-		t.Cleanup(func() { createWithoutPermissionsGetsAll = true })
-
-		status, body := send(t, http.MethodPost, "/api-keys", `{"name":"old dialog"}`)
-		require.Equal(t, http.StatusBadRequest, status, body)
-	})
 }

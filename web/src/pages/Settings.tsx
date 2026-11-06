@@ -10,6 +10,7 @@ import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
+import { ApiKeysManager } from "@/components/settings/ApiKeysManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
@@ -25,16 +26,6 @@ import { RestartButton } from "@/components/settings/RestartButton"
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,8 +36,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-  DialogTrigger
+  DialogTitle
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -63,16 +53,16 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useSelfUpdate } from "@/hooks/useSelfUpdate"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 import { formatBytes, formatDuration } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import type { ApplicationInfo, Instance, TorznabSearchCacheStats, User } from "@/types"
+import type { Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react"
 import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -102,18 +92,6 @@ function LanguageSelector() {
       </Select>
     </div>
   )
-}
-
-function getApiErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof APIError && error.message) {
-    return error.message
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
 }
 
 function ChangePasswordForm() {
@@ -247,263 +225,6 @@ function ChangePasswordForm() {
         )}
       </form.Subscribe>
     </form>
-  )
-}
-
-interface ApiKeysManagerProps {
-  authMode?: ApplicationInfo["authMode"]
-  authModeLoading: boolean
-}
-
-function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
-  const { t } = useTranslation("settings")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
-  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
-  const queryClient = useQueryClient()
-  const { formatDate } = useDateTimeFormatters()
-  const authDisabled = authMode === "disabled"
-
-  // Fetch API keys from backend
-  const { data: apiKeys, isLoading } = useQuery({
-    queryKey: ["apiKeys"],
-    queryFn: () => api.getApiKeys(),
-    enabled: !authModeLoading && !authDisabled,
-    staleTime: 30 * 1000, // 30 seconds
-  })
-
-  // Ensure apiKeys is always an array
-  const keys = apiKeys || []
-
-  const createMutation = useMutation({
-    mutationFn: async (name: string) => {
-      return api.createApiKey(name)
-    },
-    onSuccess: (data) => {
-      setNewKey(data)
-      queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      toast.success(t("apiKeys.toasts.created"))
-    },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.createFailed")))
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return api.deleteApiKey(id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      setDeleteKeyId(null)
-      toast.success(t("apiKeys.toasts.deleted"))
-    },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.deleteFailed")))
-    },
-  })
-
-  const form = useForm({
-    defaultValues: {
-      name: "",
-    },
-    onSubmit: async ({ value }) => {
-      await createMutation.mutateAsync(value.name)
-      form.reset()
-    },
-  })
-
-  if (authModeLoading) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        {t("apiKeys.loadingAuthMode")}
-      </div>
-    )
-  }
-
-  if (authDisabled) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 p-4">
-        <h3 className="text-sm font-medium">{t("apiKeys.authDisabledTitle")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("apiKeys.authDisabledDescription")}
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("apiKeys.description")}
-        </p>
-        <Dialog
-          open={showCreateDialog}
-          onOpenChange={(open) => {
-            setShowCreateDialog(open)
-            if (!open) {
-              setNewKey(null)
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("apiKeys.createButton")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("apiKeys.createDialog.title")}</DialogTitle>
-              <DialogDescription>
-                {t("apiKeys.createDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {newKey ? (
-                <div className="space-y-4">
-                  <div>
-                    <Label>{t("apiKeys.newKey.label")}</Label>
-                    <div className="mt-2 flex items-center gap-2">
-                      <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                        {newKey.key}
-                      </code>
-                      <CopyButton value={newKey.key} label={t("apiKeys.newKey.apiKey")} iconClassName="h-4 w-4" />
-                    </div>
-                    <p className="mt-2 text-sm text-destructive">
-                      {t("apiKeys.newKey.warning")}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setNewKey(null)
-                      setShowCreateDialog(false)
-                    }}
-                    className="w-full"
-                  >
-                    {t("apiKeys.newKey.done")}
-                  </Button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    form.handleSubmit()
-                  }}
-                  className="space-y-4"
-                >
-                  <form.Field
-                    name="name"
-                    validators={{
-                      onChange: ({ value }) => !value ? t("apiKeys.createDialog.nameRequired") : undefined,
-                    }}
-                  >
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="name">{t("apiKeys.createDialog.nameLabel")}</Label>
-                        <Input
-                          id="name"
-                          placeholder={t("apiKeys.createDialog.namePlaceholder")}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                          data-1p-ignore
-                          autoComplete="off"
-                        />
-                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                        )}
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <form.Subscribe
-                    selector={(state) => [state.canSubmit, state.isSubmitting]}
-                  >
-                    {([canSubmit, isSubmitting]) => (
-                      <Button
-                        type="submit"
-                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                        className="w-full"
-                      >
-                        {isSubmitting || createMutation.isPending ? t("apiKeys.createDialog.creating") : t("apiKeys.createDialog.submit")}
-                      </Button>
-                    )}
-                  </form.Subscribe>
-                </form>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            {t("apiKeys.loading")}
-          </p>
-        ) : (
-          <>
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className="flex items-center bg-muted/40 justify-between rounded-lg border p-4"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{key.name}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {t("clientApiKeys.idLabel", { id: key.id })}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
-                    {key.lastUsedAt && (
-                      <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
-                    )}
-                  </p>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setDeleteKeyId(key.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-
-            {keys.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                {t("apiKeys.empty")}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-
-      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("apiKeys.deleteDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("apiKeys.deleteDialog.description")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("apiKeys.deleteDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("apiKeys.deleteDialog.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
   )
 }
 
