@@ -3,9 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { formatSpeed, formatTrayTitle } from '../src/main/tray.js'
-import { APP_NAME } from '../src/shared/constants.js'
+import {
+	formatSpeed,
+	formatTrayTitle,
+	MENU_BAR_ICON_PIXELS,
+} from '../src/main/tray.js'
 
 describe('Tray speed formatting and title helpers', () => {
 	it('formats 0 bytes per second', () => {
@@ -27,8 +33,8 @@ describe('Tray speed formatting and title helpers', () => {
 		expect(formatSpeed(1024 * 1024 * 1024)).toBe('1.0 GB/s')
 	})
 
-	it('returns capitalized APP_NAME ("Qui") when idle without transfer stats', () => {
-		expect(formatTrayTitle()).toBe(APP_NAME)
+	it('leaves the status item title empty while idle so the Qui mark is the label', () => {
+		expect(formatTrayTitle()).toBe('')
 		expect(
 			formatTrayTitle({
 				dlSpeed: 0,
@@ -36,7 +42,20 @@ describe('Tray speed formatting and title helpers', () => {
 				activeCount: 0,
 				totalCount: 0,
 			}),
-		).toBe('Qui')
+		).toBe('')
+	})
+
+	it('ships the Qui mark used as the macOS status item', () => {
+		const branding = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			'../src/assets/branding',
+		)
+		const svg = readFileSync(path.join(branding, 'menu-bar.svg'), 'utf8')
+		expect(svg).toContain('M231.392 297.578')
+		expect(svg).toContain('fill="white"')
+		const png = readFileSync(path.join(branding, 'menu-bar.png'))
+		expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+		expect(MENU_BAR_ICON_PIXELS).toBe(28)
 	})
 
 	it('formats tray title with dynamic download and upload speeds', () => {

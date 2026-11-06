@@ -14,10 +14,10 @@ export const QUI_WEB_ORIGIN = `http://localhost:${DEFAULT_QUI_PORT}`
  */
 export const QUI_WEB_LOGIN_URL = `${QUI_WEB_ORIGIN}/login`
 export const DEFAULT_QBIT_PORT = 8080
-export const QUI_IMAGE = 'ghcr.io/autobrr/qui:latest'
+/** Local image built from this repo so the desktop chrome ships. */
+export const QUI_IMAGE = 'qui-desktop:local'
 export const QBIT_IMAGE = 'lscr.io/linuxserver/qbittorrent:latest'
 export const QUI_CONTAINER_NAME = 'qui'
 export const QBIT_CONTAINER_NAME = 'qbittorrent-nox'
-export const GLASS_THEME_ID = 'glassmorphism'
 export const GITHUB_REPO = 'Johann-Goncalves-Pereira/Qui'
 export const CURRENT_APP_VERSION = '1.0.0'

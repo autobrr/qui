@@ -6,7 +6,7 @@
   "main": "dist/main/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && mkdir -p dist/assets/branding && cp src/assets/branding/logo.png dist/assets/branding/",
+    "build": "tsc && mkdir -p dist/assets/branding && cp src/assets/branding/logo.png src/assets/branding/menu-bar.svg src/assets/branding/menu-bar.png dist/assets/branding/",
     "lint": "biome check src tests && eslint src tests",
     "format": "biome check --write src tests",
     "test": "vitest run",

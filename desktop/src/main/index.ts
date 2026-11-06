@@ -3,7 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import path from 'node:path'
+import { Schema } from 'effect'
+import {
+	app,
+	BrowserWindow,
+	dialog,
+	ipcMain,
+	nativeTheme,
+	safeStorage,
+} from 'electron'
 import {
 	APP_NAME,
 	DEFAULT_QBIT_PORT,
@@ -15,13 +26,25 @@ import {
 	QUI_WEB_LOGIN_URL,
 	QUI_WEB_ORIGIN,
 } from '../shared/constants.js'
+import { AccountVault } from './account-vault.js'
 import { QuiApiClient } from './api.js'
 import { BiometricAuthService } from './auth.js'
+import { dockerDataDirs, updatesWorthPrompting } from './container-layout.js'
 import { DockerManager } from './docker.js'
 import { openWrappedQui, waitForQuiHttpReady } from './qui-ready.js'
+import { startupPageUrl } from './startup-page.js'
 import { AppTray } from './tray.js'
 import { AppReleaseUpdater } from './updater.js'
-import { createMainWindow } from './window.js'
+import {
+	applyTrafficLights,
+	applyWindowMaterial,
+	createMainWindow,
+} from './window.js'
+
+const DismissedDigestsSchema = Schema.Record({
+	key: Schema.String,
+	value: Schema.String,
+})
 
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
@@ -50,29 +73,23 @@ if (!gotTheLock) {
 	})
 }
 
-const LOADING_SPINNER_SVG = `<svg width="60" height="60" viewBox="0 0 50 50"><g><g transform="rotate(0 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="0s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="0s" repeatCount="indefinite"></animate></line></g><g transform="rotate(60 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="0.3s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="0.3s" repeatCount="indefinite"></animate></line></g><g transform="rotate(120 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="0.6s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="0.6s" repeatCount="indefinite"></animate></line></g><g transform="rotate(180 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="0.8999999999999999s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="0.8999999999999999s" repeatCount="indefinite"></animate></line></g><g transform="rotate(240 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="1.2s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="1.2s" repeatCount="indefinite"></animate></line></g><g transform="rotate(300 25 25)"><rect x="22" y="5" width="6" height="6" fill="#faf4ff" opacity="0.8"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" begin="1.5s" repeatCount="indefinite"></animate></rect><line x1="25" y1="11" x2="25" y2="20" stroke="#faf4ff" stroke-width="2" opacity="0.5"><animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" begin="1.5s" repeatCount="indefinite"></animate></line></g><circle cx="25" cy="25" r="8" fill="none" stroke="#faf4ff" stroke-width="2"><animate attributeName="r" values="8;9;8" dur="2s" repeatCount="indefinite"></animate></circle></g></svg>`
+function showStartupPage(message: string, processInfo?: string): string {
+	return startupPageUrl(
+		message,
+		processInfo && processInfo.length > 0 ? processInfo : message,
+		nativeTheme.shouldUseDarkColors,
+	)
+}
 
-function waitingPageUrl(message: string, processInfo?: string): string {
-	const safeMessage = message
-		.replaceAll('&', '&amp;')
-		.replaceAll('<', '&lt;')
-		.replaceAll('>', '&gt;')
-	const codeBlockHtml = processInfo
-		? `<pre class="process-code"><code>${processInfo
-				.replaceAll('&', '&amp;')
-				.replaceAll('<', '&lt;')
-				.replaceAll('>', '&gt;')}</code></pre>`
-		: ''
-
-	const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;height:100%;background:transparent;color:#f0f6fc;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
-.card{background:rgba(22,27,34,.78);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:32px 36px;text-align:center;max-width:440px;box-shadow:0 20px 40px rgba(0,0,0,.45)}
-.spinner{display:flex;align-items:center;justify-content:center;margin-bottom:16px}
-h1{font-size:24px;margin:0 0 10px;font-weight:650;letter-spacing:-0.02em}
-p{margin:0;color:#c9d1d9;font-size:14px;line-height:1.5}
-.process-code{margin:16px 0 0;padding:10px 14px;background:rgba(13,17,23,.85);border:1px solid rgba(255,255,255,.1);border-radius:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;color:#a5d6ff;text-align:left;overflow-x:auto;max-height:120px;white-space:pre-wrap;word-break:break-all}
-</style></head><body><div class="card"><div class="spinner">${LOADING_SPINNER_SVG}</div><h1>Qui</h1><p>${safeMessage}</p>${codeBlockHtml}</div></body></html>`
-	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+async function presentStartupPage(
+	win: BrowserWindow,
+	message: string,
+	processInfo?: string,
+): Promise<void> {
+	await win.loadURL(showStartupPage(message, processInfo))
+	if (!win.isVisible()) {
+		win.show()
+	}
 }
 
 let openingQui: Promise<void> | null = null
@@ -90,9 +107,25 @@ async function loadQuiWebUi(): Promise<void> {
 		try {
 			result = await openWrappedQui({
 				showStatus: async (message, processInfo) => {
-					await win.loadURL(waitingPageUrl(message, processInfo))
+					await presentStartupPage(win, message, processInfo)
 				},
 				ensureContainers: async () => {
+					const dirs = dockerDataDirs(homedir(), process.platform)
+					for (const dir of [dirs.quiConfig, dirs.qbitConfig, dirs.downloads]) {
+						mkdirSync(dir, { recursive: true })
+					}
+					await dockerManager.alignContainer(
+						QUI_CONTAINER_NAME,
+						QUI_IMAGE,
+						dirs.quiConfig,
+						'/config',
+					)
+					await dockerManager.alignContainer(
+						QBIT_CONTAINER_NAME,
+						QBIT_IMAGE,
+						dirs.qbitConfig,
+						'/config',
+					)
 					const { qui, qbit } = await dockerManager.ensureContainersRunning()
 					if (tray) tray.updateDockerStatus(qui, qbit)
 				},
@@ -105,7 +138,7 @@ async function loadQuiWebUi(): Promise<void> {
 		} catch (error) {
 			const detail =
 				error instanceof Error ? error.message : 'Docker or Qui failed to start'
-			await win.loadURL(waitingPageUrl('Failed to start Qui', detail))
+			await presentStartupPage(win, 'Failed to start Qui', detail)
 		} finally {
 			openingQui = null
 		}
@@ -153,13 +186,9 @@ function registerIpcHandlers(): void {
 		'docker:apply-update',
 		async (
 			_event,
-			{
-				containerName,
-				image,
-				port,
-			}: { containerName: string; image: string; port: number },
+			{ containerName, image }: { containerName: string; image: string },
 		) => {
-			return dockerManager.updateAndRestartContainer(containerName, image, port)
+			return dockerManager.updateAndRestartContainer(containerName, image)
 		},
 	)
 
@@ -170,6 +199,82 @@ function registerIpcHandlers(): void {
 	ipcMain.handle('updater:check-app-update', async () => {
 		return appUpdater.checkForUpdates()
 	})
+
+	ipcMain.handle('window:set-material', async (_event, glass: unknown) => {
+		if (!mainWindow || typeof glass !== 'boolean') {
+			return
+		}
+		applyWindowMaterial(mainWindow, glass)
+	})
+
+	ipcMain.handle('window:set-sidebar', async (_event, visible: unknown) => {
+		if (!mainWindow || typeof visible !== 'boolean') {
+			return
+		}
+		applyTrafficLights(mainWindow, visible)
+	})
+
+	ipcMain.handle(
+		'account:save',
+		async (_event, username: unknown, password: unknown) => {
+			if (
+				typeof username !== 'string' ||
+				typeof password !== 'string' ||
+				!safeStorage.isEncryptionAvailable()
+			) {
+				return
+			}
+			accountVault().save({ username, password })
+		},
+	)
+
+	ipcMain.handle('account:has', async () => accountVault().has())
+
+	ipcMain.handle('account:unlock', async () => {
+		const auth = await biometricAuth.authenticate('Sign in to Qui')
+		if (!auth.success) {
+			return null
+		}
+		return accountVault().read()
+	})
+}
+
+function dismissalFile(): string {
+	return path.join(app.getPath('userData'), 'dismissed-docker-digests.json')
+}
+
+function readDismissedDigests(): Record<string, string> {
+	try {
+		return Schema.decodeUnknownSync(DismissedDigestsSchema)(
+			JSON.parse(readFileSync(dismissalFile(), 'utf8')),
+		)
+	} catch {
+		return {}
+	}
+}
+
+function writeDismissedDigests(value: Record<string, string>): void {
+	writeFileSync(dismissalFile(), JSON.stringify(value))
+}
+
+function accountVault(): AccountVault {
+	const file = path.join(app.getPath('userData'), 'account.bin')
+	return new AccountVault(
+		{
+			encrypt: plain => safeStorage.encryptString(plain),
+			decrypt: bytes => safeStorage.decryptString(Buffer.from(bytes)),
+		},
+		() => {
+			try {
+				return readFileSync(file)
+			} catch {
+				return null
+			}
+		},
+		bytes => {
+			writeFileSync(file, Buffer.from(bytes))
+		},
+	)
 }
 
 async function checkAndPromptDockerUpdates(options?: {
@@ -182,7 +287,10 @@ async function checkAndPromptDockerUpdates(options?: {
 		const quiUpdate = await dockerManager.checkForImageUpdate(QUI_IMAGE)
 		const qbitUpdate = await dockerManager.checkForImageUpdate(QBIT_IMAGE)
 
-		const updates = [quiUpdate, qbitUpdate].filter(u => u.hasUpdate)
+		const updates = updatesWorthPrompting(
+			[quiUpdate, qbitUpdate],
+			options?.force ? {} : readDismissedDigests(),
+		)
 		if (updates.length > 0 && mainWindow) {
 			dockerImageUpdatePromptShownThisSession = true
 			const names = updates.map(u => u.image).join(', ')
@@ -191,18 +299,26 @@ async function checkAndPromptDockerUpdates(options?: {
 				title: `${APP_NAME} - Docker Image Updates Available`,
 				message: `Updates are available for: ${names}`,
 				detail:
-					'Would you like to pull the latest Docker image(s) and restart the containers now?',
+					'Would you like to pull the latest Docker image(s) and restart the containers now? Your Qui account stays in the desktop data folder.',
 				buttons: ['Update Now', 'Later'],
-				defaultId: 0,
+				defaultId: 1,
 				cancelId: 1,
 			})
 
+			if (response !== 0) {
+				const dismissed = readDismissedDigests()
+				for (const update of updates) {
+					dismissed[update.image] = update.remoteDigest
+				}
+				writeDismissedDigests(dismissed)
+				return
+			}
+
 			if (response === 0) {
 				for (const u of updates) {
-					const isQui = u.image === QUI_IMAGE
-					const name = isQui ? QUI_CONTAINER_NAME : QBIT_CONTAINER_NAME
-					const port = isQui ? DEFAULT_QUI_PORT : DEFAULT_QBIT_PORT
-					await dockerManager.updateAndRestartContainer(name, u.image, port)
+					const name =
+						u.image === QUI_IMAGE ? QUI_CONTAINER_NAME : QBIT_CONTAINER_NAME
+					await dockerManager.updateAndRestartContainer(name, u.image)
 				}
 				dialog.showMessageBox(mainWindow, {
 					type: 'info',

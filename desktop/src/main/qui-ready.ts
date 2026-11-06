@@ -59,7 +59,7 @@ export type WrappedQuiOpenResult = 'opened' | 'unavailable'
 
 /**
  * Start Docker, wait until Qui answers HTTP, then open the real web UI.
- * A status line is shown first so the window is not an empty vibrancy shell
+ * A status line is shown first so the window is not an empty shell
  * while containers are still stopped.
  */
 export async function openWrappedQui(steps: {

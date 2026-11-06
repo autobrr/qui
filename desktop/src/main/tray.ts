@@ -3,8 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { type BrowserWindow, Menu, nativeImage, Tray } from 'electron'
-import { APP_NAME } from '../shared/constants.js'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+	type BrowserWindow,
+	Menu,
+	type NativeImage,
+	nativeImage,
+	Tray,
+} from 'electron'
+import { APP_NAME, QUI_IMAGE } from '../shared/constants.js'
 import type {
 	DockerContainerStatus,
 	TorrentTransferStats,
@@ -23,9 +31,33 @@ export function formatSpeed(bytesPerSec: number): string {
 
 export function formatTrayTitle(stats?: TorrentTransferStats): string {
 	if (!stats || (stats.dlSpeed === 0 && stats.upSpeed === 0)) {
-		return APP_NAME
+		return ''
 	}
 	return `↓ ${formatSpeed(stats.dlSpeed)} ↑ ${formatSpeed(stats.upSpeed)}`
+}
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+/** 14pt status glyph. The bitmap is 2x so it stays sharp on a retina menu bar. */
+export const MENU_BAR_ICON_PIXELS = 28
+
+function createMenuBarIcon(): NativeImage {
+	// nativeImage does not decode SVG. menu-bar.png is that mark as a
+	// black silhouette; the template flag lets macOS tint it.
+	const pngPath = path.join(__dirname, '../assets/branding/menu-bar.png')
+	const source = nativeImage.createFromPath(pngPath)
+	const resized = source.resize({
+		width: MENU_BAR_ICON_PIXELS,
+		height: MENU_BAR_ICON_PIXELS,
+	})
+	const icon = nativeImage.createFromBitmap(resized.toBitmap(), {
+		width: MENU_BAR_ICON_PIXELS,
+		height: MENU_BAR_ICON_PIXELS,
+		scaleFactor: 2,
+	})
+	icon.setTemplateImage(true)
+	return icon
 }
 
 export interface TrayCallbacks {
@@ -52,7 +84,7 @@ export class AppTray {
 		name: 'qui',
 		state: 'unknown',
 		status: 'checking',
-		image: 'ghcr.io/autobrr/qui:latest',
+		image: QUI_IMAGE,
 		port: 7476,
 	}
 	private qbitStatus: DockerContainerStatus = {
@@ -69,18 +101,11 @@ export class AppTray {
 	) {}
 
 	init(): void {
-		// Create a 16x16 monochromatic template icon for macOS status bar
-		const icon = nativeImage.createFromBuffer(
-			Buffer.from(
-				'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAFNJREFUOE9jZKAQMFKon2H4f+p/RiIBI24FjDAGw6f///+ToxmjChB4+p8B2Q1/Gf6TYgC2w4E0j8A0o3sC1YKhZAZuG7AbjqwRzYJhY8BwNQMAt24v7dG7jWIAAAAASUVORK5CYII=',
-				'base64',
-			),
-		)
-		icon.setTemplateImage(true)
+		const icon = createMenuBarIcon()
 
 		this.tray = new Tray(icon)
 		this.tray.setToolTip(`${APP_NAME} - qBittorrent WebUI`)
-		this.tray.setTitle(APP_NAME)
+		this.tray.setTitle(formatTrayTitle())
 
 		this.tray.on('click', () => {
 			this.callbacks.onShowApp()

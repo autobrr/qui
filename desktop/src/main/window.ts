@@ -7,15 +7,18 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BrowserWindow } from 'electron'
 import { APP_NAME } from '../shared/constants.js'
+import { windowMaterialForGlass } from './window-material.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-/** Fully transparent window chrome; Qui’s own web UI paints on top (Glassmorphism / backdrop in the SPA). */
-export const MAIN_WINDOW_BACKGROUND = '#00000000'
-
+/**
+ * Born clear. The page paints the opaque theme until glass is on, and a
+ * window created with a solid fill cannot later show the desktop.
+ */
 export function createMainWindow(): BrowserWindow {
 	const preloadPath = path.join(__dirname, '../preload/index.js')
+	const material = windowMaterialForGlass(false)
 
 	const win = new BrowserWindow({
 		width: 1280,
@@ -26,8 +29,7 @@ export function createMainWindow(): BrowserWindow {
 		icon: path.join(__dirname, '../assets/branding/logo.png'),
 		titleBarStyle: 'hiddenInset',
 		transparent: true,
-		backgroundColor: MAIN_WINDOW_BACKGROUND,
-		vibrancy: 'under-window',
+		backgroundColor: material.backgroundColor,
 		visualEffectState: 'active',
 		show: false,
 		webPreferences: {
@@ -38,9 +40,29 @@ export function createMainWindow(): BrowserWindow {
 		},
 	})
 
-	win.once('ready-to-show', () => {
-		win.show()
-	})
-
 	return win
+}
+
+export const DEFAULT_TRAFFIC_LIGHT_POSITION = { x: 12, y: 10 }
+/** Vertically centered on the 48px sidebar brand row. */
+export const SIDEBAR_TRAFFIC_LIGHT_POSITION = { x: 14, y: 18 }
+
+export function applyTrafficLights(
+	win: BrowserWindow,
+	sidebarVisible: boolean,
+): void {
+	if (process.platform !== 'darwin') {
+		return
+	}
+	win.setWindowButtonPosition(
+		sidebarVisible
+			? SIDEBAR_TRAFFIC_LIGHT_POSITION
+			: DEFAULT_TRAFFIC_LIGHT_POSITION,
+	)
+}
+
+export function applyWindowMaterial(win: BrowserWindow, glass: boolean): void {
+	const material = windowMaterialForGlass(glass)
+	win.setBackgroundColor(material.backgroundColor)
+	win.setVibrancy(material.vibrancy)
 }

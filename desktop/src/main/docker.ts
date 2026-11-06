@@ -4,6 +4,9 @@
  */
 
 import { execFile } from 'node:child_process'
+import { existsSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import path from 'node:path'
 import { promisify } from 'node:util'
 import { Schema } from 'effect'
 import {
@@ -20,6 +23,12 @@ import {
 	type DockerUpdateInfo,
 	DockerUpdateInfoSchema,
 } from '../shared/types.js'
+import {
+	dockerDataDirs,
+	imageDigestHasUpdate,
+	qbitContainerRunArgs,
+	quiContainerRunArgs,
+} from './container-layout.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -43,25 +52,106 @@ const DEFAULT_EXEC_PATH = [
 	.filter(Boolean)
 	.join(':')
 
+export const DOCKER_BINARY_NOT_FOUND = 'docker binary not found'
+
+/** macOS GUI launches do not inherit a shell PATH, so look up the CLI by path. */
+export function dockerBinaryCandidates(homeDir: string): readonly string[] {
+	return [
+		path.join(homeDir, '.docker', 'bin', 'docker'),
+		'/opt/homebrew/bin/docker',
+		'/usr/local/bin/docker',
+		'/Applications/Docker.app/Contents/Resources/bin/docker',
+	]
+}
+
+export function resolveDockerBinary(
+	exists: (candidate: string) => boolean,
+	homeDir: string,
+): string {
+	for (const candidate of dockerBinaryCandidates(homeDir)) {
+		if (exists(candidate)) {
+			return candidate
+		}
+	}
+	throw new Error(DOCKER_BINARY_NOT_FOUND)
+}
+
 export class CliDockerExecutor implements DockerExecutor {
+	constructor(
+		private readonly locateBinary: () => string = () =>
+			resolveDockerBinary(existsSync, homedir()),
+	) {}
+
 	async exec(
 		command: string,
 		args: string[],
 	): Promise<{ stdout: string; stderr: string }> {
-		return execFileAsync(command, args, {
+		const executable = command === 'docker' ? this.locateBinary() : command
+		const pathValue = [path.dirname(executable), DEFAULT_EXEC_PATH].join(
+			path.delimiter,
+		)
+		return execFileAsync(executable, args, {
 			timeout: 120000,
 			env: {
 				...process.env,
-				PATH: DEFAULT_EXEC_PATH,
+				PATH: pathValue,
 			},
 		})
 	}
 }
 
+const INSPECT_ALIGN_FORMAT =
+	'{{.Config.Image}}||{{range .Mounts}}{{.Destination}}={{.Source}};{{end}}'
+
 export class DockerManager {
 	constructor(
 		private readonly executor: DockerExecutor = new CliDockerExecutor(),
+		private readonly mkdir: (dir: string) => void = dir => {
+			mkdirSync(dir, { recursive: true })
+		},
 	) {}
+
+	/**
+	 * Copy /config onto the host, then remove the container, when it is missing
+	 * that mount or is not the requested image. A failed copy leaves the
+	 * container in place so the account database is not deleted.
+	 */
+	async alignContainer(
+		name: string,
+		desiredImage: string,
+		hostDir: string,
+		containerDir: string,
+	): Promise<void> {
+		let raw: string
+		try {
+			const { stdout } = await this.executor.exec('docker', [
+				'inspect',
+				'--format',
+				INSPECT_ALIGN_FORMAT,
+				name,
+			])
+			raw = stdout.trim()
+		} catch {
+			return
+		}
+		const [image = '', mounts = ''] = raw.split('||')
+		const mounted = mounts
+			.split(';')
+			.some(entry => entry === `${containerDir}=${hostDir}`)
+		if (mounted && image === desiredImage) {
+			return
+		}
+		await this.executor.exec('docker', ['stop', name])
+		if (!mounted) {
+			this.mkdir(hostDir)
+			await this.executor.exec('docker', [
+				'cp',
+				`${name}:${containerDir}/.`,
+				hostDir,
+			])
+		}
+		await this.executor.exec('docker', ['rm', name])
+	}
 
 	async isDockerAvailable(): Promise<boolean> {
 		try {
@@ -113,42 +203,19 @@ export class DockerManager {
 		qui: DockerContainerStatus
 		qbit: DockerContainerStatus
 	}> {
+		const dirs = dockerDataDirs(homedir(), process.platform)
 		const quiStatus = await this.ensureContainer(
 			QUI_CONTAINER_NAME,
 			QUI_IMAGE,
 			DEFAULT_QUI_PORT,
-			[
-				'run',
-				'-d',
-				'--name',
-				QUI_CONTAINER_NAME,
-				'-p',
-				`${DEFAULT_QUI_PORT}:7476`,
-				'--restart',
-				'unless-stopped',
-				QUI_IMAGE,
-			],
+			quiContainerRunArgs(QUI_IMAGE, dirs.quiConfig),
 		)
 
 		const qbitStatus = await this.ensureContainer(
 			QBIT_CONTAINER_NAME,
 			QBIT_IMAGE,
 			DEFAULT_QBIT_PORT,
-			[
-				'run',
-				'-d',
-				'--name',
-				QBIT_CONTAINER_NAME,
-				'-p',
-				`${DEFAULT_QBIT_PORT}:8080`,
-				'-p',
-				'6881:6881',
-				'-p',
-				'6881:6881/udp',
-				'--restart',
-				'unless-stopped',
-				QBIT_IMAGE,
-			],
+			qbitContainerRunArgs(QBIT_IMAGE, dirs.qbitConfig, dirs.downloads),
 		)
 
 		return { qui: quiStatus, qbit: qbitStatus }
@@ -171,8 +238,7 @@ export class DockerManager {
 			return this.getContainerStatus(name, port, image)
 		}
 
-		// Not found: pull and run
-		await this.executor.exec('docker', ['pull', image])
+		await this.pullIfMissing(image)
 		await this.executor.exec('docker', runArgs)
 		return this.getContainerStatus(name, port, image)
 	}
@@ -188,8 +254,9 @@ export class DockerManager {
 			])
 			const localDigest = localDigestOut.trim()
 
-			// Inspect remote image manifest using docker manifest inspect / buildx imagetools inspect
-			let remoteDigest = ''
+			// The raw manifest lists every platform digest. An update exists only
+			// when none of those digests are already local.
+			let remoteText = ''
 			try {
 				const { stdout: remoteOut } = await this.executor.exec('docker', [
 					'buildx',
@@ -198,32 +265,19 @@ export class DockerManager {
 					'--raw',
 					imageName,
 				])
-				// Parse manifest digest or sha if available
-				const hashMatch = remoteOut.match(/sha256:[a-f0-9]{64}/i)
-				remoteDigest = hashMatch ? hashMatch[0] : ''
+				remoteText = remoteOut
 			} catch {
-				// Fallback to docker manifest inspect
 				const { stdout: manifestOut } = await this.executor.exec('docker', [
 					'manifest',
 					'inspect',
 					imageName,
 				])
-				const hashMatch = manifestOut.match(/sha256:[a-f0-9]{64}/i)
-				remoteDigest = hashMatch ? hashMatch[0] : ''
+				remoteText = manifestOut
 			}
 
-			const extractDigests = (s: string): Set<string> => {
-				const found = new Set<string>()
-				for (const m of s.matchAll(/sha256:[a-f0-9]{64}/gi)) {
-					found.add(m[0].toLowerCase())
-				}
-				return found
-			}
-			const localSet = extractDigests(localDigest)
-			const remoteNorm = remoteDigest.toLowerCase()
-			const hasUpdate = Boolean(
-				localSet.size > 0 && remoteNorm.length > 0 && !localSet.has(remoteNorm),
-			)
+			const hasUpdate = imageDigestHasUpdate(localDigest, remoteText)
+			const remoteDigest =
+				remoteText.match(/sha256:[a-f0-9]{64}/i)?.[0] ?? 'unknown'
 
 			return Schema.decodeUnknownSync(DockerUpdateInfoSchema)({
 				hasUpdate,
@@ -244,45 +298,28 @@ export class DockerManager {
 	async updateAndRestartContainer(
 		containerName: string,
 		image: string,
-		port: number,
 	): Promise<boolean> {
 		try {
+			const dirs = dockerDataDirs(homedir(), process.platform)
 			await this.executor.exec('docker', ['pull', image])
 			await this.executor.exec('docker', ['stop', containerName])
 			await this.executor.exec('docker', ['rm', containerName])
-
-			if (containerName === QUI_CONTAINER_NAME) {
-				await this.executor.exec('docker', [
-					'run',
-					'-d',
-					'--name',
-					containerName,
-					'-p',
-					`${port}:7476`,
-					'--restart',
-					'unless-stopped',
-					image,
-				])
-			} else {
-				await this.executor.exec('docker', [
-					'run',
-					'-d',
-					'--name',
-					containerName,
-					'-p',
-					`${port}:8080`,
-					'-p',
-					'6881:6881',
-					'-p',
-					'6881:6881/udp',
-					'--restart',
-					'unless-stopped',
-					image,
-				])
-			}
+			const runArgs =
+				containerName === QUI_CONTAINER_NAME
+					? quiContainerRunArgs(image, dirs.quiConfig)
+					: qbitContainerRunArgs(image, dirs.qbitConfig, dirs.downloads)
+			await this.executor.exec('docker', runArgs)
 			return true
 		} catch {
 			return false
+		}
+	}
+
+	private async pullIfMissing(image: string): Promise<void> {
+		try {
+			await this.executor.exec('docker', ['image', 'inspect', image])
+		} catch {
+			await this.executor.exec('docker', ['pull', image])
 		}
 	}
 }

@@ -5,7 +5,7 @@
 
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { APP_NAME, GLASS_THEME_ID } from '../src/shared/constants.js'
+import { APP_NAME } from '../src/shared/constants.js'
 import {
 	BiometricAuthResultSchema,
 	DesktopConfigSchema,
@@ -81,12 +81,12 @@ describe('Effect/Schema desktop validation', () => {
 			quiUrl: 'http://127.0.0.1:7476',
 			qbitUrl: 'http://127.0.0.1:8080',
 			enableTouchId: true,
-			theme: GLASS_THEME_ID,
+			theme: 'minimal',
 			minimizeToTray: true,
 			autoUpdateImages: false,
 		}
 		const decoded = Schema.decodeUnknownSync(DesktopConfigSchema)(valid)
-		expect(decoded.theme).toBe('glassmorphism')
+		expect(decoded.theme).toBe('minimal')
 	})
 
 	it('enforces capitalized app name branding Qui (BR-desktop-06)', () => {

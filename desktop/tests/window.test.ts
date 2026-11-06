@@ -4,10 +4,21 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { MAIN_WINDOW_BACKGROUND } from '../src/main/window.js'
+import {
+	GLASS_WINDOW_BACKGROUND,
+	windowMaterialForGlass,
+} from '../src/main/window-material.js'
 
 describe('Main window surface (BR-desktop-05)', () => {
-	it('uses a transparent window chrome with macOS vibrancy so the desktop shows through behind Qui’s web UI', () => {
-		expect(MAIN_WINDOW_BACKGROUND).toBe('#00000000')
+	it('blurs the desktop with HUD vibrancy while glass is below 100%', () => {
+		expect(windowMaterialForGlass(false)).toEqual({
+			vibrancy: null,
+			backgroundColor: GLASS_WINDOW_BACKGROUND,
+		})
+		expect(windowMaterialForGlass(true)).toEqual({
+			vibrancy: 'hud',
+			backgroundColor: GLASS_WINDOW_BACKGROUND,
+		})
+		expect(GLASS_WINDOW_BACKGROUND).toBe('#00000000')
 	})
 })
