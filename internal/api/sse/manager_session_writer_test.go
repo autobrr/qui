@@ -101,7 +101,7 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 // go-sse calls onSession.
 func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
 	t.Helper()
-	conn := manager.openConnection(false)
+	conn := manager.openConnection(false, 0)
 	sub, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, key, conn, false)
 	require.NoError(t, err)
 	ctx := context.WithValue(t.Context(), connectionContextKey, conn)
@@ -190,7 +190,7 @@ func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
-	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true))
+	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true, 0))
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
 	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)

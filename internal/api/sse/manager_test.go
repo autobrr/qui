@@ -1185,7 +1185,7 @@ func TestRegisterSubscription_DuringShutdown(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to register after shutdown
-	_, err = manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "test-key", manager.openConnection(false), false)
+	_, err = manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "test-key", manager.openConnection(false, 0), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "shutting down")
 }

@@ -25,6 +25,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tmaxmax/go-sse"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -254,6 +256,8 @@ type StreamManager struct {
 // reaches the session.
 type streamConnection struct {
 	id string
+	// apiKeyID is the API key that opened the connection, and 0 for a session.
+	apiKeyID int
 
 	mu sync.Mutex
 	// subs holds the subscriptions of the connection by id. It is nil after the
@@ -548,13 +552,14 @@ func (m *StreamManager) Stats() StreamStats {
 
 // openConnection registers a new stream connection. A connection with activity
 // gets activity events on its topic.
-func (m *StreamManager) openConnection(activity bool) *streamConnection {
+func (m *StreamManager) openConnection(activity bool, apiKeyID int) *streamConnection {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextConnectionID++
 	ready := make(chan struct{})
 	conn := &streamConnection{
 		id:        fmt.Sprintf("qui-conn-%d", m.nextConnectionID),
+		apiKeyID:  apiKeyID,
 		subs:      make(map[string]*subscriptionState),
 		ready:     ready,
 		markReady: sync.OnceFunc(func() { close(ready) }),
@@ -911,7 +916,7 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := m.openConnection(activityRequested)
+	conn := m.openConnection(activityRequested, requestAPIKeyID(r))
 	defer m.closeConnection(conn)
 	ctx := context.WithValue(r.Context(), connectionContextKey, conn)
 	if len(requests) > 0 {
@@ -982,8 +987,9 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	m.server.ServeHTTP(sessionWriter, req)
 }
 
-// validateInstances checks that each instance of the requests exists. It writes
-// the error response and returns false when one does not.
+// validateInstances checks that the API key may read torrents and that each
+// instance of the requests exists. It writes the error response and returns
+// false when a check fails.
 func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request, requests []streamRequest) bool {
 	instanceIDs := make(map[int]struct{}, len(requests))
 	for _, req := range requests {
@@ -992,6 +998,9 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 		for _, instanceID := range req.options.instanceIDs() {
 			instanceIDs[instanceID] = struct{}{}
 		}
+	}
+	if len(instanceIDs) > 0 && !middleware.HasPermission(w, r, models.AreaTorrents, models.LevelRead) {
+		return false
 	}
 
 	for instanceID := range instanceIDs {
@@ -1009,6 +1018,13 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 	return true
 }
 
+func requestAPIKeyID(r *http.Request) int {
+	if key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
+		return key.ID
+	}
+	return 0
+}
+
 // subscriptionChange is the body of POST /stream/subscriptions.
 type subscriptionChange struct {
 	ConnectionID string                 `json:"connectionId"`
@@ -1016,10 +1032,10 @@ type subscriptionChange struct {
 	Remove       []string               `json:"remove"`
 }
 
-// ChangeSubscriptions adds and removes subscriptions on an open connection. It
-// removes first, and an added key replaces a subscription with the same key. A
-// new subscription gets its init on the connection before any other frame, and
-// the other subscriptions get no init.
+// ChangeSubscriptions adds and removes subscriptions on a connection that the
+// caller opened. It removes first, and an added key replaces a subscription with
+// the same key. A new subscription gets its init on the connection before any
+// other frame, and the other subscriptions get no init.
 func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if m.closing.Load() {
 		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
@@ -1051,7 +1067,8 @@ func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Reque
 	m.mu.RLock()
 	conn := m.connections[change.ConnectionID]
 	m.mu.RUnlock()
-	if conn == nil {
+	// Connection IDs are sequential, so an ID alone proves nothing.
+	if conn == nil || conn.apiKeyID != requestAPIKeyID(r) {
 		http.Error(w, "connection not found", http.StatusNotFound)
 		return
 	}

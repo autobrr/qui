@@ -32,7 +32,7 @@ The session cookie is for the qui web UI. Use an API key for scripts. See [Sessi
 
 `GET /api/stream` sends torrent updates through Server-Sent Events. See `/api/docs` for subscription parameters and event examples.
 
-The first event of a stream is `connection`. To add or remove subscriptions without a reconnect, send its `connectionId` to `POST /api/stream/subscriptions`. Each new subscription gets an `init` event before its other events, and the other subscriptions get no new `init`.
+The first event of a stream is `connection`. To add or remove subscriptions without a reconnect, send its `connectionId` to `POST /api/stream/subscriptions`. Each new subscription gets an `init` event before its other events, and the other subscriptions get no new `init`. Only the API key or session that opened the connection can change it.
 
 Keep the version from each accepted snapshot or delta. Apply a delta only when its `baseVersion` matches that version and its `minor` increases by one within the same `major`. If the versions do not match, reconnect for a full snapshot and use REST polling until it arrives.
 

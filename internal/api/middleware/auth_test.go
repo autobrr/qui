@@ -27,7 +27,7 @@ import (
 func createUsedAPIKey(t *testing.T, db *database.DB) string {
 	t.Helper()
 	store := models.NewAPIKeyStore(db)
-	rawKey, apiKey, err := store.Create(t.Context(), "test-key")
+	rawKey, apiKey, err := store.Create(t.Context(), "test-key", models.AllPermissions(), nil)
 	require.NoError(t, err)
 	require.NoError(t, store.UpdateLastUsed(t.Context(), apiKey.ID))
 	return rawKey
