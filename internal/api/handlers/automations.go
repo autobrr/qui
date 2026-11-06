@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -242,6 +243,8 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
 		return
 	}
+	// The run skips a disabled rule.
+	rules = slices.DeleteFunc(rules, func(rule *models.Automation) bool { return !rule.Enabled })
 	if !canReachExportTargets(w, r, rules...) {
 		return
 	}

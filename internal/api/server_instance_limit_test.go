@@ -151,6 +151,18 @@ func TestInstanceLimit(t *testing.T) {
 			require.Equal(t, http.StatusForbidden, status, tc.path)
 			require.JSONEq(t, refused, body, tc.path)
 		}
+
+		saved, err := rig.deps.AutomationStore.ListByInstance(t.Context(), first)
+		require.NoError(t, err)
+		for _, rule := range saved {
+			rule.Enabled = false
+			_, err = rig.deps.AutomationStore.Update(t.Context(), rule)
+			require.NoError(t, err)
+		}
+		status, body = rig.sendBody(t, http.MethodPost, rules+"/apply", key, nil, "{}")
+		require.NotEqual(t, http.StatusForbidden, status, "a run of all rules skips a disabled rule: %s", body)
+		status, body = rig.sendBody(t, http.MethodPost, rule+"/apply", key, nil, "{}")
+		require.Equal(t, http.StatusForbidden, status, "a run of one rule also runs a disabled rule: %s", body)
 	})
 
 	t.Run("after its last instance is deleted the key reaches no instance", func(t *testing.T) {
