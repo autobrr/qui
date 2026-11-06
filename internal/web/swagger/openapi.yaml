@@ -1812,7 +1812,8 @@ paths:
         connection before any other event of that subscription. The other
         subscriptions of the connection get no `init`. A connection holds at
         most 64 subscriptions. When the connection closes, the server removes
-        each of its subscriptions.
+        each of its subscriptions. Only the API key or session that opened the
+        connection can change it. Any other caller gets a 404.
       requestBody:
         required: true
         content:

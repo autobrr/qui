@@ -41,7 +41,6 @@ const (
 	AreaSystem           PermissionArea = "system"
 )
 
-// Permission is one area and one level on an API key.
 type Permission struct {
 	Area  PermissionArea  `json:"area"`
 	Level PermissionLevel `json:"level"`

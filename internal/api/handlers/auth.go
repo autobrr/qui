@@ -579,7 +579,6 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateAPIKey sets the name, the Permissions, and the Instance limit of an API key
 func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return

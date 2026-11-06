@@ -511,7 +511,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 			r.Get("/peer-client-icons/{name}", peerClientIconHandler.GetPeerClientIcon)
-			// Checks "Torrents: read" for each torrent stream that it adds.
+			// Checks "Torrents: read" for each torrent stream that it adds, and that the caller opened the connection.
 			r.Post("/stream/subscriptions", s.streamManager.ChangeSubscriptions)
 
 			// Auth routes

@@ -143,7 +143,6 @@ func (s *Service) CreateAPIKey(ctx context.Context, name string, permissions []m
 	return s.apiKeyStore.Create(ctx, name, permissions, instanceIDs)
 }
 
-// UpdateAPIKey sets the name, the Permissions, and the Instance limit of an API key
 func (s *Service) UpdateAPIKey(ctx context.Context, id int, name string, permissions []models.Permission, instanceIDs []int) (*models.APIKey, error) {
 	return s.apiKeyStore.Update(ctx, id, name, permissions, instanceIDs)
 }

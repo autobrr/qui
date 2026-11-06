@@ -44,7 +44,7 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	multiOpts := StreamOptions{InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}
-	conn := manager.openConnection(false)
+	conn := manager.openConnection(false, 0)
 	multi, err := manager.registerSubscription(multiOpts, "multi", conn, false)
 	require.NoError(t, err)
 
@@ -188,7 +188,7 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false), false)
+	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false, 0), false)
 	require.NoError(t, err)
 	builds := provider.signalBuilds()
 

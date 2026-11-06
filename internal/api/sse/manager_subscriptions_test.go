@@ -9,12 +9,17 @@ import (
 	"encoding/json/v2"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // changeStream is an open stream that also takes subscription changes.
@@ -30,12 +35,27 @@ type changeStream struct {
 // stream and has not subscribed the session yet.
 func openChangeStream(t *testing.T, manager *StreamManager, payload []map[string]any) *changeStream {
 	t.Helper()
+	return openChangeStreamAs(t, manager, nil, payload)
+}
+
+// withAPIKey makes the request look authenticated by the key. A nil key is a session.
+func withAPIKey(r *http.Request, key *models.APIKey) *http.Request {
+	if key == nil {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), ctxkeys.APIKey, key))
+}
+
+func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey, payload []map[string]any) *changeStream {
+	t.Helper()
 
 	listener := &pipeListener{conns: make(chan net.Conn), closed: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /stream", manager.Serve)
 	mux.HandleFunc("POST /stream/subscriptions", manager.ChangeSubscriptions)
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, withAPIKey(r, key))
+	})}
 	go func() { _ = srv.Serve(listener) }()
 	transport := &http.Transport{DialContext: listener.dial}
 	t.Cleanup(func() {
@@ -155,6 +175,47 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 		require.NotContains(t, frames["main"], streamEventInit)
 		require.NotContains(t, frames["details-b"], streamEventInit)
 	})
+}
+
+// regression: #3845
+func TestSubscriptionChangeOnlyFromTheOpener(t *testing.T) {
+	logsRead := &models.APIKey{ID: 7, Permissions: []models.Permission{{Area: models.AreaLogs, Level: models.LevelRead}}}
+	torrentsRead := &models.APIKey{ID: 8, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}}
+
+	for _, tc := range []struct {
+		name           string
+		opener, caller *models.APIKey
+		wantStatus     int
+	}{
+		{"a key without Torrents: read cannot change a browser connection", nil, logsRead, http.StatusNotFound},
+		{"a key with Torrents: read cannot change a browser connection", nil, torrentsRead, http.StatusNotFound},
+		{"a browser session cannot change the connection of a key", torrentsRead, nil, http.StatusNotFound},
+		{"a key can change its own connection", torrentsRead, torrentsRead, http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				manager := newIdleTestManager(t, &fakeSyncProvider{torrentsResponse: cannedResponse()})
+				stream := openChangeStreamAs(t, manager, tc.opener, streamPayload(1, "main"))
+				stream.waitForEvent(t, streamEventInit, time.Second)
+				synctest.Wait()
+
+				body := `{"connectionId":"` + stream.connectionID + `","remove":["main"]}`
+				r := httptest.NewRequest(http.MethodPost, "/stream/subscriptions", strings.NewReader(body))
+				w := httptest.NewRecorder()
+				manager.ChangeSubscriptions(w, withAPIKey(r, tc.caller))
+				require.Equal(t, tc.wantStatus, w.Code)
+				synctest.Wait()
+
+				manager.HandleMainData(1, &qbt.MainData{Rid: 1})
+				frames := stream.dataFrames(t, time.Second)
+				if tc.wantStatus == http.StatusNotFound {
+					require.NotEmpty(t, frames["main"], "the opener keeps its subscription")
+				} else {
+					require.Empty(t, frames["main"], "the opener removed its subscription")
+				}
+			})
+		})
+	}
 }
 
 func TestSubscriptionChangeCleanupOnDisconnect(t *testing.T) {
