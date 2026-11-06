@@ -1373,6 +1373,8 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
+		req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
+
 		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 		if selectErr != nil {
 			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {

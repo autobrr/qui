@@ -355,6 +355,8 @@ func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
 				{http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents?filters=%s", rig.instanceID, url.QueryEscape(string(filters))), ""},
 				{http.MethodGet, fmt.Sprintf("/api/torrents/cross-instance?instanceIds=%d&filters=%s", rig.instanceID, url.QueryEscape(string(filters))), ""},
 				{http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/field", rig.instanceID), fmt.Sprintf(`{"field":"name","selectAll":true,"filters":%s}`, filters)},
+				{http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", rig.instanceID), fmt.Sprintf(`{"action":"delete","deleteFiles":true,"selectAll":true,"filters":%s}`, filters)},
+				{http.MethodPost, "/api/instances/0/torrents/delete-cross-seeds", fmt.Sprintf(`{"action":"delete","deleteFiles":true,"selectAll":true,"instanceIds":[%d],"filters":%s}`, rig.instanceID, filters)},
 			} {
 				for _, auth := range []struct {
 					key    string
@@ -362,6 +364,16 @@ func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
 					total  int
 				}{{readKey, nil, tc.readTotal}, {writeKey, nil, 1}, {"", rig.cookie, 1}} {
 					status, body := rig.fetch(t, endpoint.method, endpoint.path, auth.key, endpoint.body, auth.cookie)
+					if strings.HasSuffix(endpoint.path, "/delete-cross-seeds") {
+						if auth.total == 0 {
+							require.Equal(t, http.StatusBadRequest, status, body)
+							require.Contains(t, body, "No torrents match the selection criteria")
+						} else {
+							require.Equal(t, http.StatusOK, status, body)
+							require.Contains(t, body, `"matches"`)
+						}
+						continue
+					}
 					require.Equal(t, http.StatusOK, status, body)
 					var result struct {
 						Total int `json:"total"`
