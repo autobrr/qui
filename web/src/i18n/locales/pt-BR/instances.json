@@ -1386,8 +1386,7 @@
       "enableDryRunPrompt": {
         "title": "Ativar simulação?",
         "description": "A simulação executa todas as ações sem alterar nada. Você pode revisar os torrents afetados no histórico.",
-        "enableWithout": "Não, Ativar Direto",
-        "enableWith": "Sim, Modo Simulação (Recomendado)"
+        "saveAndEnable": "Salvar e ativar"
       },
       "customGroup": {
         "title": "Customizar Grupamento",

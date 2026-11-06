@@ -1380,8 +1380,7 @@
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",
         "description": "La simulation simule les actions sans rien modifier. Consultez l'historique d'activité.",
-        "enableWithout": "Activer sans simulation",
-        "enableWith": "Activer avec simulation"
+        "saveAndEnable": "Enregistrer et activer"
       },
       "customGroup": {
         "title": "Ajouter un groupe personnalisé",

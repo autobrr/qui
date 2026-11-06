@@ -1357,8 +1357,7 @@
       "enableDryRunPrompt": {
         "title": "啟用模擬執行？",
         "description": "模擬執行會模擬所有操作而不做任何實際更改。您可以在活動日誌中檢視受影響的種子。",
-        "enableWithout": "不啟用模擬執行",
-        "enableWith": "啟用模擬執行"
+        "saveAndEnable": "儲存並啟用"
       },
       "customGroup": {
         "title": "新增自訂分組",

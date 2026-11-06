@@ -354,7 +354,7 @@ When you edit workflows, qui provides immediate feedback for delete, category, a
 - It shows the current **impacted count** and a preview list of matching torrents.
 - For category and tag rules, the preview summary splits direct matches and cross-seed expansions.
 
-When you enable a delete, category, or tag workflow, qui opens a confirmation dialog that loads the same preview. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to enable the workflow at once. The workflow then acts on every matching torrent on its next run.
+When you save an enabled delete, category, or tag workflow in the workflow dialog, qui opens a confirmation dialog that loads the same preview. In the workflow list, this dialog opens when you flip the switch. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to save at once. If **Dry run** is off, an enabled workflow acts on every matching torrent on its next run. If **Dry run** is on, the workflow writes the result to automation activity and does not change the torrents.
 
 To run a dry-run immediately without waiting for interval execution:
 

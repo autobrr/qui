@@ -939,8 +939,7 @@
       "enableDryRunPrompt": {
         "title": "Vols activar l'execució de prova?",
         "description": "L'execució de prova simula totes les accions sense canviar res. Pots revisar els torrents afectats al registre d'activitat.",
-        "enableWithout": "Activa-ho sense execució de prova",
-        "enableWith": "Activa-ho amb execució de prova"
+        "saveAndEnable": "Desa i activa"
       },
       "freeSpace": {
         "title": "Origen de l'espai lliure",

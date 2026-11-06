@@ -35,6 +35,29 @@ const baseProps = {
 }
 
 describe("WorkflowPreviewDialog", () => {
+  it.each([
+    { name: "while the preview loads", props: { isInitialLoading: true } },
+    { name: "after the preview fails", props: { previewError: "HTTP error status 504" } },
+    { name: "with a loaded preview", props: { preview: { totalMatches: 0, examples: [] } } },
+  ])("shows the dry-run toggle $name", ({ props }) => {
+    const onDryRunChange = vi.fn()
+    render(<WorkflowPreviewDialog {...baseProps} {...props} onConfirm={() => {}} dryRun onDryRunChange={onDryRunChange} />)
+
+    const toggle = screen.getByRole("switch", { name: "preferences.workflowDialog.footer.dryRun" })
+    expect(toggle.getAttribute("aria-checked")).toBe("true")
+    fireEvent.click(toggle)
+    expect(onDryRunChange).toHaveBeenCalledWith(false)
+  })
+
+  it.each([
+    { name: "while the preview loads", props: { isInitialLoading: true } },
+    { name: "with a loaded preview", props: { preview: { totalMatches: 0, examples: [] } } },
+  ])("shows no dry-run toggle $name for a caller without one", ({ props }) => {
+    render(<WorkflowPreviewDialog {...baseProps} {...props} onConfirm={() => {}} />)
+
+    expect(screen.queryByRole("switch")).toBeNull()
+  })
+
   it("lets the user save while the preview is still loading", () => {
     const onConfirm = vi.fn()
     render(<WorkflowPreviewDialog {...baseProps} onConfirm={onConfirm} isInitialLoading />)
