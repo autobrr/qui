@@ -166,8 +166,7 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 				searcher:    NewSearcher(searcher, parser),
 				searchGate:  searchGate{interval: time.Nanosecond},
 				runProgress: map[int64]*runProgress{},
-				injector: NewInjector(nil, crossseed.NewAligner(manager), adder, nil,
-					&fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
+				injector:    NewInjector(nil, crossseed.NewAligner(manager), adder, nil, nil, testBackendPool(instance)),
 			}
 
 			l := zerolog.New(io.Discard)

@@ -662,6 +662,7 @@
       "enabledLabel": "Activat",
       "instanceLabel": "Instància de qBittorrent de destinació",
       "selectInstance": "Selecciona una instància",
+      "remoteNoIdentityNote": "qui no pot saber quins fitxers ja s'estan sembrant en aquesta instància remota, així que els cerca una vegada cadascun.",
       "intervalLabel": "Interval d'exploració (minuts)",
       "intervalHelp": "Mínim: 60 minuts (1 hora). Predeterminat: 1440 minuts (24 hores).",
       "skipIndividualEpisodesLabel": "Omet els episodis individuals",

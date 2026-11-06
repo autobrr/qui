@@ -651,6 +651,7 @@
       "enabledLabel": "已啟用",
       "instanceLabel": "目標 qBittorrent 實例",
       "selectInstance": "選擇實例",
+      "remoteNoIdentityNote": "qui 無法判斷此遠端實例上哪些檔案已在做種，因此會對每個檔案搜尋一次。",
       "intervalLabel": "掃描間隔（分鐘）",
       "intervalHelp": "最小：60 分鐘（1 小時）。預設：1440 分鐘（24 小時）。",
       "skipIndividualEpisodesLabel": "跳過單集",

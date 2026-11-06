@@ -651,6 +651,7 @@
       "enabledLabel": "활성화됨",
       "instanceLabel": "대상 qBittorrent 인스턴스",
       "selectInstance": "인스턴스 선택",
+      "remoteNoIdentityNote": "qui는 이 원격 인스턴스에서 어떤 파일이 이미 시딩 중인지 알 수 없으므로 각 파일을 한 번씩 검색합니다.",
       "intervalLabel": "스캔 간격(분)",
       "intervalHelp": "최소: 60분(1시간). 기본: 1440분(24시간).",
       "skipIndividualEpisodesLabel": "개별 에피소드 건너뛰기",

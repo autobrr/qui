@@ -662,6 +662,7 @@
       "enabledLabel": "Enabled",
       "instanceLabel": "Target qBittorrent Instance",
       "selectInstance": "Select instance",
+      "remoteNoIdentityNote": "qui can't tell which files are already seeding on this remote instance, so it searches each one once.",
       "intervalLabel": "Scan Interval (minutes)",
       "intervalHelp": "Minimum: 60 minutes (1 hour). Default: 1440 minutes (24 hours).",
       "skipIndividualEpisodesLabel": "Skip individual episodes",

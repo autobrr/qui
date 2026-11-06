@@ -78,18 +78,19 @@ func TestInjectRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 			fx.instance.UseHardlinks = test.useHardlinks
 			pool, spy := remotePool()
 			adder := &failingTorrentAdder{err: errors.New("add failed")}
-			injector := NewInjector(nil, crossseed.NewAligner(adder), testAdder(adder, nil, nil), nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
+			injector := NewInjector(nil, crossseed.NewAligner(adder), testAdder(adder, nil, nil), nil, nil, pool)
 
 			_, err := inject(t.Context(), t, injector, fx.req)
 
-			require.ErrorIs(t, err, fsops.ErrNotLocal)
+			require.ErrorIs(t, err, errLeftLocalMode)
+			require.EqualError(t, err, "get filesystem backend: instance 1 is in remote filesystem mode: instance does not have local filesystem access")
 			require.False(t, adder.called, "nothing may be added over paths qui checked on another host")
 			require.Zero(t, spy.calls.Load(), "the injection must not read the SSH host")
 		})
 	}
 }
 
-func TestScanFailsForAnInstanceThatLeftLocalMode(t *testing.T) {
+func TestValidateDirectoryAdmitsARemoteInstance(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -100,13 +101,10 @@ func TestScanFailsForAnInstanceThatLeftLocalMode(t *testing.T) {
 
 	_, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
 
-	require.False(t, ok)
-	require.Nil(t, target)
-	require.Zero(t, spy.calls.Load(), "the scan must not walk the SSH host")
-	run, err := store.GetRun(ctx, runID)
-	require.NoError(t, err)
-	require.Equal(t, models.DirScanRunStatusFailed, run.Status)
-	require.Equal(t, "target instance does not have local filesystem access", run.ErrorMessage)
+	require.True(t, ok)
+	require.Same(t, remoteRow, target.instance)
+	require.Same(t, spy, target.backend, "the walk reads the instance's own backend")
+	require.Zero(t, spy.calls.Load(), "admitting the instance reads nothing yet")
 }
 
 // failingInstanceStore cannot read any instance.

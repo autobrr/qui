@@ -662,6 +662,7 @@
       "enabledLabel": "Activé",
       "instanceLabel": "Instance qBittorrent cible",
       "selectInstance": "Sélectionner une instance",
+      "remoteNoIdentityNote": "L'application ne peut pas savoir quels fichiers sont déjà en partage sur cette instance distante : elle recherche donc chacun une fois.",
       "intervalLabel": "Intervalle (minutes)",
       "intervalHelp": "Minimum : 60 minutes. Défaut : 1440 minutes (24 heures).",
       "skipIndividualEpisodesLabel": "Ignorer les épisodes individuels",

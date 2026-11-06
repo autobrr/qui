@@ -303,7 +303,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -393,7 +393,7 @@ func TestInjector_Inject_AlignsTorrentListedUnderV2ID(t *testing.T) {
 			files: qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		}
 		settle := &settleFake{}
-		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 		req := &InjectRequest{
 			InstanceID:   1,
@@ -451,7 +451,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -514,7 +514,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		renameErr: errors.New("qBittorrent instance does not support folder renaming"),
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -569,7 +569,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		files: qbt.TorrentFiles{{Name: "Release 01/a.iso", Size: 4}},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -664,7 +664,7 @@ func TestInjector_Inject_AlignmentRecheckFailure_IsRetried(t *testing.T) {
 				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
 			},
 		}
-		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, nil, testBackendPool(instance))
 
 		res, err := inject(t.Context(), t, injector, req)
 		if err != nil || !res.Success {
@@ -687,7 +687,7 @@ func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	for full := false; !full; {
 		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
 	}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settler, nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settler, nil), nil, nil, testBackendPool(instance))
 
 	res, err := inject(context.Background(), t, injector, req)
 	if err != nil {
@@ -740,7 +740,7 @@ func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 			for full := false; !full; {
 				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
 			}
-			injector := NewInjector(nil, crossseed.NewAligner(nil), testAdder(&recordingTorrentManager{}, settler, nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+			injector := NewInjector(nil, crossseed.NewAligner(nil), testAdder(&recordingTorrentManager{}, settler, nil), nil, nil, testBackendPool(instance))
 
 			res, err := inject(t.Context(), t, injector, req)
 			if err != nil {
@@ -769,7 +769,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -840,7 +840,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -908,7 +908,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -972,7 +972,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		visibleAfterCalls: 5, // more polls than renameTorrentPath alone would attempt
 	}
 	settle := &settleFake{}
-	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,

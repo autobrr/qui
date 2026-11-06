@@ -164,9 +164,9 @@ func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
 			result := &ScanResult{Searchees: []*Searchee{root}}
 			enabledIndexers := map[int]struct{}{1: {}}
 
-			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, nil, result, &seedingIndex{}, nil)
+			tracked, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, nil, result, &seedingIndex{}, nil)
 			require.NoError(t, err)
-			require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, scanned, dirScanFileUpdate{
+			require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, scanned, tracked, dirScanFileUpdate{
 				status:             models.DirScanFileStatusNoMatch,
 				searchedIndexerIDs: []int{1},
 			}))

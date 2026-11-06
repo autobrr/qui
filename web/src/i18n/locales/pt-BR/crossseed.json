@@ -662,6 +662,7 @@
       "enabledLabel": "Ativado",
       "instanceLabel": "Instância Alvo do qBittorrent",
       "selectInstance": "Selecione a instância",
+      "remoteNoIdentityNote": "O qui não consegue saber quais arquivos já estão em seed nesta instância remota, então busca cada um uma vez.",
       "intervalLabel": "Intervalo de Busca (minutos)",
       "intervalHelp": "Mínimo: 60 minutos (1 hora). Padrão: 1440 minutos (24 horas).",
       "skipIndividualEpisodesLabel": "Ignorar episódios avulsos",

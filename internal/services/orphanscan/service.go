@@ -7,13 +7,10 @@ package orphanscan
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"math/rand"
-	"net"
 	"os"
 	"path"
 	"slices"
@@ -600,7 +597,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// Before the capability check, since saving SSH credentials also resets the
 	// tier. A run from before the endpoint was recorded has none and keeps its preview.
-	if run.FilesystemEndpoint != "" && walkedEndpoint(instance) != run.FilesystemEndpoint {
+	if run.FilesystemEndpoint != "" && fsops.WalkedEndpoint(instance) != run.FilesystemEndpoint {
 		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed since the scan")
 		return s.failChangedPreview(ctx, instanceID, runID)
 	}
@@ -726,23 +723,6 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 	return backend.Paths(), nil
 }
 
-// walkedEndpoint names the SSH server and credentials a remote walk reads
-// through instance, and is empty for any other mode. The account is part of it
-// because a username change keeps the pin and can see other files. A digest of
-// the stored pin is part of it because a host key replaced at the same address
-// is another server, and a digest of the stored private key because another
-// key can log in to another view of the same server. Both are sealed with a
-// random nonce, so any save of either changes the digest, even of the same key.
-func walkedEndpoint(instance *models.Instance) string {
-	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
-		return ""
-	}
-	pin := sha256.Sum256([]byte(instance.SSHHostKeyEncrypted))
-	key := sha256.Sum256([]byte(instance.SSHKeyEncrypted))
-	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) +
-		"#" + hex.EncodeToString(pin[:8]) + "." + hex.EncodeToString(key[:8])
-}
-
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
 // as well as Write, because the walker spots a second path to a torrent's file
 // (a bind mount inside the scanned tree) only by its file identity.
@@ -827,7 +807,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// it, so a scan that cannot record it stops here instead of leaving a
 	// preview labeled "none".
 	mode := models.FilesystemAccessMode(instance)
-	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, walkedEndpoint(instance)); err != nil {
+	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, fsops.WalkedEndpoint(instance)); err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled while saving filesystem mode")
 			return
@@ -1052,7 +1032,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
 		return
 	}
-	if current, endpointChanged := models.FilesystemAccessMode(reloaded), walkedEndpoint(reloaded) != walkedEndpoint(instance); current != mode || endpointChanged {
+	if current, endpointChanged := models.FilesystemAccessMode(reloaded), fsops.WalkedEndpoint(reloaded) != fsops.WalkedEndpoint(instance); current != mode || endpointChanged {
 		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).Bool("endpointChanged", endpointChanged).
 			Msg("orphanscan: failing scan, filesystem access changed while it ran")
 		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
@@ -1411,7 +1391,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// The protection map below comes from the current instance either way, so
 	// this keeps the delete on the server whose paths the user reviewed.
-	if walkedEndpoint(instance) != run.FilesystemEndpoint {
+	if fsops.WalkedEndpoint(instance) != run.FilesystemEndpoint {
 		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
@@ -1496,7 +1476,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		if err != nil {
 			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot reload the instance")
 			sshChanged = true
-		} else if walkedEndpoint(current) != run.FilesystemEndpoint {
+		} else if fsops.WalkedEndpoint(current) != run.FilesystemEndpoint {
 			log.Info().Int64("run", runID).Msg("orphanscan: stopping deletion, the SSH settings changed during it")
 			sshChanged = true
 		}

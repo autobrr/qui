@@ -46,7 +46,7 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	require.Len(t, work.roots, 2)
 
 	// Another run then finishes one of them.
-	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], dirScanFileUpdate{
+	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], nil, dirScanFileUpdate{
 		status:             models.DirScanFileStatusMatched,
 		matchedTorrentHash: "0123456789abcdef0123456789abcdef01234567",
 	}))

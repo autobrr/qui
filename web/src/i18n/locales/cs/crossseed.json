@@ -672,6 +672,7 @@
       "enabledLabel": "Povoleno",
       "instanceLabel": "Cílová instance qBittorrent",
       "selectInstance": "Vybrat instanci",
+      "remoteNoIdentityNote": "qui nedokáže zjistit, které soubory se na této vzdálené instanci už seedují, takže každý z nich jednou vyhledá.",
       "intervalLabel": "Interval skenování (minut)",
       "intervalHelp": "Minimum: 60 minut (1 hodina). Výchozí: 1440 minut (24 hodin).",
       "skipIndividualEpisodesLabel": "Přeskočit jednotlivé epizody",

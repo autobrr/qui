@@ -662,6 +662,7 @@
       "enabledLabel": "Aktiviert",
       "instanceLabel": "qBittorrent-Ziel-Instanz",
       "selectInstance": "Instanz auswählen",
+      "remoteNoIdentityNote": "qui kann nicht erkennen, welche Dateien auf dieser Remote-Instanz bereits geseedet werden, und sucht deshalb jede einmal.",
       "intervalLabel": "Scan-Intervall (Minuten)",
       "intervalHelp": "Minimum: 60 Minuten (1 Stunde). Standard: 1440 Minuten (24 Stunden).",
       "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",

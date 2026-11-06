@@ -657,6 +657,7 @@
       "enabledLabel": "Abilitato",
       "instanceLabel": "Istanza qBittorrent di destinazione",
       "selectInstance": "Seleziona un'istanza",
+      "remoteNoIdentityNote": "L'applicazione non può sapere quali file sono già in seeding su questa istanza remota, quindi li cerca una volta ciascuno.",
       "intervalLabel": "Intervallo di scansione (minuti)",
       "intervalHelp": "Minimo: 60 minuti (1 ora). Predefinito: 1440 minuti (24 ore).",
       "skipIndividualEpisodesLabel": "Salta episodi singoli",

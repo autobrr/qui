@@ -341,8 +341,9 @@ func TestCalculateSavePathUsesBackendDialect(t *testing.T) {
 					QbitPathPrefix: row.prefix,
 				}
 
-				got := injector.calculateSavePath(context.Background(), dialectDirBackend{d: tt.d}, req)
+				got, err := injector.calculateSavePath(context.Background(), dialectDirBackend{d: tt.d}, req)
 
+				require.NoError(t, err)
 				require.Equal(t, row.want(tt.d), got)
 			})
 		}
