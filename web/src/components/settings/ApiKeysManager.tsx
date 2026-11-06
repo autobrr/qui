@@ -28,10 +28,12 @@ import {
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import {
+  accessByArea,
   holdsLevel,
   isAreaRefusedByInstanceLimit,
   PERMISSION_AREA_LABELS,
@@ -39,14 +41,16 @@ import {
   PERMISSION_LEVEL_LABELS,
   PERMISSION_LEVELS,
   permissionsToSave,
+  summarizePermissions,
   togglePermission,
-  type ApiKeyPermission
+  type ApiKeyPermission,
+  type PermissionLevel
 } from "@/lib/api-key-permissions"
 import { cn } from "@/lib/utils"
 import type { ApiKey, ApiKeyRequest, ApplicationInfo, InstanceResponse } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Pencil, Plus, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react"
+import { Fragment, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -60,6 +64,89 @@ function usePermissionText() {
     area: t(PERMISSION_AREA_LABELS[area].labelKey),
     level: t(PERMISSION_LEVEL_LABELS[level].labelKey),
   })
+}
+
+const PARTIAL_BLOCK = "bg-gradient-to-t from-foreground to-foreground bg-bottom bg-no-repeat"
+const BLOCK_STYLES = {
+  write: "bg-foreground",
+  run: `${PARTIAL_BLOCK} bg-[length:100%_66.67%]`,
+  read: `${PARTIAL_BLOCK} bg-[length:100%_33.34%]`,
+  none: "",
+} as const
+
+function AccessBlock({ levels, className, title }: { levels: readonly PermissionLevel[]; className?: string; title?: string }) {
+  return <span aria-hidden title={title} className={cn("rounded-[2px] border border-foreground/75 forced-color-adjust-none", BLOCK_STYLES[levels.at(-1) ?? "none"], className)} />
+}
+
+function AccessMap({ name, permissions, listText }: { name: string; permissions: readonly ApiKeyPermission[]; listText: (items: string[]) => string }) {
+  const { t } = useTranslation("settings")
+  const headingId = useId()
+  const access = accessByArea(permissions).map(({ area, levels }) => ({
+    area,
+    levels,
+    areaLabel: t(PERMISSION_AREA_LABELS[area].labelKey),
+    levelText: levels.length > 0
+      ? listText(levels.map(level => t(PERMISSION_LEVEL_LABELS[level].labelKey)))
+      : t("apiKeys.permissions.legend.none"),
+  }))
+  return (
+    <Popover>
+      <PopoverTrigger
+        aria-label={t("apiKeys.permissions.showByArea", { name })}
+        className="flex h-6 w-full max-w-56 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="grid min-w-0 flex-1 auto-cols-fr grid-flow-col gap-0.5">
+          {access.map(({ area, levels, areaLabel, levelText }) => (
+            <AccessBlock
+              key={area}
+              levels={levels}
+              className="h-2"
+              title={t("apiKeys.permissions.entry", { area: areaLabel, level: levelText })}
+            />
+          ))}
+        </span>
+        <ChevronDown aria-hidden className="size-3 flex-shrink-0" />
+      </PopoverTrigger>
+      <PopoverContent
+        aria-labelledby={headingId}
+        align="start"
+        collisionPadding={8}
+        className="max-h-[var(--radix-popover-content-available-height)] w-auto max-w-[calc(100vw-1rem)] overflow-y-auto p-3"
+      >
+        <p id={headingId} className="mb-2 break-words text-sm font-medium">{name}</p>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm">
+          {access.map(({ area, levels, areaLabel, levelText }) => (
+            <Fragment key={area}>
+              <AccessBlock levels={levels} className="h-2 w-3.5" />
+              <dt>{areaLabel}</dt>
+              <dd className="pl-4 text-right text-muted-foreground first-letter:uppercase">{levelText}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        <div aria-hidden className="pointer-events-none sticky -bottom-3 -mb-3 h-6 bg-gradient-to-t from-popover" />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function AccessMapLegend() {
+  const { t } = useTranslation("settings")
+  const entries = [
+    ...(["write", "run", "read"] as const).map(level => ({ levels: [level], label: t(PERMISSION_LEVEL_LABELS[level].labelKey) })),
+    { levels: [], label: t("apiKeys.permissions.legend.none") },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span className="basis-full sm:basis-auto">{t("apiKeys.permissions.legend.title")}</span>
+      {entries.map(({ levels, label }) => (
+        <span key={label} className="flex items-center gap-1.5">
+          <AccessBlock levels={levels} className="h-2 w-3.5" />
+          <span className="inline-block first-letter:uppercase">{label}</span>
+        </span>
+      ))}
+      <FieldHelp>{t("apiKeys.permissions.help")}</FieldHelp>
+    </div>
+  )
 }
 
 interface ApiKeyFormProps {
@@ -188,8 +275,7 @@ interface ApiKeysManagerProps {
 }
 
 export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
-  const { t } = useTranslation("settings")
-  const permissionText = usePermissionText()
+  const { t, i18n } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
@@ -208,15 +294,19 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
 
   const keys = apiKeys || []
 
+  const listText = (items: string[]) => new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(items)
+
   const instanceLimitText = (key: ApiKey) => {
     if (key.instanceIds.length === 0) {
-      return t("apiKeys.instanceLimit.all")
+      return { text: t("apiKeys.instanceLimit.all"), reachesNone: false }
     }
     if (!instances) {
       return null
     }
     const names = instances.filter(instance => key.instanceIds.includes(instance.id)).map(instance => instance.name)
-    return names.length > 0 ? names.join(", ") : t("apiKeys.instanceLimit.none")
+    return names.length > 0
+      ? { text: t("apiKeys.instanceLimit.only", { instances: listText(names) }), reachesNone: false }
+      : { text: t("apiKeys.instanceLimit.none"), reachesNone: true }
   }
 
   const createMutation = useMutation({
@@ -342,77 +432,94 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
         </Dialog>
       </div>
 
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            {t("apiKeys.loading")}
-          </p>
-        ) : (
-          <>
-            {keys.map((key) => {
-              const limitText = instanceLimitText(key)
-              return (
-                <div
-                  key={key.id}
-                  data-testid="api-key-row"
-                  className="flex items-center bg-muted/40 justify-between gap-2 rounded-lg border p-4"
-                >
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{key.name}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {t("clientApiKeys.idLabel", { id: key.id })}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
-                      {key.lastUsedAt && (
-                        <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
-                      )}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {key.permissions.map((permission) => (
-                        <Badge key={`${permission.area}-${permission.level}`} variant="secondary" className="text-xs font-normal">
-                          {permissionText(permission)}
-                        </Badge>
-                      ))}
-                    </div>
-                    {limitText && (
-                      <p className="text-sm text-muted-foreground">
-                        {t("apiKeys.instanceLimit.summary", { instances: limitText })}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-shrink-0 items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t("apiKeys.editButton", { name: key.name })}
-                      onClick={() => setEditingKey(key)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t("apiKeys.deleteButton", { name: key.name })}
-                      onClick={() => setDeleteKeyId(key.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+      {keys.length > 0 && <AccessMapLegend />}
 
-            {keys.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                {t("apiKeys.empty")}
-              </p>
-            )}
-          </>
-        )}
-      </div>
+      {isLoading || keys.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {isLoading ? t("apiKeys.loading") : t("apiKeys.empty")}
+        </p>
+      ) : (
+        <ul className="@container divide-y rounded-lg border bg-muted/40">
+          {keys.map((key) => {
+            const limit = instanceLimitText(key)
+            const { except, rows } = summarizePermissions(key.permissions)
+            return (
+              <li
+                key={key.id}
+                data-testid="api-key-row"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-3 p-4 @2xl:grid-cols-[14rem_minmax(0,1fr)_auto] @2xl:gap-x-6"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-0 break-words font-medium">{key.name}</span>
+                    <Badge variant="outline" className="flex-shrink-0 text-xs">
+                      {t("clientApiKeys.idLabel", { id: key.id })}
+                    </Badge>
+                  </div>
+                  <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                    <span>{t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}</span>
+                    {key.lastUsedAt && (
+                      <span>{t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</span>
+                    )}
+                  </p>
+                </div>
+                <div className="col-span-2 row-start-2 @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1">
+                  <AccessMap name={key.name} permissions={key.permissions} listText={listText} />
+                  <dl className="mt-1 grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-1 text-sm [&>dd]:min-w-0 [&>dd]:break-words [&>dt]:break-words [&>dt]:text-muted-foreground">
+                    {except && (
+                      <>
+                        <dt>{t("apiKeys.permissions.access")}</dt>
+                        <dd>
+                          {except.length === 0
+                            ? t("apiKeys.permissions.allAreas")
+                            : t("apiKeys.permissions.allAreasExcept", {
+                              areas: listText(except.map(({ area, levels }) => {
+                                const areaLabel = t(PERMISSION_AREA_LABELS[area].labelKey)
+                                return levels.length > 0
+                                  ? t("apiKeys.permissions.partialArea", { area: areaLabel, levels: listText(levels.map(level => t(PERMISSION_LEVEL_LABELS[level].labelKey))) })
+                                  : areaLabel
+                              })),
+                            })}
+                        </dd>
+                      </>
+                    )}
+                    {rows.map(({ level, areas }) => (
+                      <Fragment key={level}>
+                        <dt className="first-letter:uppercase">{t(PERMISSION_LEVEL_LABELS[level].labelKey)}</dt>
+                        <dd>{listText(areas.map(area => t(PERMISSION_AREA_LABELS[area].labelKey)))}</dd>
+                      </Fragment>
+                    ))}
+                    {limit && (
+                      <>
+                        <dt>{t("apiKeys.instanceLimit.reaches")}</dt>
+                        <dd className={cn(limit.reachesNone && "text-destructive")}>{limit.text}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+                <div className="col-start-2 row-start-1 flex items-center gap-1 self-start @2xl:col-start-3">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("apiKeys.editButton", { name: key.name })}
+                    onClick={() => setEditingKey(key)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("apiKeys.deleteButton", { name: key.name })}
+                    onClick={() => setDeleteKeyId(key.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
       <Dialog open={editingKey !== null} onOpenChange={(open) => !open && setEditingKey(null)}>
         <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">

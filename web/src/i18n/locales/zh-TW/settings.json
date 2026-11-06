@@ -152,8 +152,17 @@
       "title": "權限",
       "help": "寫入包含讀取和執行。執行不包含讀取，因為設定中保存著憑證。",
       "required": "請至少選擇一項權限。",
+      "access": "存取",
+      "allAreas": "全部區域",
+      "allAreasExcept": "除{{areas}}外的全部區域",
       "refusedByLimit": "輔種和目錄掃描器拒絕帶實例限制的金鑰，因此 qui 不會儲存這些權限。",
       "entry": "{{area}}：{{level}}",
+      "showByArea": "依區域顯示 {{name}} 的存取權限",
+      "partialArea": "{{area}}（僅{{levels}}）",
+      "legend": {
+        "title": "每個權限區域一個方塊：",
+        "none": "無權限"
+      },
       "levels": {
         "read": "讀取",
         "run": "執行",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "實例限制",
       "help": "選擇此金鑰可以存取的實例。不選擇表示所有實例，包括之後新增的實例。",
-      "summary": "實例限制：{{instances}}",
+      "reaches": "可存取",
       "all": "所有實例",
-      "none": "無實例",
+      "only": "僅 {{instances}}",
+      "none": "無實例。此限制只包含已刪除的實例。",
       "deleted": "已刪除的實例 {{id}}"
     },
     "newKey": {

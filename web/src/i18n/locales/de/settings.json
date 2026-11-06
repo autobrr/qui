@@ -152,8 +152,17 @@
       "title": "Berechtigungen",
       "help": "Schreiben umfasst Lesen und Ausführen. Ausführen umfasst nicht Lesen, weil Einstellungen Zugangsdaten enthalten.",
       "required": "Wähle mindestens eine Berechtigung aus.",
+      "access": "Zugriff",
+      "allAreas": "Alle Bereiche",
+      "allAreasExcept": "Alle Bereiche außer {{areas}}",
       "refusedByLimit": "Cross-Seed und Verzeichnis-Scanner lehnen einen Key mit Instanzlimit ab, daher speichert qui diese Berechtigungen nicht.",
       "entry": "{{area}}: {{level}}",
+      "showByArea": "Zugriff nach Bereich für {{name}} anzeigen",
+      "partialArea": "{{area}} (nur {{levels}})",
+      "legend": {
+        "title": "Ein Block pro Berechtigungsbereich:",
+        "none": "kein Zugriff"
+      },
       "levels": {
         "read": "lesen",
         "run": "ausführen",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "Instanzlimit",
       "help": "Wähle die Instanzen aus, die dieser Key erreichen kann. Ohne Auswahl gilt der Key für alle Instanzen, auch für später hinzugefügte.",
-      "summary": "Instanzlimit: {{instances}}",
+      "reaches": "Reichweite",
       "all": "Alle Instanzen",
-      "none": "keine Instanzen",
+      "only": "Nur {{instances}}",
+      "none": "Keine Instanzen. Das Limit enthält nur gelöschte Instanzen.",
       "deleted": "Gelöschte Instanz {{id}}"
     },
     "newKey": {

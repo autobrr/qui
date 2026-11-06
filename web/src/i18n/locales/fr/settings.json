@@ -152,8 +152,17 @@
       "title": "Permissions",
       "help": "L'écriture inclut la lecture et l'exécution. L'exécution n'inclut pas la lecture, car les paramètres contiennent des identifiants.",
       "required": "Choisissez au moins une permission.",
+      "access": "Accès",
+      "allAreas": "Tous les domaines",
+      "allAreasExcept": "Tous les domaines sauf {{areas}}",
       "refusedByLimit": "Cross-Seed et l'analyse de répertoires refusent une clé avec une limite d'instances : qui n'enregistre donc pas ces permissions.",
       "entry": "{{area}} : {{level}}",
+      "showByArea": "Afficher l'accès par domaine pour {{name}}",
+      "partialArea": "{{area}} ({{levels}} uniquement)",
+      "legend": {
+        "title": "Un bloc par domaine de permissions :",
+        "none": "aucun accès"
+      },
       "levels": {
         "read": "lecture",
         "run": "exécution",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "Limite d'instances",
       "help": "Choisissez les instances que cette clé peut atteindre. Sans choix, la clé atteint toutes les instances, y compris celles ajoutées plus tard.",
-      "summary": "Limite d'instances : {{instances}}",
+      "reaches": "Portée",
       "all": "Toutes les instances",
-      "none": "aucune instance",
+      "only": "Uniquement {{instances}}",
+      "none": "Aucune instance. La limite ne contient que des instances supprimées.",
       "deleted": "Instance supprimée {{id}}"
     },
     "newKey": {

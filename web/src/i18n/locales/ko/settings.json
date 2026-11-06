@@ -152,8 +152,17 @@
       "title": "권한",
       "help": "쓰기에는 읽기와 실행이 포함됩니다. 설정에 자격 증명이 있으므로 실행에는 읽기가 포함되지 않습니다.",
       "required": "권한을 하나 이상 선택하세요.",
+      "access": "접근",
+      "allAreas": "모든 영역",
+      "allAreasExcept": "{{areas}} 제외 모든 영역",
       "refusedByLimit": "Cross-Seed와 디렉터리 스캐너는 인스턴스 제한이 있는 키를 거부하므로 qui는 이 권한을 저장하지 않습니다.",
       "entry": "{{area}}: {{level}}",
+      "showByArea": "{{name}}의 영역별 접근 보기",
+      "partialArea": "{{area}} ({{levels}}만)",
+      "legend": {
+        "title": "권한 영역마다 블록 하나:",
+        "none": "접근 불가"
+      },
       "levels": {
         "read": "읽기",
         "run": "실행",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "인스턴스 제한",
       "help": "이 키가 접근할 수 있는 인스턴스를 선택하세요. 선택하지 않으면 나중에 추가하는 인스턴스를 포함한 모든 인스턴스에 접근합니다.",
-      "summary": "인스턴스 제한: {{instances}}",
+      "reaches": "접근 범위",
       "all": "모든 인스턴스",
-      "none": "인스턴스 없음",
+      "only": "{{instances}}만",
+      "none": "인스턴스 없음. 제한에 삭제된 인스턴스만 있습니다.",
       "deleted": "삭제된 인스턴스 {{id}}"
     },
     "newKey": {

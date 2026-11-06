@@ -152,8 +152,17 @@
       "title": "Permissions",
       "help": "Write includes read and run. Run does not include read, because settings hold credentials.",
       "required": "Pick at least one permission.",
+      "access": "Access",
+      "allAreas": "All areas",
+      "allAreasExcept": "All areas except {{areas}}",
       "refusedByLimit": "Cross-seed and Dir Scan refuse a key with an instance limit, so qui does not save those permissions.",
       "entry": "{{area}}: {{level}}",
+      "showByArea": "Show access by area for {{name}}",
+      "partialArea": "{{area}} ({{levels}} only)",
+      "legend": {
+        "title": "One block per permission area:",
+        "none": "no access"
+      },
       "levels": {
         "read": "read",
         "run": "run",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "Instance limit",
       "help": "Pick the instances that this key can reach. No pick means all instances, also the ones that you add later.",
-      "summary": "Instance limit: {{instances}}",
+      "reaches": "Reaches",
       "all": "All instances",
-      "none": "no instances",
+      "only": "Only {{instances}}",
+      "none": "No instances. The limit holds only deleted instances.",
       "deleted": "Deleted instance {{id}}"
     },
     "newKey": {

@@ -53,6 +53,51 @@ export function holdsLevel(permissions: readonly ApiKeyPermission[], area: Permi
   return permissions.some(p => p.area === area && p.level === level)
 }
 
+const MAX_EXCEPTIONS = 3
+
+function holdsBeyondWrite(permissions: readonly ApiKeyPermission[], area: PermissionArea, level: PermissionLevel) {
+  return holdsLevel(permissions, area, level) && (level === "write" || !holdsLevel(permissions, area, "write"))
+}
+
+function holdsAllOfArea(permissions: readonly ApiKeyPermission[], { area, levels }: (typeof PERMISSION_AREAS)[number]) {
+  return levels.includes("write")
+    ? holdsLevel(permissions, area, "write")
+    : levels.every(level => holdsLevel(permissions, area, level))
+}
+
+export function summarizePermissions(permissions: readonly ApiKeyPermission[]) {
+  const except = PERMISSION_AREAS
+    .filter(entry => !holdsAllOfArea(permissions, entry))
+    .map(({ area }) => ({ area, levels: PERMISSION_LEVELS.filter(level => holdsBeyondWrite(permissions, area, level)) }))
+  return except.length > MAX_EXCEPTIONS
+    ? { except: null, rows: permissionsByLevel(permissions) }
+    : { except, rows: [] }
+}
+
+// Areas that offer no write come last, so a dimmer block in a full key does not look like a gap.
+const AREAS_BY_TOP_LEVEL = [
+  ...PERMISSION_AREAS.filter(({ levels }) => levels.includes("write")),
+  ...PERMISSION_AREAS.filter(({ levels }) => !levels.includes("write")),
+]
+
+export function accessByArea(permissions: readonly ApiKeyPermission[]) {
+  return AREAS_BY_TOP_LEVEL.map(({ area }) => ({
+    area,
+    levels: PERMISSION_LEVELS.filter(level => holdsBeyondWrite(permissions, area, level)),
+  }))
+}
+
+function permissionsByLevel(permissions: readonly ApiKeyPermission[]) {
+  return (["write", "run", "read"] as const)
+    .map(level => ({
+      level,
+      areas: PERMISSION_AREAS
+        .map(({ area }) => area)
+        .filter(area => holdsBeyondWrite(permissions, area, level)),
+    }))
+    .filter(({ areas }) => areas.length > 0)
+}
+
 /** Write includes read and run, so a pick of write replaces the other levels of its area. */
 export function togglePermission(permissions: readonly ApiKeyPermission[], area: PermissionArea, level: PermissionLevel) {
   if (holdsLevel(permissions, area, level)) {

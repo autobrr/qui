@@ -152,8 +152,17 @@
       "title": "Oprávnění",
       "help": "Zápis zahrnuje čtení a spuštění. Spuštění nezahrnuje čtení, protože nastavení obsahuje přihlašovací údaje.",
       "required": "Vyberte alespoň jedno oprávnění.",
+      "access": "Přístup",
+      "allAreas": "Všechny oblasti",
+      "allAreasExcept": "Všechny oblasti kromě: {{areas}}",
       "refusedByLimit": "Křížové sdílení a skenovač adresářů odmítají klíč s omezením instancí, takže qui tato oprávnění neuloží.",
       "entry": "{{area}}: {{level}}",
+      "showByArea": "Zobrazit přístup podle oblastí pro {{name}}",
+      "partialArea": "{{area}} (jen {{levels}})",
+      "legend": {
+        "title": "Jeden blok pro každou oblast oprávnění:",
+        "none": "bez přístupu"
+      },
       "levels": {
         "read": "čtení",
         "run": "spuštění",
@@ -180,9 +189,10 @@
     "instanceLimit": {
       "title": "Omezení instancí",
       "help": "Vyberte instance, ke kterým má tento klíč přístup. Bez výběru má přístup ke všem instancím, i k těm, které přidáte později.",
-      "summary": "Omezení instancí: {{instances}}",
+      "reaches": "Dosah",
       "all": "Všechny instance",
-      "none": "žádné instance",
+      "only": "Jen {{instances}}",
+      "none": "Žádné instance. Omezení obsahuje jen smazané instance.",
       "deleted": "Smazaná instance {{id}}"
     },
     "newKey": {
