@@ -158,7 +158,6 @@ type automationSettingsPatchRequest struct {
 	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
 }
 
-// valueOrDefault returns *v, or def when the request left the field out.
 func valueOrDefault[T any](v *T, def T) T {
 	if v == nil {
 		return def
