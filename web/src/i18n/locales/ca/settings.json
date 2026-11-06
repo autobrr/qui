@@ -157,10 +157,11 @@
       "everythingExcept": "Tot excepte {{areas}}",
       "refusedByLimit": "Cross-Seed i l'explorador de directoris rebutgen una clau amb límit d'instàncies, de manera que qui no desa aquests permisos.",
       "entry": "{{area}}: {{level}}",
-      "noAccess": "{{area}}: sense accés",
+      "showByArea": "Mostra l'accés per àrea de {{name}}",
+      "partialArea": "{{area}} (només {{levels}})",
       "legend": {
-        "title": "Cada bloc és una àrea:",
-        "none": "Sense accés"
+        "title": "Un bloc per cada àrea de permisos:",
+        "none": "sense accés"
       },
       "levels": {
         "read": "lectura",
@@ -190,6 +191,7 @@
       "help": "Tria les instàncies a què pot accedir aquesta clau. Si no en tries cap, són totes les instàncies, també les que afegeixis més endavant.",
       "reaches": "Abast",
       "all": "Totes les instàncies",
+      "only": "Només {{instances}}",
       "none": "Cap instància. El límit només conté instàncies eliminades.",
       "deleted": "Instància eliminada {{id}}"
     },

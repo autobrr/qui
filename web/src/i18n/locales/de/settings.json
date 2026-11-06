@@ -157,10 +157,11 @@
       "everythingExcept": "Alles außer {{areas}}",
       "refusedByLimit": "Cross-Seed und Verzeichnis-Scanner lehnen einen Key mit Instanzlimit ab, daher speichert qui diese Berechtigungen nicht.",
       "entry": "{{area}}: {{level}}",
-      "noAccess": "{{area}}: kein Zugriff",
+      "showByArea": "Zugriff nach Bereich für {{name}} anzeigen",
+      "partialArea": "{{area}} (nur {{levels}})",
       "legend": {
-        "title": "Jeder Block steht für einen Bereich:",
-        "none": "Kein Zugriff"
+        "title": "Ein Block pro Berechtigungsbereich:",
+        "none": "kein Zugriff"
       },
       "levels": {
         "read": "lesen",
@@ -190,6 +191,7 @@
       "help": "Wähle die Instanzen aus, die dieser Key erreichen kann. Ohne Auswahl gilt der Key für alle Instanzen, auch für später hinzugefügte.",
       "reaches": "Reichweite",
       "all": "Alle Instanzen",
+      "only": "Nur {{instances}}",
       "none": "Keine Instanzen. Das Limit enthält nur gelöschte Instanzen.",
       "deleted": "Gelöschte Instanz {{id}}"
     },

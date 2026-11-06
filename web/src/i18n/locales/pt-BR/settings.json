@@ -157,10 +157,11 @@
       "everythingExcept": "Tudo exceto {{areas}}",
       "refusedByLimit": "Cross-Seed e o Scanner de Diretório recusam uma chave com limite de instâncias, então o qui não salva essas permissões.",
       "entry": "{{area}}: {{level}}",
-      "noAccess": "{{area}}: sem acesso",
+      "showByArea": "Mostrar acesso por área de {{name}}",
+      "partialArea": "{{area}} (somente {{levels}})",
       "legend": {
-        "title": "Cada bloco é uma área:",
-        "none": "Sem acesso"
+        "title": "Um bloco por área de permissão:",
+        "none": "sem acesso"
       },
       "levels": {
         "read": "leitura",
@@ -190,6 +191,7 @@
       "help": "Escolha as instâncias que esta chave pode alcançar. Sem escolha, a chave alcança todas as instâncias, inclusive as adicionadas depois.",
       "reaches": "Alcance",
       "all": "Todas as instâncias",
+      "only": "Somente {{instances}}",
       "none": "Nenhuma instância. O limite contém apenas instâncias excluídas.",
       "deleted": "Instância excluída {{id}}"
     },

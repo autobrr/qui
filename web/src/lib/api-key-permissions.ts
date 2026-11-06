@@ -66,10 +66,12 @@ function holdsAllOfArea(permissions: readonly ApiKeyPermission[], { area, levels
 }
 
 export function summarizePermissions(permissions: readonly ApiKeyPermission[]) {
-  const except = PERMISSION_AREAS.filter(entry => !holdsAllOfArea(permissions, entry)).map(({ area }) => area)
+  const except = PERMISSION_AREAS
+    .filter(entry => !holdsAllOfArea(permissions, entry))
+    .map(({ area }) => ({ area, levels: PERMISSION_LEVELS.filter(level => holdsBeyondWrite(permissions, area, level)) }))
   return except.length > MAX_EXCEPTIONS
     ? { except: null, rows: permissionsByLevel(permissions) }
-    : { except, rows: permissionsByLevel(permissions.filter(({ area }) => except.includes(area))) }
+    : { except, rows: [] }
 }
 
 // Areas that offer no write come last, so a dimmer block in a full key does not look like a gap.

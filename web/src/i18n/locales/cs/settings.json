@@ -157,10 +157,11 @@
       "everythingExcept": "Vše kromě: {{areas}}",
       "refusedByLimit": "Křížové sdílení a skenovač adresářů odmítají klíč s omezením instancí, takže qui tato oprávnění neuloží.",
       "entry": "{{area}}: {{level}}",
-      "noAccess": "{{area}}: bez přístupu",
+      "showByArea": "Zobrazit přístup podle oblastí pro {{name}}",
+      "partialArea": "{{area}} (jen {{levels}})",
       "legend": {
-        "title": "Každý blok je jedna oblast:",
-        "none": "Bez přístupu"
+        "title": "Jeden blok pro každou oblast oprávnění:",
+        "none": "bez přístupu"
       },
       "levels": {
         "read": "čtení",
@@ -190,6 +191,7 @@
       "help": "Vyberte instance, ke kterým má tento klíč přístup. Bez výběru má přístup ke všem instancím, i k těm, které přidáte později.",
       "reaches": "Dosah",
       "all": "Všechny instance",
+      "only": "Jen {{instances}}",
       "none": "Žádné instance. Omezení obsahuje jen smazané instance.",
       "deleted": "Smazaná instance {{id}}"
     },

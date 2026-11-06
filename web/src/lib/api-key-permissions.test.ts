@@ -19,19 +19,23 @@ describe("summarizePermissions", () => {
 
   it("names the areas that a nearly full key lacks", () => {
     expect(summarizePermissions(without("crossSeed", "dirScan", "settings"))).toEqual({
-      except: ["crossSeed", "dirScan", "settings"],
+      except: [
+        { area: "crossSeed", levels: [] },
+        { area: "dirScan", levels: [] },
+        { area: "settings", levels: [] },
+      ],
       rows: [],
     })
   })
 
   it("counts an area below its top level as an exception, and shows the access that it has", () => {
     expect(summarizePermissions([...without("settings"), { area: "settings", level: "read" }])).toEqual({
-      except: ["settings"],
-      rows: [{ level: "read", areas: ["settings"] }],
+      except: [{ area: "settings", levels: ["read"] }],
+      rows: [],
     })
     expect(summarizePermissions(everything.filter(p => p.area !== "externalPrograms" || p.level !== "run"))).toEqual({
-      except: ["externalPrograms"],
-      rows: [{ level: "read", areas: ["externalPrograms"] }],
+      except: [{ area: "externalPrograms", levels: ["read"] }],
+      rows: [],
     })
   })
 

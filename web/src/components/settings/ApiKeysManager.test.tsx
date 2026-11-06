@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { PERMISSION_AREAS, type ApiKeyPermission } from "@/lib/api-key-permissions"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -207,18 +208,35 @@ describe("ApiKeysManager key list", () => {
     expect((await keyRow("open")).textContent).toContain("readTorrents")
     await waitFor(async () => expect((await keyRow("open")).textContent).toContain("ReachesAll instances"))
     expect((await keyRow("limited")).textContent).toContain("writeLogs")
-    expect((await keyRow("limited")).textContent).toContain("Reachesarchive")
+    expect((await keyRow("limited")).textContent).toContain("ReachesOnly archive")
     expect((await keyRow("gone")).textContent).toContain("ReachesNo instances.")
   })
 
-  it("names the area and the level on each block of the access map", async () => {
+  it("names the level of each area when the access map opens", async () => {
+    const user = userEvent.setup()
     stubs.keys = [{ ...key, permissions: [{ area: "rss", level: "run" }] }]
     renderManager()
 
-    const row = await keyRow("dashboard")
-    expect(row.querySelector("[title='RSS: run']")?.className).toContain("bg-primary/65")
-    expect(row.querySelector("[title='Logs: no access']")?.className).toContain("border")
-    expect(row.querySelectorAll("[aria-hidden] > [title]").length).toBe(15)
+    await user.click(await screen.findByRole("button", { name: "Show access by area for dashboard" }))
+    const dialog = await screen.findByRole("dialog")
+    const terms = within(dialog).getAllByRole("term")
+    expect(terms).toHaveLength(15)
+    const levelOf = (area: string) => terms.find(term => term.textContent === area)?.nextElementSibling?.textContent
+    expect(levelOf("RSS")).toBe("run")
+    expect(levelOf("Logs")).toBe("no access")
+  })
+
+  it("shows only the access that a nearly full key lacks", async () => {
+    stubs.keys = [{
+      ...key,
+      permissions: PERMISSION_AREAS.flatMap(({ area, levels }): ApiKeyPermission[] => {
+        if (area === "settings") return [{ area, level: "read" }]
+        return levels.includes("write") ? [{ area, level: "write" }] : levels.map(level => ({ area, level }))
+      }),
+    }]
+    renderManager()
+
+    expect((await keyRow("dashboard")).textContent).toContain("Everything except Settings (read only)")
   })
 
   it("does not call a limit empty before the instances load", async () => {
@@ -293,7 +311,7 @@ describe("ApiKeysManager edit dialog", () => {
     expect(stubs.updated).toEqual([{ name: "wallboard", permissions: [{ area: "logs", level: "read" }], instanceIds: [2] }])
     const row = await keyRow("wallboard")
     await waitFor(() => expect(row.textContent).toContain("readLogs"))
-    expect(row.textContent).toContain("Reachesarchive")
+    expect(row.textContent).toContain("ReachesOnly archive")
     expect(row.textContent).not.toContain("the-raw-key")
   })
 

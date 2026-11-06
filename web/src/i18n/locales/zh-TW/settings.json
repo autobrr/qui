@@ -157,9 +157,10 @@
       "everythingExcept": "除{{areas}}外的全部",
       "refusedByLimit": "輔種和目錄掃描器拒絕帶實例限制的金鑰，因此 qui 不會儲存這些權限。",
       "entry": "{{area}}：{{level}}",
-      "noAccess": "{{area}}：無權限",
+      "showByArea": "依區域顯示 {{name}} 的存取權限",
+      "partialArea": "{{area}}（僅{{levels}}）",
       "legend": {
-        "title": "每個方塊代表一個區域：",
+        "title": "每個權限區域一個方塊：",
         "none": "無權限"
       },
       "levels": {
@@ -190,6 +191,7 @@
       "help": "選擇此金鑰可以存取的實例。不選擇表示所有實例，包括之後新增的實例。",
       "reaches": "可存取",
       "all": "所有實例",
+      "only": "僅 {{instances}}",
       "none": "無實例。此限制只包含已刪除的實例。",
       "deleted": "已刪除的實例 {{id}}"
     },
