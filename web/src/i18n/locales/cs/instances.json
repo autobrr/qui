@@ -1421,8 +1421,7 @@
       "enableDryRunPrompt": {
         "title": "Povolit simulaci?",
         "description": "Simulace neprovádí žádné akce. Můžete zkontrolovat ovlivněné torrenty v logu aktivit.",
-        "enableWithout": "Povolit bez simulace",
-        "enableWith": "Povolit se simulací"
+        "saveAndEnable": "Uložit a povolit"
       },
       "customGroup": {
         "title": "Přidat vlastní skupinu",

@@ -1357,8 +1357,7 @@
       "enableDryRunPrompt": {
         "title": "모의 실행을 활성화하시겠습니까?",
         "description": "모의 실행은 아무것도 변경하지 않고 모든 작업을 시뮬레이션합니다. 활동 로그에서 영향받는 토렌트를 검토할 수 있습니다.",
-        "enableWithout": "모의 실행 없이 활성화",
-        "enableWith": "모의 실행과 함께 활성화"
+        "saveAndEnable": "저장 후 활성화"
       },
       "customGroup": {
         "title": "사용자 지정 그룹 추가",

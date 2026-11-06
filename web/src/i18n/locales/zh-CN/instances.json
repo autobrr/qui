@@ -1357,8 +1357,7 @@
       "enableDryRunPrompt": {
         "title": "启用模拟运行？",
         "description": "模拟运行会模拟所有操作而不做任何实际更改。你可以在活动日志中查看受影响的种子。",
-        "enableWithout": "不启用模拟运行",
-        "enableWith": "启用模拟运行"
+        "saveAndEnable": "保存并启用"
       },
       "customGroup": {
         "title": "添加自定义分组",

@@ -1386,8 +1386,7 @@
       "enableDryRunPrompt": {
         "title": "Probelauf aktivieren?",
         "description": "Der Probelauf simuliert alle Aktionen, ohne etwas zu ändern. Du kannst die betroffenen Torrents im Aktivitätsprotokoll prüfen.",
-        "enableWithout": "Ohne Probelauf aktivieren",
-        "enableWith": "Mit Probelauf aktivieren"
+        "saveAndEnable": "Speichern und aktivieren"
       },
       "customGroup": {
         "title": "Benutzerdefinierte Gruppe hinzufügen",

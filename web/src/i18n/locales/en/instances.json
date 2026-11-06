@@ -1386,8 +1386,7 @@
       "enableDryRunPrompt": {
         "title": "Enable dry run?",
         "description": "Dry run simulates all actions without changing anything. You can review affected torrents in the activity log.",
-        "enableWithout": "Enable without dry run",
-        "enableWith": "Enable with dry run"
+        "saveAndEnable": "Save and enable"
       },
       "customGroup": {
         "title": "Add custom group",
