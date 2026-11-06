@@ -998,9 +998,9 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	m.server.ServeHTTP(sessionWriter, req)
 }
 
-// validateInstances checks that the API key may read torrents and that each
-// instance of the requests exists. It writes the error response and returns
-// false when a check fails.
+// validateInstances checks that the API key may read torrents and reach each
+// instance of the requests, and that each instance exists. It writes the error
+// response and returns false when a check fails.
 func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request, requests []streamRequest) bool {
 	instanceIDs := make(map[int]struct{}, len(requests))
 	for _, req := range requests {
@@ -1015,6 +1015,9 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 	}
 
 	for instanceID := range instanceIDs {
+		if !middleware.CanReachInstance(w, r, instanceID) {
+			return false
+		}
 		exists, err := m.instanceExists(r.Context(), instanceID)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to check instance existence")

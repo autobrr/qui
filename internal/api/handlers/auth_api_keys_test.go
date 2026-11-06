@@ -52,7 +52,7 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 
 	invalid := map[string]string{
 		"empty Permission list": `{"name":"k","permissions":[]}`,
-		"Instance limit":        `{"name":"k","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1]}`,
+		"invalid instance id":   `{"name":"k","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1,0]}`,
 		"missing name":          `{"permissions":[{"area":"torrents","level":"read"}]}`,
 	}
 	for name, req := range invalid {
@@ -63,7 +63,7 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 	}
 
 	status, body = send(t, http.MethodPut, "/api-keys/1",
-		`{"name":"dashboard","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[]}`)
+		`{"name":"dashboard","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[3]}`)
 	require.Equal(t, http.StatusOK, status, body)
 
 	status, body = send(t, http.MethodGet, "/api-keys", "")
@@ -74,7 +74,7 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 		ID:          created.ID,
 		Name:        "dashboard",
 		Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}},
-		InstanceIDs: []int{},
+		InstanceIDs: []int{3},
 	}}, listed)
 
 	status, _ = send(t, http.MethodPut, "/api-keys/99", `{"name":"k","permissions":[{"area":"torrents","level":"read"}]}`)

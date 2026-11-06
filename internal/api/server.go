@@ -442,6 +442,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 		browserOnly := middleware.BrowserOnly
+		requireInstance := middleware.RequireInstance
+		allInstances := middleware.AllInstances
 		// A route with no Permission check and no browserOnly is open to every key.
 		// TestRoutesRefuseKeyWithoutPermission lists those routes.
 		instances := middleware.Permissions(models.AreaInstances)
@@ -459,14 +461,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		system := middleware.Permissions(models.AreaSystem)
 		r.With(authMiddleware).Group(func(r chi.Router) {
 			// ServeContent needs the original Range header and writer to preserve byte ranges and Content-Length.
-			r.With(torrents.Read).Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+			r.With(requireInstance, torrents.Read).Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 
 			// These streams bypass the buffering compressor so events flush promptly and socket write deadlines remain reachable.
 			// /stream handles its own gzip through gzipSessionWriter in internal/api/sse.
 			// /stream checks "Torrents: read" for each torrent stream that it opens.
 			r.Get("/stream", s.streamManager.Serve)
 			r.With(logs.Read).Get("/logs/stream", logsHandler.StreamLogs)
-			r.With(rss.Read).Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
+			r.With(requireInstance, rss.Read).Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
 		})
 
 		// Every route below compresses; the group above must keep the raw writer.
@@ -496,13 +498,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 
-		// Cross-seed routes (query param auth for select endpoints)
-		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
+		// Cross-seed routes (query param auth for select endpoints). Cross-seed spans instances.
+		crossSeedHandler.Routes(r, chi.Chain(authMiddleware, allInstances).Handler, apiKeyQueryMiddleware)
 
 		// Dir scan webhook (query param auth for external triggers like *arr custom scripts)
 		if dirScanHandler != nil {
 			r.Route("/dir-scan/webhook", func(r chi.Router) {
-				r.With(apiKeyQueryMiddleware, authMiddleware, dirScan.Run).Post("/scan", dirScanHandler.WebhookTriggerScan)
+				r.With(apiKeyQueryMiddleware, authMiddleware, allInstances, dirScan.Run).Post("/scan", dirScanHandler.WebhookTriggerScan)
 			})
 		}
 
@@ -623,9 +625,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Route("/instances", func(r chi.Router) {
 				r.With(instances.Read).Get("/", instancesHandler.ListInstances)
 				r.With(instances.Write).Post("/", instancesHandler.CreateInstance)
-				r.With(instances.Write).Put("/order", instancesHandler.UpdateInstanceOrder)
+				r.With(allInstances, instances.Write).Put("/order", instancesHandler.UpdateInstanceOrder)
 
 				r.Route("/{instanceID}", func(r chi.Router) {
+					r.Use(requireInstance)
 					r.With(instances.Write).Put("/status", instancesHandler.UpdateInstanceStatus)
 					r.With(instances.Write).Put("/", instancesHandler.UpdateInstance)
 					r.With(instances.Write).Delete("/", instancesHandler.DeleteInstance)
@@ -645,7 +648,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(torrents.Write).Post("/", torrentsHandler.AddTorrent)
 						r.With(torrents.Read).Post("/check-duplicates", torrentsHandler.CheckDuplicates)
 						r.With(torrents.Write).Post("/bulk-action", torrentsHandler.BulkAction)
-						r.With(torrents.Read).Post("/delete-cross-seeds", torrentsHandler.GetDeleteCrossSeeds)
+						r.With(allInstances, torrents.Read).Post("/delete-cross-seeds", torrentsHandler.GetDeleteCrossSeeds)
 						r.With(torrents.Write).Post("/add-peers", torrentsHandler.AddPeers)
 						r.With(torrents.Write).Post("/ban-peers", torrentsHandler.BanPeers)
 						r.With(torrents.Read).Post("/field", torrentsHandler.GetTorrentField)
@@ -780,6 +783,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Directory scanner (global, not per-instance)
 			if dirScanHandler != nil {
 				r.Route("/dir-scan", func(r chi.Router) {
+					r.Use(allInstances)
 					r.With(dirScan.Read).Get("/settings", dirScanHandler.GetSettings)
 					r.With(dirScan.Write).Patch("/settings", dirScanHandler.UpdateSettings)
 					r.Route("/directories", func(r chi.Router) {
@@ -804,8 +808,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Global torrent operations (cross-instance)
 			r.Route("/torrents", func(r chi.Router) {
-				r.With(torrents.Read).Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
-				r.With(torrents.Write).Post("/export", torrentsHandler.ExportTorrentArchive)
+				r.With(allInstances, torrents.Read).Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
+				r.With(allInstances, torrents.Write).Post("/export", torrentsHandler.ExportTorrentArchive)
 			})
 		})
 	})

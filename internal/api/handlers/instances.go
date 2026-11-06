@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
@@ -677,6 +678,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
 		return
 	}
+	instances = slices.DeleteFunc(instances, func(inst *models.Instance) bool { return !middleware.ReachesInstance(r, inst.ID) })
 
 	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 

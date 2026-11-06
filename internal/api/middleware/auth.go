@@ -6,9 +6,11 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
@@ -131,6 +133,46 @@ func HasPermission(w http.ResponseWriter, r *http.Request, area models.Permissio
 	}
 	http.Error(w, "API key needs "+models.Permission{Area: area, Level: level}.String(), http.StatusForbidden)
 	return false
+}
+
+// ReachesInstance reports whether the request may reach the instance. Only an
+// API key with an Instance limit can be refused.
+func ReachesInstance(r *http.Request, instanceID int) bool {
+	key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey)
+	return !ok || key.ReachesInstance(instanceID)
+}
+
+// CanReachInstance reports whether the request may reach the instance, and
+// writes the 403 when it may not.
+func CanReachInstance(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+	if ReachesInstance(r, instanceID) {
+		return true
+	}
+	http.Error(w, "API key cannot reach instance "+strconv.Itoa(instanceID), http.StatusForbidden)
+	return false
+}
+
+// RequireInstance refuses an API key whose Instance limit leaves out the
+// {instanceID} of the route. Register it after IsAuthenticated.
+func RequireInstance(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		instanceID, _ := strconv.Atoi(chi.URLParam(r, "instanceID"))
+		if CanReachInstance(w, r, instanceID) {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+// AllInstances refuses an API key with an Instance limit. Register it after
+// IsAuthenticated on a route that spans instances (ADR 0040).
+func AllInstances(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok && len(key.InstanceIDs) > 0 {
+			http.Error(w, "API key with an instance limit cannot use this route", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // oidcSessionAllowed destroys an OIDC session whose user is no longer allowed.

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -534,9 +535,8 @@ func (req *APIKeyRequest) validate() string {
 	if err := models.ValidatePermissions(req.Permissions); err != nil {
 		return err.Error()
 	}
-	// qui must never store an Instance limit that it does not check (#3842).
-	if len(req.InstanceIDs) > 0 {
-		return "API key instance limit is not supported yet"
+	if slices.ContainsFunc(req.InstanceIDs, func(id int) bool { return id < 1 }) {
+		return "API key instance limit holds an invalid instance id"
 	}
 	return ""
 }

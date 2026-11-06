@@ -55,13 +55,16 @@ type permissionRig struct {
 	url  string
 }
 
-func newPermissionRig(t *testing.T) *permissionRig {
+func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig {
 	t.Helper()
 	deps := newTestDependencies(t)
 	// The walk reaches the log handlers, which need a config that can persist.
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
 	require.NoError(t, err)
+	for _, f := range setup {
+		f(deps)
+	}
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
 	srv := httptest.NewServer(router)
@@ -177,6 +180,7 @@ func TestEveryPermissionReachesEveryRouteExceptBrowserOnly(t *testing.T) {
 	walkAPIRoutes(t, rig, func(route routeKey, path string) {
 		status, body := rig.send(t, route.Method, path, key, nil)
 		require.False(t, strings.HasPrefix(body, needsPermissionPrefix), "%s %s: %d %q", route.Method, route.Path, status, body)
+		require.False(t, isInstanceLimitRefusal(body), "%s %s: a key with no Instance limit reaches every instance: %d %q", route.Method, route.Path, status, body)
 	})
 }
 
