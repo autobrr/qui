@@ -470,10 +470,10 @@ describe("WorkflowDialog Save flow", () => {
     mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
     const dialogRule = { ...rule, enabled: true, conditions: actions.pause }
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const editor = (open: boolean) => (
+    const editor = (open: boolean, editorRule = dialogRule) => (
       <QueryClientProvider client={client}>
         <TooltipProvider>
-          <WorkflowDialog open={open} onOpenChange={vi.fn()} instanceId={1} rule={dialogRule} />
+          <WorkflowDialog open={open} onOpenChange={vi.fn()} instanceId={1} rule={editorRule} />
         </TooltipProvider>
       </QueryClientProvider>
     )
@@ -485,7 +485,7 @@ describe("WorkflowDialog Save flow", () => {
     rerender(editor(false))
     await settle()
     if (reopen) {
-      rerender(editor(true))
+      rerender(editor(true, { ...dialogRule, name: "Changed" }))
       await settle()
     }
     await act(async () => finishCheck({ valid: true, errors: [] }))
@@ -506,6 +506,25 @@ describe("WorkflowDialog Save flow", () => {
     await settle()
 
     expect(screen.getByRole<HTMLButtonElement>("button", { name: key("save") }).disabled).toBe(false)
+  })
+
+  it("runs only the last check when the user clicks Save twice", async () => {
+    const finishChecks: ((result: { valid: boolean; errors: never[] }) => void)[] = []
+    mocks.validateRegex.mockImplementation(() => new Promise((resolve) => { finishChecks.push(resolve) }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+
+    rename("Changed")
+    clickButton(key("save"))
+    clickButton(key("save"))
+    await act(async () => finishChecks[0]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+
+    await act(async () => finishChecks[1]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).not.toBeNull()
   })
 
   it("counts a flip of the switch and a flip back as no change", async () => {

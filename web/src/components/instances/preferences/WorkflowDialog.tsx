@@ -2096,6 +2096,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Validate regex patterns before saving (only if enabling the workflow)
     const payload = buildPayload(submitState)
     if (submitState.enabled) {
+      saveCheckRun.current += 1
       const checkRun = saveCheckRun.current
       try {
         const validation = await api.validateAutomationRegex(instanceId, payload)
@@ -2108,7 +2109,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         // If validation endpoint fails, let the save attempt proceed
         // The backend will still reject invalid regexes
       }
-      // The editor closed during the check, or the user edited the form. The next Save checks the new values.
+      // A newer Save or a close replaced this check, or the user edited the form. The next Save checks the new values.
       if (checkRun !== saveCheckRun.current || JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return
     }
 
