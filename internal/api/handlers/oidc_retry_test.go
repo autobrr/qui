@@ -70,6 +70,27 @@ func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "connection refused")
 }
 
+// regression: #3860
+func TestOIDCDiscoveryReadsPublishedConfig(t *testing.T) {
+	var requestedIssuer string
+	stubOIDCNewProvider(t, func(ctx context.Context, issuer string) (*oidc.Provider, error) {
+		requestedIssuer = issuer
+		return (&oidc.ProviderConfig{IssuerURL: issuer}).NewProvider(ctx), nil
+	})
+
+	cfg := newOIDCOnlyConfig()
+	cfg.Publish()
+	// A reload writes these fields before it publishes them.
+	cfg.OIDCIssuer = "https://reload.example.invalid"
+	cfg.OIDCClientID = "client-id-from-reload"
+
+	client, err := (&OIDCHandler{config: cfg}).discoverClient(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://issuer.example.com", requestedIssuer)
+	assert.Equal(t, "client-id", client.oauthConfig.ClientID)
+}
+
 // regression: #3404
 func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
 	// Outside the bubble: the memstore cleanup goroutine ticks forever.

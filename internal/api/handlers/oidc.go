@@ -219,7 +219,7 @@ func (h *OIDCHandler) client(ctx context.Context) (*oidcClient, error) {
 }
 
 func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
-	cfg := h.config
+	cfg := h.config.Live()
 	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
 	if err != nil {
 		log.Warn().Err(err).Str("issuer", cfg.OIDCIssuer).Msg("OIDC provider discovery failed; the next OIDC login request retries it")
