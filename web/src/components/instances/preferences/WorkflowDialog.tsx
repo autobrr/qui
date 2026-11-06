@@ -589,6 +589,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const loadedForm = useRef<FormState | null>(null)
   const currentForm = useRef(formState)
+  const saveCheckRun = useRef(0)
   const [saveFlow, dispatchSaveFlow] = useReducer(workflowSaveFlowReducer, EDITING)
   const preview = saveFlow.step === "previewing" ? saveFlow.preview : null
   const previewResult = preview?.status === "loaded" ? preview.result : null
@@ -1198,6 +1199,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   useEffect(() => {
     if (!open) {
+      saveCheckRun.current += 1
       dispatchSaveFlow({ type: "closed" })
       setLatestDryRunEvents([])
       setLatestDryRunError(null)
@@ -2094,6 +2096,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Validate regex patterns before saving (only if enabling the workflow)
     const payload = buildPayload(submitState)
     if (submitState.enabled) {
+      const checkRun = saveCheckRun.current
       try {
         const validation = await api.validateAutomationRegex(instanceId, payload)
         if (!validation.valid && validation.errors.length > 0) {
@@ -2105,8 +2108,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         // If validation endpoint fails, let the save attempt proceed
         // The backend will still reject invalid regexes
       }
-      // The user edited the form during the check. The next Save checks the new values.
-      if (JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return
+      // The editor closed during the check, or the user edited the form. The next Save checks the new values.
+      if (checkRun !== saveCheckRun.current || JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return
     }
 
     if (!submitState.enabled) {
@@ -4133,6 +4136,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (!open) {
             // Drop any preview still in flight, also when the user saves without it.
             previewRequestRef.current += 1
+            previewMutation.reset()
             dispatchSaveFlow({ type: "closed" })
           }
         }}

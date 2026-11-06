@@ -462,6 +462,52 @@ describe("WorkflowDialog Save flow", () => {
     expect(mocks.save.mock.calls[0][2]).toMatchObject({ name: "Second name" })
   })
 
+  it.each([
+    { name: "stays closed", reopen: false },
+    { name: "opens again", reopen: true },
+  ])("asks nothing after the check when the editor closes during the check and $name", async ({ reopen }) => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    const dialogRule = { ...rule, enabled: true, conditions: actions.pause }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const editor = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open={open} onOpenChange={vi.fn()} instanceId={1} rule={dialogRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(editor(true))
+    await settle()
+
+    rename("Changed")
+    clickButton(key("save"))
+    rerender(editor(false))
+    await settle()
+    if (reopen) {
+      rerender(editor(true))
+      await settle()
+    }
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("enables Save again when the user cancels a preview that still loads", async () => {
+    mocks.preview.mockReturnValue(new Promise(() => {}))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+    rename("Changed")
+    clickButton(key("save"))
+    await settle()
+
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "preferences.workflowPreview.cancel" }))
+    await settle()
+
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: key("save") }).disabled).toBe(false)
+  })
+
   it("counts a flip of the switch and a flip back as no change", async () => {
     const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
 
