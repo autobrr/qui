@@ -34,9 +34,13 @@ type instanceLimitRig struct {
 
 func newInstanceLimitRig(t *testing.T) *instanceLimitRig {
 	t.Helper()
-	instances, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "instance-limit"), []byte("01234567890123456789012345678901"))
+	db := testdb.NewMigratedSQLite(t, "instance-limit")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	rig := newPermissionRig(t, func(deps *Dependencies) { deps.InstanceStore = instances })
+	rig := newPermissionRig(t, func(deps *Dependencies) {
+		deps.InstanceStore = instances
+		deps.AutomationStore = models.NewAutomationStore(db)
+	})
 	return &instanceLimitRig{permissionRig: rig, instances: instances}
 }
 
@@ -115,6 +119,38 @@ func TestInstanceLimit(t *testing.T) {
 		status, body := rig.send(t, http.MethodGet, "/api/instances/"+strconv.Itoa(added)+"/torrents", key, nil)
 		require.Equal(t, http.StatusForbidden, status, body)
 		require.Equal(t, cannotReach(added), body)
+	})
+
+	t.Run("an automation cannot export to another instance", func(t *testing.T) {
+		rules := "/api/instances/" + strconv.Itoa(first) + "/automations"
+		exportTo := func(target int) string {
+			return `{"name":"export","trackerPattern":"*","conditions":{"schemaVersion":"1","exportToInstance":{"enabled":true,"targetInstanceId":` + strconv.Itoa(target) + `,"savePath":"/data"}}}`
+		}
+		refused := `{"error":"` + strings.TrimSuffix(cannotReach(second), "\n") + `"}`
+
+		status, body := rig.sendBody(t, http.MethodPost, rules, rig.key(t, models.AllPermissions()...), nil, exportTo(second))
+		require.Equal(t, http.StatusCreated, status, "a key with no limit can export to any instance: %s", body)
+		for _, path := range []string{rules, rules + "/dry-run"} {
+			status, body = rig.sendBody(t, http.MethodPost, path, key, nil, exportTo(second))
+			require.Equal(t, http.StatusForbidden, status, path)
+			require.JSONEq(t, refused, body, path)
+		}
+
+		stored, err := rig.deps.AutomationStore.Create(t.Context(), &models.Automation{
+			InstanceID: first, Name: "saved export", TrackerPattern: "*", Enabled: true,
+			Conditions: &models.ActionConditions{SchemaVersion: "1", ExportToInstance: &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: second, SavePath: "/data"}},
+		})
+		require.NoError(t, err)
+		rule := rules + "/" + strconv.Itoa(stored.ID)
+		for _, tc := range []struct{ method, path, body string }{
+			{http.MethodPut, rule, exportTo(second)},
+			{http.MethodPost, rule + "/apply", "{}"},
+			{http.MethodPost, rules + "/apply", "{}"},
+		} {
+			status, body = rig.sendBody(t, tc.method, tc.path, key, nil, tc.body)
+			require.Equal(t, http.StatusForbidden, status, tc.path)
+			require.JSONEq(t, refused, body, tc.path)
+		}
 	})
 
 	t.Run("after its last instance is deleted the key reaches no instance", func(t *testing.T) {

@@ -541,6 +541,41 @@ func (req *APIKeyRequest) validate() string {
 	return ""
 }
 
+// refuseUnknownLimitInstance refuses an Instance limit that names an id that
+// is not an instance, so a new instance cannot join a limit. An edit keeps the
+// ids that the key holds, so a deleted instance stays in the limit.
+func (h *AuthHandler) refuseUnknownLimitInstance(w http.ResponseWriter, r *http.Request, keyID int, limit []int) bool {
+	if len(limit) == 0 {
+		return false
+	}
+	known := map[int]bool{}
+	instances, err := h.instanceStore.List(r.Context())
+	if err == nil {
+		for _, inst := range instances {
+			known[inst.ID] = true
+		}
+	}
+	if err == nil && keyID > 0 {
+		var keys []*models.APIKey
+		keys, err = h.authService.ListAPIKeys(r.Context())
+		if i := slices.IndexFunc(keys, func(key *models.APIKey) bool { return key.ID == keyID }); i >= 0 {
+			for _, id := range keys[i].InstanceIDs {
+				known[id] = true
+			}
+		}
+	}
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check API key instance limit")
+		RespondError(w, http.StatusInternalServerError, "Failed to check API key instance limit")
+		return true
+	}
+	if slices.ContainsFunc(limit, func(id int) bool { return !known[id] }) {
+		RespondError(w, http.StatusBadRequest, "API key instance limit holds an id that is not an instance")
+		return true
+	}
+	return false
+}
+
 // CreateAPIKey creates a new API key
 func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
@@ -558,6 +593,9 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := req.validate(); msg != "" {
 		RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if h.refuseUnknownLimitInstance(w, r, 0, req.InstanceIDs) {
 		return
 	}
 
@@ -597,6 +635,9 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := req.validate(); msg != "" {
 		RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if h.refuseUnknownLimitInstance(w, r, id, req.InstanceIDs) {
 		return
 	}
 

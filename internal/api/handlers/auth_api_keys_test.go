@@ -26,7 +26,12 @@ type apiKeyResponse struct {
 }
 
 func TestAPIKeyCreateUpdateList(t *testing.T) {
-	h := &AuthHandler{authService: auth.NewService(testdb.NewMigratedSQLite(t, "api-key-routes"))}
+	db := testdb.NewMigratedSQLite(t, "api-key-routes")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	inst, err := instances.Create(t.Context(), "first", "http://127.0.0.1:1", "admin", "secret", nil, nil, false, nil)
+	require.NoError(t, err)
+	h := &AuthHandler{authService: auth.NewService(db), instanceStore: instances}
 	router := chi.NewRouter()
 	router.Get("/api-keys", h.ListAPIKeys)
 	router.Post("/api-keys", h.CreateAPIKey)
@@ -53,6 +58,7 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 	invalid := map[string]string{
 		"empty Permission list": `{"name":"k","permissions":[]}`,
 		"invalid instance id":   `{"name":"k","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1,0]}`,
+		"unknown instance id":   `{"name":"k","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1,2]}`,
 		"missing name":          `{"permissions":[{"area":"torrents","level":"read"}]}`,
 	}
 	for name, req := range invalid {
@@ -63,7 +69,7 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 	}
 
 	status, body = send(t, http.MethodPut, "/api-keys/1",
-		`{"name":"dashboard","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[3]}`)
+		`{"name":"dashboard","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1]}`)
 	require.Equal(t, http.StatusOK, status, body)
 
 	status, body = send(t, http.MethodGet, "/api-keys", "")
@@ -74,8 +80,15 @@ func TestAPIKeyCreateUpdateList(t *testing.T) {
 		ID:          created.ID,
 		Name:        "dashboard",
 		Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}},
-		InstanceIDs: []int{3},
+		InstanceIDs: []int{inst.ID},
 	}}, listed)
+
+	require.NoError(t, instances.Delete(t.Context(), inst.ID))
+	status, body = send(t, http.MethodPut, "/api-keys/1",
+		`{"name":"dashboard","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1]}`)
+	require.Equal(t, http.StatusOK, status, "an edit keeps a deleted instance in the limit: %s", body)
+	status, body = send(t, http.MethodPost, "/api-keys", `{"name":"k","permissions":[{"area":"torrents","level":"read"}],"instanceIds":[1]}`)
+	require.Equal(t, http.StatusBadRequest, status, "a new key cannot name a deleted instance: %s", body)
 
 	status, _ = send(t, http.MethodPut, "/api-keys/99", `{"name":"k","permissions":[{"area":"torrents","level":"read"}]}`)
 	require.Equal(t, http.StatusNotFound, status)

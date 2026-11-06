@@ -148,8 +148,13 @@ func CanReachInstance(w http.ResponseWriter, r *http.Request, instanceID int) bo
 	if ReachesInstance(r, instanceID) {
 		return true
 	}
-	http.Error(w, "API key cannot reach instance "+strconv.Itoa(instanceID), http.StatusForbidden)
+	http.Error(w, CannotReachInstance(instanceID), http.StatusForbidden)
 	return false
+}
+
+// CannotReachInstance is the refusal for an instance outside the Instance limit.
+func CannotReachInstance(instanceID int) string {
+	return "API key cannot reach instance " + strconv.Itoa(instanceID)
 }
 
 // RequireInstance refuses an API key whose Instance limit leaves out the

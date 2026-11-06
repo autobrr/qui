@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
 )
@@ -235,6 +236,16 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rules, err := h.store.ListByInstance(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to list rules for manual apply")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
+		return
+	}
+	if !canReachExportTargets(w, r, rules...) {
+		return
+	}
+
 	if h.service == nil {
 		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
@@ -267,11 +278,6 @@ func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if h.service == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
-		return
-	}
-
 	rule, err := h.store.Get(r.Context(), instanceID, ruleID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -280,6 +286,14 @@ func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request)
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for manual run")
 		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+	if !canReachExportTargets(w, r, rule) {
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
@@ -311,14 +325,14 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.service == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
-		return
-	}
-
 	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
 	if payload == nil {
 		RespondError(w, status, msg)
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
@@ -338,6 +352,18 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		ActivityIDs: activityIDs(activities),
 		Activities:  activities,
 	})
+}
+
+// canReachExportTargets refuses the request when a rule exports to an instance
+// outside the Instance limit of the API key.
+func canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
+	for _, rule := range rules {
+		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && !middleware.ReachesInstance(r, export.TargetInstanceID) {
+			RespondError(w, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID))
+			return false
+		}
+	}
+	return true
 }
 
 func activityIDs(activities []*models.AutomationActivity) []int {
@@ -385,6 +411,9 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 	}
 
 	if export := payload.Conditions.ExportToInstance; export != nil && export.Enabled {
+		if !middleware.ReachesInstance(r, export.TargetInstanceID) {
+			return nil, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID)
+		}
 		if h.instanceStore == nil {
 			return nil, http.StatusInternalServerError, "Instance store not configured"
 		}
