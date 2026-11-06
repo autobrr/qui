@@ -548,26 +548,24 @@ func (h *AuthHandler) refuseUnknownLimitInstance(w http.ResponseWriter, r *http.
 	if len(limit) == 0 {
 		return false
 	}
-	known := map[int]bool{}
 	instances, err := h.instanceStore.List(r.Context())
-	if err == nil {
-		for _, inst := range instances {
-			known[inst.ID] = true
-		}
-	}
+	var keys []*models.APIKey
 	if err == nil && keyID > 0 {
-		var keys []*models.APIKey
 		keys, err = h.authService.ListAPIKeys(r.Context())
-		if i := slices.IndexFunc(keys, func(key *models.APIKey) bool { return key.ID == keyID }); i >= 0 {
-			for _, id := range keys[i].InstanceIDs {
-				known[id] = true
-			}
-		}
 	}
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check API key instance limit")
 		RespondError(w, http.StatusInternalServerError, "Failed to check API key instance limit")
 		return true
+	}
+	known := make(map[int]bool, len(instances))
+	for _, inst := range instances {
+		known[inst.ID] = true
+	}
+	if i := slices.IndexFunc(keys, func(key *models.APIKey) bool { return key.ID == keyID }); i >= 0 {
+		for _, id := range keys[i].InstanceIDs {
+			known[id] = true
+		}
 	}
 	if slices.ContainsFunc(limit, func(id int) bool { return !known[id] }) {
 		RespondError(w, http.StatusBadRequest, "API key instance limit holds an id that is not an instance")
