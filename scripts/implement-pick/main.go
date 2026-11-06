@@ -69,7 +69,7 @@ type link struct {
 var (
 	bugCategory    = regexp.MustCompile(`(?im)^\s*\**category:?\**:?\s*bug\b`)
 	blockedByLine  = regexp.MustCompile(`(?im)^\s*\**blocked by:?\**:?(.*)$`)
-	issueReference = regexp.MustCompile(`([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([0-9]+)`)
+	issueReference = regexp.MustCompile(`(?:https://github\.com/)?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?(?:/(?:issues|pull)/|#)([0-9]+)`)
 )
 
 func main() {

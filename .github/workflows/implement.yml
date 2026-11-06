@@ -91,7 +91,7 @@ jobs:
             }' --jq '.data.repository.issues.nodes[]' | jq -s . > "$RUNNER_TEMP/issues.json"
           go run ./scripts/implement-pick refs "$RUNNER_TEMP/issues.json" | while read -r ref; do
             if ! state=$(gh api "repos/${ref%#*}/issues/${ref##*#}" --jq .state); then
-              echo "::warning::Cannot read $ref. The pick counts it as an open blocker."
+              echo "::warning::Cannot read $ref. The pick counts it as an open blocker." >&2
               continue
             fi
             jq -n --arg ref "$ref" --arg state "$state" '{($ref): $state}'
