@@ -13,6 +13,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **API key**: A key that scripts and integrations use to reach the qui API, with the Permissions it holds. _Avoid_: token, scope.
 - **Permission**: One area and one level (read, run, or write) on an API key. Write includes read and run. Run does not include read. _Avoid_: scope.
+- **Instance limit**: The optional list of instances that an API key can reach. No list means every instance, also the ones added later. _Avoid_: instance scope.
 - **Client Proxy API key**: A key bound to one instance that reaches only the qBittorrent proxy. _Avoid_: client key, proxy token.
 - **Browser-only route**: A route that refuses every API key and accepts only a signed-in browser, or any request when authentication is disabled. _Avoid_: session-only route.
 

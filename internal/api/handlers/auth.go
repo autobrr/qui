@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -534,11 +535,43 @@ func (req *APIKeyRequest) validate() string {
 	if err := models.ValidatePermissions(req.Permissions); err != nil {
 		return err.Error()
 	}
-	// qui must never store an Instance limit that it does not check (#3842).
-	if len(req.InstanceIDs) > 0 {
-		return "API key instance limit is not supported yet"
+	if slices.ContainsFunc(req.InstanceIDs, func(id int) bool { return id < 1 }) {
+		return "API key instance limit holds an invalid instance id"
 	}
 	return ""
+}
+
+// refuseUnknownLimitInstance refuses an Instance limit that names an id that
+// is not an instance, so a new instance cannot join a limit. An edit keeps the
+// ids that the key holds, so a deleted instance stays in the limit.
+func (h *AuthHandler) refuseUnknownLimitInstance(w http.ResponseWriter, r *http.Request, keyID int, limit []int) bool {
+	if len(limit) == 0 {
+		return false
+	}
+	instances, err := h.instanceStore.List(r.Context())
+	var keys []*models.APIKey
+	if err == nil && keyID > 0 {
+		keys, err = h.authService.ListAPIKeys(r.Context())
+	}
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check API key instance limit")
+		RespondError(w, http.StatusInternalServerError, "Failed to check API key instance limit")
+		return true
+	}
+	known := make(map[int]bool, len(instances))
+	for _, inst := range instances {
+		known[inst.ID] = true
+	}
+	if i := slices.IndexFunc(keys, func(key *models.APIKey) bool { return key.ID == keyID }); i >= 0 {
+		for _, id := range keys[i].InstanceIDs {
+			known[id] = true
+		}
+	}
+	if slices.ContainsFunc(limit, func(id int) bool { return !known[id] }) {
+		RespondError(w, http.StatusBadRequest, "API key instance limit holds an id that is not an instance")
+		return true
+	}
+	return false
 }
 
 // CreateAPIKey creates a new API key
@@ -558,6 +591,9 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := req.validate(); msg != "" {
 		RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if h.refuseUnknownLimitInstance(w, r, 0, req.InstanceIDs) {
 		return
 	}
 
@@ -597,6 +633,9 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := req.validate(); msg != "" {
 		RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if h.refuseUnknownLimitInstance(w, r, id, req.InstanceIDs) {
 		return
 	}
 

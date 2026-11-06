@@ -131,3 +131,9 @@ func (k *APIKey) Allows(area PermissionArea, level PermissionLevel) bool {
 		return p.Area == area && (p.Level == level || p.Level == LevelWrite)
 	})
 }
+
+// ReachesInstance reports whether the Instance limit of the key holds the
+// instance. A key with no Instance limit reaches every instance.
+func (k *APIKey) ReachesInstance(instanceID int) bool {
+	return len(k.InstanceIDs) == 0 || slices.Contains(k.InstanceIDs, instanceID)
+}

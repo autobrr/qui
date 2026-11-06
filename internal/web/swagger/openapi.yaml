@@ -245,7 +245,7 @@ paths:
         - SessionAuth: []
       responses:
         '400':
-          description: Missing name, invalid Permission list, or an Instance limit that is not empty
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
         '201':
           description: API key created
           content:
@@ -302,7 +302,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiKey'
         '400':
-          description: Missing name, invalid Permission list, or an Instance limit that is not empty
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
         '404':
           description: API key not found
     delete:
@@ -7492,7 +7492,14 @@ components:
             $ref: '#/components/schemas/ApiKeyPermission'
         instanceIds:
           type: array
-          description: The Instance limit. Only an empty list is accepted for now.
+          description: >-
+            The Instance limit: the instances that the key can reach. An empty list means
+            every instance, also the ones added later. A new instance does not join a list
+            that is not empty, and a deleted instance stays in the list and matches nothing.
+            Each id must be an instance, but an edit can keep a deleted instance that the key
+            holds. A key with a list gets a 403 on another instance, on an automation that
+            exports to another instance, and on the cross-seed, Dir Scan, and cross-instance
+            routes.
           items:
             type: integer
 
