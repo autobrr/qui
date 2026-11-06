@@ -69,11 +69,10 @@ func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey
 	resp, err := transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	closeStream := func() {
-		cancel()
-		_ = resp.Body.Close()
-	}
-	t.Cleanup(closeStream)
+	// Cancel only. After resp.Body.Close, the transport can keep the connection open
+	// to drain the body until a timer fires, and the fake clock of the bubble does not
+	// move during synctest.Wait. The server then does not see the disconnect.
+	t.Cleanup(cancel)
 
 	reader := newSSEReader(resp.Body)
 	first := <-reader.events
@@ -81,7 +80,7 @@ func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey
 	id := decodeStreamPayloadData(t, first.data).ConnectionID
 	require.NotEmpty(t, id)
 
-	return &changeStream{sseReader: reader, connectionID: id, transport: transport, close: closeStream}
+	return &changeStream{sseReader: reader, connectionID: id, transport: transport, close: cancel}
 }
 
 // change sends a subscription change and returns the status code.
