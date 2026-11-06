@@ -4960,11 +4960,12 @@ torrentsLoop:
 		}
 
 		if len(filters.Expr) > 0 && compileErr == nil {
-			// Programs are compiled against expr.Env(qbt.Torrent{}), so keep
-			// passing a value even though the rest of the loop uses a pointer.
-			// The copy only happens for expression filters, where evaluation
-			// dwarfs it anyway.
-			result, err := expr.Run(program, *torrent)
+			env := *torrent
+			if filters.HideTrackerPasskeys {
+				env = torrentWithoutPasskeys(torrent)
+				env.MagnetURI = ""
+			}
+			result, err := expr.Run(program, env)
 			if err != nil {
 				if exprErr == nil {
 					exprErr = err

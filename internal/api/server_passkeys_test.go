@@ -168,9 +168,11 @@ func (rig *passkeyRig) fetch(t *testing.T, method, path, key, body string, cooki
 
 // streamInit opens a stream and returns the data of its init frame. The stream
 // stays open until ctx ends.
-func (rig *passkeyRig) streamInit(ctx context.Context, t *testing.T, limit int, key string, cookie *http.Cookie) string {
+func (rig *passkeyRig) streamInit(ctx context.Context, t *testing.T, limit int, key string, cookie *http.Cookie, expression string) string {
 	t.Helper()
-	streams := fmt.Sprintf(`[{"key":"view","instanceId":%d,"limit":%d}]`, rig.instanceID, limit)
+	filters, err := json.Marshal(qbittorrent.FilterOptions{Expr: expression})
+	require.NoError(t, err)
+	streams := fmt.Sprintf(`[{"key":"view","instanceId":%d,"limit":%d,"filters":%s}]`, rig.instanceID, limit, filters)
 	resp := rig.request(ctx, t, http.MethodGet, "/api/stream?streams="+url.QueryEscape(streams), key, "", cookie)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	reader := bufio.NewReader(resp.Body)
@@ -315,15 +317,85 @@ func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	t.Run("a session opens the stream first", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		requireFull(t, rig.streamInit(ctx, t, 100, "", rig.cookie))
-		requireHidden(t, rig.streamInit(ctx, t, 100, readKey, nil))
-		requireFull(t, rig.streamInit(ctx, t, 100, writeKey, nil))
+		requireFull(t, rig.streamInit(ctx, t, 100, "", rig.cookie, ""))
+		requireHidden(t, rig.streamInit(ctx, t, 100, readKey, nil, ""))
+		requireFull(t, rig.streamInit(ctx, t, 100, writeKey, nil, ""))
 	})
 
 	t.Run("a read key opens the stream first", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		requireHidden(t, rig.streamInit(ctx, t, 101, readKey, nil))
-		requireFull(t, rig.streamInit(ctx, t, 101, "", rig.cookie))
+		requireHidden(t, rig.streamInit(ctx, t, 101, readKey, nil, ""))
+		requireFull(t, rig.streamInit(ctx, t, 101, "", rig.cookie, ""))
 	})
+}
+
+// regression: #3852
+func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
+	rig := newPasskeyRig(t)
+	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
+	writeKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
+	for _, tc := range []struct {
+		name, expression string
+		readTotal        int
+	}{
+		{"tracker path", `Tracker contains "abc123xyz"`, 0},
+		{"tracker query", `Tracker contains "querypasskey7"`, 0},
+		{"trackers path", `any(Trackers, {.Url contains "abc123xyz"})`, 0},
+		{"trackers query", `any(Trackers, {.Url contains "querypasskey7"})`, 0},
+		{"magnet path", `MagnetURI contains "abc123xyz"`, 0},
+		{"magnet query", `MagnetURI contains "querypasskey7"`, 0},
+		{"tracker host", `Tracker contains "tracker.example.invalid"`, 1},
+		{"trackers host", `any(Trackers, {.Url contains "tracker.example.invalid"})`, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			filters, err := json.Marshal(qbittorrent.FilterOptions{Expr: tc.expression})
+			require.NoError(t, err)
+			for _, endpoint := range []struct{ method, path, body string }{
+				{http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents?filters=%s", rig.instanceID, url.QueryEscape(string(filters))), ""},
+				{http.MethodGet, fmt.Sprintf("/api/torrents/cross-instance?instanceIds=%d&filters=%s", rig.instanceID, url.QueryEscape(string(filters))), ""},
+				{http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/field", rig.instanceID), fmt.Sprintf(`{"field":"name","selectAll":true,"filters":%s}`, filters)},
+			} {
+				for _, auth := range []struct {
+					key    string
+					cookie *http.Cookie
+					total  int
+				}{{readKey, nil, tc.readTotal}, {writeKey, nil, 1}, {"", rig.cookie, 1}} {
+					status, body := rig.fetch(t, endpoint.method, endpoint.path, auth.key, endpoint.body, auth.cookie)
+					require.Equal(t, http.StatusOK, status, body)
+					var result struct {
+						Total int `json:"total"`
+					}
+					require.NoError(t, json.Unmarshal([]byte(body), &result))
+					require.Equal(t, auth.total, result.Total, "%s: %s", endpoint.path, body)
+				}
+			}
+			for _, readFirst := range []bool{true, false} {
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+				limit := 100
+				if readFirst {
+					limit++
+				}
+				auths := []struct {
+					key    string
+					cookie *http.Cookie
+					total  int
+				}{{readKey, nil, tc.readTotal}, {"", rig.cookie, 1}, {writeKey, nil, 1}}
+				if !readFirst {
+					auths[0], auths[1] = auths[1], auths[0]
+				}
+				for _, auth := range auths {
+					frame := rig.streamInit(ctx, t, limit, auth.key, auth.cookie, tc.expression)
+					var result struct {
+						Data struct {
+							Total int `json:"total"`
+						} `json:"data"`
+					}
+					require.NoError(t, json.Unmarshal([]byte(frame), &result))
+					require.Equal(t, auth.total, result.Data.Total, "read first %t: %s", readFirst, frame)
+				}
+			}
+		})
+	}
 }

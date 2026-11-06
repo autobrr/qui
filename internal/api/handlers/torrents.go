@@ -214,6 +214,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
+	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
 	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
@@ -382,6 +383,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
 	torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), instanceID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 	if err != nil {
 		if instanceID != allInstancesID && respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
@@ -2745,6 +2747,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 
 	// A poll stands in for the stream, so it starts background syncs. The
 	// stream itself reads this function with WithSkipFreshData.
+	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
 	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
 		r.Context(),
 		limit,
