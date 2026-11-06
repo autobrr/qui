@@ -48,15 +48,18 @@ func findCrossSeeds(t *testing.T, svc *Service, hash string) map[string]string {
 
 // The tab lists more than a delete touches: a copy with its own files, and
 // the copies on other instances.
+// regression: #3853
 func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 	t.Parallel()
 
 	const name = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
+	root := t.TempDir()
+	dataDir, otherDir := filepath.Join(root, "data"), filepath.Join(root, "other")
 	files := qbt.TorrentFiles{{Name: name + ".mkv", Size: 100}}
-	source := crossMatchTorrent(1, "aaaa", name, "/data", "/data/"+name+".mkv", files)
-	copyElsewhere := crossMatchTorrent(1, "bbbb", name, "/other", "/other/"+name+".mkv", files)
-	sameTorrentOnSecond := crossMatchTorrent(2, "aaaa", name, "/data", "/data/"+name+".mkv", files)
-	releaseOnSecond := crossMatchTorrent(2, "cccc", "Harbor Watch S01E01 1080p WEB h264-GRP", "/data", "/data/"+name+".mkv", files)
+	source := crossMatchTorrent(1, "aaaa", name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	copyElsewhere := crossMatchTorrent(1, "bbbb", name, otherDir, filepath.Join(otherDir, name+".mkv"), files)
+	sameTorrentOnSecond := crossMatchTorrent(2, "aaaa", name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	releaseOnSecond := crossMatchTorrent(2, "cccc", "Harbor Watch S01E01 1080p WEB h264-GRP", dataDir, filepath.Join(dataDir, name+".mkv"), files)
 
 	svc, _ := crossSeedsService(source, copyElsewhere, sameTorrentOnSecond, releaseOnSecond)
 	require.Equal(t, map[string]string{
