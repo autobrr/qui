@@ -103,7 +103,7 @@ func (h *AuthHandler) GetOIDCHandler() *OIDCHandler {
 // rejectIfAuthDisabled returns true (and writes a 403 response) when
 // authentication is disabled, signalling the caller to return early.
 func (h *AuthHandler) rejectIfAuthDisabled(w http.ResponseWriter) bool {
-	if h.config != nil && h.config.IsAuthDisabled() {
+	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondError(w, http.StatusForbidden, "Endpoint disabled when authentication is disabled")
 		return true
 	}
@@ -135,7 +135,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.config != nil && h.config.OIDCEnabled {
+	if h.config != nil && h.config.Live().OIDCEnabled {
 		RespondError(w, http.StatusForbidden, "Setup is disabled when OIDC is enabled")
 		return
 	}
@@ -389,7 +389,7 @@ func syntheticAdminResponse() map[string]any {
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// When auth is disabled, return a synthetic user
-	if h.config != nil && h.config.IsAuthDisabled() {
+	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
 		return
 	}
@@ -430,7 +430,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 // Validate checks if the user has a valid session (used for OIDC callback)
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
-	if h.config != nil && h.config.IsAuthDisabled() {
+	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
 		return
 	}
@@ -454,7 +454,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
-	if h.config != nil && (h.config.IsAuthDisabled() || h.config.OIDCEnabled) {
+	if h.config != nil && (h.config.Live().IsAuthDisabled() || h.config.Live().OIDCEnabled) {
 		RespondJSON(w, http.StatusOK, map[string]any{
 			"setupRequired": false,
 		})

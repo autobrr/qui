@@ -327,6 +327,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) Handler() (*chi.Mux, error) {
+	s.config.PublishConfig()
 	r := chi.NewRouter()
 	allowedHosts, err := middleware.RequireAllowedHosts(s.config.Config.AllowedHosts)
 	if err != nil {
@@ -398,7 +399,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
 		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
-		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
+		return s.config.Config.Live().IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
 	}, s.activityHub)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
@@ -863,7 +864,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if baseURL != "/" {
 		compressed.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
+			_, _ = w.Write([]byte("Must use baseUrl: " + baseURL + " instead of /"))
 		})
 		//	// Redirect root to base URL
 		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

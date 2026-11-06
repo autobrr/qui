@@ -1023,6 +1023,30 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
+// regression: #3860
+func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"externalProgramAllowList = [\"/old\"]\n"), 0o600))
+
+	cfg := &AppConfig{viper: viper.New(), Config: &domain.Config{}, version: "test", logManager: NewLogManager("test")}
+	require.NoError(t, cfg.load(path))
+	require.NoError(t, cfg.viper.Unmarshal(cfg.Config))
+	cfg.hydrateConfigFromViper()
+	cfg.PublishConfig()
+	inFlight := cfg.Config.Live()
+
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"externalProgramAllowList = [\"/new\"]\n"), 0o600))
+	cfg.reload()
+
+	assert.Equal(t, []string{"/old"}, inFlight.ExternalProgramAllowList, "a request in flight keeps the config it read")
+	assert.Equal(t, []string{"/new"}, cfg.Config.Live().ExternalProgramAllowList, "the next request reads the reloaded config")
+}
+
 // The watcher reads the file before configReloadDelay, so reload must read
 // the file as it is when the delay ends.
 // regression: #3797

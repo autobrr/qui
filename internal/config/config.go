@@ -95,6 +95,7 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 		return nil, err
 	}
 	c.warnWeakSessionSecret()
+	c.Config.Publish()
 
 	// Watch for config changes
 	c.watchConfig()
@@ -323,6 +324,15 @@ func (c *AppConfig) reload() {
 	c.hydrateConfigFromViper()
 
 	c.applyDynamicChanges(previousAuthSettings)
+	c.Config.Publish()
+}
+
+// PublishConfig publishes the changes that startup made after New, for example
+// from CLI flags.
+func (c *AppConfig) PublishConfig() {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	c.Config.Publish()
 }
 
 type authReloadSettings struct {
@@ -984,7 +994,7 @@ func (c *AppConfig) SetDataDir(dir string) {
 // Empty config defaults to <dataDir>/backups; a relative override is resolved
 // against the config directory, an absolute override is used verbatim.
 func (c *AppConfig) GetBackupDir() string {
-	dir := strings.TrimSpace(c.Config.BackupDir)
+	dir := strings.TrimSpace(c.Config.Live().BackupDir)
 	if dir == "" {
 		return filepath.Join(c.dataDir, "backups")
 	}
@@ -1007,7 +1017,7 @@ func (c *AppConfig) GetConfigDir() string {
 // Empty config defaults to <config-dir>/themes; a relative override is resolved
 // against the config directory, an absolute override is used verbatim.
 func (c *AppConfig) GetCustomThemesDir() string {
-	dir := strings.TrimSpace(c.Config.CustomThemesDir)
+	dir := strings.TrimSpace(c.Config.Live().CustomThemesDir)
 	if dir == "" {
 		return filepath.Join(c.GetConfigDir(), "themes")
 	}
