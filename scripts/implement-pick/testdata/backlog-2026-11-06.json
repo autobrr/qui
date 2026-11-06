@@ -1,0 +1,2018 @@
+[
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 3731,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-08-30T06:55:06Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2482,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-08-31T06:50:18Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2495,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-08-31T06:50:49Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2496,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-01T10:15:02Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2512,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-02T09:46:17Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2523,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-02T09:47:13Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2524,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-03T10:01:04Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2538,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-03T10:04:04Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2539,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-04T09:47:56Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2550,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-04T09:48:27Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2551,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-04T09:49:50Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2552,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-04T09:51:09Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2553,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-05T09:13:15Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2564,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 138,
+          "repository": {
+            "nameWithOwner": "autobrr/go-qbittorrent"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "## Blocked by\n[Library dependency](https://github.com/autobrr/go-qbittorrent/issues/138), including an available module revision.\nDelivery order: ship [qui compatibility](https://github.com/autobrr/qui/issues/2598) first.",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 2603,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-09-07T05:08:00Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "automations"
+        },
+        {
+          "name": "qbit-native-feature"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2599,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 139,
+          "repository": {
+            "nameWithOwner": "autobrr/go-qbittorrent"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "## Blocked by\n[Library dependency](https://github.com/autobrr/go-qbittorrent/issues/139), including an available module revision.\nDelivery order: ship [qui compatibility](https://github.com/autobrr/qui/issues/2598) first.",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-07T05:08:02Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "qbit-native-feature"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2600,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-10T09:54:14Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2664,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 3074,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-09-11T09:54:57Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2669,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 2686,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "CLOSED"
+        }
+      ]
+    },
+    "body": "Blocked by: #2686",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 2698,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-09-12T20:00:52Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "hardlink"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2687,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-13T09:09:43Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "torrent"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2696,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-14T13:54:50Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2705,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-14T17:11:13Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2712,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 3009,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-09-14T17:12:15Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2713,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-15T10:13:45Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2719,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-16T01:41:39Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2735,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-16T01:42:00Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2736,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-20T17:41:01Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2778,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-09-22T12:52:12Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2801,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug\n## Blocked by\n- autobrr/go-qbittorrent#150, which adds `qbt.TorrentStateForcedMetaDl`",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-01T13:42:12Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "orphan"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "dirscan"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2940,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 2940,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "## Blocked by\n- autobrr/go-qbittorrent#150 (the `forcedMetaDL` constant) and autobrr/go-qbittorrent#151 (`IsKnown`, `KnownTorrentStates`): qui's go-qbittorrent pin must reach a main commit with both.\n- #2940: the sort-position test and the exhaustive lint fail on `forcedMetaDL` until its PR adds it to qui's tables.\n- #2837: the frontend part builds on its `getStateLabel` and `stateLabelFallback`.",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-01T13:48:00Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "swagger"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "automations"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "filtersidebar"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2941,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "## Blocked by\n- #2835: it localizes the byte and speed unit labels and rewrites the unit lookup, the unit options and the\n  popover state this issue changes. Merged on 2026-10-09; the PR builds on develop.",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-01T20:54:57Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "web"
+        },
+        {
+          "name": "refactor"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 2955,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-04T05:00:26Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "rls"
+        }
+      ]
+    },
+    "number": 2997,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-04T20:09:22Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "automations"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3012,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-09T19:50:17Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3090,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** chore",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-09T21:55:38Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "web"
+        },
+        {
+          "name": "chore"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3095,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-09T22:07:11Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3098,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-10T18:39:07Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3117,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-13T19:48:26Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3165,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-14T21:27:36Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "ci"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3181,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-18T08:32:47Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3288,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-18T10:08:24Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "rls"
+        }
+      ]
+    },
+    "number": 3292,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-21T07:49:22Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3351,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "Blocked by #2446\n**Category:** enhancement",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-22T07:57:10Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3374,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-24T06:40:41Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "search"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3453,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 3037,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "CLOSED"
+        }
+      ]
+    },
+    "body": "Blocked by #3037.\n**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-24T06:40:44Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3454,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-27T14:23:45Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "external-programs"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3577,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-27T14:23:47Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "external-programs"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3578,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** enhancement",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-28T20:06:49Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "dirscan"
+        },
+        {
+          "name": "remote-agent"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "wayfinder:task"
+        }
+      ]
+    },
+    "number": 3606,
+    "parent": {
+      "number": 2916
+    },
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-29T18:12:33Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "automations"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3629,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-10-31T12:48:40Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "dirscan"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3664,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-01T05:23:58Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "swagger"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "area/backend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3691,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-01T05:24:12Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "web"
+        },
+        {
+          "name": "mobile"
+        },
+        {
+          "name": "automations"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3692,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-01T23:50:41Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "anime"
+        },
+        {
+          "name": "rls"
+        }
+      ]
+    },
+    "number": 3730,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-03T13:48:10Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "torrent"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "area/frontend"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3784,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "**Category:** bug",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T09:52:42Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "bug"
+        },
+        {
+          "name": "cross-seed"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "rls"
+        }
+      ]
+    },
+    "number": 3823,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T20:53:01Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "database:migrations"
+        },
+        {
+          "name": "swagger"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "security"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3839,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 5
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 3840,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "CLOSED"
+        }
+      ]
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": [
+        {
+          "number": 3845,
+          "state": "OPEN"
+        }
+      ]
+    },
+    "createdAt": "2026-11-05T21:00:24Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "database:migrations"
+        },
+        {
+          "name": "swagger"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "sse"
+        },
+        {
+          "name": "database:postgres"
+        },
+        {
+          "name": "security"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "no-ui-yet"
+        }
+      ]
+    },
+    "number": 3841,
+    "parent": {
+      "number": 3839
+    },
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 3841,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T21:00:27Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "sse"
+        },
+        {
+          "name": "security"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "no-ui-yet"
+        }
+      ]
+    },
+    "number": 3842,
+    "parent": {
+      "number": 3839
+    },
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 3846,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        },
+        {
+          "number": 3842,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        },
+        {
+          "number": 3841,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T21:00:30Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "documentation"
+        },
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "web"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3843,
+    "parent": {
+      "number": 3839
+    },
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 0
+    },
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 3841,
+          "repository": {
+            "nameWithOwner": "autobrr/qui"
+          },
+          "state": "OPEN"
+        }
+      ]
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T22:59:08Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "enhancement"
+        },
+        {
+          "name": "backend"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "api"
+        },
+        {
+          "name": "sse"
+        },
+        {
+          "name": "security"
+        },
+        {
+          "name": "ready-for-agent"
+        },
+        {
+          "name": "no-ui-yet"
+        }
+      ]
+    },
+    "number": 3846,
+    "parent": {
+      "number": 3839
+    },
+    "subIssuesSummary": {
+      "total": 0
+    }
+  },
+  {
+    "assignees": {
+      "totalCount": 1
+    },
+    "blockedBy": {
+      "nodes": []
+    },
+    "body": "",
+    "closedByPullRequestsReferences": {
+      "nodes": []
+    },
+    "createdAt": "2026-11-05T23:13:49Z",
+    "labels": {
+      "nodes": [
+        {
+          "name": "ready-for-agent"
+        }
+      ]
+    },
+    "number": 3847,
+    "parent": null,
+    "subIssuesSummary": {
+      "total": 0
+    }
+  }
+]

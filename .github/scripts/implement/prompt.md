@@ -6,6 +6,19 @@ This run is not interactive. Nobody answers questions, and nobody reads your out
 
 The workflow saved the issue in `.implement/issue.json` and its parent issue, if it has one, in `.implement/parent.json`. You have no GitHub token, so do not run `gh`. The workflow refused the run if the issue has open sub-issues, so the issue is the spec.
 
+The brief can be out of date, for example when a function was renamed or moved after triage. If the bug is still present, follow the current code, and list each difference from the brief under Departures.
+
+## Prove the bug first
+
+Before you change other code, write a test that shows the bug, run it, and see it fail for the reason that the issue gives. Then fix the code, and run the test again until it passes.
+
+Stop without a change in these cases:
+
+- The bug is gone in the current code.
+- No test in the sandbox can prove the bug, for example because it needs a real qBittorrent, a tracker, or a browser.
+
+To stop, give an empty `title` and `body`, and give `stop`. The workflow drops each edit of a run that stops. Start `stop` with one sentence that gives the reason. Then say what you checked: the code paths, the tests that you ran, and their results. The workflow posts `stop` on the issue and moves the issue to `ready-for-human`.
+
 ## What you do differently
 
 - If `/implement` tells you to ask about a departure from the spec, pick your recommended answer and build it. Record each departure in the pull request body, as the last section of this file says.
@@ -33,6 +46,6 @@ You cannot change `.github/`, `.claude/`, `docs/agents/`, an `AGENTS.md` or `CLA
 End the run with the title and the body as your structured output:
 
 - `title`: a Conventional Commits title of 64 characters or less.
-- `body`: the pull request body. Follow the `pr` skill and `.github/pull_request_template.md`. Replace `Fixes # (issue)` with `Closes #<issue number>`. Under "How has this been tested?", write that the run did no live test. Under "AI disclosure", write that Claude Code (claude-opus-5-5) wrote the code in the implementer workflow. Add a last section, `## Departures`. List each departure from the spec in the question format that `/implement` gives, with the answer that you built. If there are none, write "None."
+- `body`: the pull request body. Follow the `pr` skill and `.github/pull_request_template.md`. Replace `Fixes # (issue)` with `Closes #<issue number>`. Under "How has this been tested?", name the test that proves the bug, and show its failure before the fix: the assertion and the values that it printed. Then write that the run did no live test. Under "AI disclosure", write that Claude Code (claude-opus-5-5) wrote the code in the implementer workflow. Add a last section, `## Departures`. List each departure from the spec in the question format that `/implement` gives, with the answer that you built. If there are none, write "None."
 
 The workflow adds the run link to the body.

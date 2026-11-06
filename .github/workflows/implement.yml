@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       issue:
-        description: Number of a ready-for-agent issue
-        required: true
+        description: Number of a ready-for-agent issue. Leave it empty to pick the oldest eligible bug.
+        required: false
         type: number
 
 # One run at a time, from the check of the issue until the pull request exists.
@@ -12,7 +12,6 @@ concurrency:
   group: implement
 
 env:
-  ISSUE: ${{ inputs.issue }}
   # The paths that the agent cannot change. Both jobs drop a change that
   # touches one of them. The checks list names with -z, because git quotes
   # a path with special characters, and with --no-renames, so that the old
@@ -20,6 +19,91 @@ env:
   FORBIDDEN: '^(\.github/|\.claude/|docs/agents/|go\.(mod|sum)$|web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$)|(^|/)(AGENTS|CLAUDE)\.md$'
 
 jobs:
+  # Picks the issue. One open Implementer pull request, also a draft, blocks
+  # the next run. With an issue number, the build job checks that issue and
+  # the pick rules do not run.
+  pick:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.actor == 's0up4200' && github.triggering_actor == 's0up4200'
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      issue: ${{ steps.pick.outputs.issue }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Refuse while an Implementer pull request is open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json headRefName,url \
+            --jq '[.[] | select(.headRefName | startswith("implement/")) | .url] | join(", ")')
+          if [[ -n "$open" ]]; then
+            echo "::error::An Implementer pull request is open: $open. Merge or close it first."
+            exit 1
+          fi
+
+      - name: Set up Go
+        if: inputs.issue == ''
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # The command reads the data and holds the rules. A blocker that the
+      # step cannot read counts as open. A failed request for the issues
+      # stops the run.
+      - name: Pick the issue
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_ISSUE: ${{ inputs.issue }}
+        run: |
+          if [[ -n "$INPUT_ISSUE" ]]; then
+            echo "issue=$INPUT_ISSUE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set -o pipefail
+          # shellcheck disable=SC2016 # GraphQL variables, not shell
+          gh api graphql --paginate -F owner="${GITHUB_REPOSITORY%/*}" -F name="${GITHUB_REPOSITORY#*/}" -f query='
+            query($owner: String!, $name: String!, $endCursor: String) {
+              repository(owner: $owner, name: $name) {
+                issues(first: 100, after: $endCursor, states: OPEN, labels: ["ready-for-agent"]) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    number createdAt body
+                    labels(first: 100) { nodes { name } }
+                    assignees(first: 1) { totalCount }
+                    parent { number }
+                    subIssuesSummary { total }
+                    blockedBy(first: 100) { nodes { number state repository { nameWithOwner } } }
+                    closedByPullRequestsReferences(first: 100, includeClosedPrs: false) { nodes { number state } }
+                  }
+                }
+              }
+            }' --jq '.data.repository.issues.nodes[]' | jq -s . > "$RUNNER_TEMP/issues.json"
+          go run ./scripts/implement-pick refs "$RUNNER_TEMP/issues.json" | while read -r ref; do
+            if ! state=$(gh api "repos/${ref%#*}/issues/${ref##*#}" --jq .state); then
+              echo "::warning::Cannot read $ref. The pick counts it as an open blocker."
+              continue
+            fi
+            jq -n --arg ref "$ref" --arg state "$state" '{($ref): $state}'
+          done | jq -s 'add // {}' > "$RUNNER_TEMP/states.json"
+          issue=$(go run ./scripts/implement-pick pick "$RUNNER_TEMP/issues.json" "$RUNNER_TEMP/states.json")
+          if [[ -z "$issue" ]]; then
+            echo "::notice::No issue is eligible, so the run does nothing."
+            exit 0
+          fi
+          echo "::notice::Picked #$issue."
+          echo "issue=$issue" >> "$GITHUB_OUTPUT"
+
   # Builds the issue with Claude Code on the subscription of s0up4200. The open
   # job makes the pull request as the qui-rabbit app. See
   # docs/adr/0021-the-implementer-runs-on-the-maintainers-subscription.md.
@@ -27,7 +111,8 @@ jobs:
     runs-on: ubuntu-latest
     # Only s0up4200 can start a run, because the run uses that subscription.
     # A re-run by another collaborator changes triggering_actor.
-    if: github.ref == 'refs/heads/develop' && github.actor == 's0up4200' && github.triggering_actor == 's0up4200'
+    needs: pick
+    if: needs.pick.outputs.issue != '' && github.ref == 'refs/heads/develop' && github.actor == 's0up4200' && github.triggering_actor == 's0up4200'
     environment: implementer
     timeout-minutes: 60
     permissions:
@@ -35,11 +120,17 @@ jobs:
       issues: read
       pull-requests: read
     env:
+      ISSUE: ${{ needs.pick.outputs.issue }}
       # sandbox.sh mounts these paths into the container.
       GOMODCACHE: /home/runner/go/pkg/mod
       GOCACHE: /home/runner/.cache/go-build
     outputs:
       skills: ${{ steps.skills.outputs.sha }}
+      # started is true once the agent starts. result is pr, stop, or
+      # failed. patch is true when the run made a change.
+      started: ${{ steps.agent.outputs.started }}
+      result: ${{ steps.check.outputs.result }}
+      patch: ${{ steps.check.outputs.patch }}
 
     steps:
       - name: Checkout repository
@@ -49,9 +140,8 @@ jobs:
           persist-credentials: false
 
       # The issue must be open, have the ready-for-agent label, and have no
-      # open sub-issues, open blockers, or open implementer pull request. The
-      # agent has no GitHub token, so this step saves the issue and its parent
-      # for it.
+      # open sub-issues or open blockers. The agent has no GitHub token, so
+      # this step saves the issue and its parent for it.
       - name: Check the issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,12 +180,6 @@ jobs:
           } | sort -u | paste -sd, -)
           if [[ -n "$blockers" ]]; then
             echo "::error::Issue #$ISSUE is blocked by open work: $blockers"
-            exit 1
-          fi
-          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json headRefName,url \
-            --jq "[.[] | select(.headRefName | startswith(\"implement/$ISSUE/\")) | .url] | join(\", \")")
-          if [[ -n "$open" ]]; then
-            echo "::error::An implementer pull request for #$ISSUE is open: $open"
             exit 1
           fi
           jq '.data.repository.issue.parent' "$RUNNER_TEMP/tree.json" > .implement/parent.json
@@ -153,6 +237,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          echo "started=true" >> "$GITHUB_OUTPUT"
           set -o pipefail
           .github/scripts/triage/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude -p "/implement $ISSUE" \
             --model claude-opus-5-5 --effort high --max-turns 150 \
@@ -165,7 +250,7 @@ jobs:
               'Edit(./docs/agents/**)' 'Edit(**/AGENTS.md)' 'Edit(**/CLAUDE.md)' 'Edit(./go.mod)' 'Edit(./go.sum)' \
               'Edit(./web/package.json)' 'Edit(./web/pnpm-lock.yaml)' 'Edit(./web/pnpm-workspace.yaml)' \
             --settings '{"attribution":{"commit":"","pr":""}}' \
-            --json-schema '{"type":"object","properties":{"title":{"type":"string","maxLength":64},"body":{"type":"string"}},"required":["title","body"]}' \
+            --json-schema '{"type":"object","properties":{"title":{"type":"string","maxLength":64},"body":{"type":"string"},"stop":{"type":"string"}},"required":["title","body"]}' \
             --output-format stream-json --verbose \
           | tee "$RUNNER_TEMP/stream.jsonl" \
           | jq -r --unbuffered '
@@ -174,19 +259,32 @@ jobs:
               elif .type == "result" then "result: \(.subtype), \(.num_turns) turns", (.permission_denials[]? | "denied: \(tostring)")
               else empty end'
           # The agent gives the title and body as structured output, so it
-          # needs no write permission for them.
+          # needs no write permission for them. stop holds the reason when the
+          # bug is gone or no test can prove it.
           jq -j 'select(.type == "result") | .structured_output.title // empty' "$RUNNER_TEMP/stream.jsonl" > .implement/title.txt
           jq -j 'select(.type == "result") | .structured_output.body // empty' "$RUNNER_TEMP/stream.jsonl" > .implement/body.md
+          jq -j 'select(.type == "result") | .structured_output.stop // empty' "$RUNNER_TEMP/stream.jsonl" > .implement/stop.md
 
       # Runs the checks in the sandbox and saves the change as a patch. The
-      # open job applies it on a new runner.
+      # open job applies it on a new runner, and the report job writes to the
+      # issue.
       - name: Check the change
+        id: check
         env:
           AGENT_OUTCOME: ${{ steps.agent.outcome }}
         run: |
           problems=()
           [[ "$AGENT_OUTCOME" == success ]] || problems+=("The agent run failed. The workflow log has its output.")
           mv .implement "$RUNNER_TEMP/pr"
+          : > "$RUNNER_TEMP/pr/problems.md"
+          : > "$RUNNER_TEMP/pr/change.patch"
+          # The agent found that the bug is gone or that no test can prove
+          # it. A stop opens no pull request, so a probe that the agent left
+          # goes too.
+          if [[ -s "$RUNNER_TEMP/pr/stop.md" ]]; then
+            echo "result=stop" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git add -A
           forbidden=$(git diff --cached --no-renames --name-only -z | grep -zE "$FORBIDDEN" | tr '\0' '\n' || true)
           if [[ -n "$forbidden" ]]; then
@@ -195,12 +293,14 @@ jobs:
             git clean -fdq
           fi
           git diff --cached --binary > "$RUNNER_TEMP/pr/change.patch"
-          # A run with no change opens no pull request. The failed run sends
-          # s0up4200 an email, and the issue stays free for the next run.
+          # A run with no change and no reason opens no pull request. The
+          # report job marks the issue and fails the run.
           if [[ ! -s "$RUNNER_TEMP/pr/change.patch" ]]; then
-            for p in "${problems[@]}" "The run made no change."; do echo "::error::$p"; done
-            exit 1
+            for p in "${problems[@]}" "The run made no change and gave no reason."; do echo "- $p"; done > "$RUNNER_TEMP/pr/problems.md"
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "patch=true" >> "$GITHUB_OUTPUT"
           qui-sandbox go build ./... || problems+=("\`go build ./...\` failed.")
           mapfile -t pkgs < <(git diff --cached --name-only -- '*.go' | xargs -r -n1 dirname | sort -u | while read -r d; do [[ -d "$d" ]] && echo "./$d"; done)
           if (( ${#pkgs[@]} )); then
@@ -211,6 +311,11 @@ jobs:
             qui-sandbox sh -c 'cd web && pnpm lint && pnpm exec tsc -b && pnpm test' || problems+=("The web checks failed.")
           fi
           for p in "${problems[@]}"; do echo "- $p"; done > "$RUNNER_TEMP/pr/problems.md"
+          if [[ -s "$RUNNER_TEMP/pr/problems.md" ]]; then
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=pr" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload the change
         uses: actions/upload-artifact@v7
@@ -221,17 +326,21 @@ jobs:
             ${{ runner.temp }}/pr/problems.md
             ${{ runner.temp }}/pr/title.txt
             ${{ runner.temp }}/pr/body.md
+            ${{ runner.temp }}/pr/stop.md
           retention-days: 7
 
   # Commits the change and opens the pull request on a new runner, which runs
   # no code from the change. It checks the paths in the patch again.
   open:
-    needs: build
+    needs: [pick, build]
+    if: needs.build.outputs.patch == 'true'
     runs-on: ubuntu-latest
     environment: implementer
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      ISSUE: ${{ needs.pick.outputs.issue }}
 
     steps:
       - name: Checkout repository
@@ -264,7 +373,10 @@ jobs:
           permission-pull-requests: write
 
       # The app token pushes, so CI and the review bots run on the pull
-      # request. A push with GITHUB_TOKEN starts no workflow.
+      # request. A push with GITHUB_TOKEN starts no workflow. Each pull
+      # request opens as a draft, because GitHub refuses to merge a draft.
+      # The maintainer marks it ready after a field test. See
+      # docs/adr/0041-the-maintainer-starts-each-implementer-run-and-each-pull-request-opens-as-a-draft.md.
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -274,8 +386,6 @@ jobs:
           branch="implement/$ISSUE/$GITHUB_RUN_ID"
           title=$(head -n1 "$OUT/title.txt" 2>/dev/null || true)
           [[ -n "$title" ]] || title="feat: implement #$ISSUE"
-          draft=()
-          [[ -s "$OUT/problems.md" ]] && draft=(--draft)
           gh auth setup-git
           git config user.name 'qui-rabbit[bot]'
           git config user.email '346308562+qui-rabbit[bot]@users.noreply.github.com'
@@ -283,16 +393,79 @@ jobs:
           git commit -q --allow-empty -m "$title"
           git push -q origin "$branch"
           {
-            if (( ${#draft[@]} )); then
+            if [[ -s "$OUT/problems.md" ]]; then
               echo "This pull request is a draft because:"
               echo
               cat "$OUT/problems.md"
-              echo
+            else
+              echo "This pull request is a draft because it waits for a live test. Run \`/verify-review\` and \`/field-test\`, then mark it ready."
             fi
+            echo
             if [[ -s "$OUT/body.md" ]]; then cat "$OUT/body.md"; else printf 'Closes #%s\n\nThe agent wrote no pull request body.\n' "$ISSUE"; fi
             echo
             echo "---"
             echo "Implementer run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Skills: s0up4200/skills@$SKILLS."
           } > "$RUNNER_TEMP/body.md"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
-            --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" --draft \
+            --title "$title" --body-file "$RUNNER_TEMP/body.md" --label implementer
+
+  # Writes the result of a run without a ready change on the issue. It runs
+  # no code from the change, and it reads the reason of the agent only as a
+  # file, because the reason is untrusted text. A run that crashed or timed
+  # out after the agent started has no result, so it counts as failed. A run
+  # that stopped before the agent started writes nothing.
+  report:
+    needs: [pick, build]
+    if: ${{ !cancelled() && needs.build.outputs.started == 'true' && needs.build.outputs.result != 'pr' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    env:
+      ISSUE: ${{ needs.pick.outputs.issue }}
+      RESULT: ${{ needs.build.outputs.result }}
+
+    steps:
+      - name: Download the change
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: implement
+          path: ${{ runner.temp }}/pr
+
+      # A stop moves the issue to ready-for-human. A failure keeps
+      # ready-for-agent, so a local agent can still take the issue, and adds
+      # implementer-failed, so the pick skips it.
+      - name: Write to the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUT: ${{ runner.temp }}/pr
+        run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ "$RESULT" == stop ]]; then
+            {
+              echo "> *This was generated by AI during an Implementer run.*"
+              echo
+              printf '**Why a human:** '
+              cat "$OUT/stop.md"
+              echo
+              echo
+              echo "Implementer run: $run_url"
+            } > "$RUNNER_TEMP/comment.md"
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label ready-for-agent --add-label ready-for-human
+            exit 0
+          fi
+          {
+            echo "The Implementer failed on this issue in $run_url."
+            if [[ -s "$OUT/problems.md" ]]; then
+              echo
+              cat "$OUT/problems.md"
+            fi
+            echo
+            echo "The issue gets \`implementer-failed\`, so a run with no issue number skips it. Remove the label to allow a new pick."
+          } > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label implementer-failed
+          echo "::error::The Implementer failed on #$ISSUE."
+          exit 1

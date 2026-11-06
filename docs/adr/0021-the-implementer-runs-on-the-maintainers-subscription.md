@@ -5,7 +5,7 @@ date: 2026-10-22
 
 # The implementer runs on the maintainer's subscription
 
-`.github/workflows/implement.yml` builds one `ready-for-agent` issue and opens a pull request for it. Only s0up4200 can start a run, from `workflow_dispatch`, with the issue number as input. The run uses Claude Code with the Claude subscription of s0up4200, through a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. Console billing (ADR 0017) costs too much for this work.
+`.github/workflows/implement.yml` builds one `ready-for-agent` issue and opens a pull request for it. Only s0up4200 can start a run, from `workflow_dispatch`. The issue number is optional. With no number, the run picks the oldest eligible bug, as ADR 0041 describes. The run uses Claude Code with the Claude subscription of s0up4200, through a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. Console billing (ADR 0017) costs too much for this work.
 
 ADR 0017 moved triage off the subscription because anyone who opens a discussion starts a triage run. The Anthropic terms do not let one person make an account available to other people. The implementer is different, because nobody but the owner of the subscription can start it. 14 collaborators can dispatch a workflow in qui, so the gate has three parts:
 
@@ -34,7 +34,9 @@ The run uses the `/implement` skill from `s0up4200/skills`, at the main branch a
 - The agent picks its own answer to each departure from the spec, builds it, and lists it in the pull request body.
 - The agent posts no `Brief amendment` comment and runs no field test and no code review. The review bots review the pull request.
 
-A run whose checks pass opens a ready pull request, and Codex and Greptile review it. CodeRabbit skips a pull request from a bot user. A run with a change that fails its checks opens a draft with its problems. A run that makes no change opens no pull request and fails, so GitHub sends s0up4200 an email and the issue stays free for the next run. A run refuses an issue that has an open `implement/<issue>/` pull request, and one concurrency group allows one run at a time.
+Each run with a change opens a draft pull request with the `implementer` label, and Codex and Greptile review it. CodeRabbit skips a pull request from a bot user. A draft whose checks failed lists its problems at the top. The maintainer marks a draft ready after a field test (ADR 0041).
+
+The agent writes a failing test before it changes the code. If the bug is gone, or no test in the sandbox can prove it, the agent changes nothing and gives the reason. The run then posts the reason on the issue and moves the issue from `ready-for-agent` to `ready-for-human`. A failed run is a run that made no change and gave no reason, or a run whose checks failed. It keeps `ready-for-agent` and adds `implementer-failed`, so the pick skips the issue, and it fails, so GitHub sends s0up4200 an email. A run refuses to start while any `implement/` pull request is open, also a draft, and one concurrency group allows one run at a time.
 
 ## Considered options
 

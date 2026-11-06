@@ -152,7 +152,9 @@ A bug report whose code path no longer matches the report, with no fix found in 
 
 `bug` only. An `enhancement` never becomes an issue in triage, whatever category it was filed in: which requests get built is a human decision. An `enhancement` that is not `needs-info` or a mechanical wontfix goes to `ready-for-human`.
 
-The bug is confirmed against the code path and an agent can fix it without a human decision. Do the design check first. If the check finds a design question, the bug goes to `ready-for-human`.
+The bug is confirmed against the code path and an agent can fix it without a human decision. Do the design check and the risk check first. If the design check finds a design question, or the risk check finds a risk, the bug goes to `ready-for-human`.
+
+A bug that a person files as an issue does not pass through triage. The `ready-for-agent` label from that person is the check.
 
 #### Design check
 
@@ -166,11 +168,23 @@ The fix has a design question if one of these is true:
 
 In a local session, settle the design question with the maintainer. Write the decision into the agent brief, and name each new term or decision under **Domain:** in the brief. Then continue with `ready-for-agent`.
 
+#### Risk check
+
+The Implementer workflow builds `ready-for-agent` bugs with no person watching, and it can prove a fix only with a test in its sandbox. The bug goes to `ready-for-human` if one of these is true:
+
+- The fix changes how often qui contacts trackers or indexers. A mistake can get an account banned.
+- The fix changes what counts as a cross-seed match. A passing test can hide a wrong match.
+- The fix changes how qui links, moves, or deletes files. A mistake can lose user data.
+- The fix changes a database migration, login, or security.
+- A failing test in the sandbox of the run cannot prove the bug, for example because it needs a real qBittorrent, a tracker, or a browser.
+
+The `**Why a human:**` line of the brief names the risk.
+
 Create the issue with `ready-for-agent`, as "Issue for a confirmed bug" describes.
 
 ### ready-for-human
 
-A confirmed `bug` lands here when it needs a decision that only a human can make: UI placement, product scope, external access, manual testing, or a design question from the design check. The agent brief gets one extra line, `**Why a human:**`, that names the decision. For a design question, the line starts with `Design:` and asks the question, so the maintainer can run `/grill-with-docs` on it. Create the issue with `ready-for-human`, as "Issue for a confirmed bug" describes.
+A confirmed `bug` lands here when it needs a decision that only a human can make: UI placement, product scope, external access, manual testing, a design question from the design check, or a risk from the risk check. The agent brief gets one extra line, `**Why a human:**`, that names the decision. For a design question, the line starts with `Design:` and asks the question, so the maintainer can run `/grill-with-docs` on it. Create the issue with `ready-for-human`, as "Issue for a confirmed bug" describes.
 
 Every `enhancement` lands here too, and it stays a discussion. Post the agent brief with the `**Why a human:**` line as a comment. For an `enhancement` with no narrower decision, the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human` and remove `needs-triage`. Do not create an issue.
 

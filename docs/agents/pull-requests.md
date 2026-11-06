@@ -28,6 +28,21 @@ Before you post or apply a review suggestion that changes or removes a code bran
 
 CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags. A change that touches only paths in the `paths-ignore` list of `release.yml` skips it. `lint.yml` runs `go vet ./...` on Windows for every PR. It also runs the native Windows `go test -count=1 ./...` when the PR changes `cmd/`, `internal/`, `pkg/`, `go.mod`, `go.sum`, `.gitattributes`, or `.github/workflows/lint.yml`. `test.yml` runs the Postgres tests, the migration parity check, the automations docs JSON examples test, and the generated JSON reference test, also on a PR that changes only `documentation/`.
 
+## Implementer pull requests
+
+`.github/workflows/implement.yml` builds one `ready-for-agent` bug for each run. To start a run, `s0up4200` runs `gh workflow run implement.yml --ref develop`. With no issue number, the run picks the oldest eligible bug. Add `-f issue=<number>` to build one issue. A run with a number skips the pick rules but keeps the other checks.
+
+The run opens each pull request as a draft with the `implementer` label, on a branch that starts with `implement/`. GitHub refuses to merge a draft. While an Implementer pull request is open, also a draft, the next run refuses to start. To finish one:
+
+1. Read the bot reviews. If Codex posted no review on the draft, comment `@codex review`.
+2. Run `/verify-review`.
+3. Run `/field-test` on a local rig, unless the test needs real data.
+4. Put the field test result in the pull request, mark it ready, and merge it.
+
+After a small field test failure, fix it on the same pull request and test again. After a larger failure, close the pull request, and move the issue to `ready-for-human` with a comment that gives the test result.
+
+A failed run adds `implementer-failed` to the issue, and the pick skips the issue. After you fix the cause, remove the label to allow a new pick.
+
 ## Screenshots
 
 To show screenshots or recordings in a pull request:
