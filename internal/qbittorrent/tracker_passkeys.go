@@ -37,11 +37,11 @@ func TrackersWithoutPasskeys(trackers []qbt.TorrentTracker) []qbt.TorrentTracker
 	return hidden
 }
 
-func torrentWithoutPasskeys(t *qbt.Torrent) *qbt.Torrent {
+func torrentWithoutPasskeys(t *qbt.Torrent) qbt.Torrent {
 	hidden := *t
 	hidden.Tracker = TrackerOrigin(t.Tracker)
 	hidden.Trackers = TrackersWithoutPasskeys(t.Trackers)
-	return &hidden
+	return hidden
 }
 
 // WithoutTrackerPasskeys copies the rows, because they point into the sync cache.
@@ -49,13 +49,13 @@ func (r *TorrentResponse) WithoutTrackerPasskeys() *TorrentResponse {
 	hidden := *r
 	hidden.Torrents = slices.Clone(r.Torrents)
 	for i := range hidden.Torrents {
-		hidden.Torrents[i].Torrent = torrentWithoutPasskeys(hidden.Torrents[i].Torrent)
+		hidden.Torrents[i].Torrent = new(torrentWithoutPasskeys(hidden.Torrents[i].Torrent))
 	}
 	hidden.CrossInstanceTorrents = slices.Clone(r.CrossInstanceTorrents)
 	for i := range hidden.CrossInstanceTorrents {
 		row := &hidden.CrossInstanceTorrents[i]
 		view := *row.TorrentView
-		view.Torrent = torrentWithoutPasskeys(view.Torrent)
+		view.Torrent = new(torrentWithoutPasskeys(view.Torrent))
 		row.TorrentView = &view
 	}
 	return &hidden

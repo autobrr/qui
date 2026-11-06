@@ -1033,6 +1033,7 @@ func applyPasskeyAccess(r *http.Request, requests []streamRequest) {
 	hide := !middleware.CanReadTrackerPasskeys(r)
 	for i := range requests {
 		requests[i].options.hideTrackerPasskeys = hide
+		requests[i].options.Filters.HideTrackerPasskeys = hide
 	}
 }
 
