@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Automation, FilesystemCapabilities } from "@/types"
@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => {
     error: vi.fn(),
     preview: vi.fn(),
     save: vi.fn(),
+    create: vi.fn(),
+    validateRegex: vi.fn(),
     dryRun: vi.fn().mockResolvedValue({ activities: [] }),
   }
 })
@@ -37,6 +39,8 @@ vi.mock("@/lib/api", () => ({
   api: {
     previewAutomation: mocks.preview,
     updateAutomation: mocks.save,
+    createAutomation: mocks.create,
+    validateAutomationRegex: mocks.validateRegex,
     dryRunAutomation: mocks.dryRun,
   },
 }))
@@ -77,7 +81,7 @@ const rule: Automation = {
 const key = (suffix: string) => `preferences.workflowDialog.${suffix}`
 
 describe("WorkflowDialog category validation", () => {
-  it("rejects an unselected category for save, enable, and dry run, but accepts Uncategorized", async () => {
+  it("rejects an unselected category for save and dry run, but accepts Uncategorized", async () => {
     // Radix scrolls focused select options; jsdom has no layout.
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -92,9 +96,13 @@ describe("WorkflowDialog category validation", () => {
     fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
     fireEvent.click(await screen.findByRole("option", { name: key("actions.category") }))
 
+    const enable = screen.getByRole("switch", { name: key("footer.enabled") })
+    fireEvent.click(enable)
+    expect(enable.getAttribute("aria-checked")).toBe("true")
+    expect(mocks.error).not.toHaveBeenCalled()
+
     for (const control of [
       screen.getByRole("button", { name: key("save") }),
-      screen.getByRole("switch", { name: key("footer.enabled") }),
       screen.getByRole("button", { name: key("runDryRunNow") }),
     ]) {
       mocks.error.mockClear()
@@ -174,6 +182,7 @@ describe("WorkflowDialog tracker pattern", () => {
       screen.queryByRole("button", { name: key(m) })?.className.includes("bg-secondary"))
     expect(selectedModes).toEqual(mode ? [mode] : [])
 
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
     fireEvent.click(screen.getByRole("button", { name: key("save") }))
     await waitFor(() => expect(mocks.save).toHaveBeenCalled())
     const payload = mocks.save.mock.calls[0][2]
@@ -287,6 +296,7 @@ describe("WorkflowDialog move path on a disabled rule", () => {
     mocks.save.mockResolvedValue({})
     const client = renderRule("data/archive")
 
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
     fireEvent.click(screen.getByRole("button", { name: key("save") }))
 
     await waitFor(() => expect(mocks.save).toHaveBeenCalled())
@@ -316,5 +326,384 @@ describe("WorkflowDialog move path on a disabled rule", () => {
     expect(await screen.findByText(message)).not.toBeNull()
     expect(mocks.error).not.toHaveBeenCalled()
     client.clear()
+  })
+})
+
+// regression: #3859
+describe("WorkflowDialog Save flow", () => {
+  const actions: Record<string, Automation["conditions"]> = {
+    delete: {
+      schemaVersion: "1",
+      delete: { enabled: true, mode: "deleteWithFilesPreserveCrossSeeds", condition: { field: "RATIO", operator: "GREATER_THAN", value: "2" } },
+    },
+    category: { schemaVersion: "1", category: { enabled: true, category: "sorted" } },
+    tag: { schemaVersion: "1", tags: [{ enabled: true, tags: ["ordered"], mode: "add" }] },
+    pause: { schemaVersion: "1", pause: { enabled: true } },
+  }
+  const previewActions = ["delete", "category", "tag"]
+  const previewConfirm = key("saveRule")
+  const saveWithoutPreview = "preferences.workflowPreview.saveWithoutPreview"
+  const saveAndEnable = key("enableDryRunPrompt.saveAndEnable")
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    mocks.instancesQuery.data = []
+    mocks.preview.mockResolvedValue({ totalMatches: 0, examples: [] })
+    mocks.save.mockResolvedValue({})
+    mocks.create.mockResolvedValue({})
+    mocks.validateRegex.mockResolvedValue({ valid: true, errors: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Past the 400 ms debounce of the live preview and the 1 s minimum of the preview dialog.
+  const settle = () => act(() => vi.advanceTimersByTimeAsync(1100))
+
+  async function openEditor(dialogRule?: Automation) {
+    const onOpenChange = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={onOpenChange} instanceId={1} rule={dialogRule ?? null} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    await settle()
+    mocks.preview.mockClear()
+    return onOpenChange
+  }
+
+  const enableSwitch = () => screen.getByRole("switch", { name: key("footer.enabled") })
+  const dryRunSwitch = () => screen.getByRole("switch", { name: key("footer.dryRun") })
+  const nameInput = () => screen.getByLabelText<HTMLInputElement>(key("nameLabel"))
+  const rename = (name: string) => fireEvent.change(nameInput(), { target: { value: name } })
+  const clickButton = (name: string) => fireEvent.click(screen.getByRole("button", { name }))
+  const clickSave = async () => {
+    clickButton(key("save"))
+    await settle()
+  }
+
+  it.each(Object.keys(actions))("flips the Enable switch of a %s rule with no request and no dialog", async (action) => {
+    await openEditor({ ...rule, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await settle()
+
+    expect(enableSwitch().getAttribute("aria-checked")).toBe("true")
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+    expect(mocks.preview).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { action: "delete", enabled: false },
+    { action: "category", enabled: false },
+    { action: "tag", enabled: false },
+    { action: "pause", enabled: false },
+    { action: "pause", enabled: true },
+  ])("closes the editor of a $action rule with enabled $enabled on Save with no changes, with no checks", async ({ action, enabled }) => {
+    const onOpenChange = await openEditor({ ...rule, enabled, conditions: actions[action] })
+
+    await clickSave()
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.validateRegex).not.toHaveBeenCalled()
+    expect(mocks.preview).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("reports a missing category when the user adds only that action", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    await settle()
+    fireEvent.click(screen.getByRole("option", { name: key("actions.category") }))
+    await settle()
+    await clickSave()
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.selectCategory"))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it("reports a blank tag action that the payload leaves out", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
+
+    clickButton(key("tag.addAction"))
+    await clickSave()
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.specifyTagOrTrackerName"))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it("does not ask after the check when the user changed the form during the check", async () => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.pause })
+
+    rename("First name")
+    clickButton(key("save"))
+    rename("Second name")
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+
+    await clickSave()
+    expect(mocks.validateRegex).toHaveBeenCalledTimes(2)
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: key("save") }))
+    await settle()
+    expect(mocks.save).toHaveBeenCalledTimes(1)
+    expect(mocks.save.mock.calls[0][2]).toMatchObject({ name: "Second name" })
+  })
+
+  it.each([
+    { name: "stays closed", reopen: false },
+    { name: "opens again", reopen: true },
+  ])("asks nothing after the check when the editor closes during the check and $name", async ({ reopen }) => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    const dialogRule = { ...rule, enabled: true, conditions: actions.pause }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const editor = (open: boolean, editorRule = dialogRule) => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open={open} onOpenChange={vi.fn()} instanceId={1} rule={editorRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(editor(true))
+    await settle()
+
+    rename("Changed")
+    clickButton(key("save"))
+    rerender(editor(false))
+    await settle()
+    if (reopen) {
+      rerender(editor(true, { ...dialogRule, name: "Changed" }))
+      await settle()
+    }
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("enables Save again when the user cancels a preview that still loads", async () => {
+    mocks.preview.mockReturnValue(new Promise(() => {}))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+    rename("Changed")
+    clickButton(key("save"))
+    await settle()
+
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "preferences.workflowPreview.cancel" }))
+    await settle()
+
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: key("save") }).disabled).toBe(false)
+  })
+
+  it("runs only the last check when the user clicks Save twice", async () => {
+    const finishChecks: ((result: { valid: boolean; errors: never[] }) => void)[] = []
+    mocks.validateRegex.mockImplementation(() => new Promise((resolve) => { finishChecks.push(resolve) }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+
+    rename("Changed")
+    clickButton(key("save"))
+    clickButton(key("save"))
+    await act(async () => finishChecks[0]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+
+    await act(async () => finishChecks[1]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).not.toBeNull()
+  })
+
+  it("counts a flip of the switch and a flip back as no change", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
+
+    fireEvent.click(enableSwitch())
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each(["tag", "pause"])("saves a changed %s rule with Enabled off and no dialog", async (action) => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions[action] })
+
+    rename("Renamed")
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.validateRegex).not.toHaveBeenCalled()
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ name: "Renamed", enabled: false }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("saves with no question when the user only turns a live rule off", async () => {
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: false }))
+  })
+
+  it.each(previewActions)("opens the preview on Save of an enabled %s rule", async (action) => {
+    await openEditor({ ...rule, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(mocks.validateRegex).toHaveBeenCalled()
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: previewConfirm })).not.toBeNull()
+    expect(screen.queryByText(key("enableDryRunPrompt.title"))).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("asks about dry run on Save of an enabled rule with other actions", async () => {
+    await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(mocks.validateRegex).toHaveBeenCalled()
+    expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
+    expect(mocks.preview).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("opens no dialog when the regex check fails", async () => {
+    mocks.validateRegex.mockResolvedValue({ valid: false, errors: [{ path: "x", message: "bad", pattern: "(" }] })
+    await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.invalidRegexPatternUnsupported"))
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: "the dry-run question", action: "pause", cancel: key("cancel") },
+    { name: "the preview", action: "tag", cancel: "preferences.workflowPreview.cancel" },
+  ])("keeps the switch and the edits when the user cancels $name", async ({ action, cancel }) => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions[action] })
+
+    rename("Renamed")
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    clickButton(cancel)
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(enableSwitch().getAttribute("aria-checked")).toBe("true")
+    expect(nameInput().value).toBe("Renamed")
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: "the dry-run question", action: "pause", confirm: saveAndEnable },
+    { name: "the preview", action: "tag", confirm: previewConfirm },
+  ])("sends the toggle value of $name to the save request", async ({ action, confirm }) => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(dryRunSwitch())
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("true")
+    clickButton(confirm)
+    await settle()
+
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: true, dryRun: true }))
+  })
+
+  it("lets the user set dry run while the preview loads, and sends no second preview", async () => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions.tag })
+    mocks.preview.mockReturnValue(new Promise(() => {}))
+
+    fireEvent.click(enableSwitch())
+    clickButton(key("save"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    fireEvent.click(dryRunSwitch())
+    await settle()
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+    clickButton(saveWithoutPreview)
+    await settle()
+
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: true, dryRun: true }))
+  })
+
+  it("keeps the toggle value in the editor after Cancel", async () => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    fireEvent.click(dryRunSwitch())
+    clickButton(key("cancel"))
+    await settle()
+
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("true")
+  })
+
+  it.each([
+    { name: "a rule that turns on", enabled: false, label: saveAndEnable },
+    { name: "a rule that is already enabled", enabled: true, label: key("save") },
+  ])("names the save button for $name", async ({ enabled, label }) => {
+    await openEditor({ ...rule, enabled, conditions: actions.pause })
+
+    rename("Renamed")
+    if (!enabled) fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(within(screen.getByRole("alertdialog")).getByRole("button", { name: label })).not.toBeNull()
+  })
+
+  it("asks a new rule the same question, with the label for a rule that turns on", async () => {
+    await openEditor()
+
+    rename("New rule")
+    fireEvent.click(screen.getByRole("switch", { name: key("allTrackers") }))
+    fireEvent.keyDown(screen.getByText(key("actions.selectAction")), { key: "ArrowDown" })
+    await settle()
+    fireEvent.click(screen.getByRole("option", { name: key("actions.pause") }))
+    await settle()
+    fireEvent.click(enableSwitch())
+    clickButton(key("create"))
+    await settle()
+
+    expect(mocks.create).not.toHaveBeenCalled()
+    clickButton(saveAndEnable)
+    await settle()
+
+    expect(mocks.create).toHaveBeenCalledWith(1, expect.objectContaining({ name: "New rule", enabled: true }))
+  })
+
+  it("asks again on a second save, also after a reload of the dialog", async () => {
+    const enabledRule = { ...rule, enabled: true, conditions: actions.pause }
+    for (const name of ["First", "Second"]) {
+      await openEditor(enabledRule)
+      rename(name)
+      await clickSave()
+
+      expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
+      cleanup()
+    }
   })
 })

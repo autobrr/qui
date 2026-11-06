@@ -1386,8 +1386,7 @@
       "enableDryRunPrompt": {
         "title": "Abilitare la simulazione (dry run)?",
         "description": "La simulazione (dry run) simula tutte le azioni senza modificare nulla. Puoi rivedere i torrent interessati nel registro delle attività.",
-        "enableWithout": "Abilita senza simulazione",
-        "enableWith": "Abilita con simulazione"
+        "saveAndEnable": "Salva e abilita"
       },
       "customGroup": {
         "title": "Aggiungi gruppo personalizzato",
