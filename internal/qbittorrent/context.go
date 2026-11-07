@@ -12,6 +12,7 @@ const (
 	cachedCountsWithSkippedKey contextKey = "qui_cached_counts_with_skipped_tracker_hydration"
 	skipFreshDataKey           contextKey = "qui_skip_fresh_data"
 	summaryKey                 contextKey = "qui_summary"
+	groupCopiesKey             contextKey = "qui_group_copies"
 )
 
 // WithSkipTrackerHydration marks the context so tracker enrichment/hydration is skipped.
@@ -93,5 +94,18 @@ func WithSummary(ctx context.Context) context.Context {
 // SummaryRequested reports whether ctx asks for a summary.
 func SummaryRequested(ctx context.Context) bool {
 	v, _ := ctx.Value(summaryKey).(bool)
+	return v
+}
+
+func WithGroupCopies(ctx context.Context) context.Context {
+	return context.WithValue(ctx, groupCopiesKey, true)
+}
+
+func withoutGroupCopies(ctx context.Context) context.Context {
+	return context.WithValue(ctx, groupCopiesKey, false)
+}
+
+func GroupCopiesRequested(ctx context.Context) bool {
+	v, _ := ctx.Value(groupCopiesKey).(bool)
 	return v
 }

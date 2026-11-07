@@ -238,6 +238,8 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
+	// CopyGroup is nil on a flat row and on a plain row of a grouped list.
+	CopyGroup *CopyGroupRow `json:"copy_group,omitempty"`
 	// Reannounce, Popularity and Private are nil when the instance does not
 	// send them in the torrent list (before Web API 2.10.0, and Private also
 	// for a torrent without metadata). The decoded zero would read as "now",
@@ -362,6 +364,9 @@ type TorrentResponse struct {
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
 	// WebAPIVersions maps each instance in the response to its Web API version, "" while unknown.
 	WebAPIVersions map[int]string `json:"webAPIVersions,omitempty"`
+	// CopyGroupsReady is set only when the request asked for Copy groups. While
+	// it is false, the rows are flat.
+	CopyGroupsReady *bool `json:"copyGroupsReady,omitempty"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -464,6 +469,7 @@ type SyncManager struct {
 	// filesChangedHandler runs after qui renames the files of a torrent or
 	// drops its file list from the file cache.
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
+	copyGroups          atomic.Pointer[CopyGroups]
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -1704,6 +1710,17 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedTorrents, hasMore = nil, false
 	}
 
+	var copyGroupsReady *bool
+	var groupedRows []copyGroupPageRow
+	if GroupCopiesRequested(ctx) {
+		groups := sm.copyGroups.Load()
+		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
+		if *copyGroupsReady && !summary {
+			groupedRows, hasMore = collapseInstanceTorrents(filteredTorrents, instanceID, groups, offset, limit)
+			paginatedTorrents = nil
+		}
+	}
+
 	if !includeCachedCounts {
 		counts = nil
 	} else {
@@ -1732,6 +1749,15 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		rows := client.newRowBuilder(len(paginatedTorrents))
 		for i := range paginatedTorrents {
 			paginatedViews[i] = rows.view(i, &paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
+		}
+	}
+	if len(groupedRows) > 0 {
+		paginatedViews = make([]TorrentView, len(groupedRows))
+		rows := client.newRowBuilder(len(groupedRows))
+		for i, grouped := range groupedRows {
+			torrent := &filteredTorrents[grouped.row]
+			paginatedViews[i] = rows.view(i, torrent, cachedHealth.Health(torrent.Hash))
+			paginatedViews[i].CopyGroup = grouped.group
 		}
 	}
 
@@ -1777,6 +1803,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		CacheMetadata:          cacheMetadata,
 		TrackerHealthSupported: trackerHealthSupported,
 		WebAPIVersions:         map[int]string{instanceID: client.GetWebAPIVersion()},
+		CopyGroupsReady:        copyGroupsReady,
 	}
 
 	// Always compute from fresh all_torrents data
@@ -1864,6 +1891,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
+	groupCopies := GroupCopiesRequested(ctx)
+	instanceCtx := ctx
+	if groupCopies {
+		instanceCtx = withoutGroupCopies(ctx)
+	}
+	var requestInstanceIDs []int
+
 	selectedInstanceIDs := make(map[int]struct{}, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
 		if instanceID > 0 {
@@ -1899,6 +1933,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				continue
 			}
 		}
+		requestInstanceIDs = append(requestInstanceIDs, instance.ID)
 
 		// If the shared deadline fired mid-aggregation (typically because an
 		// earlier, unreachable instance burned the budget), return what the
@@ -1923,7 +1958,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 		}
 
-		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
+		instanceResponse, err := sm.GetTorrentsWithFilters(instanceCtx, instance.ID, 0, 0, "", "", search, filters)
 		if err != nil {
 			// A caller cancellation mid-fetch (including on the last/only instance,
 			// which the top-of-loop check can't catch on a later iteration) must
@@ -1992,6 +2027,15 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	paginatedTorrents := allTorrents[start:end]
 	hasMore := end < len(allTorrents)
 
+	var copyGroupsReady *bool
+	if groupCopies {
+		groups := sm.copyGroups.Load()
+		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, requestInstanceIDs))
+		if *copyGroupsReady {
+			paginatedTorrents, hasMore = collapseCrossInstanceTorrents(allTorrents, groups, offset, limit)
+		}
+	}
+
 	var categories map[string]qbt.Category
 	if len(aggregatedCategories) > 0 {
 		categories = aggregatedCategories
@@ -2010,6 +2054,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
 		WebAPIVersions:         webAPIVersions,
+		CopyGroupsReady:        copyGroupsReady,
 	}
 
 	return response, nil
