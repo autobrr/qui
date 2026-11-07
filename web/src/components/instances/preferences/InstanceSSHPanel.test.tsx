@@ -141,6 +141,20 @@ describe("InstanceSSHPanel", () => {
     submitForm()
     await waitFor(() => expect(mocks.api.setSSHCredentials).toHaveBeenCalledWith(7, { host: "box.example", port: 22, username: "qui", privateKey: "KEY" }))
     expect(mocks.invalidateQueries).toHaveBeenCalled()
+    await waitFor(() => expect((document.getElementById("ssh-private-key") as HTMLTextAreaElement).value).toBe(""))
+    expect(screen.queryByText("preferences.ssh.validation.keyRequired")).toBeNull()
+  })
+
+  it("a saved host change leaves no stale key error behind", async () => {
+    mocks.api.setSSHCredentials.mockResolvedValue(undefined)
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    setValue("ssh-host", "other.example")
+    setValue("ssh-private-key", "KEY")
+    submitForm()
+    await waitFor(() => expect(mocks.api.setSSHCredentials).toHaveBeenCalled())
+    await waitFor(() => expect((document.getElementById("ssh-private-key") as HTMLTextAreaElement).value).toBe(""))
+    expect(screen.queryByText("preferences.ssh.validation.keyRequired")).toBeNull()
+    expect((screen.getByText("preferences.ssh.buttons.save") as HTMLButtonElement).disabled).toBe(false)
   })
 
   it("Confirm posts the host key the test returned", async () => {
