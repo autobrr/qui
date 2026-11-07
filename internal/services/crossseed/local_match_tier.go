@@ -17,15 +17,30 @@ import (
 // torrent holds the same data. Files that search ignores (nfo, srt, samples,
 // and the rest of the ignore list) are left out, as contentFiles describes.
 type sameDataFiles struct {
-	paths map[string]struct{} // save path joined with the file name, normalized
-	sizes []int64             // sorted
+	paths     map[string]struct{} // save path joined with the file name, normalized
+	sizes     []int64             // sorted
+	filePaths []string            // the normalized path of each file, ignored files too; nil without a save path or withFilePaths
 }
 
-func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) sameDataFiles {
-	files = contentFiles(files, normalizer)
-	data := sameDataFiles{paths: make(map[string]struct{}, len(files))}
-	for _, file := range files {
-		if savePath != "" {
+func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string], withFilePaths bool) sameDataFiles {
+	var data sameDataFiles
+	if savePath != "" && withFilePaths {
+		data.filePaths = make([]string, len(files))
+		for i, file := range files {
+			data.filePaths[i] = normalizePathForComparison(savePath + "/" + file.Name)
+		}
+	}
+	content := contentFiles(files, normalizer)
+	data.paths = make(map[string]struct{}, len(content))
+	i := 0
+	for _, file := range content {
+		for files[i].Name != file.Name {
+			i++
+		}
+		switch {
+		case data.filePaths != nil:
+			data.paths[data.filePaths[i]] = struct{}{}
+		case savePath != "":
 			data.paths[normalizePathForComparison(savePath+"/"+file.Name)] = struct{}{}
 		}
 		data.sizes = append(data.sizes, file.Size)

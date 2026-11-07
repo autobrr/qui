@@ -127,8 +127,13 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 
 // CacheFilesBatch stores file information for multiple torrents in the database
 func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error {
-	var allCachedFiles []CachedFile
-	var allSyncInfos []SyncInfo
+	fileCount := 0
+	for _, torrentFiles := range files {
+		fileCount += len(torrentFiles)
+	}
+	allCachedFiles := make([]CachedFile, 0, fileCount)
+	allSyncInfos := make([]SyncInfo, 0, len(files))
+	seed, notSeed := true, false
 
 	for hash, torrentFiles := range files {
 		if len(torrentFiles) == 0 {
@@ -136,16 +141,18 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 		}
 
 		// Convert to cache format
-		cachedFiles := make([]CachedFile, len(torrentFiles))
-		for i, f := range torrentFiles {
+		for _, f := range torrentFiles {
 			pieceStart, pieceEnd := int64(0), int64(0)
 			if len(f.PieceRange) >= 2 {
 				pieceStart = int64(f.PieceRange[0])
 				pieceEnd = int64(f.PieceRange[1])
 			}
 
-			isSeed := f.IsSeed
-			cachedFiles[i] = CachedFile{
+			isSeed := &notSeed
+			if f.IsSeed {
+				isSeed = &seed
+			}
+			allCachedFiles = append(allCachedFiles, CachedFile{
 				InstanceID:      instanceID,
 				TorrentHash:     hash,
 				FileIndex:       f.Index,
@@ -153,14 +160,12 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 				Size:            f.Size,
 				Progress:        float64(f.Progress),
 				Priority:        f.Priority,
-				IsSeed:          &isSeed,
+				IsSeed:          isSeed,
 				PieceRangeStart: pieceStart,
 				PieceRangeEnd:   pieceEnd,
 				Availability:    float64(f.Availability),
-			}
+			})
 		}
-
-		allCachedFiles = append(allCachedFiles, cachedFiles...)
 
 		// Collect sync metadata
 		syncInfo := SyncInfo{
