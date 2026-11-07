@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/CAFxX/httpcompression"
+	httpzstd "github.com/CAFxX/httpcompression/contrib/klauspost/zstd"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/klauspost/compress/zstd"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -326,6 +328,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
+func newCompressionMiddleware() (func(http.Handler) http.Handler, error) {
+	// The default 8 MB zstd window allocates a 16 MB history buffer per pooled encoder.
+	zstdCompressor, err := httpzstd.New(zstd.WithWindowSize(1<<20), zstd.WithLowerEncoderMem(true))
+	if err != nil {
+		return nil, err
+	}
+	return httpcompression.DefaultAdapter(
+		httpcompression.MinSize(1024),
+		httpcompression.GzipCompressionLevel(2), // Use gzip level 2 (fast) instead of 6 (default)
+		httpcompression.ZstandardCompressor(zstdCompressor),
+		httpcompression.Prefer(httpcompression.PreferServer),
+	)
+}
+
 func (s *Server) Handler() (*chi.Mux, error) {
 	s.config.PublishConfig()
 	r := chi.NewRouter()
@@ -344,13 +360,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))
 	r.Use(middleware.RealIP)
 
-	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
-	// Use faster compression levels for better proxy performance
-	compressor, err := httpcompression.DefaultAdapter(
-		httpcompression.MinSize(1024),                        // Only compress responses >= 1KB
-		httpcompression.GzipCompressionLevel(2),              // Use gzip level 2 (fast) instead of 6 (default)
-		httpcompression.Prefer(httpcompression.PreferServer), // Let server choose best compression
-	)
+	compressor, err := newCompressionMiddleware()
 	var compression chi.Middlewares
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
