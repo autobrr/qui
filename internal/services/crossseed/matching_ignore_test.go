@@ -74,3 +74,35 @@ func TestContentFilesTitleIsIgnoreWord(t *testing.T) {
 		assert.Equal(t, tt.want, got)
 	}
 }
+
+func TestNewSameDataFilesKeepsIgnoredFilesOutOfPaths(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{
+		{Name: "Show.S02/Show.S02E01.nfo", Size: 1},
+		{Name: "Show.S02/Sample/show.s02e01.mkv", Size: 2},
+		{Name: "Show.S02/Show.S02E01.mkv", Size: 30},
+		{Name: "Show.S02/Show.S02E01.srt", Size: 4},
+		{Name: "Show.S02/Show.S02E02.mkv", Size: 50},
+	}
+	for _, withFilePaths := range []bool{false, true} {
+		data := newSameDataFiles("/Data", files, stringutils.DefaultNormalizer, withFilePaths)
+
+		assert.Equal(t, map[string]struct{}{
+			"/data/show.s02/show.s02e01.mkv": {},
+			"/data/show.s02/show.s02e02.mkv": {},
+		}, data.paths)
+		assert.Equal(t, []int64{30, 50}, data.sizes)
+		if withFilePaths {
+			assert.Equal(t, []string{
+				"/data/show.s02/show.s02e01.nfo",
+				"/data/show.s02/sample/show.s02e01.mkv",
+				"/data/show.s02/show.s02e01.mkv",
+				"/data/show.s02/show.s02e01.srt",
+				"/data/show.s02/show.s02e02.mkv",
+			}, data.filePaths)
+		} else {
+			assert.Nil(t, data.filePaths)
+		}
+	}
+}

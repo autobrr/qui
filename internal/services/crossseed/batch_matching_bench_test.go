@@ -20,8 +20,10 @@ import (
 // benchCrossMatchService builds one local instance with pairs of torrents that
 // match on name. With extraFile, the second torrent of each pair has an extra
 // file that search does not ignore, so its sizes do not pair and the hardlink
-// check runs. Its main file is a hardlink of the first torrent's file.
-func benchCrossMatchService(b *testing.B, pairs int, extraFile bool) *Service {
+// check runs. Its main file is a hardlink of the first torrent's file. With
+// sharedFolder, both torrents of a pair sit in the first torrent's folder and
+// read the same files, so addSharedPathPicks links them.
+func benchCrossMatchService(b *testing.B, pairs int, extraFile, sharedFolder bool) *Service {
 	b.Helper()
 	root := b.TempDir()
 	sm := &tierSyncManager{
@@ -41,6 +43,11 @@ func benchCrossMatchService(b *testing.B, pairs int, extraFile bool) *Service {
 		sourceHash, candidateHash := fmt.Sprintf("a%039d", i), fmt.Sprintf("b%039d", i)
 		sm.files[sourceHash] = qbt.TorrentFiles{{Name: fileName, Size: 4}}
 		sm.files[candidateHash] = qbt.TorrentFiles{{Name: fileName, Size: 4}}
+		if sharedFolder {
+			candidateDir = sourceDir
+			sm.files[sourceHash] = append(sm.files[sourceHash], qbt.TorrentFile{Name: name + ".nfo", Size: 1})
+			sm.files[candidateHash] = sm.files[sourceHash]
+		}
 		if extraFile {
 			sm.files[candidateHash] = append(sm.files[candidateHash], qbt.TorrentFile{Name: "Menu.m2ts", Size: 9})
 		}
@@ -56,20 +63,29 @@ func benchCrossMatchService(b *testing.B, pairs int, extraFile bool) *Service {
 }
 
 func BenchmarkBuildCrossMatchSets(b *testing.B) {
+	previousLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
 	for _, tc := range []struct {
-		name      string
-		extraFile bool
+		name         string
+		extraFile    bool
+		sharedFolder bool
 	}{
-		{"sizes pair", false},
-		{"hardlink check", true},
+		{"sizes pair", false, false},
+		{"hardlink check", true, false},
+		{"shared folder", false, true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			svc := benchCrossMatchService(b, 500, tc.extraFile)
-			needs := CrossMatchNeeds{SameExists: true}
+			svc := benchCrossMatchService(b, 500, tc.extraFile, tc.sharedFolder)
+			needs := CrossMatchNeeds{SameExists: true, SameContent: tc.sharedFolder}
+			b.ReportAllocs()
 			for b.Loop() {
 				result := svc.BuildCrossMatchSets(b.Context(), 1, needs)
 				if len(result.SameInstanceExists) != 1000 {
 					b.Fatalf("matched %d torrents, want 1000", len(result.SameInstanceExists))
+				}
+				if tc.sharedFolder && len(result.SameInstanceContentByHash) != 1000 {
+					b.Fatalf("linked %d torrents by path, want 1000", len(result.SameInstanceContentByHash))
 				}
 			}
 		})

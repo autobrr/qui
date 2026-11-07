@@ -172,6 +172,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		links:     make(map[string]*localMatchContext),
 		linkTiers: make(map[[2]string]localLinkResult),
 		folders:   make(map[string]fsops.FileKey),
+		allPaths:  needs.SameContent,
 	}
 
 	reads := s.readLocalTorrents(ctx, currentInstanceID, viewTorrents(currentTorrents))
@@ -337,6 +338,9 @@ type batchFiles struct {
 	// trustedIdentityOnly limits links to instances with TrustedIdentity, as
 	// localMatchContext does.
 	trustedIdentityOnly bool
+	// allPaths keeps the normalized path of every file, for the
+	// Shared-file paths of addSharedPathPicks.
+	allPaths bool
 	// otherSharedOnly gives a candidate on another instance a tier only for a
 	// Shared file, as the delete check asks.
 	otherSharedOnly bool
@@ -371,7 +375,7 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 		b.byKey[key] = nil
 		return batchFileData{}, false
 	}
-	data := batchFileData{data: newSameDataFiles(savePath, files, normalizerForService(b.svc)), files: files}
+	data := batchFileData{data: newSameDataFiles(savePath, files, normalizerForService(b.svc), b.allPaths), files: files}
 	b.byKey[key] = &data
 	return data, true
 }
@@ -570,9 +574,8 @@ func (b *batchFiles) addSharedPathPicks(
 			for p := range data.data.paths {
 				byPath[p] = append(byPath[p], i)
 			}
-			if sharedPaths != nil && ok && torrents[i].SavePath != "" {
-				for _, file := range data.files {
-					p := normalizePathForComparison(torrents[i].SavePath + "/" + file.Name)
+			if sharedPaths != nil && ok {
+				for _, p := range data.data.filePaths {
 					if first, exists := firstByPath[p]; exists {
 						share(first, i)
 					} else {
