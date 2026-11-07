@@ -62,10 +62,16 @@ func (s *Service) FindCopyGroups(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// The helper skips a pick whose hash it holds, so a pick of the same hash
+	// on another instance must not block a shared-path pick.
 	lo := 0
 	for _, id := range instanceIDs {
 		hi := lo + len(torrents[id])
-		held.addSharedPathPicks(ctx, id, all[lo:hi], sharedPathGroups(all[lo:hi]), picks[lo:hi], CrossMatchNeeds{})
+		shared := make([][]*candidatePick, hi-lo)
+		held.addSharedPathPicks(ctx, id, all[lo:hi], sharedPathGroups(all[lo:hi]), shared, CrossMatchNeeds{})
+		for k := range shared {
+			picks[lo+k] = append(picks[lo+k], shared[k]...)
+		}
 		lo = hi
 	}
 

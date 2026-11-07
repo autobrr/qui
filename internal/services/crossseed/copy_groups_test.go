@@ -195,6 +195,16 @@ func TestFindCopyGroups(t *testing.T) {
 			},
 			want: [][]string{{"1|" + cgHash('a'), "2|" + cgHash('a'), "2|" + cgHash('b')}},
 		},
+		{
+			name: "a shared folder links copies that another instance names the other way",
+			torrents: []copyGroupFixture{
+				inFolder(a, cgPack, "/data", cgPackFiles()),
+				inFolder(b, "Harbor.Watch.S01.1080p.WEB.h264-OTHER", "/data", cgPackFiles()),
+				{instanceID: 2, hash: a, name: "Harbor.Watch.S01.1080p.WEB.h264-OTHER", savePath: "/x", content: "/x/" + cgPack, files: cgPackFiles()},
+				{instanceID: 2, hash: b, name: cgPack, savePath: "/y", content: "/y/" + cgPack, files: cgPackFiles()},
+			},
+			want: [][]string{{"1|" + a, "1|" + b, "2|" + a, "2|" + b}},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
