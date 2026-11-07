@@ -44,6 +44,24 @@ type fileRow struct {
 	availability    float64
 }
 
+// CROSS JOIN keeps string_pool as the outer loop in SQLite; Postgres rejects CROSS JOIN ... ON.
+const filesBatchQuery = `
+	SELECT tfc.id, tfc.instance_id, sp_hash.value, tfc.file_index, sp_name.value, tfc.size, tfc.progress,
+	       tfc.priority, tfc.is_seed, tfc.piece_range_start, tfc.piece_range_end, tfc.availability, tfc.cached_at
+	FROM string_pool sp_hash
+	CROSS JOIN torrent_files_cache tfc
+	LEFT JOIN string_pool sp_name ON tfc.name_id = sp_name.id
+	WHERE tfc.instance_id = ? AND sp_hash.value IN (%s) AND tfc.torrent_hash_id = sp_hash.id
+	ORDER BY sp_hash.value, tfc.file_index ASC
+`
+
+const syncInfoBatchQuery = `
+	SELECT tfs.instance_id, sp_hash.value, tfs.last_synced_at, tfs.torrent_progress, tfs.file_count
+	FROM string_pool sp_hash
+	CROSS JOIN torrent_files_sync tfs
+	WHERE tfs.instance_id = ? AND sp_hash.value IN (%s) AND tfs.torrent_hash_id = sp_hash.id
+`
+
 // NewRepository creates a new files repository
 func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
@@ -64,13 +82,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 			args = append(args, h)
 		}
 
-		query := fmt.Sprintf(`
-			SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
-			       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
-			FROM torrent_files_cache_view
-			WHERE instance_id = ? AND torrent_hash IN (%s)
-			ORDER BY torrent_hash, file_index ASC
-		`, buildPlaceholders(len(batch)))
+		query := fmt.Sprintf(filesBatchQuery, buildPlaceholders(len(batch)))
 
 		rows, err := r.db.QueryContext(ctx, query, args...)
 		if err != nil {
@@ -462,11 +474,7 @@ func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashe
 			args = append(args, h)
 		}
 
-		query := fmt.Sprintf(`
-			SELECT instance_id, torrent_hash, last_synced_at, torrent_progress, file_count
-			FROM torrent_files_sync_view
-			WHERE instance_id = ? AND torrent_hash IN (%s)
-		`, buildPlaceholders(len(batch)))
+		query := fmt.Sprintf(syncInfoBatchQuery, buildPlaceholders(len(batch)))
 
 		rows, err := r.db.QueryContext(ctx, query, args...)
 		if err != nil {
