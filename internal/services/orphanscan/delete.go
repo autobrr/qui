@@ -353,9 +353,10 @@ func readDirIDs(ctx context.Context, backend fsops.Backend, instance *models.Ins
 // sameEntry reports whether two paths to one file are one directory entry:
 // the same name in the same folder, as a bind mount or a symlinked folder
 // shows it. A hardlink is an entry of its own. A folder of unknown identity
-// could be the same one.
+// could be the same one. Names compare like the torrent file map does, since a
+// case-insensitive volume opens a torrent's file under any case of its name.
 func sameEntry(d fsops.PathDialect, dirIDs map[string]fsops.FileKey, a, b string) bool {
-	if d.Base(a) != d.Base(b) {
+	if fsops.NormalizePath(d, d.Base(a)) != fsops.NormalizePath(d, d.Base(b)) {
 		return false
 	}
 	aID, aOK := dirIDs[d.Dir(a)]

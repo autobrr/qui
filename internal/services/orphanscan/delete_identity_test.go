@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
@@ -675,6 +676,33 @@ func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothin
 			require.Equal(t, "failed", failed.Status)
 			require.Contains(t, failed.ErrorMessage, tc.want)
 			f.requireNothingDeleted(t)
+		})
+	}
+}
+
+// A case-insensitive volume opens a torrent's file under any case or Unicode
+// form of its name, so the name qBittorrent reports and the name on disk are
+// one entry when the torrent file map would match them.
+// regression: #3908
+func TestSameEntry_ComparesNamesLikeTheTorrentFileMap(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	dirIDs := readDirIDs(t.Context(), local.NewBackend(), nil, []string{a, b})
+	require.Len(t, dirIDs, 2)
+	d := fsops.HostPaths
+	for _, tc := range []struct {
+		name       string
+		disk, path string
+		dirIDs     map[string]fsops.FileKey
+		want       bool
+	}{
+		{"other case, folder unknown", "/x/Movie.mkv", "/y/movie.mkv", nil, true},
+		{"other Unicode form, folder unknown", "/x/Caf\u00e9.mkv", "/y/Cafe\u0301.mkv", nil, true},
+		{"other case, same folder", filepath.Join(a, "Movie.mkv"), filepath.Join(a, "movie.mkv"), dirIDs, true},
+		{"other case, other folder", filepath.Join(a, "Movie.mkv"), filepath.Join(b, "movie.mkv"), dirIDs, false},
+		{"other name, folder unknown", "/x/movie.mkv", "/y/extras.mkv", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sameEntry(d, tc.dirIDs, tc.disk, tc.path))
 		})
 	}
 }

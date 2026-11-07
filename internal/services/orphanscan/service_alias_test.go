@@ -373,6 +373,7 @@ func TestRecordInUse_FileIDErr(t *testing.T) {
 // A hardlink of a torrent's file is its own directory entry, so in another
 // root it is an orphan like any other file, and its delete leaves the
 // torrent's file in place.
+// regression: #3908
 func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -408,6 +409,7 @@ func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 // as a bind mount would. The torrent's file has a second link outside the
 // roots, so its link count does not tell the alias from a hardlink: the
 // folder and the name do.
+// regression: #3908
 func TestExecuteScan_KeepsAliasOfAHardlinkedTorrentFileThroughASymlinkedFolder(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
