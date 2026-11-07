@@ -209,15 +209,15 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 // inUseIDs holds the identity of every torrent file on disk at delete time, and
 // of the folders along the torrents' paths when a run lists folders. The file
 // map protects by path, so without these a torrent that reaches a listed file
-// or folder through a second path, such as a bind mount, a symlinked folder or
-// a hardlink, would lose it. One set holds both, which is safe only because
+// or folder through a second path, such as a bind mount or a symlinked folder,
+// would lose it. One set holds both, which is safe only because
 // holds asks about regular files: a symlink to a reached folder inside a disc
 // unit must not keep the unit (#3612).
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
-	// linked holds the paths of torrent files with more than one link.
-	linked map[fsops.FileKey][]string
+	// linkedInUse holds the paths of torrent files with more than one link.
+	linkedInUse map[fsops.FileKey][]string
 	// fileDirs are the folders that hold a torrent file found on disk, as
 	// reachedDirs takes them.
 	fileDirs map[string]struct{}
@@ -242,10 +242,10 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		}
 	}
 	ids := &inUseIDs{
-		instance: instance,
-		keys:     make(map[fsops.FileKey]struct{}, len(unique)),
-		linked:   make(map[fsops.FileKey][]string),
-		fileDirs: make(map[string]struct{}),
+		instance:    instance,
+		keys:        make(map[fsops.FileKey]struct{}, len(unique)),
+		linkedInUse: make(map[fsops.FileKey][]string),
+		fileDirs:    make(map[string]struct{}),
 	}
 	infos, errs := fsops.StatAll(ctx, backend, unique)
 	denied, firstDenied := 0, ""
@@ -278,7 +278,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 		}
 		ids.keys[key] = struct{}{}
 		if info.Mode.IsRegular() && info.Nlinks > 1 {
-			ids.linked[key] = append(ids.linked[key], unique[i])
+			ids.linkedInUse[key] = append(ids.linkedInUse[key], unique[i])
 		}
 	}
 	if denied > 0 {
@@ -300,7 +300,7 @@ func (ids *inUseIDs) holds(ctx context.Context, backend fsops.Backend, info *fso
 		return held, err
 	}
 	key, _ := fsops.FileKeyOf(info.FileID, ids.instance)
-	paths, ok := ids.linked[key]
+	paths, ok := ids.linkedInUse[key]
 	if !ok {
 		// The torrent's file had one link when it was read.
 		return true, nil
@@ -333,19 +333,33 @@ func (ids *inUseIDs) holds(ctx context.Context, backend fsops.Backend, info *fso
 }
 
 // readDirIDs reads the identity of each folder, following links. A folder
-// whose identity cannot be read is left out.
+// whose identity cannot be read is left out, so sameEntry keeps a hardlink in
+// it when the names match.
 func readDirIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, dirs []string) map[string]fsops.FileKey {
 	slices.Sort(dirs)
 	dirs = slices.Compact(dirs)
 	infos, errs := fsops.StatAll(ctx, backend, dirs)
 	ids := make(map[string]fsops.FileKey, len(dirs))
+	failed, first, firstErr := 0, "", error(nil)
 	for i, dir := range dirs {
-		if errs[i] != nil || infos[i].FileIDErr != nil {
+		err := errs[i]
+		if err == nil {
+			err = infos[i].FileIDErr
+		}
+		if err != nil {
+			if failed == 0 {
+				first, firstErr = dir, err
+			}
+			failed++
 			continue
 		}
 		if key, ok := fsops.FileKeyOf(infos[i].FileID, instance); ok {
 			ids[dir] = key
 		}
+	}
+	if failed > 0 {
+		log.Debug().Int("count", failed).Str("first", first).Err(firstErr).
+			Msg("orphanscan: keeping hardlinks with a matching name in folders qui cannot identify")
 	}
 	return ids
 }

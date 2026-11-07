@@ -706,3 +706,15 @@ func TestSameEntry_ComparesNamesLikeTheTorrentFileMap(t *testing.T) {
 		})
 	}
 }
+
+// A folder qui cannot identify could be the torrent file's own folder, so a
+// hardlink in it with a matching name stays.
+// regression: #3908
+func TestReadDirIDs_LeavesOutAFolderItCannotReadSoTheHardlinkStays(t *testing.T) {
+	a := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "gone")
+	dirIDs := readDirIDs(t.Context(), local.NewBackend(), nil, []string{a, missing})
+	require.Contains(t, dirIDs, a)
+	require.NotContains(t, dirIDs, missing)
+	require.True(t, sameEntry(fsops.HostPaths, dirIDs, filepath.Join(missing, "movie.mkv"), filepath.Join(a, "movie.mkv")))
+}
