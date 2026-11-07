@@ -69,8 +69,11 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
       if (!needsKey && value.privateKey === "") {
         return
       }
-      if (await save({ host: value.host.trim(), port: value.port, username: value.username.trim(), privateKey: value.privateKey })) {
-        form.setFieldValue("privateKey", "")
+      const saved = { host: value.host.trim(), port: value.port, username: value.username.trim() }
+      if (await save({ ...saved, privateKey: value.privateKey })) {
+        // The row now holds these values, so the form starts over from them:
+        // no stale "key needed" error from the change that was just saved.
+        form.reset({ ...saved, privateKey: "" })
         toast.success(t("preferences.ssh.toast.saved"))
       }
     },
@@ -412,7 +415,7 @@ function ProbeTable({ probe, tier }: { probe?: SSHProbe; tier: Instance["sshTier
   ]
   return (
     <div className="space-y-2">
-      <p className="text-sm">
+      <p className="flex items-center gap-2 text-sm">
         {t("preferences.ssh.probes.tier", { tier: tier === "exec" ? t("preferences.ssh.probes.tierExec") : t("preferences.ssh.probes.tierSftp") })}
         <FieldHelp>{t("preferences.ssh.probes.tierHint")}</FieldHelp>
       </p>
