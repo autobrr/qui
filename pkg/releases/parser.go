@@ -332,6 +332,8 @@ func trailingTokenRegexes(token string) []*regexp.Regexp {
 	return actual.([]*regexp.Regexp)
 }
 
+var hdrTagSeparators = strings.NewReplacer(" ", "", ".", "", "_", "", "-", "")
+
 // CanonicalHDRTag maps an HDR tag string to its canonical form.
 // For example, "HDR10P", "HDR10PLUS", and "HDR10+" all map to "HDR10+".
 func CanonicalHDRTag(tag string) string {
@@ -340,7 +342,7 @@ func CanonicalHDRTag(tag string) string {
 		return ""
 	}
 
-	key := strings.NewReplacer(" ", "", ".", "", "_", "", "-", "").Replace(upper)
+	key := hdrTagSeparators.Replace(upper)
 
 	switch key {
 	case "DOVI", "DOLBYVISION", "DV":

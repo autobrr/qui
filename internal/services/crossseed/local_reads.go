@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -259,14 +260,7 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 		}
 		for _, torrent := range torrents {
 			if files := filesByHash[torrent.hash]; len(files) > 0 {
-				reads[torrent.hash], _ = s.readRelease(torrent.name, files, readPolicy{
-					mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
-						if ruleInfo, ok := categoryRuleContentType(settings.CategoryMappingRules, torrent.category); ok {
-							return ruleInfo
-						}
-						return contentInfo
-					},
-				})
+				reads[torrent.hash] = s.readLocalFiles(settings.CategoryMappingRules, torrent.name, torrent.category, files)
 			}
 		}
 	} else {
@@ -307,6 +301,18 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 		entry.expires = now.Add(localReadFailureTTL)
 		memo.entries[key] = entry
 	}
+}
+
+func (s *Service) readLocalFiles(rules []models.CategoryMappingRule, name, category string, files qbt.TorrentFiles) namedRelease {
+	read, _ := s.readRelease(name, files, readPolicy{
+		mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
+			if ruleInfo, ok := categoryRuleContentType(rules, category); ok {
+				return ruleInfo
+			}
+			return contentInfo
+		},
+	})
+	return read
 }
 
 // forgetLocalRead drops the remembered read of one torrent, after qui renamed,
