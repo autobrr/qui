@@ -568,6 +568,7 @@ export interface StreamSubscription {
   search?: string
   filters?: TorrentFilters | null
   summary?: boolean
+  groupCopies?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -582,6 +583,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     search: stream.search ?? "",
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
   }
 }
 
@@ -1008,6 +1010,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1019,6 +1022,7 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,
@@ -1102,6 +1106,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1115,6 +1120,7 @@ class ApiClient {
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`,
