@@ -563,7 +563,7 @@ func (b vanishDuringWalkBackend) WalkDir(ctx context.Context, root string, opts 
 // A folder can vanish while the scan walks its root, for example when a
 // torrent is removed with its files. The walk goes on: the root's other
 // orphans are listed, and the torrent's file that the walk reaches later still
-// protects its hardlink in another root.
+// protects its alias in another root.
 func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -575,7 +575,8 @@ func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
 					return []string{filepath.Join(filepath.Dir(defaultSavePath), category)}
 				},
 				wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
-					return vanishDuringWalkBackend{Backend: b, root: defaultSavePath, gone: gone}
+					aliased := &aliasWalkBackend{Backend: b, ids: sameFile(filepath.Join(defaultSavePath, "mydata", "owned.mkv"), mirror)}
+					return vanishDuringWalkBackend{Backend: aliased, root: defaultSavePath, gone: gone}
 				},
 			}
 			f := newOrphanOnlyFixture(t, "orphanscan-vanished-folder-"+category, opts, func(defaultSavePath string) {
@@ -592,8 +593,7 @@ func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
 				categoryRoot := filepath.Join(filepath.Dir(defaultSavePath), category)
 				mirror = filepath.Join(categoryRoot, "mirror", "owned.mkv")
 				junk = filepath.Join(categoryRoot, "junk.mkv")
-				require.NoError(t, os.MkdirAll(filepath.Dir(mirror), 0o750))
-				require.NoError(t, os.Link(filepath.Join(defaultSavePath, "mydata", "owned.mkv"), mirror))
+				writeFile(t, mirror)
 				writeFile(t, junk)
 			})
 			require.NoDirExists(t, gone)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 	"syscall"
 
 	"github.com/rs/zerolog/log"
@@ -91,7 +92,7 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, protected *pro
 	if !info.Mode.IsRegular() {
 		return 0, fmt.Errorf("refusing to delete non-regular file: %s", target)
 	}
-	held, err := protected.inUse.holds(info)
+	held, err := protected.inUse.holds(ctx, backend, info)
 	if err != nil {
 		return 0, err
 	}
@@ -172,7 +173,7 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 			return err
 		}
 	}
-	held, err := protected.inUse.holds(info)
+	held, err := protected.inUse.holds(ctx, backend, info)
 	if err != nil {
 		return fmt.Errorf("cannot read the identity of the files in this folder: %w", err)
 	}
@@ -215,6 +216,8 @@ func checkFileInUse(path string, protected *protectedPaths) error {
 type inUseIDs struct {
 	instance *models.Instance
 	keys     map[fsops.FileKey]struct{}
+	// linked holds the paths of torrent files with more than one link.
+	linked map[fsops.FileKey][]string
 	// fileDirs are the folders that hold a torrent file found on disk, as
 	// reachedDirs takes them.
 	fileDirs map[string]struct{}
@@ -238,7 +241,12 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			unique = append(unique, p)
 		}
 	}
-	ids := &inUseIDs{instance: instance, keys: make(map[fsops.FileKey]struct{}, len(unique)), fileDirs: make(map[string]struct{})}
+	ids := &inUseIDs{
+		instance: instance,
+		keys:     make(map[fsops.FileKey]struct{}, len(unique)),
+		linked:   make(map[fsops.FileKey][]string),
+		fileDirs: make(map[string]struct{}),
+	}
 	infos, errs := fsops.StatAll(ctx, backend, unique)
 	denied, firstDenied := 0, ""
 	for i := range unique {
@@ -269,6 +277,9 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			return nil, err
 		}
 		ids.keys[key] = struct{}{}
+		if info.Mode.IsRegular() && info.Nlinks > 1 {
+			ids.linked[key] = append(ids.linked[key], unique[i])
+		}
 	}
 	if denied > 0 {
 		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent paths qui may not look up")
@@ -277,13 +288,79 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 }
 
 // holds reports whether a torrent file shares the identity of info, a regular
-// file read with Lstat. Like the scan (#3487), a target with more than one
-// link is kept when one of them is a torrent's.
-func (ids *inUseIDs) holds(info *fsops.LstatInfo) (bool, error) {
+// file read with Lstat. Like the scan, a target with more than one link is
+// held only when it is a torrent file's own directory entry; another hardlink
+// of it is not.
+func (ids *inUseIDs) holds(ctx context.Context, backend fsops.Backend, info *fsops.LstatInfo) (bool, error) {
 	if !info.Mode.IsRegular() {
 		return false, nil
 	}
-	return ids.reaches(info)
+	held, err := ids.reaches(info)
+	if !held || err != nil || info.Nlinks <= 1 {
+		return held, err
+	}
+	key, _ := fsops.FileKeyOf(info.FileID, ids.instance)
+	paths, ok := ids.linked[key]
+	if !ok {
+		// The torrent's file had one link when it was read.
+		return true, nil
+	}
+	// The scan never keys a torrent path that is itself a symlink, but here a
+	// torrent can reach the target through one, and the link's entry is not the
+	// target's.
+	linkInfos, linkErrs := fsops.LstatAll(ctx, backend, paths)
+	for i := range paths {
+		if linkErrs[i] != nil {
+			return false, fmt.Errorf("read torrent file %s: %w", paths[i], linkErrs[i])
+		}
+		if linkInfos[i].IsSymlink {
+			return true, nil
+		}
+	}
+	d := backend.Paths()
+	dirs := make([]string, 0, len(paths)+1)
+	dirs = append(dirs, d.Dir(info.Path))
+	for _, p := range paths {
+		dirs = append(dirs, d.Dir(p))
+	}
+	dirIDs := readDirIDs(ctx, backend, ids.instance, dirs)
+	for _, p := range paths {
+		if sameEntry(d, dirIDs, info.Path, p) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// readDirIDs reads the identity of each folder, following links. A folder
+// whose identity cannot be read is left out.
+func readDirIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, dirs []string) map[string]fsops.FileKey {
+	slices.Sort(dirs)
+	dirs = slices.Compact(dirs)
+	infos, errs := fsops.StatAll(ctx, backend, dirs)
+	ids := make(map[string]fsops.FileKey, len(dirs))
+	for i, dir := range dirs {
+		if errs[i] != nil || infos[i].FileIDErr != nil {
+			continue
+		}
+		if key, ok := fsops.FileKeyOf(infos[i].FileID, instance); ok {
+			ids[dir] = key
+		}
+	}
+	return ids
+}
+
+// sameEntry reports whether two paths to one file are one directory entry:
+// the same name in the same folder, as a bind mount or a symlinked folder
+// shows it. A hardlink is an entry of its own. A folder of unknown identity
+// could be the same one.
+func sameEntry(d fsops.PathDialect, dirIDs map[string]fsops.FileKey, a, b string) bool {
+	if d.Base(a) != d.Base(b) {
+		return false
+	}
+	aID, aOK := dirIDs[d.Dir(a)]
+	bID, bOK := dirIDs[d.Dir(b)]
+	return !aOK || !bOK || aID == bID
 }
 
 // reaches reports whether a torrent's path leads to info, a folder read with

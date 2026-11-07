@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -84,10 +85,10 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *t
 	require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
 }
 
-// A hardlink of a listed file made since the scan is kept too, matching the
-// scan (#3487).
+// A hardlink of a listed file made since the scan is its own directory entry,
+// so the delete removes the listed one and the torrent keeps its file.
 // regression: #3596
-func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
+func TestExecuteDeletion_DeletesHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-hardlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
 		orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
@@ -101,8 +102,9 @@ func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.
 	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: other}, "movie.mkv")
 	f.svc.executeDeletion(t.Context(), 1, f.runID)
 
-	require.FileExists(t, orphan)
-	require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
+	require.NoFileExists(t, orphan)
+	require.FileExists(t, filepath.Join(other, "movie.mkv"))
+	require.Equal(t, "deleted: ", fileStatuses(t, f.store, f.runID)[orphan])
 }
 
 // Each row reaches the listed file through a path only one step of the
@@ -157,20 +159,27 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "Alias/movie.mkv", "alias/movie.mkv")
 		}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var orphan string
-			f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-kinds", orphanOnlyOptions{}, func(defaultSavePath string) {
-				orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
-				writeFile(t, orphan)
+		// A second link outside the roots must not turn the path into a hardlink of its own.
+		for _, linked := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/linked=%t", tc.name, linked), func(t *testing.T) {
+				var orphan string
+				f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-kinds", orphanOnlyOptions{}, func(defaultSavePath string) {
+					orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
+					writeFile(t, orphan)
+				})
+				require.Contains(t, fileStatuses(t, f.store, f.runID), orphan, "the scan lists it")
+				base := filepath.Dir(f.defaultSavePath)
+				if linked {
+					require.NoError(t, os.Link(orphan, filepath.Join(base, "movie.mkv")))
+				}
+
+				tc.late(t, f, orphan, base)
+				f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+				require.FileExists(t, orphan)
+				require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
 			})
-			require.Contains(t, fileStatuses(t, f.store, f.runID), orphan, "the scan lists it")
-
-			tc.late(t, f, orphan, filepath.Dir(f.defaultSavePath))
-			f.svc.executeDeletion(t.Context(), 1, f.runID)
-
-			require.FileExists(t, orphan)
-			require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
-		})
+		}
 	}
 }
 

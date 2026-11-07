@@ -961,7 +961,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 	}
 
-	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
+	allOrphans = dropAliasOrphans(ctx, backend, instance, dedupeOrphans(d, allOrphans), keys)
 	// The default is incomplete, which refuses a remote delete, so a failed write only costs the confirm.
 	if err := s.store.UpdateRunIdentityComplete(ctx, runID, !keys.incomplete); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to record file identity")
