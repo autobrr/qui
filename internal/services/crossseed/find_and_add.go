@@ -185,7 +185,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 	// The season pack hint compares every local episode with these, so read them once.
 	// Only an admitted decision holds aliases, and it describes the pack's show.
-	packTitles := m.normalizedReleaseTitles(seasonedTarget, targetSide.rawName)
+	packTitles := m.appendNormalizedReleaseTitles(nil, seasonedTarget, targetSide.rawName)
 	packAliasTitles := slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles)
 
 	// Build basic info for response
@@ -287,6 +287,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		structureRelaxedHash := ""
 
 		// Pre-filter torrents before loading files to reduce downstream work
+		var sourceTitleBuf [16]string
 		for _, torrent := range torrents {
 			if s.sourceGate().check(&torrent, req.sourceFilter) != sourcePass {
 				continue
@@ -313,7 +314,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// the season pack check verifies coverage before apply. No ARR lookup here.
 			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(seasonedTarget) &&
 				isTVEpisode(sourceSide.release) && sourceSide.release.Series == seasonedTarget.Series &&
-				titleSetsMatch(m.normalizedReleaseTitles(sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
+				titleSetsMatch(m.appendNormalizedReleaseTitles(sourceTitleBuf[:0], sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
 				response.seasonPackEpisodeCandidates = true
 			}
 
