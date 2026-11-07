@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -73,4 +74,67 @@ func BenchmarkBuildCrossMatchSets(b *testing.B) {
 			}
 		})
 	}
+}
+
+// benchCopyGroupInput builds about 6,000 torrents and 40,000 files: releases
+// with three copies each, two in separate folders on instance 1 and one on
+// instance 2. A third of the releases are season packs of 15 episodes.
+func benchCopyGroupInput() (map[int][]qbittorrent.CrossInstanceTorrentView, map[int]map[string]qbt.TorrentFiles) {
+	torrents := make(map[int][]qbittorrent.CrossInstanceTorrentView)
+	files := map[int]map[string]qbt.TorrentFiles{1: {}, 2: {}}
+	for r := range 2000 {
+		var name string
+		var list qbt.TorrentFiles
+		if r%3 == 0 {
+			name = fmt.Sprintf("Harbor.Watch.%04d.S01.2160p.WEB-DL.DV.HDR.H.265-GRP", r)
+			for e := range 15 {
+				list = append(list, qbt.TorrentFile{Name: fmt.Sprintf("%s/Harbor.Watch.%04d.S01E%02d.2160p.WEB-DL.DV.HDR.H.265-GRP.mkv", name, r, e+1), Size: int64(1_000_000 + r*100 + e)})
+			}
+		} else {
+			name = fmt.Sprintf("Quiet.Harbor.%04d.2019.1080p.BluRay.x264-GRP", r)
+			list = qbt.TorrentFiles{{Name: name + "/" + name + ".mkv", Size: int64(5000 + r)}}
+		}
+		list = append(list, qbt.TorrentFile{Name: name + "/" + name + ".nfo", Size: 10})
+		for c, instanceID := range []int{1, 1, 2} {
+			hash := fmt.Sprintf("%c%039d", 'a'+c, r)
+			savePath := fmt.Sprintf("/data/%c", 'a'+c)
+			torrents[instanceID] = append(torrents[instanceID], qbittorrent.CrossInstanceTorrentView{
+				TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{
+					Hash: hash, Name: name, SavePath: savePath, ContentPath: savePath + "/" + name,
+					Size: sourceFilesTotalSize(list), AddedOn: int64(r*3 + c),
+				}},
+				InstanceID: instanceID,
+			})
+			files[instanceID][hash] = list
+		}
+	}
+	return torrents, files
+}
+
+func BenchmarkFindCopyGroups(b *testing.B) {
+	previousLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+	torrents, files := benchCopyGroupInput()
+	key := make([]byte, 32)
+	run := func(b *testing.B, svc *Service) {
+		groups, err := svc.FindCopyGroups(b.Context(), torrents, files, nil, key)
+		if err != nil || len(groups) != 2000 {
+			b.Fatalf("found %d groups, err %v, want 2000", len(groups), err)
+		}
+	}
+	b.Run("warm parser", func(b *testing.B) {
+		svc := newTestService()
+		run(b, svc)
+		b.ReportAllocs()
+		for b.Loop() {
+			run(b, svc)
+		}
+	})
+	b.Run("cold parser", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			run(b, newTestService())
+		}
+	})
 }
