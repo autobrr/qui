@@ -191,7 +191,7 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 func followSymlink(ctx context.Context, p string, backend fsops.Backend) (*fsops.LstatInfo, error) {
 	info, err := backend.Stat(ctx, p)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+		if pathGone(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("follow symlink %s: %w", p, err)
@@ -251,7 +251,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 	denied, firstDenied := 0, ""
 	for i := range unique {
 		if err := errs[i]; err != nil {
-			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+			if pathGone(err) {
 				continue
 			}
 			// A backend that wraps both errors lost the link, which says
@@ -308,15 +308,23 @@ func (ids *inUseIDs) holds(ctx context.Context, backend fsops.Backend, info *fso
 	// The scan never keys a torrent path that is itself a symlink, but here a
 	// torrent can reach the target through one, and the link's entry is not the
 	// target's.
+	// A torrent path that is gone since collectInUseIDs ran protects nothing,
+	// as in collectInUseIDs.
 	linkInfos, linkErrs := fsops.LstatAll(ctx, backend, paths)
+	live := make([]string, 0, len(paths))
 	for i := range paths {
+		if pathGone(linkErrs[i]) {
+			continue
+		}
 		if linkErrs[i] != nil {
 			return false, fmt.Errorf("read torrent file %s: %w", paths[i], linkErrs[i])
 		}
 		if linkInfos[i].IsSymlink {
 			return true, nil
 		}
+		live = append(live, paths[i])
 	}
+	paths = live
 	d := backend.Paths()
 	dirs := make([]string, 0, len(paths)+1)
 	dirs = append(dirs, d.Dir(info.Path))
@@ -330,6 +338,11 @@ func (ids *inUseIDs) holds(ctx context.Context, backend fsops.Backend, info *fso
 		}
 	}
 	return false, nil
+}
+
+// pathGone reports whether err says that no file is at the path any more.
+func pathGone(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP)
 }
 
 // readDirIDs reads the identity of each folder, following links. A folder

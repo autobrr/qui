@@ -718,3 +718,28 @@ func TestReadDirIDs_LeavesOutAFolderItCannotReadSoTheHardlinkStays(t *testing.T)
 	require.NotContains(t, dirIDs, missing)
 	require.True(t, sameEntry(fsops.HostPaths, dirIDs, filepath.Join(missing, "movie.mkv"), filepath.Join(a, "movie.mkv")))
 }
+
+// A torrent moved during the delete leaves a hardlink at a path no torrent
+// uses, so the delete goes ahead instead of failing the file.
+// regression: #3908
+func TestHolds_TorrentPathGoneSinceTheCollectDoesNotFailTheTarget(t *testing.T) {
+	root := t.TempDir()
+	torrentFile := filepath.Join(root, "a", "movie.mkv")
+	target := filepath.Join(root, "b", "movie.mkv")
+	moved := filepath.Join(root, "c", "movie.mkv")
+	for _, p := range []string{torrentFile, target, moved} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	}
+	require.NoError(t, os.WriteFile(torrentFile, []byte("x"), 0o600))
+	require.NoError(t, os.Link(torrentFile, target))
+	backend := local.NewBackend()
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{torrentFile}, false)
+	require.NoError(t, err)
+	require.NoError(t, os.Rename(torrentFile, moved))
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.False(t, held)
+}
