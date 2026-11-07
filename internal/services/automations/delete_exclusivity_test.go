@@ -103,6 +103,10 @@ func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 	}
 }
 
+func (m sharedFilesMatcher) OpenCrossMatchSession(ctx context.Context, id int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{result: m.BuildCrossMatchSets(ctx, id, needs)}, nil
+}
+
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.
 func dryRunActivityHashes(t *testing.T, svc *Service, instanceID int, activities []*models.AutomationActivity) map[string][]string {
 	t.Helper()

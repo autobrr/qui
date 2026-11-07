@@ -58,6 +58,10 @@ func (m parityCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 	return &CrossMatchResult{SameInstanceContentByHash: m.sameContent}
 }
 
+func (m parityCrossMatcher) OpenCrossMatchSession(ctx context.Context, id int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{result: m.BuildCrossMatchSets(ctx, id, needs)}, nil
+}
+
 // newDryRunParityService boots a Service against a stub qBittorrent that serves the fixture.
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()

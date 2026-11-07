@@ -67,6 +67,9 @@ type CrossMatchResult struct {
 	// OfflineLocalInstances names the active instances with trusted identity
 	// whose torrents could not be read.
 	OfflineLocalInstances []string
+	// MemberFiles holds the file lists that a session read for the group
+	// members. PROTOTYPE #3895.
+	MemberFiles map[string]qbt.TorrentFiles
 }
 
 // candidateEntry holds pre-computed data for a candidate torrent.

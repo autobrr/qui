@@ -613,6 +613,12 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult = crossseed.CrossMatchResult
 
+// CrossMatchSession and ResolveRequest: PROTOTYPE #3895.
+type (
+	CrossMatchSession = crossseed.CrossMatchSession
+	ResolveRequest    = crossseed.ResolveRequest
+)
+
 // filesReader is the slice of the sync manager the hardlink index, the
 // missing-files check, the skipped-files check, the any-instance season
 // pack set, and the file overlap checks read. ADR 0005.
@@ -625,6 +631,7 @@ type filesReader interface {
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
 	BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult
+	OpenCrossMatchSession(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) (CrossMatchSession, error)
 }
 
 // Service periodically applies automation rules to torrents for all active instances.

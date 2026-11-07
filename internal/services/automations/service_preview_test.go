@@ -116,6 +116,16 @@ func (m unavailableCrossMatcher) BuildCrossMatchSets(context.Context, int, Cross
 	return &CrossMatchResult{Err: m.err}
 }
 
+func (m unavailableCrossMatcher) OpenCrossMatchSession(context.Context, int, CrossMatchNeeds) (CrossMatchSession, error) {
+	return nil, m.err
+}
+
+// cannedSession answers every Resolve with one canned result and no
+// MemberFiles. PROTOTYPE #3895.
+type cannedSession struct{ result *CrossMatchResult }
+
+func (s cannedSession) Resolve(context.Context, ResolveRequest) *CrossMatchResult { return s.result }
+
 func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {
 	t.Parallel()
 	wantErr := errors.New("torrent snapshot unavailable")
