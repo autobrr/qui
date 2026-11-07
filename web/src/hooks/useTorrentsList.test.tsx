@@ -2126,6 +2126,13 @@ describe("useTorrentsList Copy groups", () => {
   const CROSS_SEED_FILTERS = { expr: "Hash == \"aaaa\" || Hash == \"bbbb\"" } as TorrentFilters
   const pagesWith = (flag: boolean | undefined) =>
     mockedApi.getTorrents.mock.calls.filter(([, params]) => params.groupCopies === flag).map(([, params]) => params.page)
+  const requestedPages = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page).sort()
+  const frame = (copyGroupsReady: boolean) => act(() => {
+    capturedOnMessage?.({
+      type: "update",
+      data: makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 2, hasMore: true, copyGroupsReady }),
+    })
+  })
 
   it("asks for groups only when the option is on and the view is not Filter Cross-Seeds", async () => {
     const { rerender } = renderHook(
@@ -2181,12 +2188,6 @@ describe("useTorrentsList Copy groups", () => {
     mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
       ? makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 2, hasMore: true, copyGroupsReady: false })
       : makeResponse({ torrents: [makeTorrent({ hash: "b" })], total: 2, hasMore: false, copyGroupsReady: false }))
-    const frame = (copyGroupsReady: boolean) => act(() => {
-      capturedOnMessage?.({
-        type: "update",
-        data: makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 2, hasMore: true, copyGroupsReady }),
-      })
-    })
 
     const { result } = renderHook(() => useTorrentsList(1, { groupCopies: true }), { wrapper: makeWrapper() })
     frame(false)
@@ -2205,12 +2206,73 @@ describe("useTorrentsList Copy groups", () => {
 
     frame(true)
     await flush()
-    expect(mockedApi.getTorrents.mock.calls.map(([, params]) => params.page).sort()).toEqual([0, 1])
+    expect(requestedPages()).toEqual([0, 1])
     mockedApi.getTorrents.mockClear()
 
     frame(false)
     await flush()
-    expect(mockedApi.getTorrents.mock.calls.map(([, params]) => params.page).sort()).toEqual([0, 1])
+    expect(requestedPages()).toEqual([0, 1])
+  })
+
+  it("refetches the loaded window after a later page loads when the ready state moved during its first load", async () => {
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    let releasePage1!: () => void
+    const page1 = new Promise<void>(resolve => { releasePage1 = resolve })
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => {
+      if (params.page === 0) {
+        return makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 2, hasMore: true, copyGroupsReady: false })
+      }
+      await page1
+      return makeResponse({ torrents: [makeTorrent({ hash: "b" })], total: 2, hasMore: false, copyGroupsReady: true })
+    })
+
+    const { result } = renderHook(() => useTorrentsList(1, { groupCopies: true }), { wrapper: makeWrapper() })
+    frame(false)
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => result.current.loadMore())
+    await flush()
+    mockedApi.getTorrents.mockClear()
+
+    frame(true)
+    await flush()
+    await act(async () => releasePage1())
+    await flush()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b"])
+    expect(requestedPages()).toContain(0)
+  })
+
+  it("fetches the loaded window again when its pages disagree on the ready state", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
+      ? makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 2, hasMore: true, copyGroupsReady: false })
+      : makeResponse({ torrents: [makeTorrent({ hash: "b" })], total: 2, hasMore: false, copyGroupsReady: false }))
+    const { result } = renderHook(() => useTorrentsList(1, { groupCopies: true, pollingEnabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => result.current.loadMore())
+    await flush()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b"])
+
+    // The server starts grouping between the request for page 0 and the request for page 1.
+    let windowFetches = 0
+    mockedApi.getTorrents.mockClear()
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => {
+      if (params.page === 0) windowFetches++
+      const ready = params.page === 1 || windowFetches > 1
+      return makeResponse({ torrents: [makeTorrent({ hash: params.page === 0 ? "a" : "b" })], total: 2, hasMore: params.page === 0, copyGroupsReady: ready })
+    })
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], type: "active" })
+    })
+    await flush()
+    expect(requestedPages()).toEqual([0, 0, 1, 1])
   })
 })
 

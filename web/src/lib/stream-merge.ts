@@ -33,7 +33,8 @@ import type { Torrent } from "@/types"
  *
  * A grouped page holds top rows and the members of their groups, so its length changes
  * between frames. The page-0 window of `prev` ends after as many top rows as the fresh
- * page holds; on a flat list every row is a top row.
+ * page holds. In `prev`, a group counts once, at its first row, as the list shows it, so
+ * members whose representative left them still count. On a flat list every row counts.
  *
  * Generic over any record carrying a stable `hash` so it can be unit tested without
  * constructing full torrent objects. `keyOf` selects the identity used for the page-0
@@ -72,9 +73,15 @@ export function mergeStreamedFirstPage<T extends { hash: string } & Pick<Torrent
 }
 
 function windowEnd(rows: Pick<Torrent, "copy_group">[], topRows: number): number {
+  const groups = new Set<string>()
   let seen = 0
   for (let index = 0; index < rows.length; index++) {
-    if (isTopRow(rows[index]) && seen++ === topRows) {
+    const id = rows[index].copy_group?.id
+    if (id !== undefined) {
+      if (groups.has(id)) continue
+      groups.add(id)
+    }
+    if (seen++ === topRows) {
       return index
     }
   }

@@ -573,9 +573,12 @@ export function useTorrentsList(
         return response
       }
 
-      const pages = await Promise.all(
-        Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page))
-      )
+      const fetchWindow = () => Promise.all(Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page)))
+      let pages = await fetchWindow()
+      // The server can start or stop grouping between two of these parallel requests.
+      if (pages.some(page => page.copyGroupsReady !== pages[0].copyGroupsReady)) {
+        pages = await fetchWindow()
+      }
       const combined = combineWindowPages(pages)
       responseRevisions.set(combined, revisionAtStart)
       const snapshot = getNewerStreamSnapshot(combined)
@@ -629,18 +632,26 @@ export function useTorrentsList(
   // the next window poll.
   const copyGroupsReady = activeData?.copyGroupsReady
   const lastCopyGroupsReadyRef = useRef<{ scopeKey: string; ready: boolean } | null>(null)
+  const windowRepairPendingRef = useRef(false)
   const readyFromWindow = activeData === data && Boolean(data?.windowPageCount)
+  // The first load of a later page fetches only that page, so the repair waits for it.
+  const pageLoaded = data !== undefined && !isPlaceholderData
   useEffect(() => {
-    if (copyGroupsReady === undefined) {
-      return
+    if (copyGroupsReady !== undefined) {
+      const previous = lastCopyGroupsReadyRef.current
+      lastCopyGroupsReadyRef.current = { scopeKey: viewScopeKey, ready: copyGroupsReady }
+      if (previous?.scopeKey === viewScopeKey && previous.ready !== copyGroupsReady) {
+        windowRepairPendingRef.current = true
+      }
     }
-    const previous = lastCopyGroupsReadyRef.current
-    lastCopyGroupsReadyRef.current = { scopeKey: viewScopeKey, ready: copyGroupsReady }
     // A window response already holds every loaded page in one shape.
-    if (previous?.scopeKey === viewScopeKey && previous.ready !== copyGroupsReady && currentPage > 0 && !readyFromWindow) {
+    if (currentPage === 0 || readyFromWindow) {
+      windowRepairPendingRef.current = false
+    } else if (windowRepairPendingRef.current && pageLoaded) {
+      windowRepairPendingRef.current = false
       void refetch()
     }
-  }, [copyGroupsReady, currentPage, readyFromWindow, refetch, viewScopeKey])
+  }, [copyGroupsReady, currentPage, pageLoaded, readyFromWindow, refetch, viewScopeKey])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {

@@ -165,6 +165,13 @@ describe("mergeStreamedFirstPage with Copy groups", () => {
     const next = [top("A"), top("B")]
     expect(hashes(mergeStreamedFirstPage(prev, next, 3))).toEqual(["A", "B", "C"])
   })
+
+  it("keeps the later members of a group whose representative moved up into page 0", () => {
+    // An earlier merge kept a1 and a2 after their representative left them for page 0.
+    const prev = [top("A"), member("a1", "g"), member("a2", "g"), top("B")]
+    const next = [top("A")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 4))).toEqual(["A", "a1", "a2", "B"])
+  })
 })
 
 describe("applyOrderedDelta", () => {
