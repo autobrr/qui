@@ -241,7 +241,7 @@ type runPlanInput struct {
 	torrents      []qbt.Torrent
 	torrentByHash map[string]qbt.Torrent
 	ruleByID      map[int]*models.Automation
-	crossSeeds    crossSeedGroups
+	crossSeeds    *crossSeedGroups
 	evalCtx       *EvalContext
 }
 
@@ -802,7 +802,7 @@ func (m *moveExpansion) legacyCrossSeeds(keys map[string]struct{}, normalizedDes
 // planPreview builds the Run plan of the one rule that a preview shows, with only the actions
 // in keep. It also returns the torrents whose category or tags the rule changes on its own,
 // before the cross-seed expansion. The preview checks every torrent, also one that a run skips as recently processed.
-func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) (runPlan, map[string]struct{}) {
+func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups) (runPlan, map[string]struct{}) {
 	keep.SchemaVersion = rule.Conditions.SchemaVersion
 	keep.Grouping = rule.Conditions.Grouping
 	only := *rule

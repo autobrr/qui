@@ -2879,7 +2879,7 @@ func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
 
 // testCrossSeedGroups groups the torrents that have the same content path, as
 // if the cross-seed matcher found that they share a file.
-func testCrossSeedGroups(torrents []qbt.Torrent) crossSeedGroups {
+func testCrossSeedGroups(torrents []qbt.Torrent) *crossSeedGroups {
 	return buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
 
