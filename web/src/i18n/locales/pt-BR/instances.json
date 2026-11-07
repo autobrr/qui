@@ -111,7 +111,8 @@
       "none": "Nenhuma",
       "usernamePassword": "Usuário e Senha",
       "apiKey": "Chave de API"
-    }
+    },
+    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
   },
   "settingsButton": {
     "tooltip": "Configurações da Instância"
@@ -150,7 +151,8 @@
         "downloads": "Downloads",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "Limites de Seeding"
+        },
+        "ssh": {
+          "title": "SSH Access",
+          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
         }
       }
     },
@@ -1749,6 +1755,89 @@
       "testEmailQueued": "O qBittorrent colocou o e-mail de teste na fila",
       "testEmailQueuedDescription": "O qBittorrent usa as configurações salvas. Verifique sua caixa de entrada e o log do qBittorrent para ver erros.",
       "testEmailFailed": "Falha ao enviar o e-mail de teste"
+    },
+    "ssh": {
+      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "labels": {
+        "host": "SSH host",
+        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port.",
+        "port": "Port",
+        "username": "Username",
+        "privateKey": "Private key",
+        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+      },
+      "validation": {
+        "hostRequired": "SSH host is required",
+        "portRange": "Port must be between 1 and 65535",
+        "usernameRequired": "Username is required",
+        "keyRequired": "The private key is needed when the host, port or username changes"
+      },
+      "buttons": {
+        "save": "Save SSH settings",
+        "clear": "Remove SSH access",
+        "test": "Test connection",
+        "testing": "Testing...",
+        "confirm": "Confirm host key",
+        "replace": "Replace host key"
+      },
+      "test": {
+        "title": "Connection"
+      },
+      "status": {
+        "unpinned": {
+          "title": "First contact",
+          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+        },
+        "pinned": {
+          "title": "Host key pinned"
+        },
+        "mismatch": {
+          "title": "Host key changed",
+          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+        },
+        "pinUnreadable": {
+          "title": "Pinned key unreadable",
+          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
+          "noKey": "The host did not answer, so there is no key to replace it with."
+        },
+        "error": {
+          "title": "Connection failed"
+        }
+      },
+      "fingerprint": {
+        "label": "Fingerprint",
+        "pinned": "Pinned",
+        "presented": "Presented"
+      },
+      "probes": {
+        "tier": "Tier: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + commands",
+        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "sftp": "SFTP",
+        "statvfs": "Free space (statvfs)",
+        "hardlink": "Hardlinks (hardlink@openssh.com)",
+        "limits": "Limits extension",
+        "exec": "Commands",
+        "gnuUserland": "GNU find and stat",
+        "yes": "Available",
+        "no": "Not available"
+      },
+      "replaceDialog": {
+        "title": "Replace the pinned host key?",
+        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
+        "cancel": "Cancel",
+        "confirm": "Replace"
+      },
+      "toast": {
+        "saved": "SSH settings saved",
+        "cleared": "SSH access removed"
+      }
     }
   },
   "backups": {
