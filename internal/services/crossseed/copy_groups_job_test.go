@@ -353,6 +353,22 @@ func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
 	})
 }
 
+// The matcher links torrents that share a content path, so a move of the
+// content alone, as at the end of a download in a temp folder, must rebuild.
+// regression: #3913
+func TestCopyGroupsJob_RebuildsAfterAContentPathChange(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.firstMap()
+		publishes := h.publishes()
+		h.sync.mu.Lock()
+		h.sync.torrents[1][0].ContentPath = "/data/elsewhere/" + cgPack
+		h.sync.mu.Unlock()
+		h.job.demand()
+		h.wait(copyGroupsTick)
+		require.Greater(t, h.publishes(), publishes)
+	})
+}
+
 func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())

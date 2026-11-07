@@ -252,16 +252,15 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 }
 
 type copyGroupsPrint struct {
-	hash, name, category, savePath string
-	size                           int64
-	noContent                      bool
+	hash, name, category, savePath, contentPath string
+	size                                        int64
 }
 
 func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentView) uint64 {
 	var sum uint64
 	for i := range torrents {
 		t := torrents[i].Torrent
-		sum += maphash.Comparable(j.seed, copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), noContent: t.ContentPath == ""})
+		sum += maphash.Comparable(j.seed, copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath})
 	}
 	return sum
 }
