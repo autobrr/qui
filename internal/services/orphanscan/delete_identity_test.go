@@ -743,3 +743,44 @@ func TestHolds_TorrentPathGoneSinceTheCollectDoesNotFailTheTarget(t *testing.T) 
 	require.NoError(t, err)
 	require.False(t, held)
 }
+
+// linkAfterStat is the local backend, and it hardlinks from to to right after
+// the Stat of from, as if someone made the link while qui read the
+// torrent paths.
+type linkAfterStat struct {
+	fsops.Backend
+	t        *testing.T
+	from, to string
+}
+
+func (b linkAfterStat) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Stat(ctx, p)
+	if p == b.from {
+		require.NoError(b.t, os.Link(b.from, b.to))
+	}
+	return info, err
+}
+
+// A hardlink made while qui reads the torrent paths must not leave the first
+// torrent path out of the entry check, or an alias of it is deleted.
+// regression: #3908
+func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "a", "movie.mkv")
+	second := filepath.Join(root, "b", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(first), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
+	require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
+	alias := filepath.Join(root, "alias")
+	require.NoError(t, os.Symlink(filepath.Dir(first), alias))
+
+	backend := linkAfterStat{Backend: local.NewBackend(), t: t, from: first, to: second}
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{first, second}, false)
+	require.NoError(t, err)
+
+	info, err := backend.Lstat(t.Context(), filepath.Join(alias, "movie.mkv"))
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.True(t, held, "the alias is the first torrent's own entry")
+}

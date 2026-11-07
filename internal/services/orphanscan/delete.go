@@ -281,10 +281,26 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 			ids.linkedInUse[key] = append(ids.linkedInUse[key], unique[i])
 		}
 	}
+	ids.addPathsReadBeforeALink(unique, infos, errs)
 	if denied > 0 {
 		log.Warn().Int("count", denied).Str("first", firstDenied).Msg("orphanscan: skipping torrent paths qui may not look up")
 	}
 	return ids, nil
+}
+
+// addPathsReadBeforeALink adds the torrent paths that were read with one link
+// to a file that a later read found with more. A hardlink made while the paths
+// were read does that, and holds must compare a target with every entry.
+func (ids *inUseIDs) addPathsReadBeforeALink(paths []string, infos []*fsops.LstatInfo, errs []error) {
+	for i, p := range paths {
+		if errs[i] != nil || !infos[i].Mode.IsRegular() || infos[i].Nlinks > 1 {
+			continue
+		}
+		key, _ := fileKey(infos[i], ids.instance)
+		if linked, ok := ids.linkedInUse[key]; ok {
+			ids.linkedInUse[key] = append(linked, p)
+		}
+	}
 }
 
 // holds reports whether a torrent file shares the identity of info, a regular
