@@ -337,6 +337,21 @@ func TestCopyGroupsJob_NoRebuildWithoutAMove(t *testing.T) {
 	})
 }
 
+// A client without TotalSize reports the wanted size only, and the matcher
+// compares that size, so a change of the wanted files must rebuild.
+func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.firstMap()
+		batches := len(h.batches(1))
+		h.sync.mu.Lock()
+		h.sync.torrents[1][0].Size = 2000
+		h.sync.mu.Unlock()
+		h.job.demand()
+		h.wait(copyGroupsTick)
+		require.Greater(t, len(h.batches(1)), batches)
+	})
+}
+
 func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
