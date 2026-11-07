@@ -114,6 +114,7 @@ interface LayoutProps {
   columnFiltersExpr?: string | null
   search?: string
   sort?: string
+  groupCopies?: boolean
   /** Builds the Action target from the loaded rows, as a Layout does. */
   target?: (rows: Torrent[]) => ActionTarget
 }
@@ -128,7 +129,7 @@ const tickAll = (rows: Torrent[]): ActionTarget => ({
 const exportTorrents = vi.fn()
 
 // Acts like a Layout: load the list, build the Action target from its rows, and run bulk actions on it.
-function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", target = tickAll }: LayoutProps) {
+function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", groupCopies, target = tickAll }: LayoutProps) {
   const list = useTorrentListController({
     instanceId: 1,
     filters,
@@ -136,6 +137,7 @@ function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "
     search,
     sort,
     order: "desc",
+    groupCopies,
   })
   const actionTarget = useMemo(() => target(list.torrents), [target, list.torrents])
   const actions = useTorrentActions({ instanceId: 1 })
@@ -384,6 +386,127 @@ describe("useTorrentListController — load more", () => {
     await flush()
     expect(result.current.list.torrents).toHaveLength(301)
     expect(result.current.list.loadedRows).toBe(300)
+  })
+})
+
+describe("useTorrentListController — Copy groups", () => {
+  // The server sends a group as adjacent rows: the Group representative with
+  // first_sorted, then the other members with the id only.
+  const representative = (hash: string, id: string) =>
+    makeTorrent({ hash, copy_group: { id, first_sorted: { instance_id: 1, hash } } })
+  const member = (hash: string, id: string) => makeTorrent({ hash, copy_group: { id } })
+  const visible = (result: { current: ReturnType<typeof useLayout> }) => result.current.list.visibleRows.map(row => row.hash)
+
+  it("shows the loaded rows as they are on a flat list", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })], total: 2 }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.visibleRows).toBe(result.current.list.torrents)
+  })
+
+  it("starts each group collapsed and opens one group or all groups", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [representative("A", "g1"), member("a1", "g1"), makeTorrent({ hash: "B" }), representative("C", "g2"), member("c1", "g2")],
+      total: 5,
+      copyGroupsReady: true,
+    }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.torrents).toHaveLength(5)
+    expect(visible(result)).toEqual(["A", "B", "C"])
+
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "a1", "B", "C"])
+
+    act(() => result.current.list.toggleExpandAll())
+    expect(result.current.list.groupExpansion.expandAll).toBe(true)
+    expect(visible(result)).toEqual(["A", "a1", "B", "C", "c1"])
+
+    act(() => result.current.list.toggleGroup("g2"))
+    expect(visible(result)).toEqual(["A", "a1", "B", "C"])
+
+    act(() => result.current.list.toggleExpandAll())
+    expect(visible(result)).toEqual(["A", "B", "C"])
+  })
+
+  it("puts a group at the place of its first row and its representative on top when a merge moved a member", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [member("a1", "g1"), makeTorrent({ hash: "B" }), representative("A", "g1")],
+      total: 3,
+      copyGroupsReady: true,
+    }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(visible(result)).toEqual(["A", "B"])
+
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "a1", "B"])
+  })
+
+  it("closes the groups when the selection scope changes and keeps them open on a sort", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [representative("A", "g1"), member("a1", "g1")],
+      total: 2,
+      copyGroupsReady: true,
+    }))
+    const { result, rerender } = renderLayout({ groupCopies: true })
+    await flush()
+    act(() => result.current.list.toggleExpandAll())
+    act(() => result.current.list.toggleGroup("g1"))
+    act(() => result.current.list.toggleGroup("g9"))
+
+    rerender({ groupCopies: true, sort: "name" })
+    await flush()
+    expect(result.current.list.groupExpansion.expandAll).toBe(true)
+    expect([...result.current.list.groupExpansion.toggled]).toEqual(["g1", "g9"])
+
+    const scopes: LayoutProps[] = [
+      { filters: { ...FILTERS, status: ["downloading"] } },
+      { columnFiltersExpr: "AddedOn > 1704067200" },
+      { search: "linux" },
+    ]
+    for (const scope of scopes) {
+      rerender({ groupCopies: true, sort: "name" })
+      await flush()
+      act(() => result.current.list.toggleExpandAll())
+      act(() => result.current.list.toggleGroup("g1"))
+
+      rerender({ groupCopies: true, sort: "name", ...scope })
+      await flush()
+      expect(result.current.list.groupExpansion.expandAll).toBe(false)
+      expect(result.current.list.groupExpansion.toggled.size).toBe(0)
+      expect(visible(result)).toEqual(["A"])
+    }
+  })
+
+  it("keeps the load-more window in Filter Cross-Seeds when the option changes", async () => {
+    const crossSeed = { ...FILTERS, expr: "Hash == \"h0\" || Hash == \"h1\"" }
+    const crossRows = Array.from({ length: 300 }, (_, i) => ({ ...makeTorrent({ hash: `h${i}` }), instanceId: 1, instanceName: "qb" }))
+    mockedApi.getCrossInstanceTorrents.mockResolvedValue(makeResponse({ isCrossInstance: true, crossInstanceTorrents: crossRows, total: 300 }))
+    const { result, rerender } = renderLayout({ filters: crossSeed })
+    await flush()
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(200)
+
+    rerender({ filters: crossSeed, groupCopies: true })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(200)
+  })
+
+  it("counts the visible rows in the load-more window", async () => {
+    // 150 groups of two torrents: 300 rows in memory, 150 visible.
+    const groups = Array.from({ length: 150 }, (_, i) => [representative(`r${i}`, `g${i}`), member(`m${i}`, `g${i}`)]).flat()
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
+      ? makeResponse({ torrents: groups, total: 400, hasMore: true, copyGroupsReady: true })
+      : makeResponse({ torrents: [], total: 400, hasMore: false, copyGroupsReady: true }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(150)
+    await flush()
+    expect(mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)).toContain(1)
   })
 })
 

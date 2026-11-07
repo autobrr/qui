@@ -150,6 +150,14 @@ export interface Torrent {
   uploaded: number
   uploaded_session: number
   upspeed: number
+  /** Only on a row of a Copy group with two or more matching torrents, when the request asked for groups. */
+  copy_group?: CopyGroupRow
+}
+
+export interface CopyGroupRow {
+  id: string
+  /** Only on the Group representative: the torrent whose place the group takes in the sort. */
+  first_sorted?: { instance_id: number; hash: string }
 }
 
 export interface DuplicateTorrentMatch {
@@ -284,6 +292,8 @@ export interface TorrentResponse {
   webAPIVersions?: Record<number, string>
   /** Frontend-assembled only: number of pages combined into this loaded-window response. */
   windowPageCount?: number
+  /** Only when the request asked for groups. False while the server has no Copy groups yet; the rows are then flat. */
+  copyGroupsReady?: boolean
 }
 
 export interface AddTorrentFailedURL {
