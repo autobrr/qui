@@ -178,6 +178,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		strings.EqualFold(preferParam, "cached")
 
 	ctx := r.Context()
+	if groupCopiesParam(r) {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 	if preferCached {
 		ctx = qbittorrent.WithSkipFreshData(ctx)
 	}
@@ -244,6 +247,11 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		response = response.WithoutTrackerPasskeys()
 	}
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func groupCopiesParam(r *http.Request) bool {
+	groupCopies, _ := strconv.ParseBool(r.URL.Query().Get("groupCopies"))
+	return groupCopies
 }
 
 // GetTorrentField returns field values for torrents matching either the current filters
@@ -2750,8 +2758,12 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	// A poll stands in for the stream, so it starts background syncs. The
 	// stream itself reads this function with WithSkipFreshData.
 	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
+	ctx := r.Context()
+	if groupCopiesParam(r) {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-		r.Context(),
+		ctx,
 		limit,
 		offset,
 		sort,

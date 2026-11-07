@@ -1900,6 +1900,12 @@ paths:
           schema:
             type: string
             description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`)
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
       responses:
         '200':
           description: Paginated torrent list
@@ -1911,7 +1917,15 @@ paths:
                   torrents:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Torrent'
+                      allOf:
+                        - $ref: '#/components/schemas/Torrent'
+                        - type: object
+                          properties:
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   total:
                     type: integer
                   page:
@@ -4183,6 +4197,12 @@ paths:
               JSON-encoded filter options. Must include the `expr` field for cross-instance filtering.
               See CrossInstanceFilterOptions schema for structure details.
             example: '{"expr":"Hash == \"abcd1234\" || Hash == \"efgh5678\""}'
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
       responses:
         '200':
           description: Paginated torrent list from all instances
@@ -4204,10 +4224,15 @@ paths:
                             instance_name:
                               type: string
                               description: Name of the instance this torrent belongs to
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
                   total:
                     type: integer
                   hasMore:
                     type: boolean
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   isCrossInstance:
                     type: boolean
                     default: true
@@ -8088,6 +8113,23 @@ components:
           description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
+    CopyGroupRow:
+      type: object
+      description: Sent only on a row of a Copy group with two or more matching torrents. A plain row has no `copy_group`.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: Group id, 16 hex characters. It changes when qui restarts.
+        first_sorted:
+          type: object
+          description: Sent on the Group representative only. The torrent whose place the group takes in the sort.
+          required: [instance_id, hash]
+          properties:
+            instance_id:
+              type: integer
+            hash:
+              type: string
     Torrent:
       type: object
       properties:

@@ -121,13 +121,17 @@ func sortGoldenColumns() []string {
 	return columns
 }
 
-// newSortTestClient starts a fake qBittorrent that serves the generated
-// library, the tracker lists that trackers gives each torrent, and a Web API
-// version with tracker health.
 func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.TorrentTracker) *Client {
 	t.Helper()
+	return newListTestClient(t, instanceID, sortGoldenTorrents(), trackers)
+}
 
-	torrents := sortGoldenTorrents()
+// newListTestClient starts a fake qBittorrent that serves torrents, the tracker
+// lists that trackers gives each torrent, and a Web API version with tracker
+// health.
+func newListTestClient(t *testing.T, instanceID int, torrents []qbt.Torrent, trackers func(i int) []qbt.TorrentTracker) *Client {
+	t.Helper()
+
 	trackersByHash := make(map[string][]qbt.TorrentTracker, len(torrents))
 	mainTorrents := make(map[string]qbt.Torrent, len(torrents))
 	for i, torrent := range torrents {
