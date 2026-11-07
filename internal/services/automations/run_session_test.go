@@ -5,6 +5,7 @@ package automations
 
 import (
 	"context"
+	"encoding/json/v2"
 	"maps"
 	"slices"
 	"sync"
@@ -110,32 +111,63 @@ func newRecordingStubService(t *testing.T, tags map[string]string, localFS bool)
 	return svc, instanceIDs[0], stub, matcher
 }
 
+// deleteOutcome is what a run deletes: the torrents, and the torrents whose files go with them.
+type deleteOutcome struct{ deleted, filesDeleted []string }
+
 // runEachForm runs the rule live, as a dry run, and as a preview, each on a
-// new service, and checks the asks of each.
-func runEachForm(t *testing.T, rule *models.Automation, tags map[string]string, localFS bool, check func(t *testing.T, asks []ResolveRequest, stub *stubQbt)) {
+// new service, and checks the deletes and the asks of each.
+func runEachForm(t *testing.T, rule *models.Automation, tags map[string]string, localFS bool, want deleteOutcome, check func(t *testing.T, asks []ResolveRequest, stub *stubQbt)) {
 	t.Helper()
 	for _, form := range []string{"live", "dry run", "preview"} {
 		t.Run(form, func(t *testing.T) {
 			svc, instanceID, stub, matcher := newRecordingStubService(t, tags, localFS)
-			var err error
 			switch form {
 			case "live", "dry run":
 				r := *rule
 				r.DryRun = form == "dry run"
-				_, err = svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&r}, r.DryRun)
+				activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&r}, r.DryRun)
+				require.NoError(t, err)
+				if r.DryRun {
+					require.Equal(t, len(want.deleted), dryRunDeleteCount(t, activities))
+					require.Empty(t, stub.writtenHashes()["delete"])
+				} else {
+					require.ElementsMatch(t, want.deleted, stub.writtenHashes()["delete"])
+					require.ElementsMatch(t, want.filesDeleted, stub.filesDeleted())
+				}
 			case "preview":
-				_, err = svc.PreviewDeleteRule(t.Context(), instanceID, rule, 100, 0, "needed")
+				result, err := svc.PreviewDeleteRule(t.Context(), instanceID, rule, 100, 0, "needed")
+				require.NoError(t, err)
+				previewed := make([]string, len(result.Examples))
+				for i, example := range result.Examples {
+					previewed[i] = example.Hash
+				}
+				require.ElementsMatch(t, want.deleted, previewed)
 			}
-			require.NoError(t, err)
 			check(t, matcher.requests(), stub)
 		})
 	}
 }
 
+func dryRunDeleteCount(t *testing.T, activities []*models.AutomationActivity) int {
+	t.Helper()
+	count := 0
+	for _, activity := range activities {
+		if activity.Action != models.ActivityActionDeletedCondition {
+			continue
+		}
+		var details struct {
+			Count int `json:"count"`
+		}
+		require.NoError(t, json.Unmarshal(activity.Details, &details))
+		count += details.Count
+	}
+	return count
+}
+
 func TestRunSession_DeleteWithoutTriggerAsksNothing(t *testing.T) {
 	for _, mode := range []string{DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds} {
 		t.Run(mode, func(t *testing.T) {
-			runEachForm(t, deleteRule(mode, tagsContain("del")), nil, false, func(t *testing.T, asks []ResolveRequest, stub *stubQbt) {
+			runEachForm(t, deleteRule(mode, tagsContain("del")), nil, false, deleteOutcome{}, func(t *testing.T, asks []ResolveRequest, stub *stubQbt) {
 				require.Empty(t, asks)
 				stub.mu.Lock()
 				defer stub.mu.Unlock()
@@ -147,10 +179,17 @@ func TestRunSession_DeleteWithoutTriggerAsksNothing(t *testing.T) {
 
 func TestRunSession_DeleteAsksTheTriggerGroupsAndTheSharedCheck(t *testing.T) {
 	tags := map[string]string{sessionA: "del"}
-	for _, mode := range []string{DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds} {
+	tests := []struct {
+		mode string
+		want deleteOutcome
+	}{
+		{DeleteModeWithFilesIncludeCrossSeeds, deleteOutcome{[]string{sessionA, sessionC}, []string{sessionA, sessionC}}},
+		{DeleteModeWithFilesPreserveCrossSeeds, deleteOutcome{[]string{sessionA}, nil}},
+	}
+	for _, tt := range tests {
 		for _, localFS := range []bool{false, true} {
-			t.Run(mode, func(t *testing.T) {
-				runEachForm(t, deleteRule(mode, tagsContain("del")), tags, localFS, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
+			t.Run(tt.mode, func(t *testing.T) {
+				runEachForm(t, deleteRule(tt.mode, tagsContain("del")), tags, localFS, tt.want, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
 					require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}, Groups: true, OtherShared: true}}, asks)
 				})
 			})
@@ -164,10 +203,12 @@ func TestRunSession_FreeSpaceDeleteAsksTheWholeLibraryWithTheSharedCheckFirst(t 
 		r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldName, Direction: models.SortDirectionDESC}
 		return r
 	}
+	// The sort puts b first, and its delete frees enough space.
+	want := deleteOutcome{[]string{sessionB}, []string{sessionB}}
 	for _, mode := range []string{DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds} {
 		for _, localFS := range []bool{false, true} {
 			t.Run(mode, func(t *testing.T) {
-				runEachForm(t, rule(mode), nil, localFS, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
+				runEachForm(t, rule(mode), nil, localFS, want, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
 					require.Equal(t, []ResolveRequest{{All: true, Groups: true, OtherShared: true}}, asks,
 						"one whole-library ask, before the first claim, and no second build")
 				})
@@ -365,7 +406,7 @@ func (r *countingFilesReader) GetTorrentFilesBatch(ctx context.Context, instance
 // A tag rule that does not include cross-seeds lets no expansion override a
 // tag, so its ownership check asks for no group.
 func TestRunSession_TagRuleWithoutCrossSeedsAsksNothing(t *testing.T) {
-	svc, instanceID, _, matcher := newRecordingStubService(t, map[string]string{sessionA: "del"}, false)
+	svc, instanceID, stub, matcher := newRecordingStubService(t, map[string]string{sessionA: "del"}, false)
 	tagRule := &models.Automation{
 		ID: 2, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 2,
 		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Condition: tagsContain("")}}},
@@ -374,4 +415,6 @@ func TestRunSession_TagRuleWithoutCrossSeedsAsksNothing(t *testing.T) {
 	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, rules, false)
 	require.NoError(t, err)
 	require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}, Groups: true, OtherShared: true}}, matcher.requests())
+	require.ElementsMatch(t, []string{sessionA, sessionC}, stub.writtenHashes()["delete"])
+	require.Empty(t, stub.writtenHashes()["tag"], "the tag rule matches no torrent, so each torrent runs the ownership check")
 }
