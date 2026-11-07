@@ -10354,7 +10354,10 @@ components:
           type: array
           items:
             type: string
-          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan. Only the response for one run includes this field; the runs list leaves it out.
+        scanPathCount:
+          type: integer
+          description: Number of entries in scanPaths.
         filesFound:
           type: integer
           description: Number of orphan entries found, files and abandoned directories together

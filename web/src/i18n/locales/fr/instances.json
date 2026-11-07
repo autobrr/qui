@@ -753,6 +753,8 @@
       "viewPreview": "Voir l'aperçu",
       "recentScans": "Analyses récentes",
       "scannedPaths": "Chemins sélectionnés pour l’analyse ({{total}})",
+      "scanPathsLoading": "Chargement des chemins d’analyse...",
+      "scanPathsLoadFailed": "Impossible de charger les chemins d’analyse",
       "zeroOrphans": "0 orphelins",
       "deletedStats": "{{deleted}} supprimés · {{size}}",
       "deletedFiles_one": "{{count}} fichier",

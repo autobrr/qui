@@ -759,6 +759,8 @@
       "viewPreview": "Vorschau anzeigen",
       "recentScans": "Letzte Scans",
       "scannedPaths": "Ausgewählte Scan-Pfade ({{total}})",
+      "scanPathsLoading": "Scan-Pfade werden geladen...",
+      "scanPathsLoadFailed": "Scan-Pfade konnten nicht geladen werden",
       "zeroOrphans": "0 Orphans",
       "deletedStats": "{{deleted}} gelöscht · {{size}}",
       "deletedFiles_one": "{{count}} Datei",

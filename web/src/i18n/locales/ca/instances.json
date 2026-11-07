@@ -1378,6 +1378,8 @@
       "viewPreview": "Mostra la previsualització",
       "recentScans": "Exploracions recents",
       "scannedPaths": "Camins d'exploració seleccionats ({{total}})",
+      "scanPathsLoading": "Carregant els camins d'exploració...",
+      "scanPathsLoadFailed": "No s'han pogut carregar els camins d'exploració",
       "zeroOrphans": "0 orfes",
       "deletedStats": "{{deleted}} eliminats · {{size}}",
       "partialFailure": "Error parcial: comprova les exploracions recents",
