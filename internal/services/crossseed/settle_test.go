@@ -1188,3 +1188,220 @@ func TestPollInstanceKeepsEntryWhenFullLookupFails(t *testing.T) {
 	settler.pollInstance(t.Context(), pending, 1, []string{hash})
 	require.Contains(t, pending, recheckResumeKey(1, hash))
 }
+
+func TestSettleDemotesMismatchedLinkedFiles(t *testing.T) {
+	t.Parallel()
+
+	const e01, e02, e03 = "Show.S01/Show.S01E01.mkv", "Show.S01/Show.S01E02.mkv", "Show.S01/Show.S01E03.mkv"
+	// files reports E02 and E03 below 100% with a failed piece each; E04 is pending.
+	files := func(p02, p03 float32) qbt.TorrentFiles {
+		return qbt.TorrentFiles{
+			{Name: e01, Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+			{Name: e02, Progress: p02, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+			{Name: e03, Progress: p03, Priority: 1, Size: 1 << 30, PieceRange: []int{20, 29}},
+			{Name: "Show.S01/Show.S01E04.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{30, 39}},
+		}
+	}
+	pieces := func(failed ...int) []qbt.PieceState {
+		out := make([]qbt.PieceState, 40)
+		for i := range out {
+			out[i] = qbt.PieceStateAlreadyDownloaded
+		}
+		for _, p := range append(failed, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39) {
+			out[p] = qbt.PieceStateNotDownloadYet
+		}
+		return out
+	}
+	linked := func(names ...string) map[string]struct{} {
+		out := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			out[name] = struct{}{}
+		}
+		return out
+	}
+	torrent := qbt.Torrent{Hash: "hash1", Progress: 0.7, AmountLeft: 300 << 20, State: qbt.TorrentStatePausedDl}
+
+	t.Run("one demotion rechecks with the reduced threshold", func(t *testing.T) {
+		t.Parallel()
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(15)}}
+		settler := NewSettler(fake, fake)
+		var demoted []string
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				demoted = mismatched
+				return 0.5, linked(e01, e03), ""
+			},
+		}
+
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, torrent))
+		require.Equal(t, []string{e02}, demoted)
+		require.Equal(t, []string{"recheck:hash1"}, fake.actions)
+		require.InDelta(t, 0.5, pending.threshold, 0.0001)
+		require.Equal(t, linked(e01, e03), pending.linkedPaths)
+		require.Empty(t, pending.blockedLinkedFiles)
+		require.False(t, pending.sawChecking)
+		require.Empty(t, fake.runs, "the outcome is recorded once the pack resumes")
+
+		// The stale snapshot already meets the lower threshold; without a
+		// checking state the entry waits out the fast-recheck window.
+		fake.files["hash1"] = files(0, 1)
+		fake.pieces["hash1"] = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+		settled := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+		for range recheckResumeStablePolls + 1 {
+			require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, settled))
+		}
+		require.Equal(t, []string{"recheck:hash1"}, fake.actions)
+
+		// The clean recheck resumes with the new linked set and records the outcome.
+		pending.sawChecking = true
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, settled))
+		require.Equal(t, []string{"recheck:hash1", "resume:hash1"}, fake.actions)
+		running := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStateDownloading}
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, running))
+		require.False(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, running))
+		require.Len(t, fake.runs, 1)
+		require.Equal(t, "applied", fake.runs[0].Status)
+		require.Equal(t, "linked_file_demoted", fake.runs[0].Reason)
+		require.Contains(t, fake.runs[0].Message, e02)
+	})
+
+	t.Run("a demotion whose resume never takes records the failed outcome", func(t *testing.T) {
+		t.Parallel()
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0, 1)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)}}
+		settler := NewSettler(fake, fake)
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.5, linkedPaths: linked(e01, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demoted:    []string{e02},
+		}
+		settled := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+
+		// The clean recheck resumes, but the torrent stays stopped on every poll.
+		for range maxRecheckResumeAttempts {
+			require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, settled))
+		}
+		require.False(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, settled))
+		require.Equal(t, []string{"resume:hash1", "resume:hash1", "resume:hash1"}, fake.actions)
+		require.Len(t, fake.runs, 1)
+		require.Equal(t, "failed", fake.runs[0].Status)
+		require.Equal(t, "linked_file_demoted", fake.runs[0].Reason)
+		require.Contains(t, fake.runs[0].Message, e02)
+	})
+
+	t.Run("a shortfall below the threshold still finds the failed links", func(t *testing.T) {
+		t.Parallel()
+		// A whole wrong episode: E02 at 0 keeps progress under the threshold.
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0, 1)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)}}
+		settler := NewSettler(fake, nil)
+		var demoted []string
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				demoted = mismatched
+				return 0.45, linked(e01, e03), ""
+			},
+		}
+
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}))
+		require.Equal(t, []string{e02}, demoted)
+		require.Equal(t, []string{"recheck:hash1"}, fake.actions)
+	})
+
+	t.Run("a zero-progress recheck demotes when checking was observed", func(t *testing.T) {
+		t.Parallel()
+		// Every linked file failed hashing: progress 0 after an observed recheck.
+		allFailed := qbt.TorrentFiles{
+			{Name: e01, Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+			{Name: e02, Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+		}
+		zero := qbt.Torrent{Hash: "hash1", Progress: 0, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+		for _, sawChecking := range []bool{false, true} {
+			fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": allFailed}, pieces: map[string][]qbt.PieceState{"hash1": make([]qbt.PieceState, 20)}}
+			settler := NewSettler(fake, nil)
+			var demoted []string
+			pending := &pendingResume{
+				instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.9, linkedPaths: linked(e01, e02), sawChecking: sawChecking, addedAt: time.Now(),
+				demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+					demoted = mismatched
+					return 0, linked(), ""
+				},
+			}
+
+			require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, zero))
+			if !sawChecking {
+				require.Empty(t, demoted, "without a checking state 0%% may still be a queued recheck")
+				require.Empty(t, fake.actions)
+				continue
+			}
+			require.Equal(t, []string{e01, e02}, demoted)
+			require.Equal(t, []string{"recheck:hash1"}, fake.actions)
+		}
+	})
+
+	t.Run("a refused demotion leaves the torrent paused with its message", func(t *testing.T) {
+		t.Parallel()
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(15)}}
+		settler := NewSettler(fake, fake)
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demote: func(context.Context, []string) (float64, map[string]struct{}, string) {
+				return 0, nil, "Demoted E02 to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review"
+			},
+		}
+
+		require.False(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, torrent))
+		require.Empty(t, fake.actions)
+		require.Len(t, fake.runs, 1)
+		require.Equal(t, "failed", fake.runs[0].Status)
+		require.Equal(t, "linked_file_mismatch", fake.runs[0].Reason)
+		require.Equal(t, "Demoted E02 to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review", fake.runs[0].Message)
+	})
+
+	t.Run("two successive mismatches demote in two passes", func(t *testing.T) {
+		t.Parallel()
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(15)}}
+		settler := NewSettler(fake, nil)
+		var passes [][]string
+		current := linked(e01, e02, e03)
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.7, linkedPaths: current, sawChecking: true, addedAt: time.Now(),
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				passes = append(passes, mismatched)
+				for _, name := range mismatched {
+					delete(current, name)
+				}
+				return 0.2, current, ""
+			},
+		}
+
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, torrent))
+		// The second recheck finds E03 failing on its own piece.
+		fake.files["hash1"] = files(0, 0.9)
+		fake.pieces["hash1"] = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25)
+		pending.sawChecking = true
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, torrent))
+		fake.files["hash1"] = files(0, 0)
+		fake.pieces["hash1"] = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29)
+		pending.sawChecking = true
+		require.True(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, qbt.Torrent{Hash: "hash1", Progress: 0.25, AmountLeft: 3 << 30, State: qbt.TorrentStatePausedDl}))
+
+		require.Equal(t, [][]string{{e02}, {e03}}, passes)
+		require.Equal(t, []string{"recheck:hash1", "recheck:hash1", "resume:hash1"}, fake.actions)
+		require.Equal(t, linked(e01), pending.linkedPaths)
+		require.Equal(t, []string{e02, e03}, pending.demoted)
+	})
+
+	t.Run("two mismatches in one recheck demote together", func(t *testing.T) {
+		t.Parallel()
+		fake := &settleFake{files: map[string]qbt.TorrentFiles{"hash1": files(0.9, 0.9)}, pieces: map[string][]qbt.PieceState{"hash1": pieces(15, 25)}}
+		settler := NewSettler(fake, nil)
+		pending := &pendingResume{instanceID: 1, hash: "hash1", gate: GateThreshold, threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now()}
+
+		require.False(t, settler.processPendingRecheckResume(t.Context(), 1, "hash1", pending, torrent))
+		require.Equal(t, []string{e02, e03}, pending.blockedLinkedFiles)
+		require.Equal(t, "Linked files "+e02+", "+e03+" do not match the torrent, left paused to protect the source", pending.leftPausedMsg(""))
+	})
+}
