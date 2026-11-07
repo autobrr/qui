@@ -738,6 +738,8 @@
       "viewPreview": "查看预览",
       "recentScans": "近期扫描",
       "scannedPaths": "选定的扫描路径（{{total}}）",
+      "scanPathsLoading": "正在加载扫描路径…",
+      "scanPathsLoadFailed": "无法加载扫描路径",
       "zeroOrphans": "0 个孤立项目",
       "deletedStats": "已删除 {{deleted}} · {{size}}",
       "deletedFiles_other": "{{count}} 个文件",

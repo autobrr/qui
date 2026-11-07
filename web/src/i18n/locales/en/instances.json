@@ -759,6 +759,8 @@
       "viewPreview": "View Preview",
       "recentScans": "Recent Scans",
       "scannedPaths": "Selected scan paths ({{total}})",
+      "scanPathsLoading": "Loading scan paths...",
+      "scanPathsLoadFailed": "Failed to load scan paths",
       "zeroOrphans": "0 orphans",
       "deletedStats": "{{deleted}} deleted · {{size}}",
       "deletedFiles_one": "{{count}} file",

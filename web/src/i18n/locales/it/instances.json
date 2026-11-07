@@ -759,6 +759,8 @@
       "viewPreview": "Visualizza anteprima",
       "recentScans": "Scansioni recenti",
       "scannedPaths": "Percorsi selezionati per la scansione ({{total}})",
+      "scanPathsLoading": "Caricamento dei percorsi di scansione...",
+      "scanPathsLoadFailed": "Impossibile caricare i percorsi di scansione",
       "zeroOrphans": "0 orfani",
       "deletedStats": "{{deleted}} eliminati · {{size}}",
       "deletedFiles_one": "{{count}} file",

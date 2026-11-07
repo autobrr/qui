@@ -64,6 +64,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
 - **Protected path**: A path that orphan scan never reports and never deletes: a file in a torrent, a folder that holds a file in a torrent, a path that an ignore path covers, or a folder that holds an ignore path. Folder cleanup uses the ignore path half of this rule. _Avoid_: Owned path, in-use path, safe path.
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
+- **Scan path**: A folder that one orphan scan run walks. It is a torrent's save or content folder, or an Instance folder that the settings select. _Avoid_: scan root.
 
 ## Folder cleanup
 

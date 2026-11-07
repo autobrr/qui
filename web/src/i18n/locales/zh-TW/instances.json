@@ -738,6 +738,8 @@
       "viewPreview": "檢視預覽",
       "recentScans": "近期掃描",
       "scannedPaths": "選定的掃描路徑（{{total}}）",
+      "scanPathsLoading": "正在載入掃描路徑…",
+      "scanPathsLoadFailed": "無法載入掃描路徑",
       "zeroOrphans": "0 個孤立項目",
       "deletedStats": "已刪除 {{deleted}} · {{size}}",
       "deletedFiles_other": "{{count}} 個檔案",

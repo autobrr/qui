@@ -738,6 +738,8 @@
       "viewPreview": "미리 보기",
       "recentScans": "최근 스캔",
       "scannedPaths": "선택한 검사 경로 ({{total}})",
+      "scanPathsLoading": "검사 경로를 불러오는 중...",
+      "scanPathsLoadFailed": "검사 경로를 불러오지 못했습니다",
       "zeroOrphans": "고아 항목 0개",
       "deletedStats": "{{deleted}} 삭제됨 · {{size}}",
       "deletedFiles_other": "파일 {{count}}개",

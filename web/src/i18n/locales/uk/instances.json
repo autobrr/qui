@@ -801,6 +801,8 @@
       "viewPreview": "Переглянути попередній перегляд",
       "recentScans": "Останні скани",
       "scannedPaths": "Вибрані шляхи сканування ({{total}})",
+      "scanPathsLoading": "Завантаження шляхів сканування...",
+      "scanPathsLoadFailed": "Не вдалося завантажити шляхи сканування",
       "zeroOrphans": "0 сиріт",
       "deletedStats": "{{deleted}} видалено · {{size}}",
       "deletedFiles_one": "{{count}} файл",

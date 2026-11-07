@@ -782,6 +782,8 @@
       "viewPreview": "Zobrazit náhled",
       "recentScans": "Nedávné vyhledávání",
       "scannedPaths": "Vybrané cesty ke skenování ({{total}})",
+      "scanPathsLoading": "Načítání cest ke skenování...",
+      "scanPathsLoadFailed": "Cesty ke skenování se nepodařilo načíst",
       "zeroOrphans": "0 sirotků",
       "deletedStats": "{{deleted}} smazáno · {{size}}",
       "deletedFiles_one": "{{count}} soubor",

@@ -446,3 +446,54 @@ func runHasDeletingRun(t *testing.T, newDB func(testing.TB, string) *database.DB
 	require.NoError(t, err)
 	require.False(t, deleting, "another instance's deletion")
 }
+
+func TestOrphanScanStore_ListRunsCountsScanPaths(t *testing.T) {
+	t.Parallel()
+	runListRunsScanPathCount(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_ListRunsCountsScanPathsPostgresIntegration(t *testing.T) {
+	runListRunsScanPathCount(t, testdb.NewMigratedPostgres)
+}
+
+func runListRunsScanPathCount(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-scan-path-count")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	newRun := func(paths []string, write bool) int64 {
+		id, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		if write {
+			require.NoError(t, store.UpdateRunScanPaths(ctx, id, paths))
+		}
+		require.NoError(t, store.UpdateRunCompleted(ctx, id, 0, 0, 0, ""))
+		return id
+	}
+	want := map[int64]int{
+		newRun([]string{"/data/tv", "/data/movies", "/srv/music"}, true): 3,
+		newRun([]string{}, true): 0,
+		newRun(nil, true):        0,
+		newRun(nil, false):       0,
+	}
+
+	runs, err := store.ListRuns(ctx, instance.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, len(want))
+	for _, run := range runs {
+		require.Equal(t, want[run.ID], run.ScanPathCount, "run %d", run.ID)
+		require.Nil(t, run.ScanPaths, "run %d: the list must not read the paths", run.ID)
+	}
+
+	for id, count := range want {
+		run, err := store.GetRun(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, count, run.ScanPathCount, "run %d", id)
+		require.Len(t, run.ScanPaths, count, "run %d", id)
+	}
+}

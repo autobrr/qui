@@ -759,6 +759,8 @@
       "viewPreview": "Ver Detalhes",
       "recentScans": "Escaneamentos Recentes",
       "scannedPaths": "Caminhos selecionados para verificação ({{total}})",
+      "scanPathsLoading": "Carregando caminhos de verificação...",
+      "scanPathsLoadFailed": "Falha ao carregar os caminhos de verificação",
       "zeroOrphans": "0 órfãos",
       "deletedStats": "{{deleted}} apagados · {{size}}",
       "deletedFiles_one": "{{count}} arquivo",
