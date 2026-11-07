@@ -1239,6 +1239,7 @@
     "status": "Stato",
     "tracker": "Tracker",
     "seeds": "Seed",
+    "peers": "Peer",
     "leeches": "Leech",
     "downloaded": "DL",
     "message": "Messaggio",

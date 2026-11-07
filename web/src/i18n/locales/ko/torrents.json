@@ -1169,6 +1169,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",

@@ -1309,6 +1309,7 @@
     "status": "Stav",
     "tracker": "Tracker",
     "seeds": "Seedy",
+    "peers": "Peerové",
     "leeches": "Stahovatelé",
     "downloaded": "Stáhnuto",
     "message": "Zpráva",
