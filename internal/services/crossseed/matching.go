@@ -822,8 +822,10 @@ var sourceAliases = map[string]string{
 
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
+// A UHD source prefix is dropped, so UHD.WEB-DL compares as WEB-DL and
+// UHD.BluRay as BluRay; the resolution check still tells 2160p from 1080p.
 func normalizeSource(source string) string {
-	upper := normalizeVariant(source)
+	upper := strings.TrimPrefix(normalizeVariant(source), "UHD.")
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}

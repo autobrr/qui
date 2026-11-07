@@ -18,7 +18,7 @@ Indexers limit request frequency. If you see an error such as `indexer TorrentLe
 qui uses strict matching to ensure that cross-seeds have identical files. Both releases must match on:
 - Title, year, and release group
 - Resolution (1080p, 2160p)
-- Source (WEB-DL, BluRay) and collection (AMZN, NF)
+- Source (WEB-DL, BluRay) and collection (AMZN, NF). qui ignores a `UHD` before the source, so `UHD.WEB-DL` matches `WEB-DL`.
 - Codec (x264, x265) and HDR format. A bare `HDR` counts as `HDR10`.
 - Audio format and channels
 - Language, edition, cut, and version (v2, v3)
