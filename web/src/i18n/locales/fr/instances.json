@@ -555,7 +555,8 @@
         "move": "Move",
         "externalProgram": "Programme externe",
         "dryRun": "Simulation",
-        "exportToInstance": "Exporter vers l'instance"
+        "exportToInstance": "Exporter vers l'instance",
+        "ruleSkipped": "Règle non exécutée"
       },
       "shareLimit": {
         "global": "Global",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "{{count}} entrées d'activité supprimées",
         "deleteActivityFailed": "Échec de la suppression de l'activité"
       },
-      "exported": "Exporté"
+      "exported": "Exporté",
+      "skipped": "Ignorée"
     },
     "runWorkflowNow": {
       "action": "Exécuter maintenant",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Exécution terminée pour \"{{name}}\" avec des erreurs. Consultez le journal d'activité.",
         "dryRunCompleted": "Simulation terminée pour \"{{name}}\"",
         "inProgress": "Une exécution est en cours. Réessayez dans un instant.",
-        "failed": "Impossible d'exécuter le workflow"
+        "failed": "Impossible d'exécuter le workflow",
+        "skipped": "« {{name}} » ne s'est pas exécutée. Consultez le journal d'activité."
       }
     },
     "workflowPreview": {
@@ -756,6 +759,8 @@
       "viewPreview": "Voir l'aperçu",
       "recentScans": "Analyses récentes",
       "scannedPaths": "Chemins sélectionnés pour l’analyse ({{total}})",
+      "scanPathsLoading": "Chargement des chemins d’analyse...",
+      "scanPathsLoadFailed": "Impossible de charger les chemins d’analyse",
       "zeroOrphans": "0 orphelins",
       "deletedStats": "{{deleted}} supprimés · {{size}}",
       "deletedFiles_one": "{{count}} fichier",
@@ -962,7 +967,8 @@
         "external_program": "Programme externe",
         "auto_managed": "Géré automatiquement",
         "dry_run_no_match": "Simulation (aucune correspondance)",
-        "exported_to_instance": "Exporter vers l'instance"
+        "exported_to_instance": "Exporter vers l'instance",
+        "rule_skipped": "Règle non exécutée"
       }
     },
     "reannounceOverview": {
@@ -1382,8 +1388,7 @@
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",
         "description": "La simulation simule les actions sans rien modifier. Consultez l'historique d'activité.",
-        "enableWithout": "Activer sans simulation",
-        "enableWith": "Activer avec simulation"
+        "saveAndEnable": "Enregistrer et activer"
       },
       "customGroup": {
         "title": "Ajouter un groupe personnalisé",
@@ -1432,7 +1437,8 @@
           "moved": "Move",
           "externalProgram": "Programme externe",
           "noMatches": "Aucune correspondance",
-          "exportedToInstance": "Exporter vers l'instance"
+          "exportedToInstance": "Exporter vers l'instance",
+          "ruleSkipped": "Règle non exécutée"
         },
         "actionFallback": "Action inconnue ({{action}})",
         "summary": {

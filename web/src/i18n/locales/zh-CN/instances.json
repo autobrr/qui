@@ -560,7 +560,8 @@
         "move": "移动",
         "externalProgram": "外部程序",
         "dryRun": "模拟运行",
-        "exportToInstance": "导出到实例"
+        "exportToInstance": "导出到实例",
+        "ruleSkipped": "规则未运行"
       },
       "shareLimit": {
         "global": "全局",
@@ -655,7 +656,8 @@
         "deletedActivityEntries": "已删除 {{count}} 条活动记录",
         "deleteActivityFailed": "删除活动失败"
       },
-      "exported": "已导出"
+      "exported": "已导出",
+      "skipped": "已跳过"
     },
     "runWorkflowNow": {
       "action": "立即运行",
@@ -672,7 +674,8 @@
         "completedWithErrors": "“{{name}}”运行完成，但有错误。请查看活动日志。",
         "dryRunCompleted": "“{{name}}”的模拟运行已完成",
         "inProgress": "已有运行正在进行。请稍后再试。",
-        "failed": "运行工作流失败"
+        "failed": "运行工作流失败",
+        "skipped": "“{{name}}”未运行。请查看活动日志。"
       }
     },
     "workflowPreview": {
@@ -741,6 +744,8 @@
       "viewPreview": "查看预览",
       "recentScans": "近期扫描",
       "scannedPaths": "选定的扫描路径（{{total}}）",
+      "scanPathsLoading": "正在加载扫描路径…",
+      "scanPathsLoadFailed": "无法加载扫描路径",
       "zeroOrphans": "0 个孤立项目",
       "deletedStats": "已删除 {{deleted}} · {{size}}",
       "deletedFiles_other": "{{count}} 个文件",
@@ -940,7 +945,8 @@
         "external_program": "外部程序",
         "auto_managed": "自动管理",
         "dry_run_no_match": "模拟运行（无匹配）",
-        "exported_to_instance": "导出到实例"
+        "exported_to_instance": "导出到实例",
+        "rule_skipped": "规则未运行"
       }
     },
     "reannounceOverview": {
@@ -1359,8 +1365,7 @@
       "enableDryRunPrompt": {
         "title": "启用模拟运行？",
         "description": "模拟运行会模拟所有操作而不做任何实际更改。你可以在活动日志中查看受影响的种子。",
-        "enableWithout": "不启用模拟运行",
-        "enableWith": "启用模拟运行"
+        "saveAndEnable": "保存并启用"
       },
       "customGroup": {
         "title": "添加自定义分组",
@@ -1409,7 +1414,8 @@
           "moved": "移动",
           "externalProgram": "外部程序",
           "noMatches": "无匹配",
-          "exportedToInstance": "导出到实例"
+          "exportedToInstance": "导出到实例",
+          "ruleSkipped": "规则未运行"
         },
         "actionFallback": "未知操作（{{action}}）",
         "summary": {

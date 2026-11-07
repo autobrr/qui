@@ -119,19 +119,22 @@ type Server struct {
 	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
 	// qBittorrent does. Without it, each sync is a full update.
 	PartialUpdates bool
+	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
+	FailSyncs int
 
 	writes       map[string]int
 	conflicts    map[string]int
 	bodies       map[string]string
 	requests     int
 	syncs        int
+	synced       map[int]chan struct{}
 	versionReads int
 }
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
 	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
-		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}}
+		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -238,6 +241,22 @@ func (s *Server) Syncs() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.syncs
+}
+
+// Synced returns a channel that closes once the stub has received n
+// sync/maindata requests.
+func (s *Server) Synced(n int) <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ch, ok := s.synced[n]
+	if !ok {
+		ch = make(chan struct{})
+		s.synced[n] = ch
+		if s.syncs >= n {
+			close(ch)
+		}
+	}
+	return ch
 }
 
 // VersionReads counts the app/webapiVersion requests qBittorrent received.
@@ -459,6 +478,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs})
 	case "sync/maindata":
 		s.syncs++
+		if ch, ok := s.synced[s.syncs]; ok {
+			close(ch)
+		}
+		if s.syncs <= s.FailSyncs {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		s.rid++
 		torrents := map[string]any{}
 		for h, t := range s.torrents {

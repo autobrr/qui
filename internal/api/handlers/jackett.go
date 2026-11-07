@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -54,41 +55,43 @@ func NewJackettHandler(service *jackett.Service, indexerStore *models.TorznabInd
 
 // Routes registers the Jackett routes
 func (h *JackettHandler) Routes(r chi.Router) {
+	indexers := middleware.Permissions(models.AreaIndexers)
+
 	r.Route("/torznab", func(r chi.Router) {
 		// Indexer management
 		r.Route("/indexers", func(r chi.Router) {
-			r.Get("/", h.ListIndexers)
-			r.Post("/", h.CreateIndexer)
-			r.Post("/discover", h.DiscoverIndexers)
-			r.Get("/health", h.GetAllHealth)
-			r.Get("/tracker-domains", h.GetIndexerTrackerDomains)
-			r.Get("/{indexerID}", h.GetIndexer)
-			r.Put("/{indexerID}", h.UpdateIndexer)
-			r.Delete("/{indexerID}", h.DeleteIndexer)
-			r.Post("/{indexerID}/test", h.TestIndexer)
-			r.Post("/{indexerID}/caps/sync", h.SyncIndexerCaps)
-			r.Get("/{indexerID}/health", h.GetIndexerHealth)
-			r.Get("/{indexerID}/errors", h.GetIndexerErrors)
-			r.Get("/{indexerID}/stats", h.GetIndexerStats)
+			r.With(indexers.Read).Get("/", h.ListIndexers)
+			r.With(indexers.Write).Post("/", h.CreateIndexer)
+			r.With(indexers.Write).Post("/discover", h.DiscoverIndexers)
+			r.With(indexers.Read).Get("/health", h.GetAllHealth)
+			r.With(indexers.Read).Get("/tracker-domains", h.GetIndexerTrackerDomains)
+			r.With(indexers.Read).Get("/{indexerID}", h.GetIndexer)
+			r.With(indexers.Write).Put("/{indexerID}", h.UpdateIndexer)
+			r.With(indexers.Write).Delete("/{indexerID}", h.DeleteIndexer)
+			r.With(indexers.Write).Post("/{indexerID}/test", h.TestIndexer)
+			r.With(indexers.Write).Post("/{indexerID}/caps/sync", h.SyncIndexerCaps)
+			r.With(indexers.Read).Get("/{indexerID}/health", h.GetIndexerHealth)
+			r.With(indexers.Read).Get("/{indexerID}/errors", h.GetIndexerErrors)
+			r.With(indexers.Read).Get("/{indexerID}/stats", h.GetIndexerStats)
 		})
 
 		// Cross-seed search - intelligent category detection
-		r.Post("/cross-seed/search", h.CrossSeedSearch)
+		r.With(indexers.Read).Post("/cross-seed/search", h.CrossSeedSearch)
 
 		// General Torznab search
-		r.Get("/search/recent", h.ListRecentSearches)
-		r.Post("/search", h.Search)
+		r.With(indexers.Read).Get("/search/recent", h.ListRecentSearches)
+		r.With(indexers.Read).Post("/search", h.Search)
 
 		r.Route("/search/cache", func(r chi.Router) {
-			r.Get("/", h.GetSearchCacheStats)
-			r.Put("/settings", h.UpdateSearchCacheSettings)
+			r.With(indexers.Read).Get("/", h.GetSearchCacheStats)
+			r.With(indexers.Write).Put("/settings", h.UpdateSearchCacheSettings)
 		})
 
 		// Search history - completed searches
-		r.Get("/search/history", h.GetSearchHistory)
+		r.With(indexers.Read).Get("/search/history", h.GetSearchHistory)
 
 		// Activity status
-		r.Get("/activity", h.GetActivityStatus)
+		r.With(indexers.Read).Get("/activity", h.GetActivityStatus)
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
@@ -677,6 +678,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
 		return
 	}
+	instances = slices.DeleteFunc(instances, func(inst *models.Instance) bool { return !middleware.ReachesInstance(r, inst.ID) })
 
 	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
@@ -817,39 +819,10 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Handle redacted password - if redacted, use existing password
-	if req.Password != "" && domain.IsRedactedString(req.Password) {
-		req.Password = existingInstance.PasswordEncrypted
-	}
-
-	// Handle redacted basic password - if redacted, use existing basic password
-	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
-		req.BasicPassword = existingInstance.BasicPasswordEncrypted
-	}
-
-	// Handle redacted API key - if redacted, preserve the existing API key
-	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
-		req.APIKey = nil
-	}
+	req.restoreRedactedSecrets(existingInstance)
 
 	// Validate hardlink/reflink settings on the row as it is after the change
-	effective := *existingInstance
-	if req.HasLocalFilesystemAccess != nil {
-		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
-	}
-	if req.UseHardlinks != nil {
-		effective.UseHardlinks = *req.UseHardlinks
-	}
-	if req.UseReflinks != nil {
-		effective.UseReflinks = *req.UseReflinks
-	}
-	if req.HardlinkBaseDir != nil {
-		effective.HardlinkBaseDir = *req.HardlinkBaseDir
-	}
-	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
-	// No backend reflinks over sftp, so reflink mode stays a local-only choice
-	// even though a remote instance has Write (#2942).
-	canReflink := canWrite && models.FilesystemAccessMode(&effective) == models.FilesystemModeLocal
+	effective := req.applyLinkSettings(existingInstance)
 
 	// Mutual exclusivity: cannot enable both hardlink and reflink modes
 	if effective.UseHardlinks && effective.UseReflinks {
@@ -864,26 +837,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if effective.UseHardlinks {
-		if !canWrite {
-			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
-			return
-		}
-		if effective.HardlinkBaseDir == "" {
-			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without a base directory")
-			return
-		}
-	}
-
-	if effective.UseReflinks {
-		if !canReflink {
-			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
-			return
-		}
-		if effective.HardlinkBaseDir == "" {
-			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without a base directory")
-			return
-		}
+	if msg := linkModeError(&effective); msg != "" {
+		RespondError(w, http.StatusBadRequest, msg)
+		return
 	}
 
 	// Update instance
@@ -944,6 +900,72 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// restoreRedactedSecrets swaps redacted secrets in the request for the stored
+// values, or drops them so the stored value stays.
+func (req *UpdateInstanceRequest) restoreRedactedSecrets(existing *models.Instance) {
+	// Handle redacted password - if redacted, use existing password
+	if req.Password != "" && domain.IsRedactedString(req.Password) {
+		req.Password = existing.PasswordEncrypted
+	}
+
+	// Handle redacted basic password - if redacted, use existing basic password
+	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
+		req.BasicPassword = existing.BasicPasswordEncrypted
+	}
+
+	// Handle redacted API key - if redacted, preserve the existing API key
+	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
+		req.APIKey = nil
+	}
+}
+
+// applyLinkSettings returns a copy of the existing row with the request's
+// filesystem and link settings applied.
+func (req *UpdateInstanceRequest) applyLinkSettings(existing *models.Instance) models.Instance {
+	effective := *existing
+	if req.HasLocalFilesystemAccess != nil {
+		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
+	}
+	if req.UseHardlinks != nil {
+		effective.UseHardlinks = *req.UseHardlinks
+	}
+	if req.UseReflinks != nil {
+		effective.UseReflinks = *req.UseReflinks
+	}
+	if req.HardlinkBaseDir != nil {
+		effective.HardlinkBaseDir = *req.HardlinkBaseDir
+	}
+	return effective
+}
+
+// linkModeError returns the reason the row's hardlink or reflink mode cannot
+// be enabled, or "" when it can.
+func linkModeError(effective *models.Instance) string {
+	canWrite := models.FilesystemCapabilitiesOf(effective).Write
+	// No backend reflinks over sftp, so reflink mode stays a local-only choice
+	// even though a remote instance has Write (#2942).
+	canReflink := canWrite && models.FilesystemAccessMode(effective) == models.FilesystemModeLocal
+
+	if effective.UseHardlinks {
+		if !canWrite {
+			return "Cannot enable hardlink mode without local filesystem access"
+		}
+		if effective.HardlinkBaseDir == "" {
+			return "Cannot enable hardlink mode without a base directory"
+		}
+	}
+
+	if effective.UseReflinks {
+		if !canReflink {
+			return "Cannot enable reflink mode without local filesystem access"
+		}
+		if effective.HardlinkBaseDir == "" {
+			return "Cannot enable reflink mode without a base directory"
+		}
+	}
+	return ""
 }
 
 // DeleteInstance deletes an instance

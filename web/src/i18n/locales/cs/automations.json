@@ -231,6 +231,7 @@
       "error": "Chyba",
       "tracker_error": "Chyba trackeru",
       "unreachable": "Nedostupné"
-    }
+    },
+    "ruleSkip": "V této instanci se nespustí: {{field}} vyžaduje {{requires}}."
   }
 }

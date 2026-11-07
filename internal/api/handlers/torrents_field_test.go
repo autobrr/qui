@@ -9,14 +9,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -25,6 +23,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	quiqbt "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -394,7 +393,7 @@ func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[stri
 		clients[instance.ID] = newCachedClient(t, torrents)
 	}
 
-	setUnexportedField(t, clientPool, "clients", clients)
+	testutil.SetUnexportedField(t, clientPool, "clients", clients)
 
 	return instanceStore, syncManager, instanceIDs
 }
@@ -428,7 +427,7 @@ func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()
 	client := newStaleCachedClient(t, srv.URL, []qbt.Torrent{
 		{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa", AddedOn: 1},
 	})
-	setUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{instance.ID: client})
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{instance.ID: client})
 
 	release := func() {
 		releaseSyncOnce.Do(func() {
@@ -474,7 +473,7 @@ func newUnifiedPollHarness(t *testing.T) *unifiedPollHarness {
 		warm:   newMaindataStub(t, []qbt.Torrent{{Name: "Alpha", Hash: "aaa", AddedOn: 1}}),
 		cold:   newMaindataStub(t, nil),
 	}
-	setUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{warm.ID: h.warm.client, cold.ID: h.cold.client})
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{warm.ID: h.warm.client, cold.ID: h.cold.client})
 	h.syncManager = quiqbt.NewSyncManager(clientPool, nil)
 	h.handler = NewTorrentsHandler(h.syncManager, nil, instanceStore, nil)
 	return h
@@ -485,8 +484,8 @@ func newUnifiedPollHarness(t *testing.T) *unifiedPollHarness {
 func (h *unifiedPollHarness) makeWarmDataStale(t *testing.T) {
 	t.Helper()
 	syncManager := h.warm.client.GetSyncManager()
-	setUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
-	setUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
+	testutil.SetUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
+	testutil.SetUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
 }
 
 func (h *unifiedPollHarness) list(t *testing.T, instanceIDs ...int) (quiqbt.TorrentResponse, *httptest.ResponseRecorder) {
@@ -521,10 +520,6 @@ type maindataStub struct {
 	fromTest []bool
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 // newMaindataStub returns a stub with a healthy client and a dynamic sync
 // manager. A nil torrents slice leaves the cache empty, as before a first sync.
 func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
@@ -539,7 +534,7 @@ func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
 
 	s := &maindataStub{requested: make(chan struct{}, 16)}
 	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid", Timeout: 60}).WithHTTPClient(&http.Client{
-		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		Transport: testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
 			if r.URL.Path != "/api/v2/sync/maindata" {
 				rec.WriteHeader(http.StatusNotFound)
@@ -563,14 +558,14 @@ func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
 	syncOpts.DynamicSync = true
 	syncManager := qbtClient.NewSyncManager(syncOpts)
 	if torrents != nil {
-		setUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
-		setUnexportedField(t, syncManager, "allTorrents", slices.Clone(torrents))
+		testutil.SetUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
+		testutil.SetUnexportedField(t, syncManager, "allTorrents", slices.Clone(torrents))
 	}
 
 	s.client = &quiqbt.Client{Client: qbtClient}
-	setUnexportedField(t, s.client, "isHealthy", true)
-	setUnexportedField(t, s.client, "syncManager", syncManager)
-	setUnexportedField(t, s.client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
+	testutil.SetUnexportedField(t, s.client, "isHealthy", true)
+	testutil.SetUnexportedField(t, s.client, "syncManager", syncManager)
+	testutil.SetUnexportedField(t, s.client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
 	return s
 }
 
@@ -609,14 +604,14 @@ func newCachedClient(t *testing.T, torrents []qbt.Torrent) *quiqbt.Client {
 		torrentMap[torrent.Hash] = torrent
 	}
 
-	setUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
-	setUnexportedField(t, syncManager, "allTorrents", append([]qbt.Torrent(nil), torrents...))
-	setUnexportedField(t, syncManager, "lastSync", time.Now())
+	testutil.SetUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
+	testutil.SetUnexportedField(t, syncManager, "allTorrents", append([]qbt.Torrent(nil), torrents...))
+	testutil.SetUnexportedField(t, syncManager, "lastSync", time.Now())
 
 	client := &quiqbt.Client{}
-	setUnexportedField(t, client, "isHealthy", true)
-	setUnexportedField(t, client, "lastHealthCheck", time.Now())
-	setUnexportedField(t, client, "syncManager", syncManager)
+	testutil.SetUnexportedField(t, client, "isHealthy", true)
+	testutil.SetUnexportedField(t, client, "lastHealthCheck", time.Now())
+	testutil.SetUnexportedField(t, client, "syncManager", syncManager)
 
 	return client
 }
@@ -634,16 +629,16 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 		torrentMap[torrent.Hash] = torrent
 	}
 
-	setUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
-	setUnexportedField(t, syncManager, "allTorrents", append([]qbt.Torrent(nil), torrents...))
-	setUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
-	setUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
+	testutil.SetUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
+	testutil.SetUnexportedField(t, syncManager, "allTorrents", append([]qbt.Torrent(nil), torrents...))
+	testutil.SetUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
+	testutil.SetUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
 
 	client := &quiqbt.Client{Client: qbtClient}
-	setUnexportedField(t, client, "isHealthy", true)
-	setUnexportedField(t, client, "lastHealthCheck", time.Now())
-	setUnexportedField(t, client, "syncManager", syncManager)
-	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
+	testutil.SetUnexportedField(t, client, "isHealthy", true)
+	testutil.SetUnexportedField(t, client, "lastHealthCheck", time.Now())
+	testutil.SetUnexportedField(t, client, "syncManager", syncManager)
+	testutil.SetUnexportedField(t, client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
 
 	return client
 }
@@ -664,13 +659,4 @@ func newTorrentFieldRequestWithContext(ctx context.Context, t *testing.T, instan
 	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
 
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
-}
-
-func setUnexportedField(t *testing.T, target any, fieldName string, value any) {
-	t.Helper()
-
-	field := reflect.ValueOf(target).Elem().FieldByName(fieldName)
-	require.Truef(t, field.IsValid(), "field %s missing on %T", fieldName, target)
-
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
 }

@@ -129,16 +129,71 @@
     "apiDocs": "Documentação da API",
     "description": "As chaves de API permitem que aplicativos externos acessem suas instâncias do qBittorrent.",
     "createButton": "Criar Chave API",
+    "editButton": "Editar {{name}}",
+    "deleteButton": "Excluir {{name}}",
     "loading": "Carregando chaves API...",
     "empty": "Nenhuma chave API criada ainda",
     "createDialog": {
       "title": "Criar Chave API",
-      "description": "Dê à sua chave API um nome descritivo para lembrar seu propósito.",
+      "description": "Dê um nome à chave e escolha apenas o acesso de que ela precisa.",
       "nameLabel": "Nome",
       "namePlaceholder": "ex: Script de Automação",
       "nameRequired": "Nome é obrigatório",
       "submit": "Criar Chave API",
       "creating": "Criando..."
+    },
+    "editDialog": {
+      "title": "Editar Chave API",
+      "description": "As alterações valem a partir da próxima requisição desta chave. O qui nunca mostra a chave novamente.",
+      "submit": "Salvar alterações",
+      "saving": "Salvando..."
+    },
+    "permissions": {
+      "title": "Permissões",
+      "help": "A escrita inclui leitura e execução. A execução não inclui leitura, porque as configurações guardam credenciais.",
+      "required": "Escolha pelo menos uma permissão.",
+      "access": "Acesso",
+      "allAreas": "Todas as áreas",
+      "allAreasExcept": "Todas as áreas exceto {{areas}}",
+      "refusedByLimit": "Cross-Seed e o Scanner de Diretório recusam uma chave com limite de instâncias, então o qui não salva essas permissões.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Mostrar acesso por área de {{name}}",
+      "partialArea": "{{area}} (somente {{levels}})",
+      "legend": {
+        "title": "Um bloco por área de permissão:",
+        "none": "sem acesso"
+      },
+      "levels": {
+        "read": "leitura",
+        "run": "execução",
+        "write": "escrita"
+      },
+      "areas": {
+        "instances": "Instâncias",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Scanner de Diretório",
+        "automations": "Automações",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Varredura de Órfãos",
+        "externalPrograms": "Programas Externos",
+        "indexers": "Indexadores",
+        "arr": "Arr",
+        "notifications": "Notificações",
+        "settings": "Configurações",
+        "logs": "Logs",
+        "system": "Sistema"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite de instâncias",
+      "help": "Escolha as instâncias que esta chave pode alcançar. Sem escolha, a chave alcança todas as instâncias, inclusive as adicionadas depois.",
+      "reaches": "Alcance",
+      "all": "Todas as instâncias",
+      "only": "Somente {{instances}}",
+      "none": "Nenhuma instância. O limite contém apenas instâncias excluídas.",
+      "deleted": "Instância excluída {{id}}"
     },
     "newKey": {
       "label": "Sua nova chave API",
@@ -156,7 +211,9 @@
       "created": "Chave API criada com sucesso",
       "createFailed": "Falha ao criar chave API",
       "deleted": "Chave API excluída com sucesso",
-      "deleteFailed": "Falha ao excluir chave API"
+      "deleteFailed": "Falha ao excluir chave API",
+      "updated": "Chave API atualizada com sucesso",
+      "updateFailed": "Falha ao atualizar chave API"
     }
   },
   "externalPrograms": {

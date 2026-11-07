@@ -231,6 +231,7 @@
       "qbittorrent52": "Requer qBittorrent 5.2+",
       "localFilesystemAccess": "Requer Acesso ao Sistema de Arquivos Local",
       "remoteInstance": "Indisponível em instâncias remotas"
-    }
+    },
+    "ruleSkip": "Não é executada nesta instância: {{field}} requer {{requires}}."
   }
 }

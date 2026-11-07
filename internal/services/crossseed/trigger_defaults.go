@@ -20,14 +20,6 @@ const (
 	triggerInteractiveApply
 )
 
-// sourceFilter limits which local torrents a cross-seed can match.
-type sourceFilter struct {
-	categories        []string
-	tags              []string
-	excludeCategories []string
-	excludeTags       []string
-}
-
 // triggerDefaults holds the cross-seed settings for one trigger. Callers put
 // their own overrides on top.
 type triggerDefaults struct {
@@ -82,18 +74,15 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 // request builds the CrossSeedRequest these defaults describe.
 func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest {
 	return &CrossSeedRequest{
-		TorrentData:                   torrentData,
-		Tags:                          slices.Clone(d.addTags),
-		StartPaused:                   new(true),
-		InheritSourceTags:             d.inheritSourceTags,
-		IndexerName:                   indexer,
-		FindIndividualEpisodes:        d.findIndividualEpisodes,
-		SkipAutoResume:                d.skipAutoResume,
-		SkipRecheck:                   d.skipRecheck,
-		SkipPieceBoundarySafetyCheck:  d.skipPieceBoundarySafetyCheck,
-		SourceFilterCategories:        slices.Clone(d.sourceFilter.categories),
-		SourceFilterTags:              slices.Clone(d.sourceFilter.tags),
-		SourceFilterExcludeCategories: slices.Clone(d.sourceFilter.excludeCategories),
-		SourceFilterExcludeTags:       slices.Clone(d.sourceFilter.excludeTags),
+		TorrentData:                  torrentData,
+		Tags:                         slices.Clone(d.addTags),
+		StartPaused:                  new(true),
+		InheritSourceTags:            d.inheritSourceTags,
+		IndexerName:                  indexer,
+		FindIndividualEpisodes:       d.findIndividualEpisodes,
+		SkipAutoResume:               d.skipAutoResume,
+		SkipRecheck:                  d.skipRecheck,
+		SkipPieceBoundarySafetyCheck: d.skipPieceBoundarySafetyCheck,
+		sourceFilter:                 d.sourceFilter,
 	}
 }

@@ -553,7 +553,7 @@ var connectionPragmas = []pragmaDirective{
 	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false}, // NORMAL is safe with WAL and much faster than FULL
 	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true}, // 256MB memory-mapped I/O for better performance
 	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},     // Optimal page size for modern systems
-	{stmt: "PRAGMA cache_size = -64000", allowReadOnly: true},   // 64MB cache (negative = KB, positive = pages)
+	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true},    // 2MB per connection; the OS page cache already holds the file
 	{stmt: "PRAGMA foreign_keys = ON", allowReadOnly: true},
 	{stmt: fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis), allowReadOnly: true},
 	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},

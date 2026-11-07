@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -38,21 +39,21 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	l := zerolog.New(io.Discard)
 
 	// The run takes its snapshot while both items are pending.
-	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 	require.NoError(t, err)
 	enabled := map[int]struct{}{1: {}}
-	work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 	require.Len(t, work.roots, 2)
 
 	// Another run then finishes one of them.
-	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], dirScanFileUpdate{
+	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], nil, dirScanFileUpdate{
 		status:             models.DirScanFileStatusMatched,
 		matchedTorrentHash: "0123456789abcdef0123456789abcdef01234567",
 	}))
 
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 	for _, root := range work.roots {
-		svc.processRootSearchee(ctx, dir, root.root, root.items, &seedingIndex{}, trackedFiles,
+		svc.processRootSearchee(ctx, dir, localScanTarget(), root.root, root.items, &seedingIndex{}, trackedFiles,
 			map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 	}
 

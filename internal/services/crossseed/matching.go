@@ -237,8 +237,9 @@ func (m matcher) compareTitles(comparison *releaseComparison, source, candidate 
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitles := m.normalizedReleaseTitles(source, sourceName)
-	candidateTitles := m.normalizedReleaseTitles(candidate, candidateName)
+	var srcBuf, candBuf [16]string
+	sourceTitles := m.appendNormalizedReleaseTitles(srcBuf[:0], source, sourceName)
+	candidateTitles := m.appendNormalizedReleaseTitles(candBuf[:0], candidate, candidateName)
 	switch {
 	case len(sourceTitles) == 0 || len(candidateTitles) == 0:
 		comparison.add(differenceEmptyTitle)
@@ -250,7 +251,7 @@ func (m matcher) compareTitles(comparison *releaseComparison, source, candidate 
 
 // titleSetsMatch reports whether two sets of normalized release titles name the
 // same work. The extra titles are ARR aliases of the other side.
-func titleSetsMatch(sourceTitles, candidateTitles map[string]struct{}, sourceExtraTitles, candidateExtraTitles []string) bool {
+func titleSetsMatch(sourceTitles, candidateTitles, sourceExtraTitles, candidateExtraTitles []string) bool {
 	// Accept any overlap between normalized title sets. Each set contains complete
 	// normalized title entries from Title, Alt, and parsed AKA parts, so legitimate
 	// alternate titles can match without requiring strict equality of one parsed title.
@@ -262,7 +263,7 @@ func titleSetsMatch(sourceTitles, candidateTitles map[string]struct{}, sourceExt
 	// Extra titles (ARR aliases) are loop-invariant across a scan while this
 	// function runs once per scanned torrent, and Sonarr alias lists are uncapped.
 	// Probe them against the other side's set instead of inserting them, so the
-	// per-pair maps stay small and never regrow per torrent.
+	// per-pair sets stay small and never regrow per torrent.
 	return normalizedTitleSetsOverlap(sourceTitles, candidateTitles) ||
 		normalizedTitleSetContainsAny(sourceTitles, candidateExtraTitles) ||
 		normalizedTitleSetContainsAny(candidateTitles, sourceExtraTitles)
@@ -316,14 +317,12 @@ func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide na
 	return comparison.matched(), comparison.reason()
 }
 
-func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
-	titles := make(map[string]struct{})
+func (m matcher) appendNormalizedReleaseTitles(dst []string, release *rls.Release, rawName string) []string {
 	var buf [8]string
 	for _, title := range m.appendReleaseTitles(buf[:0], release, rawName) {
-		addNormalizedTitle(titles, title)
+		dst = addNormalizedTitle(dst, title)
 	}
-	addNormalizedTitle(titles, titleWithoutSeasonNumeral(release))
-	return titles
+	return addNormalizedTitle(dst, titleWithoutSeasonNumeral(release))
 }
 
 // appendReleaseTitles appends the titles that the matcher reads from a name:
@@ -363,10 +362,10 @@ func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawN
 }
 
 // normalizedTitleSetContainsAny reports whether any extra title normalizes to
-// an entry of the set. It never mutates the set.
-func normalizedTitleSetContainsAny(titles map[string]struct{}, extraTitles []string) bool {
+// an entry of the set.
+func normalizedTitleSetContainsAny(titles, extraTitles []string) bool {
 	for _, title := range extraTitles {
-		if _, exists := titles[stringutils.NormalizeForMatching(title)]; exists {
+		if slices.Contains(titles, stringutils.NormalizeForMatching(title)) {
 			return true
 		}
 	}
@@ -468,20 +467,21 @@ func (m matcher) rawAKATitleParts(rawName string) []string {
 	return titles
 }
 
-func addNormalizedTitle(titles map[string]struct{}, title string) {
+func addNormalizedTitle(titles []string, title string) []string {
 	// NormalizeForMatching does a cache lookup even for "", and most releases have no Alt.
 	if title == "" {
-		return
+		return titles
 	}
 	normalized := stringutils.NormalizeForMatching(title)
-	if normalized != "" {
-		titles[normalized] = struct{}{}
+	if normalized == "" || slices.Contains(titles, normalized) {
+		return titles
 	}
+	return append(titles, normalized)
 }
 
-func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{}) bool {
-	for title := range sourceTitles {
-		if _, exists := candidateTitles[title]; exists {
+func normalizedTitleSetsOverlap(sourceTitles, candidateTitles []string) bool {
+	for _, title := range sourceTitles {
+		if slices.Contains(candidateTitles, title) {
 			return true
 		}
 	}

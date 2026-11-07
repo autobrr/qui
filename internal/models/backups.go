@@ -1699,7 +1699,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		       keep_hourly, keep_daily, keep_weekly, keep_monthly,
 		       include_categories, include_tags, include_save_paths, custom_path, created_at, updated_at
 		FROM instance_backup_settings
-		WHERE enabled = 1
+		WHERE enabled = 1 AND instance_id IN (SELECT id FROM instances WHERE is_active = 1)
 	`)
 	if err != nil {
 		return nil, err

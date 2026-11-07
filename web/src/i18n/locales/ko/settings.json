@@ -129,16 +129,71 @@
     "apiDocs": "API 문서",
     "description": "API 키를 사용하면 외부 애플리케이션이 qBittorrent 인스턴스에 접근할 수 있습니다.",
     "createButton": "API 키 생성",
+    "editButton": "{{name}} 편집",
+    "deleteButton": "{{name}} 삭제",
     "loading": "API 키 불러오는 중...",
     "empty": "아직 생성된 API 키가 없습니다",
     "createDialog": {
       "title": "API 키 생성",
-      "description": "용도를 기억할 수 있도록 API 키에 설명이 포함된 이름을 지정하세요.",
+      "description": "키에 이름을 지정하고 필요한 접근 권한만 선택하세요.",
       "nameLabel": "이름",
       "namePlaceholder": "예: 자동화 스크립트",
       "nameRequired": "이름은 필수입니다",
       "submit": "API 키 생성",
       "creating": "생성 중..."
+    },
+    "editDialog": {
+      "title": "API 키 편집",
+      "description": "변경 사항은 이 키의 다음 요청부터 적용됩니다. qui는 키 자체를 다시 표시하지 않습니다.",
+      "submit": "변경 사항 저장",
+      "saving": "저장 중..."
+    },
+    "permissions": {
+      "title": "권한",
+      "help": "쓰기에는 읽기와 실행이 포함됩니다. 설정에 자격 증명이 있으므로 실행에는 읽기가 포함되지 않습니다.",
+      "required": "권한을 하나 이상 선택하세요.",
+      "access": "접근",
+      "allAreas": "모든 영역",
+      "allAreasExcept": "{{areas}} 제외 모든 영역",
+      "refusedByLimit": "Cross-Seed와 디렉터리 스캐너는 인스턴스 제한이 있는 키를 거부하므로 qui는 이 권한을 저장하지 않습니다.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "{{name}}의 영역별 접근 보기",
+      "partialArea": "{{area}} ({{levels}}만)",
+      "legend": {
+        "title": "권한 영역마다 블록 하나:",
+        "none": "접근 불가"
+      },
+      "levels": {
+        "read": "읽기",
+        "run": "실행",
+        "write": "쓰기"
+      },
+      "areas": {
+        "instances": "인스턴스",
+        "torrents": "토렌트",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "디렉터리 스캐너",
+        "automations": "자동화",
+        "rss": "RSS",
+        "backups": "백업",
+        "orphanScan": "고아 항목 스캔",
+        "externalPrograms": "외부 프로그램",
+        "indexers": "인덱서",
+        "arr": "Arr",
+        "notifications": "알림",
+        "settings": "설정",
+        "logs": "로그",
+        "system": "시스템"
+      }
+    },
+    "instanceLimit": {
+      "title": "인스턴스 제한",
+      "help": "이 키가 접근할 수 있는 인스턴스를 선택하세요. 선택하지 않으면 나중에 추가하는 인스턴스를 포함한 모든 인스턴스에 접근합니다.",
+      "reaches": "접근 범위",
+      "all": "모든 인스턴스",
+      "only": "{{instances}}만",
+      "none": "인스턴스 없음. 제한에 삭제된 인스턴스만 있습니다.",
+      "deleted": "삭제된 인스턴스 {{id}}"
     },
     "newKey": {
       "label": "새 API 키",
@@ -156,7 +211,9 @@
       "created": "API 키가 생성되었습니다",
       "createFailed": "API 키를 생성하지 못했습니다",
       "deleted": "API 키가 삭제되었습니다",
-      "deleteFailed": "API 키를 삭제하지 못했습니다"
+      "deleteFailed": "API 키를 삭제하지 못했습니다",
+      "updated": "API 키가 업데이트되었습니다",
+      "updateFailed": "API 키를 업데이트하지 못했습니다"
     }
   },
   "externalPrograms": {

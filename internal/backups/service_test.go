@@ -856,6 +856,54 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
+// regression: #3875
+func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "disabled-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    0, // needs normalizing
+	}))
+
+	_, err := db.ExecContext(ctx, "UPDATE instances SET is_active = 0 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+	require.NoError(t, svc.checkMissedBackups(ctx))
+
+	runs, err := store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Empty(t, runs)
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.True(t, saved.Enabled)
+	require.True(t, saved.HourlyEnabled)
+	require.Equal(t, 0, saved.KeepHourly)
+
+	_, err = db.ExecContext(ctx, "UPDATE instances SET is_active = 1 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+
+	runs, err = store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, "scheduler", runs[0].RequestedBy)
+
+	saved, err = store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+}
+
 func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 

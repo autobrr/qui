@@ -596,7 +596,8 @@
         "move": "Mou",
         "externalProgram": "Programa extern",
         "dryRun": "Execució de prova",
-        "exportToInstance": "Exporta a una instància"
+        "exportToInstance": "Exporta a una instància",
+        "ruleSkipped": "Regla no executada"
       },
       "shareLimit": {
         "global": "Global",
@@ -710,7 +711,8 @@
       },
       "exported": "Exportat",
       "tagActions_one": "{{count}} acció d'etiqueta",
-      "tagActions_other": "{{count}} accions d'etiqueta"
+      "tagActions_other": "{{count}} accions d'etiqueta",
+      "skipped": "Omesa"
     },
     "runWorkflowNow": {
       "action": "Executa ara",
@@ -727,7 +729,8 @@
         "completedWithErrors": "S'ha completat l'execució de \"{{name}}\" amb errors. Consulta el registre d'activitat.",
         "dryRunCompleted": "S'ha completat l'execució de prova de \"{{name}}\"",
         "inProgress": "Hi ha una execució en curs. Torna-ho a provar d'aquí a un moment.",
-        "failed": "No s'ha pogut executar el workflow"
+        "failed": "No s'ha pogut executar el workflow",
+        "skipped": "\"{{name}}\" no s'ha executat. Consulta el registre d'activitat."
       }
     },
     "workflowDialog": {
@@ -942,8 +945,7 @@
       "enableDryRunPrompt": {
         "title": "Vols activar l'execució de prova?",
         "description": "L'execució de prova simula totes les accions sense canviar res. Pots revisar els torrents afectats al registre d'activitat.",
-        "enableWithout": "Activa-ho sense execució de prova",
-        "enableWith": "Activa-ho amb execució de prova"
+        "saveAndEnable": "Desa i activa"
       },
       "freeSpace": {
         "title": "Origen de l'espai lliure",
@@ -1093,7 +1095,8 @@
           "moved": "Mou",
           "externalProgram": "Programa extern",
           "noMatches": "Cap coincidència",
-          "exportedToInstance": "Exporta a una instància"
+          "exportedToInstance": "Exporta a una instància",
+          "ruleSkipped": "Regla no executada"
         },
         "actionFallback": "Acció desconeguda ({{action}})",
         "summary": {
@@ -1351,7 +1354,8 @@
         "external_program": "Programa extern",
         "auto_managed": "Gestionat automàticament",
         "dry_run_no_match": "Execució de prova (cap coincidència)",
-        "exported_to_instance": "Exporta a una instància"
+        "exported_to_instance": "Exporta a una instància",
+        "rule_skipped": "Regla no executada"
       }
     },
     "orphanScanOverview": {
@@ -1380,6 +1384,8 @@
       "viewPreview": "Mostra la previsualització",
       "recentScans": "Exploracions recents",
       "scannedPaths": "Camins d'exploració seleccionats ({{total}})",
+      "scanPathsLoading": "Carregant els camins d'exploració...",
+      "scanPathsLoadFailed": "No s'han pogut carregar els camins d'exploració",
       "zeroOrphans": "0 orfes",
       "deletedStats": "{{deleted}} eliminats · {{size}}",
       "partialFailure": "Error parcial: comprova les exploracions recents",

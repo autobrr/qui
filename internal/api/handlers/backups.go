@@ -29,8 +29,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/ulikunitz/xz"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -1227,7 +1229,17 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	hideRestorePlanPasskeys(r, plan)
 	RespondJSON(w, http.StatusOK, plan)
+}
+
+func hideRestorePlanPasskeys(r *http.Request, plan *backups.RestorePlan) {
+	if middleware.CanReadTrackerPasskeys(r) {
+		return
+	}
+	for i := range plan.Torrents.Update {
+		qbittorrent.HideTrackerURLs(plan.Torrents.Update[i].Current.TrackerURLs)
+	}
 }
 
 func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) {
@@ -1286,6 +1298,7 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	hideRestorePlanPasskeys(r, result.Plan)
 	RespondJSON(w, http.StatusOK, result)
 }
 

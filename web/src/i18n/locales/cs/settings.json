@@ -129,16 +129,71 @@
     "apiDocs": "API dokumentace",
     "description": "API klíče umožňují externím aplikacím přístup k vašim qBittorrent instancem.",
     "createButton": "Vytvořit API klíč",
+    "editButton": "Upravit {{name}}",
+    "deleteButton": "Smazat {{name}}",
     "loading": "Načítám API klíče...",
     "empty": "Žádné API klíče vytvořeny",
     "createDialog": {
       "title": "Vytvořit API klíč",
-      "description": "Dejte svému API klíči popisný název, abyste si mohli jeho účel zapamatovat.",
+      "description": "Pojmenujte klíč a vyberte jen přístup, který potřebuje.",
       "nameLabel": "Název",
       "namePlaceholder": "např. Automatizační skript",
       "nameRequired": "Název je povinný",
       "submit": "Vytvořit API klíč",
       "creating": "Vytvářím..."
+    },
+    "editDialog": {
+      "title": "Upravit API klíč",
+      "description": "Změny platí od dalšího požadavku tohoto klíče. qui samotný klíč už nikdy nezobrazí.",
+      "submit": "Uložit změny",
+      "saving": "Ukládání..."
+    },
+    "permissions": {
+      "title": "Oprávnění",
+      "help": "Zápis zahrnuje čtení a spuštění. Spuštění nezahrnuje čtení, protože nastavení obsahuje přihlašovací údaje.",
+      "required": "Vyberte alespoň jedno oprávnění.",
+      "access": "Přístup",
+      "allAreas": "Všechny oblasti",
+      "allAreasExcept": "Všechny oblasti kromě: {{areas}}",
+      "refusedByLimit": "Křížové sdílení a skenovač adresářů odmítají klíč s omezením instancí, takže qui tato oprávnění neuloží.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Zobrazit přístup podle oblastí pro {{name}}",
+      "partialArea": "{{area}} (jen {{levels}})",
+      "legend": {
+        "title": "Jeden blok pro každou oblast oprávnění:",
+        "none": "bez přístupu"
+      },
+      "levels": {
+        "read": "čtení",
+        "run": "spuštění",
+        "write": "zápis"
+      },
+      "areas": {
+        "instances": "Instance",
+        "torrents": "Torrenty",
+        "crossSeed": "Křížové sdílení",
+        "dirScan": "Skenovač adresářů",
+        "automations": "Automatizace",
+        "rss": "RSS",
+        "backups": "Zálohy",
+        "orphanScan": "Vyhledání sirotků",
+        "externalPrograms": "Externí programy",
+        "indexers": "Indexery",
+        "arr": "Arr",
+        "notifications": "Notifikace",
+        "settings": "Nastavení",
+        "logs": "Logy",
+        "system": "Systém"
+      }
+    },
+    "instanceLimit": {
+      "title": "Omezení instancí",
+      "help": "Vyberte instance, ke kterým má tento klíč přístup. Bez výběru má přístup ke všem instancím, i k těm, které přidáte později.",
+      "reaches": "Dosah",
+      "all": "Všechny instance",
+      "only": "Jen {{instances}}",
+      "none": "Žádné instance. Omezení obsahuje jen smazané instance.",
+      "deleted": "Smazaná instance {{id}}"
     },
     "newKey": {
       "label": "Váš nový API klíč",
@@ -156,7 +211,9 @@
       "created": "API klíč vytvořen úspěšně",
       "createFailed": "Nepodařilo se vytvořit API klíč",
       "deleted": "API klíč smazán úspěšně",
-      "deleteFailed": "Nepodařilo se smazat API klíč"
+      "deleteFailed": "Nepodařilo se smazat API klíč",
+      "updated": "API klíč aktualizován úspěšně",
+      "updateFailed": "Nepodařilo se aktualizovat API klíč"
     }
   },
   "externalPrograms": {

@@ -1664,6 +1664,7 @@
         "target_not_found": "Cible introuvable dans cette instance.",
         "incomplete": "Le téléchargement de la cible est incomplet.",
         "not_settled": "Ce torrent est encore en cours de déplacement ou de vérification. Réessayez une fois l'opération terminée.",
+        "errored": "Ce torrent comporte une erreur ou des fichiers manquants. Corrigez le problème, puis réessayez.",
         "no_episode_identity": "Le numéro d’épisode est illisible.",
         "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
         "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",

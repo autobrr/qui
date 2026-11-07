@@ -6,6 +6,11 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,6 +108,15 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
 				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
 				{Hash: "partial", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 0.5},
+			},
+		},
+		// regression: #3707
+		{
+			name: "moving episode does not count toward the group",
+			torrents: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				{Hash: "moving", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 1, State: qbt.TorrentStateMoving},
 			},
 		},
 		{
@@ -375,6 +389,62 @@ func TestProcessEnsembleSeasonCandidate_FailedSearchIsNotTorznabSearch(t *testin
 	torrent := &qbt.Torrent{Hash: "season:show title:s01", Name: "Show Title S01", Progress: 1.0}
 	_, _ = service.processEnsembleSeasonCandidate(t.Context(), state, torrent, time.Now().UTC())
 	require.False(t, state.torznabSearched)
+}
+
+// The search for a season group asks each indexer for the name, the season, and
+// the full category list. With these indexers, the category trim of the normal
+// search leaves only 5000, so a trim here changes the list of the first indexer.
+func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var params []url.Values
+	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") != "caps" {
+			mu.Lock()
+			params = append(params, r.URL.Query())
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	t.Cleanup(tracker.Close)
+
+	indexers := make([]*models.TorznabIndexer, 0, 4)
+	for id := 1; id <= 4; id++ {
+		indexer := &models.TorznabIndexer{
+			ID: id, Name: fmt.Sprintf("TV Indexer %d", id), Enabled: true, BaseURL: tracker.URL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5,
+			Capabilities: []string{"search", "tv-search", "tv-search-q", "tv-search-season"},
+		}
+		// An indexer with no stored categories keeps the list that it gets.
+		if id > 1 {
+			indexer.Categories = []models.TorznabIndexerCategory{{IndexerID: id, CategoryID: 5000, CategoryName: "TV"}}
+		}
+		indexers = append(indexers, indexer)
+	}
+
+	service, state, _ := newEnsembleSearchState(t, "crossseed-ensemble-wire-request", nil, true)
+	service.jackettService = newJackettServiceWithIndexers(indexers)
+	state.resolvedTorznabIndexerIDs = []int{1, 2, 3, 4}
+
+	torrent := &qbt.Torrent{
+		Hash:     ensembleSeasonPseudoHash(ensembleGroupKey{normalizedTitle: "azure compass", season: 2}),
+		Name:     "Azure Compass S02",
+		Progress: 1.0,
+	}
+	_, err := service.processEnsembleSeasonCandidate(t.Context(), state, torrent, time.Now().UTC())
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, params, 4, "one search pass reaches each indexer once")
+	categoryLists := make([]string, 0, len(params))
+	for _, p := range params {
+		require.Equal(t, "Azure Compass", p.Get("q"))
+		require.Equal(t, "2", p.Get("season"))
+		require.Empty(t, p.Get("ep"))
+		categoryLists = append(categoryLists, p.Get("cat"))
+	}
+	require.Contains(t, categoryLists, "5000,5010,5020,5030,5040,5045,5070,5080")
 }
 
 // packSearchResult builds a torznab search result for a season pack candidate.
