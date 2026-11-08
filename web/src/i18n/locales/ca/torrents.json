@@ -1691,6 +1691,10 @@
     "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
     "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
     "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
-    "labelWithTicks": "{{label}}. {{ticks}}"
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "expandAll": "Desplega-ho tot",
+    "collapseAll": "Plega-ho tot",
+    "grouping": "S'està agrupant…"
   }
 }

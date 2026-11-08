@@ -1691,6 +1691,10 @@
     "badgeTicked_other": "+{{hidden}} · {{count}} selecionadas",
     "hiddenTicked_one": "{{count}} cópia oculta está selecionada",
     "hiddenTicked_other": "{{count}} cópias ocultas estão selecionadas",
-    "labelWithTicks": "{{label}}. {{ticks}}"
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupar cópias",
+    "expandAll": "Expandir tudo",
+    "collapseAll": "Recolher tudo",
+    "grouping": "Agrupando…"
   }
 }
