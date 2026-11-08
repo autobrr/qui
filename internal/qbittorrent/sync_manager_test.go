@@ -271,10 +271,10 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 		Count:      1,
 	}, counts.TrackerTransfers["current.example"])
 
-	staleFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	staleFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
 	require.Empty(t, staleFiltered)
 
-	currentFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"current.example"}}, mainData, nil, false)
+	currentFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"current.example"}}, mainData, false, nil)
 	require.Len(t, currentFiltered, 1)
 	require.Equal(t, "current-hash", currentFiltered[0].Hash)
 }
@@ -341,7 +341,7 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain
 	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
-	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, nil, false)
+	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, false, nil)
 	require.Empty(t, filtered)
 }
 
@@ -469,7 +469,7 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(
 	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
-	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
 	require.Empty(t, filtered)
 }
 
@@ -491,7 +491,8 @@ func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T)
 
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
-	require.NotContains(t, counts.Trackers, "")
+	require.Equal(t, 1, counts.Trackers[""], "a pseudo tracker with a tracker count of 0 is in No tracker")
+	require.NotContains(t, counts.TrackerTransfers, "")
 	require.Equal(t, 1, counts.Trackers["Unknown"])
 	require.Equal(t, TrackerTransferStats{
 		Uploaded:   100,
@@ -501,7 +502,7 @@ func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T)
 	}, counts.TrackerTransfers["Unknown"])
 }
 
-func TestManualTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
+func TestTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{}
@@ -517,14 +518,14 @@ func TestManualTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
 		},
 	}
 
-	includeUnknown := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"Unknown"}}, mainData, nil, false)
+	includeUnknown := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"Unknown"}}, mainData, false, nil)
 	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
 
-	excludeUnknown := sm.applyManualFilters(client, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, mainData, nil, false)
+	excludeUnknown := listRows(sm, client, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, mainData, false, nil)
 	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
 }
 
-func TestManualTrackerFiltersFallbackOmitPseudoPrimaryTracker(t *testing.T) {
+func TestTrackerFiltersFallbackOmitPseudoPrimaryTracker(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{}
@@ -533,10 +534,10 @@ func TestManualTrackerFiltersFallbackOmitPseudoPrimaryTracker(t *testing.T) {
 		{Hash: "hash-unknown", Tracker: "/not-a-tracker"},
 	}
 
-	includeUnknown := sm.applyManualFilters(nil, torrents, FilterOptions{Trackers: []string{"Unknown"}}, nil, nil, false)
+	includeUnknown := listRows(sm, nil, torrents, FilterOptions{Trackers: []string{"Unknown"}}, nil, false, nil)
 	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
 
-	excludeUnknown := sm.applyManualFilters(nil, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, nil, nil, false)
+	excludeUnknown := listRows(sm, nil, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, nil, false, nil)
 	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
 }
 
@@ -2841,8 +2842,8 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 			},
 			wantCategories:   map[string]int{"": 1},
 			wantCategorySize: map[string]int64{"": 5},
-			wantTags:         map[string]int{},
-			wantTagSizes:     map[string]int64{},
+			wantTags:         map[string]int{"": 1},
+			wantTagSizes:     map[string]int64{"": 5},
 		},
 		{
 			name: "subcategories roll counts and sizes up to the parent",
@@ -3111,21 +3112,8 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 	require.Equal(t, 0, unsupported.Status["tracker_error"])
 }
 
-// Counts describe the whole library, so they may only share the list request's
-// result when that request asked for everything.
-func TestRequestCoversWholeLibrary(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}))
-
-	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}))
-	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "cross-seed"}))
-	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted}))
-	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{}))
-}
-
-// An authoritative mapping with no domains must not fall back to MainData, which
-// is why the getter separates a nil result from an empty one.
+// A torrent that an empty mapping does not place gets its domain from its
+// primary tracker.
 func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 	t.Parallel()
 
@@ -3148,8 +3136,8 @@ func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
-	require.Empty(t, counts.Trackers)
-	require.Empty(t, counts.TrackerTransfers)
+	require.Equal(t, map[string]int{"tracker.example": 1}, counts.Trackers)
+	require.Equal(t, TrackerTransferStats{TotalSize: 10, Count: 1}, counts.TrackerTransfers["tracker.example"])
 }
 
 // TestGetAuthoritativeDomainToHashesMemoizesPerGeneration pins the per-generation

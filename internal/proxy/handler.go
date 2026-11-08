@@ -1156,6 +1156,17 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 	return filters
 }
 
+// parseInfoQueryValues reads a category or tag parameter of torrents/info. As
+// in qBittorrent, a present parameter with no value (category=) asks for the
+// torrents with no category or no tag, which the value "" selects.
+func parseInfoQueryValues(queryParams url.Values, key string) []string {
+	values := parseCSVQueryValues(queryParams, key)
+	if _, present := queryParams[key]; present && len(values) == 0 {
+		return []string{""}
+	}
+	return values
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
@@ -1179,8 +1190,8 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	queryParams := r.URL.Query()
 	filterValues := parseCSVQueryValues(queryParams, "filter")
-	categoryValues := parseCSVQueryValues(queryParams, "category")
-	tagValues := parseCSVQueryValues(queryParams, "tag")
+	categoryValues := parseInfoQueryValues(queryParams, "category")
+	tagValues := parseInfoQueryValues(queryParams, "tag")
 	statusFilters, excludeStatusFilters := splitStatusFilters(filterValues)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"

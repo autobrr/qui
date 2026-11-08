@@ -114,7 +114,7 @@ qui serves these endpoints from its sync manager for faster responses:
 
 | Endpoint | Description |
 |----------|-------------|
-| `/api/v2/torrents/info` | Torrent list with standard qBittorrent filtering |
+| `/api/v2/torrents/info` | Torrent list with the filters of qui. See [How qui filters torrents/info](#how-qui-filters-torrentsinfo) |
 | `/api/v2/torrents/search` | Torrent list with fuzzy search (qui-specific) |
 | `/api/v2/torrents/categories` | Category list from synchronized data |
 | `/api/v2/torrents/tags` | Tag list from synchronized data |
@@ -122,6 +122,23 @@ qui serves these endpoints from its sync manager for faster responses:
 | `/api/v2/torrents/trackers` | Torrent trackers, with icon discovery |
 | `/api/v2/torrents/files` | Torrent file list |
 | `/api/v2/torrents/mediainfo` | MediaInfo report for a file on disk (qui-specific, needs **Local Filesystem Access**) |
+
+#### How qui filters torrents/info
+
+qui decides the rows of `torrents/info` with the same rule as the torrent list and the sidebar counts. The result is the same on each qBittorrent version. It differs from a direct connection to qBittorrent in these cases:
+
+- A `filter` value that qui does not know gives no rows. qBittorrent returns every torrent.
+- Each filter name works on each version. For example, `running` and `resumed` mean the same thing on qBittorrent 4.x and 5.x.
+- `uploading` means the same as `seeding`.
+- A qBittorrent state name, such as `stalledUP`, matches that state in any letter case. `stalled_seeding` and the tracker health names `unregistered`, `tracker_down`, and `tracker_error` also narrow the list.
+- `filter=unregistered` and `filter=tracker_down` remove those torrents from the list.
+- Stopped torrents are not in `downloading`.
+- `active` and `inactive` use one list of states on each version. qBittorrent 5.2 and later use the transfer rate.
+- `tag=` works on qBittorrent 4.3.9, which has no tag parameter.
+- qui splits a `category` value at each comma. qBittorrent reads the whole value as one category name.
+- Below qBittorrent 4.6, the API cannot report the subcategories setting. qui then matches a category exactly.
+
+`category=` gives the torrents with no category, and `tag=` gives the torrents with no tag, as in qBittorrent.
 
 These endpoints proxy to qBittorrent and update qui's local state:
 

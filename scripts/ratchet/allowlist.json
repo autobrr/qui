@@ -68,7 +68,7 @@
     "internal/models/torznab_indexer.go": 1,
     "internal/qbittorrent/folder_cleanup.go": 1,
     "internal/qbittorrent/folder_cleanup_triggers.go": 1,
-    "internal/qbittorrent/sync_manager.go": 9,
+    "internal/qbittorrent/sync_manager.go": 7,
     "internal/qbittorrent/torrent_sort.go": 1,
     "internal/services/arr/service.go": 1,
     "internal/services/automations/evaluator.go": 2,

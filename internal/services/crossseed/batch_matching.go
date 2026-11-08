@@ -1145,7 +1145,7 @@ func isTorrentViewSeeding(view *qbittorrent.CrossInstanceTorrentView) bool {
 	case qbt.TorrentStateError, qbt.TorrentStateMissingFiles,
 		qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedUp,
 		qbt.TorrentStateAllocating, qbt.TorrentStateDownloading,
-		qbt.TorrentStateMetaDl, qbt.TorrentStatePausedDl,
+		qbt.TorrentStateMetaDl, qbt.TorrentStateForcedMetaDl, qbt.TorrentStatePausedDl,
 		qbt.TorrentStateStoppedDl, qbt.TorrentStateQueuedDl,
 		qbt.TorrentStateStalledDl, qbt.TorrentStateCheckingDl,
 		qbt.TorrentStateForcedDl, qbt.TorrentStateCheckingResumeData,
