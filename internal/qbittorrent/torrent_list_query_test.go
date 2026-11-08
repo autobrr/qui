@@ -300,3 +300,18 @@ func TestGetTorrentsWithFiltersFollowsOneRule(t *testing.T) {
 		})
 	}
 }
+
+// A parent gets each subcategory size once, in any map order.
+func TestAddSubcategoriesToParentsCountsEachSizeOnce(t *testing.T) {
+	t.Parallel()
+
+	for range 50 {
+		counts := &TorrentCounts{
+			Categories:    map[string]int{"tv": 1, "tv/anime": 1, "tv/anime/season": 1},
+			CategorySizes: map[string]int64{"tv": 1, "tv/anime": 10, "tv/anime/season": 100},
+		}
+		addSubcategoriesToParents(counts)
+		require.Equal(t, map[string]int{"tv": 3, "tv/anime": 2, "tv/anime/season": 1}, counts.Categories)
+		require.Equal(t, map[string]int64{"tv": 111, "tv/anime": 110, "tv/anime/season": 100}, counts.CategorySizes)
+	}
+}

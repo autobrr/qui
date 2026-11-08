@@ -486,8 +486,9 @@ func countTorrents(in torrentCountsInput) torrentCountsResult {
 // each parent above it.
 func addSubcategoriesToParents(counts *TorrentCounts) {
 	exact := maps.Clone(counts.Categories)
+	exactSizes := maps.Clone(counts.CategorySizes)
 	for category, count := range exact {
-		size := counts.CategorySizes[category]
+		size := exactSizes[category]
 		for i := range len(category) {
 			if category[i] == '/' {
 				counts.Categories[category[:i]] += count
