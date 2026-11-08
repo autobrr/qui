@@ -127,12 +127,12 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "plain delete with files counts free space once per cross-seed group",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFiles, Condition: &RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"}}}),
-			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true},
+			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
-			name:  "include cross-seeds delete with FREE_SPACE reads the whole library and the shared check first",
+			name:  "include cross-seeds delete with FREE_SPACE reads the groups of its claims",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, Condition: &RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"}}}),
-			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}, CrossSeedGroupsAll: true, CrossSeedSharedAll: true},
+			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
 		},
 		{
 			name:  "tag that includes cross-seeds",

@@ -76,8 +76,8 @@ func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atom
 
 // BenchmarkRunSessionDeletionSelection measures what a run reads before its
 // actions: buildEvalContext, the load step and the Deletion selection. The
-// delete rule matches no torrent. With a move rule, the run reads the groups
-// of the whole library.
+// include rule matches no torrent. With a move rule, the run reads the groups
+// of the whole library. The FREE_SPACE rule claims most of the library.
 func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 	previousLevel := zerolog.GlobalLevel()
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -88,12 +88,15 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 		ID: 2, Name: "move", TrackerPattern: "*", Enabled: true, SortOrder: 2,
 		Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/new", Condition: tagsContain("mv")}},
 	}
+	freeSpace := deleteRule(DeleteModeWithFilesIncludeCrossSeeds, &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "6500000"})
 	for _, tc := range []struct {
-		name  string
-		rules []*models.Automation
+		name      string
+		rules     []*models.Automation
+		minDelete int
 	}{
-		{"include rule matches nothing", []*models.Automation{include}},
-		{"whole library with a move rule", []*models.Automation{include, move}},
+		{"include rule matches nothing", []*models.Automation{include}, 0},
+		{"whole library with a move rule", []*models.Automation{include, move}, 0},
+		{"free-space rule claims most of the library", []*models.Automation{freeSpace}, 2000},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			svc, instance, fileReads := benchRunService(b, 1000)
@@ -110,11 +113,15 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
+				// As applyRulesForInstance does, with the free space of the stub.
+				evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{GetFreeSpaceRuleKey(freeSpace): {
+					FreeSpace: 1000, FilesToClear: make(map[string]int64), CrossSeedHashesToClear: make(map[string]struct{}),
+				}}
 				groups := buildCrossSeedGroups(torrents, evalCtx)
 				svc.loadCrossSeedFiles(ctx, instance.ID, groups, evalCtx, nil)
 				selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: tc.rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups})
-				if len(selection.byHash) != 0 {
-					b.Fatalf("selected %d torrents, want none", len(selection.byHash))
+				if got := len(selection.byHash); got < tc.minDelete || tc.minDelete == 0 && got != 0 {
+					b.Fatalf("selected %d torrents, want %d or more (0 means none)", got, tc.minDelete)
 				}
 			}
 			b.ReportMetric(float64(fileReads.Load())/float64(b.N), "fileReads/op")
