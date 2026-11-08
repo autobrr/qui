@@ -84,12 +84,12 @@ type automationSettingsRequest struct {
 	SeededSearchTags             *[]string `json:"seededSearchTags"`
 	CompletionSearchTags         *[]string `json:"completionSearchTags"`
 	WebhookTags                  *[]string `json:"webhookTags"`
+	SkipPieceBoundarySafetyCheck *bool     `json:"skipPieceBoundarySafetyCheck"`
 	InheritSourceTags            bool      `json:"inheritSourceTags"`
 	SkipAutoResumeRSS            bool      `json:"skipAutoResumeRss"`
 	SkipAutoResumeSeededSearch   bool      `json:"skipAutoResumeSeededSearch"`
 	SkipAutoResumeCompletion     bool      `json:"skipAutoResumeCompletion"`
 	SkipAutoResumeWebhook        bool      `json:"skipAutoResumeWebhook"`
-	SkipPieceBoundarySafetyCheck *bool     `json:"skipPieceBoundarySafetyCheck"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool    `json:"gazelleEnabled"`
 	RedactedAPIKey       *string `json:"redactedApiKey"`
@@ -1054,15 +1054,15 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	defaults := models.DefaultCrossSeedAutomationSettings()
+
 	// nil keeps the default so PUT clients without the field do not silently
 	// switch to "only complete torrents" (0).
-	autoResumeMaxDownloadMB := valueOrDefault(req.AutoResumeMaxDownloadMB, models.DefaultAutoResumeMaxDownloadMB)
+	autoResumeMaxDownloadMB := valueOrDefault(req.AutoResumeMaxDownloadMB, defaults.AutoResumeMaxDownloadMB)
 	if autoResumeMaxDownloadMB < 0 {
 		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
 		return
 	}
-
-	defaults := models.DefaultCrossSeedAutomationSettings()
 
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                        req.Enabled,
