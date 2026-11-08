@@ -329,3 +329,59 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 		})
 	}
 }
+
+// --- filtered list --------------------------------------------------------
+
+// BenchmarkFilteredList sends one filtered page of 300 rows through
+// GetTorrentsWithFilters, with the counts cached and the cached read, as a
+// stream tick between syncs does.
+func BenchmarkFilteredList(b *testing.B) {
+	benchSilence(b)
+	for _, size := range []int{5600, 50000} {
+		torrents := benchTorrents(size)
+		client := newListTestClient(b, 1, torrents, func(i int) []qbt.TorrentTracker {
+			if torrents[i].Tracker == "" {
+				return nil
+			}
+			return []qbt.TorrentTracker{{Url: torrents[i].Tracker, Status: qbt.TrackerStatusOK}}
+		})
+		sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+		// The health pass stores the tracker mapping. Without one, the counts cache stays off.
+		sm.refreshTrackerHealthCounts(b.Context(), 1)
+		if !sm.hasTrackerMapping(1) {
+			b.Fatal("no tracker mapping")
+		}
+		ctx := WithSkipFreshData(b.Context())
+
+		for _, tc := range []struct {
+			name    string
+			filters FilterOptions
+		}{
+			{"completed", FilterOptions{Status: []string{"completed"}}},
+			{"running", FilterOptions{Status: []string{"running"}}},
+			{"stopped", FilterOptions{Status: []string{"stopped"}}},
+			{"stalled", FilterOptions{Status: []string{"stalled"}}},
+			{"stalled_uploading", FilterOptions{Status: []string{"stalled_uploading"}}},
+			{"stalled_downloading", FilterOptions{Status: []string{"stalled_downloading"}}},
+			{"error", FilterOptions{Status: []string{"error"}}},
+			{"category", FilterOptions{Categories: []string{"movies"}}},
+			{"tag", FilterOptions{Tags: []string{"permaseed"}}},
+			{"completed+category", FilterOptions{Status: []string{"completed"}, Categories: []string{"movies"}}},
+			{"completed+tag", FilterOptions{Status: []string{"completed"}, Tags: []string{"permaseed"}}},
+		} {
+			b.Run(fmt.Sprintf("%d/%s", size, tc.name), func(b *testing.B) {
+				resp, err := sm.GetTorrentsWithFilters(ctx, 1, 300, 0, "added_on", "desc", "", tc.filters)
+				if err != nil || resp.Counts == nil {
+					b.Fatal("warm-up request failed", err)
+				}
+				cached := client.countsCache.Load()
+				for b.Loop() {
+					_, _ = sm.GetTorrentsWithFilters(ctx, 1, 300, 0, "added_on", "desc", "", tc.filters)
+				}
+				if cached == nil || client.countsCache.Load() != cached {
+					b.Fatal("the counts were not served from the cache")
+				}
+			})
+		}
+	}
+}
