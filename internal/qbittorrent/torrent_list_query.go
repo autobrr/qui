@@ -4,646 +4,591 @@
 package qbittorrent
 
 import (
-	"errors"
+	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/vm"
-	"github.com/rs/zerolog/log"
 )
 
-func statusFiltersRequireTrackerData(statuses []string) bool {
-	for _, status := range statuses {
-		switch status {
-		case "unregistered", "tracker_down", "tracker_error":
-			return true
-		}
+// The torrent list query module decides the rows and the sidebar counts of the
+// torrent list with one set of definitions (ADR 0043). It reads no client and
+// changes no sync manager state: the sync manager gathers its inputs and does
+// the side effects that the counts report.
+
+// statusDef is what one status value matches.
+type statusDef struct {
+	all    bool
+	states []qbt.TorrentState
+	// invert matches each state that is not in states.
+	invert bool
+	// health is set for a Tracker health status, which reads the snapshot.
+	health TrackerHealth
+}
+
+func (d statusDef) matchesState(state qbt.TorrentState) bool {
+	return d.all || slices.Contains(d.states, state) != d.invert
+}
+
+func (d statusDef) matches(t *qbt.Torrent, health *TrackerHealthSnapshot) bool {
+	if d.health != "" {
+		return health.Health(t.Hash) == d.health
 	}
-
-	return false
+	return d.matchesState(t.State)
 }
 
-// helper to make it possible to filter by tracker-derived states in FilterSidebar
-func filtersRequireTrackerData(filters FilterOptions) bool {
-	return statusFiltersRequireTrackerData(filters.Status) ||
-		statusFiltersRequireTrackerData(filters.ExcludeStatus)
+var (
+	completedStates = []qbt.TorrentState{qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedUp}
+	stoppedStates = []qbt.TorrentState{qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp,
+		qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp}
+	seedingStates = []qbt.TorrentState{qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp}
+	downloadingStates = []qbt.TorrentState{qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl,
+		qbt.TorrentStateForcedMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl,
+		qbt.TorrentStateForcedDl}
+	activeStates = []qbt.TorrentState{qbt.TorrentStateDownloading, qbt.TorrentStateUploading,
+		qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp}
+)
+
+// namedStatuses are the status values that qui names. A named status wins over
+// a qBittorrent state of the same name.
+var namedStatuses = map[string]statusDef{
+	"all":                 {all: true},
+	"completed":           {states: completedStates},
+	"stopped":             {states: stoppedStates},
+	"paused":              {states: stoppedStates},
+	"running":             {states: stoppedStates, invert: true},
+	"resumed":             {states: stoppedStates, invert: true},
+	"seeding":             {states: seedingStates},
+	"uploading":           {states: seedingStates},
+	"stalled_seeding":     {states: []qbt.TorrentState{qbt.TorrentStateStalledUp}},
+	"stalled_uploading":   {states: []qbt.TorrentState{qbt.TorrentStateStalledUp}},
+	"downloading":         {states: downloadingStates},
+	"active":              {states: activeStates},
+	"inactive":            {states: activeStates, invert: true},
+	"stalled":             {states: []qbt.TorrentState{qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp}},
+	"stalled_downloading": {states: []qbt.TorrentState{qbt.TorrentStateStalledDl}},
+	"checking": {states: []qbt.TorrentState{qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp,
+		qbt.TorrentStateCheckingResumeData}},
+	"errored":                         {states: []qbt.TorrentState{qbt.TorrentStateError, qbt.TorrentStateMissingFiles}},
+	"moving":                          {states: []qbt.TorrentState{qbt.TorrentStateMoving}},
+	string(TrackerHealthUnregistered): {health: TrackerHealthUnregistered},
+	string(TrackerHealthDown):         {health: TrackerHealthDown},
+	string(TrackerHealthError):        {health: TrackerHealthError},
 }
 
-// statusCounter counts the library per torrent state, which expandInto turns
-// into status keys once. A library has thousands of torrents and about fifteen
-// states, so that is one string map increment per torrent instead of eight.
-type statusCounter struct {
-	byState   map[qbt.TorrentState]int
-	completed int
-}
-
-// countTorrentStatuses counts torrent statuses efficiently in a single pass
-func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counter *statusCounter) {
-	counter.byState[torrent.State]++
-
-	if torrent.Progress == 1 {
-		counter.completed++
+// statesByLowerName lets a qBittorrent state name match in any letter case,
+// because the proxy lowercases each status.
+var statesByLowerName = func() map[string]qbt.TorrentState {
+	byName := make(map[string]qbt.TorrentState)
+	for _, state := range qbt.KnownTorrentStates() {
+		byName[strings.ToLower(string(state))] = state
 	}
-}
-
-// expandInto adds the accumulated counts to the status map.
-func (c *statusCounter) expandInto(counts map[string]int) {
-	for state, count := range c.byState {
-		counts["all"] += count
-
-		if slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], state) {
-			counts["active"] += count
-		} else {
-			counts["inactive"] += count
-		}
-
-		// A torrent is stopped if it is in either the old paused states or the new
-		// stopped ones. Running is the inverse.
-		isPausedOrStopped := slices.Contains(torrentStateCategories[qbt.TorrentFilterPaused], state) ||
-			slices.Contains(torrentStateCategories[qbt.TorrentFilterStopped], state)
-		if isPausedOrStopped {
-			counts["stopped"] += count
-			counts["paused"] += count // For backward compatibility
-		} else {
-			counts["running"] += count
-			counts["resumed"] += count // For backward compatibility
-		}
-
-		for _, status := range countableStatusesForState[state] {
-			counts[status] += count
-		}
-	}
-
-	counts["completed"] += c.completed
-}
-
-// countableStatusesForState inverts torrentStateCategories so counting a
-// torrent is one map lookup instead of a scan of every category. "active",
-// "paused" and "stopped" are left out because countTorrentStatuses counts them
-// directly, including their inverses.
-var countableStatusesForState = func() map[qbt.TorrentState][]string {
-	byState := make(map[qbt.TorrentState][]string)
-	for status, states := range torrentStateCategories {
-		if status == qbt.TorrentFilterActive || status == qbt.TorrentFilterPaused || status == qbt.TorrentFilterStopped {
-			continue
-		}
-		for _, state := range states {
-			byState[state] = append(byState[state], string(status))
-		}
-	}
-	return byState
+	return byName
 }()
 
-// torrentHasAnyTag reports whether the comma-separated tag string contains any
-// of the wanted tags. strings.SplitSeq and TrimSpace both return sub-slices of
-// the original string, so this walks the tags without allocating.
-func torrentHasAnyTag(tags string, wanted map[string]struct{}) bool {
-	if len(wanted) == 0 {
+// lookupStatus resolves a status value. ok is false for a value that qui does
+// not know.
+func lookupStatus(value string) (def statusDef, ok bool) {
+	value = strings.ToLower(value)
+	if def, ok := namedStatuses[value]; ok {
+		return def, true
+	}
+	if state, ok := statesByLowerName[value]; ok {
+		return statusDef{states: []qbt.TorrentState{state}}, true
+	}
+	return statusDef{}, false
+}
+
+// trackerSources are the inputs that decide the Trackers of a torrent.
+type trackerSources struct {
+	// mapping is the tracker mapping, hash to domains for the rows. Nil when
+	// no mapping exists yet.
+	mapping    map[string]map[string]struct{}
+	exclusions map[string]map[string]struct{}
+	mainData   *qbt.MainData
+	// extractDomain keeps its URL cache, so the module gets it from the caller.
+	extractDomain func(string) string
+}
+
+type trackerURLDomain struct{ domain, url string }
+
+// trackerResolver gives the Trackers of a torrent from the first step that
+// gives a result:
+//  1. The tracker mapping entry for the torrent, less the tracker exclusions.
+//  2. The primary tracker, if it is not blank and not a pseudo tracker label.
+//  3. Else the entries for the torrent in the tracker list of the sync data,
+//     less the tracker exclusions.
+//  4. Else, with a tracker count of 0, No tracker.
+//
+// A torrent that gets no result is in no tracker row until the next sync.
+type trackerResolver struct {
+	trackerSources
+	// want limits the index of step 3 to some hashes. Nil indexes each hash.
+	want func(hash string) bool
+	// mainDataByHash is the tracker list of the sync data, by torrent. It is
+	// built at the first torrent that needs step 3.
+	mainDataByHash map[string][]trackerURLDomain
+}
+
+func newTrackerResolver(src trackerSources, want func(hash string) bool) *trackerResolver {
+	return &trackerResolver{trackerSources: src, want: want}
+}
+
+// mainDataEntries returns the entries of step 3 for hash.
+func (r *trackerResolver) mainDataEntries(hash string) []trackerURLDomain {
+	if r.mainData == nil {
+		return nil
+	}
+	if r.mainDataByHash == nil {
+		r.mainDataByHash = make(map[string][]trackerURLDomain)
+		for trackerURL, hashes := range r.mainData.Trackers {
+			domain := r.extractDomain(trackerURL)
+			if domain == "" {
+				continue
+			}
+			for _, h := range hashes {
+				if r.want != nil && !r.want(h) {
+					continue
+				}
+				entries := r.mainDataByHash[h]
+				if !slices.ContainsFunc(entries, func(e trackerURLDomain) bool { return e.domain == domain }) {
+					r.mainDataByHash[h] = append(entries, trackerURLDomain{domain, trackerURL})
+				}
+			}
+		}
+	}
+	return r.mainDataByHash[hash]
+}
+
+func (src trackerSources) excluded(domain, hash string) bool {
+	_, skip := src.exclusions[domain][hash]
+	return skip
+}
+
+// needsMainData reports whether step 3 reads the sync data for t.
+func needsMainData(t *qbt.Torrent) bool {
+	primary := strings.TrimSpace(t.Tracker)
+	return primary == "" || IsPseudoTrackerLabel(primary)
+}
+
+// fallback runs steps 2 to 4 for a torrent that the mapping does not place. It
+// calls visit for each domain and reports whether the torrent is in No tracker.
+func (r *trackerResolver) fallback(t *qbt.Torrent, visit func(domain, url string)) (noTracker bool) {
+	if !needsMainData(t) {
+		if domain := r.extractDomain(t.Tracker); domain != "" && !r.excluded(domain, t.Hash) {
+			visit(domain, t.Tracker)
+		}
 		return false
 	}
-	for tag := range strings.SplitSeq(tags, ",") {
-		if _, ok := wanted[strings.TrimSpace(tag)]; ok {
+	found := false
+	for _, entry := range r.mainDataEntries(t.Hash) {
+		if !r.excluded(entry.domain, t.Hash) {
+			found = true
+			visit(entry.domain, entry.url)
+		}
+	}
+	return !found && t.TrackersCount == 0
+}
+
+// inAny reports whether one of the Trackers of t is in set. The key "" is No
+// tracker. A torrent with no result is in no row.
+func (r *trackerResolver) inAny(t *qbt.Torrent, set map[string]struct{}) bool {
+	placed, hit := false, false
+	for domain := range r.mapping[t.Hash] {
+		if r.excluded(domain, t.Hash) {
+			continue
+		}
+		placed = true
+		if _, ok := set[domain]; ok {
+			hit = true
+		}
+	}
+	if placed {
+		return hit
+	}
+	if r.fallback(t, func(domain, _ string) {
+		if _, ok := set[domain]; ok {
+			hit = true
+		}
+	}) {
+		_, hit = set[""]
+	}
+	return hit
+}
+
+// torrentListRule decides whether one torrent is a row of a request.
+type torrentListRule struct {
+	// none is set by a status value that qui does not know: the request gives no rows.
+	none              bool
+	hashes            map[string]struct{}
+	status            []statusDef
+	excludeStatus     []statusDef
+	categories        []string
+	excludeCategories []string
+	useSubcategories  bool
+	tags              map[string]struct{}
+	excludeTags       map[string]struct{}
+	trackers          map[string]struct{}
+	excludeTrackers   map[string]struct{}
+	tracker           *trackerResolver
+	health            *TrackerHealthSnapshot
+}
+
+func hasTrackerFilter(filters FilterOptions) bool {
+	return len(filters.Trackers) > 0 || len(filters.ExcludeTrackers) > 0
+}
+
+func setOf(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		set[v] = struct{}{}
+	}
+	return set
+}
+
+// newTorrentListRule builds the rule of filters. Expressions and search are not
+// part of the rule. trackers is read only when filters has a tracker filter.
+func newTorrentListRule(filters FilterOptions, health *TrackerHealthSnapshot, useSubcategories bool, trackers trackerSources) *torrentListRule {
+	r := &torrentListRule{
+		categories:        filters.Categories,
+		excludeCategories: filters.ExcludeCategories,
+		useSubcategories:  useSubcategories,
+		tags:              setOf(filters.Tags),
+		excludeTags:       setOf(filters.ExcludeTags),
+		trackers:          setOf(filters.Trackers),
+		excludeTrackers:   setOf(filters.ExcludeTrackers),
+		health:            health,
+	}
+	for _, hash := range filters.Hashes {
+		if hash == "" {
+			continue
+		}
+		if r.hashes == nil {
+			r.hashes = make(map[string]struct{}, len(filters.Hashes))
+		}
+		r.hashes[strings.ToUpper(hash)] = struct{}{}
+	}
+
+	matchesAll := false
+	for _, value := range filters.Status {
+		def, ok := lookupStatus(value)
+		r.none = r.none || !ok
+		matchesAll = matchesAll || def.all
+		r.status = append(r.status, def)
+	}
+	if matchesAll {
+		r.status = nil
+	}
+	for _, value := range filters.ExcludeStatus {
+		def, ok := lookupStatus(value)
+		r.none = r.none || !ok
+		r.excludeStatus = append(r.excludeStatus, def)
+	}
+
+	if hasTrackerFilter(filters) {
+		r.tracker = newTrackerResolver(trackers, nil)
+	}
+	return r
+}
+
+// narrows reports whether the rule can leave a torrent out. A rule that narrows
+// nothing lets the rows and the counts share one read of the whole library.
+func (r *torrentListRule) narrows() bool {
+	return r.none || r.hashes != nil || len(r.status) > 0 || len(r.excludeStatus) > 0 ||
+		len(r.categories) > 0 || len(r.excludeCategories) > 0 || r.tags != nil || r.excludeTags != nil ||
+		r.tracker != nil
+}
+
+func anyStatus(defs []statusDef, t *qbt.Torrent, health *TrackerHealthSnapshot) bool {
+	return slices.ContainsFunc(defs, func(d statusDef) bool { return d.matches(t, health) })
+}
+
+// inCategory reports whether category is one of wanted. With subcategories on,
+// a parent includes each category under its name prefix.
+func (r *torrentListRule) inCategory(category string, wanted []string) bool {
+	for _, c := range wanted {
+		if category == c {
+			return true
+		}
+		if r.useSubcategories && c != "" && len(category) > len(c) && category[len(c)] == '/' && strings.HasPrefix(category, c) {
 			return true
 		}
 	}
 	return false
 }
 
-// applyManualFilters applies all filters manually when library filtering is insufficient.
-// With no tracker health snapshot, the tracker health statuses match no torrent.
-func (sm *SyncManager) applyManualFilters(
-	client *Client,
-	torrents []qbt.Torrent,
-	filters FilterOptions,
-	mainData *qbt.MainData,
-	categories map[string]qbt.Category,
-	useSubcategories bool,
-) []qbt.Torrent {
-	return sm.applyManualFiltersWithTrackerHealth(client, torrents, filters, mainData, categories, useSubcategories, nil)
+// hasTag reports whether one tag of tags is in set. A torrent with only blank
+// tags has no tag, which the key "" matches.
+func hasTag(tags string, set map[string]struct{}) bool {
+	untagged := true
+	for tag := range strings.SplitSeq(tags, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		untagged = false
+		if _, ok := set[tag]; ok {
+			return true
+		}
+	}
+	if untagged {
+		_, ok := set[""]
+		return ok
+	}
+	return false
 }
 
-// applyManualFiltersWithTrackerHealth applies manual filters. The tracker
-// health statuses match the verdicts in cachedHealth.
-func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
-	client *Client,
-	torrents []qbt.Torrent,
-	filters FilterOptions,
-	mainData *qbt.MainData,
-	categories map[string]qbt.Category,
-	useSubcategories bool,
-	cachedHealth *TrackerHealthSnapshot,
-) []qbt.Torrent {
-	var matched []int
-
-	// A bad expression fails identically for every torrent, so record the first
-	// failure and report once after the loop instead of per torrent.
-	var exprErr error
-	exprFailures := 0
-
-	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
-	for _, h := range filters.Hashes {
-		if h == "" {
+func hashMatches(t *qbt.Torrent, set map[string]struct{}) bool {
+	for _, candidate := range [...]string{t.Hash, t.InfohashV1, t.InfohashV2} {
+		if candidate == "" {
 			continue
 		}
-		hashFilterSet[strings.ToUpper(h)] = struct{}{}
-	}
-
-	var categoryNames []string
-	if useSubcategories {
-		categoryNames = collectCategoryNames(mainData, categories)
-	}
-
-	// Category set for O(1) lookups
-	categorySet := make(map[string]struct{}, len(filters.Categories))
-	for _, c := range filters.Categories {
-		categorySet[c] = struct{}{}
-		if useSubcategories && c != "" {
-			expandCategorySet(categorySet, c, categoryNames)
+		if _, ok := set[strings.ToUpper(candidate)]; ok {
+			return true
 		}
 	}
+	return false
+}
 
-	excludeCategorySet := make(map[string]struct{}, len(filters.ExcludeCategories))
-	for _, c := range filters.ExcludeCategories {
-		excludeCategorySet[c] = struct{}{}
-		if useSubcategories && c != "" {
-			expandCategorySet(excludeCategorySet, c, categoryNames)
-		}
+// match reports whether t is a row of the request. It runs under the read lock
+// of the library sync manager, so it keeps no pointer.
+func (r *torrentListRule) match(t *qbt.Torrent) bool {
+	switch {
+	case r.none:
+		return false
+	case r.hashes != nil && !hashMatches(t, r.hashes):
+		return false
+	case len(r.status) > 0 && !anyStatus(r.status, t, r.health):
+		return false
+	case anyStatus(r.excludeStatus, t, r.health):
+		return false
+	case len(r.categories) > 0 && !r.inCategory(t.Category, r.categories):
+		return false
+	case r.inCategory(t.Category, r.excludeCategories):
+		return false
+	case r.tags != nil && !hasTag(t.Tags, r.tags):
+		return false
+	case r.excludeTags != nil && hasTag(t.Tags, r.excludeTags):
+		return false
+	case r.trackers != nil && !r.tracker.inAny(t, r.trackers):
+		return false
+	case r.excludeTrackers != nil && r.tracker.inAny(t, r.excludeTrackers):
+		return false
 	}
+	return true
+}
 
-	// Prepare tag filter sets so each torrent's tag string is split once,
-	// instead of once per filter tag.
-	includeUntagged := false
-	includeTags := make(map[string]struct{}, len(filters.Tags))
-	for _, t := range filters.Tags {
-		if t == "" {
-			includeUntagged = true
-		}
-		// The empty tag stays in the include set: matching it against an empty
-		// segment of a tag string (e.g. "movies,") is existing behavior.
-		includeTags[t] = struct{}{}
+// torrentCountsInput is what the counts pass reads. domainToHashes is the
+// tracker mapping by domain, nil when no mapping exists yet. health is nil when
+// the instance has no tracker health.
+type torrentCountsInput struct {
+	torrents         []qbt.Torrent
+	useSubcategories bool
+	health           *TrackerHealthSnapshot
+	domainToHashes   map[string]map[string]struct{}
+	trackers         trackerSources
+}
+
+// torrentCountsResult holds the counts and the work they leave for the sync
+// manager.
+type torrentCountsResult struct {
+	counts *TorrentCounts
+	// emptiedDomains are domains with tracker exclusions and no torrent left.
+	// Their exclusions can go.
+	emptiedDomains []string
+	// unmap holds, per emptied domain, the hashes to remove from the tracker mapping.
+	unmap map[string][]string
+	// icons holds one tracker URL for each domain that steps 2 and 3 found.
+	icons map[string]string
+}
+
+// countedStatuses are the status keys of the sidebar counts. stalled_seeding is
+// an alias with no sidebar entry.
+var countedStatuses = func() []string {
+	keys := slices.Collect(maps.Keys(namedStatuses))
+	return slices.DeleteFunc(keys, func(k string) bool { return k == "stalled_seeding" })
+}()
+
+// countTorrents makes the sidebar counts of the whole library with the
+// definitions of the rule.
+func countTorrents(in torrentCountsInput) torrentCountsResult {
+	torrents := in.torrents
+	counts := &TorrentCounts{
+		Status:           make(map[string]int, len(countedStatuses)),
+		Categories:       make(map[string]int),
+		CategorySizes:    make(map[string]int64),
+		Tags:             make(map[string]int),
+		TagSizes:         make(map[string]int64),
+		Trackers:         make(map[string]int),
+		TrackerTransfers: make(map[string]TrackerTransferStats),
+		Total:            len(torrents),
 	}
+	sharedContentPaths := findSharedContentPaths(torrents)
 
-	excludeUntagged := false
-	excludeTags := make(map[string]struct{}, len(filters.ExcludeTags))
-	for _, t := range filters.ExcludeTags {
-		if t == "" {
-			excludeUntagged = true
-			continue
-		}
-		excludeTags[t] = struct{}{}
-	}
-
-	// Precompute tracker filter set for O(1) lookups
-	trackerFilterSet := make(map[string]struct{}, len(filters.Trackers))
-	for _, t := range filters.Trackers {
-		trackerFilterSet[t] = struct{}{}
-	}
-
-	excludeTrackerSet := make(map[string]struct{}, len(filters.ExcludeTrackers))
-	for _, t := range filters.ExcludeTrackers {
-		excludeTrackerSet[t] = struct{}{}
-	}
-
-	// Precompute a map from torrent hash -> set of tracker domains
-	// Uses cached validated mapping when available, falling back to MainData.Trackers
-	torrentHashToDomains := map[string]map[string]struct{}{}
-	var trackerExclusions map[string]map[string]struct{}
-	if client != nil {
-		trackerExclusions = client.getTrackerExclusionsCopy()
-	}
-
-	// Only build the mapping if tracker filters are active
-	if len(filters.Trackers) != 0 || len(filters.ExcludeTrackers) != 0 {
-		// Try to use the pre-validated tracker mapping (built in background refresh)
-		var validatedMapping *ValidatedTrackerMapping
-		if client != nil {
-			validatedMapping = sm.getValidatedTrackerMapping(client.instanceID)
-		}
-
-		if validatedMapping != nil {
-			// Use cached HashToDomains - already validated, no need for torrentBelongsToTrackerDomain
-			for _, torrent := range torrents {
-				if domains, ok := validatedMapping.HashToDomains[torrent.Hash]; ok {
-					for domain := range domains {
-						// If filters are set and this domain isn't in either include or exclude sets, skip it
-						if len(trackerFilterSet) > 0 || len(excludeTrackerSet) > 0 {
-							if _, inFilter := trackerFilterSet[domain]; !inFilter {
-								if _, inExclude := excludeTrackerSet[domain]; !inExclude {
-									continue
-								}
-							}
-						}
-
-						// Check exclusions
-						if hashesToSkip, hasExclusions := trackerExclusions[domain]; hasExclusions {
-							if _, skip := hashesToSkip[torrent.Hash]; skip {
-								continue
-							}
-						}
-
-						if torrentHashToDomains[torrent.Hash] == nil {
-							torrentHashToDomains[torrent.Hash] = make(map[string]struct{})
-						}
-						torrentHashToDomains[torrent.Hash][domain] = struct{}{}
-					}
-				}
-			}
-		} else if mainData != nil && mainData.Trackers != nil {
-			// Fallback: MainData.Trackers. Permanent below qBittorrent 5.1 and on
-			// instances whose tracker hydration keeps failing, not just a cold start.
-			// Build torrentMap for O(1) lookups to validate tracker membership
-			torrentMap := make(map[string]*qbt.Torrent, len(torrents))
-			for i := range torrents {
-				torrentMap[torrents[i].Hash] = &torrents[i]
-			}
-
-			for trackerURL, hashes := range mainData.Trackers {
-				domain := sm.ExtractDomainFromURL(trackerURL)
-				if domain == "" {
-					continue
-				}
-
-				// If filters are set and this domain isn't in either include or exclude sets, skip storing it
-				if len(trackerFilterSet) > 0 || len(excludeTrackerSet) > 0 {
-					if _, ok := trackerFilterSet[domain]; !ok {
-						if _, excludeMatch := excludeTrackerSet[domain]; !excludeMatch {
-							continue
-						}
-					}
-				}
-
-				for _, h := range hashes {
-					// Validate torrent actually belongs to this tracker domain.
-					// MainData.Trackers can be stale when trackers are modified.
-					if torrent, exists := torrentMap[h]; exists {
-						if !sm.torrentBelongsToTrackerDomain(torrent, domain) {
-							continue
-						}
-					}
-
-					if hashesToSkip, ok := trackerExclusions[domain]; ok {
-						if _, skip := hashesToSkip[h]; skip {
-							continue
-						}
-					}
-
-					if torrentHashToDomains[h] == nil {
-						torrentHashToDomains[h] = make(map[string]struct{})
-					}
-					torrentHashToDomains[h][domain] = struct{}{}
-				}
-			}
-		}
-	}
-
-	var program *vm.Program
-	var compileErr error
-	if len(filters.Expr) > 0 {
-		if p, ok := sm.exprCache.Get(filters.Expr); ok {
-			log.Trace().Str("expr", filters.Expr).Msg("Using cached expression")
-			program = p
-		} else {
-			// User expressions see raw qbt.Torrent fields, including the
-			// never-completed sentinels in CompletionOn/SeenComplete
-			// (NormalizeCompletionTimestamp); guarding here would silently
-			// rewrite user-authored comparisons, so they are excluded.
-			program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
-			if compileErr != nil {
-				log.Error().Err(compileErr).Msg("Failed to compile expression")
-			} else if ok := sm.exprCache.Set(filters.Expr, program, 5*time.Minute); !ok {
-				log.Warn().Str("expr", filters.Expr).Msg("Failed to cache expression")
-			}
-		}
-	}
-
-torrentsLoop:
+	byState := make(map[qbt.TorrentState]int)
+	categoryStats := make(map[string]*countWithSize)
+	tagStats := make(map[string]*countWithSize)
 	for i := range torrents {
-		torrent := &torrents[i]
-
-		if len(hashFilterSet) > 0 {
-			match := false
-			candidates := []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2}
-			for _, candidate := range candidates {
-				if candidate == "" {
-					continue
-				}
-				if _, ok := hashFilterSet[strings.ToUpper(candidate)]; ok {
-					match = true
-					break
-				}
-			}
-			if !match {
-				continue
+		t := &torrents[i]
+		byState[t.State]++
+		addStat(categoryStats, t.Category, t, sharedContentPaths[i])
+		tagged := false
+		for tag := range strings.SplitSeq(t.Tags, ",") {
+			if tag = strings.TrimSpace(tag); tag != "" {
+				tagged = true
+				addStat(tagStats, tag, t, sharedContentPaths[i])
 			}
 		}
-
-		// Status filters (OR logic)
-		if len(filters.Status) > 0 {
-			matched := false
-			for _, status := range filters.Status {
-				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
+		if !tagged {
+			addStat(tagStats, "", t, sharedContentPaths[i])
 		}
+	}
 
-		if len(filters.ExcludeStatus) > 0 {
-			for _, status := range filters.ExcludeStatus {
-				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
-					continue torrentsLoop
+	for _, key := range countedStatuses {
+		def := namedStatuses[key]
+		n := 0
+		if def.health == "" {
+			for state, count := range byState {
+				if def.matchesState(state) {
+					n += count
 				}
 			}
 		}
+		counts.Status[key] = n
+	}
+	if in.health != nil {
+		in.health.writeCounts(counts.Status)
+	}
 
-		// Category filters (OR logic)
-		if len(filters.Categories) > 0 {
-			if _, ok := categorySet[torrent.Category]; !ok {
-				continue
+	for category, stats := range categoryStats {
+		counts.Categories[category] = stats.count
+		counts.CategorySizes[category] = stats.size.total()
+	}
+	if in.useSubcategories {
+		addSubcategoriesToParents(counts)
+	}
+	for tag, stats := range tagStats {
+		counts.Tags[tag] = stats.count
+		counts.TagSizes[tag] = stats.size.total()
+	}
+
+	result := torrentCountsResult{counts: counts}
+	countTrackers(in, sharedContentPaths, &result)
+	return result
+}
+
+// addSubcategoriesToParents adds the count and the size of each subcategory to
+// each parent above it.
+func addSubcategoriesToParents(counts *TorrentCounts) {
+	exact := maps.Clone(counts.Categories)
+	for category, count := range exact {
+		size := counts.CategorySizes[category]
+		for i := range len(category) {
+			if category[i] == '/' {
+				counts.Categories[category[:i]] += count
+				counts.CategorySizes[category[:i]] += size
 			}
 		}
+	}
+}
 
-		if len(excludeCategorySet) > 0 {
-			if _, ok := excludeCategorySet[torrent.Category]; ok {
-				continue
-			}
+// countTrackers adds the tracker counts with the steps of trackerResolver.
+// Step 1 reads the mapping by domain, and steps 2 to 4 run only on the
+// torrents that step 1 does not place.
+func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *torrentCountsResult) {
+	torrents := in.torrents
+	stats := make(map[string]*trackerDomainStats)
+	add := func(domain string, i int) {
+		s := stats[domain]
+		if s == nil {
+			s = &trackerDomainStats{}
+			stats[domain] = s
 		}
+		s.add(&torrents[i], sharedContentPaths[i])
+	}
 
-		// Tag filters (OR logic)
-		if len(filters.Tags) > 0 {
-			if torrent.Tags == "" {
-				if !includeUntagged {
-					continue
-				}
-			} else {
-				if !torrentHasAnyTag(torrent.Tags, includeTags) {
-					continue
-				}
-			}
+	placed := placeMappedTorrents(in, add)
+	need := make(map[string]struct{})
+	for i := range torrents {
+		if !placed[i] && needsMainData(&torrents[i]) {
+			need[torrents[i].Hash] = struct{}{}
 		}
-
-		// Exclude tags (AND logic - any match should exclude the torrent)
-		if excludeUntagged || len(excludeTags) > 0 {
-			if torrent.Tags == "" {
-				if excludeUntagged {
-					continue
-				}
-			} else {
-				if torrentHasAnyTag(torrent.Tags, excludeTags) {
-					continue
-				}
-			}
+	}
+	resolver := newTrackerResolver(in.trackers, func(hash string) bool {
+		_, ok := need[hash]
+		return ok
+	})
+	for i := range torrents {
+		if placed[i] {
+			continue
 		}
-
-		// Tracker filters (OR logic)
-		if len(filters.Trackers) > 0 {
-			// If we precomputed MainData domains, use them
-			if len(torrentHashToDomains) > 0 {
-				if domains, ok := torrentHashToDomains[torrent.Hash]; ok && len(domains) > 0 {
-					found := false
-					for domain := range domains {
-						if _, ok := trackerFilterSet[domain]; ok {
-							found = true
-							break
-						}
-					}
-					if !found {
-						continue
-					}
-				} else {
-					// No trackers known for this torrent
-					if _, ok := trackerFilterSet[""]; !ok {
-						continue
-					}
-				}
-			} else {
-				// Fallback to torrent.Tracker
-				if torrent.Tracker == "" {
-					if _, ok := trackerFilterSet[""]; !ok {
-						continue
-					}
-				} else {
-					trackerDomain := sm.ExtractDomainFromURL(torrent.Tracker)
-					if trackerDomain == "" {
-						continue
-					}
-					if _, ok := trackerFilterSet[trackerDomain]; !ok {
-						continue
-					}
-				}
+		noTracker := resolver.fallback(&torrents[i], func(domain, url string) {
+			add(domain, i)
+			if result.icons == nil {
+				result.icons = make(map[string]string)
 			}
+			if _, ok := result.icons[domain]; !ok && domain != "Unknown" {
+				result.icons[domain] = url
+			}
+		})
+		if noTracker {
+			result.counts.Trackers[""]++
 		}
+	}
 
-		if len(excludeTrackerSet) > 0 {
-			if len(torrentHashToDomains) > 0 {
-				if domains, ok := torrentHashToDomains[torrent.Hash]; ok && len(domains) > 0 {
-					excluded := false
-					for domain := range domains {
-						if _, ok := excludeTrackerSet[domain]; ok {
-							excluded = true
-							break
-						}
-					}
-					if excluded {
-						continue
-					}
-				} else {
-					// No trackers known for this torrent
-					if _, ok := excludeTrackerSet[""]; ok {
-						continue
-					}
-				}
-			} else {
-				// Fallback to torrent.Tracker metadata
-				if torrent.Tracker == "" {
-					if _, ok := excludeTrackerSet[""]; ok {
-						continue
-					}
-				} else {
-					trackerDomain := sm.ExtractDomainFromURL(torrent.Tracker)
-					if trackerDomain != "" {
-						if _, ok := excludeTrackerSet[trackerDomain]; ok {
-							continue
-						}
-					}
-				}
-			}
-		}
+	for domain, s := range stats {
+		result.counts.Trackers[domain] = s.sum.Count
+		result.counts.TrackerTransfers[domain] = s.totals()
+	}
+	reportEmptiedDomains(in, stats, result)
+}
 
-		if len(filters.Expr) > 0 && compileErr == nil {
-			env := *torrent
-			if filters.HideTrackerPasskeys {
-				env = torrentWithoutPasskeys(torrent)
-				env.MagnetURI = ""
-			}
-			result, err := expr.Run(program, env)
-			if err != nil {
-				if exprErr == nil {
-					exprErr = err
-				}
-				exprFailures++
-				continue
-			}
-
-			expResult, ok := result.(bool)
+// placeMappedTorrents runs step 1 for each domain of the mapping, and reports
+// which torrents it placed.
+func placeMappedTorrents(in torrentCountsInput, add func(domain string, i int)) []bool {
+	placed := make([]bool, len(in.torrents))
+	if in.domainToHashes == nil {
+		return placed
+	}
+	index := make(map[string]int, len(in.torrents))
+	for i := range in.torrents {
+		index[in.torrents[i].Hash] = i
+	}
+	for domain, hashes := range in.domainToHashes {
+		for hash := range hashes {
+			i, ok := index[hash]
 			if !ok {
-				if exprErr == nil {
-					exprErr = errors.New("expression result is not a boolean")
-				}
-				exprFailures++
 				continue
 			}
-
-			if !expResult {
+			if in.trackers.excluded(domain, hash) {
 				continue
 			}
-		}
-
-		// If we reach here, torrent passed all active filters
-		matched = append(matched, i)
-	}
-
-	// Collecting indices first keeps the growth cost on an int slice; the
-	// result is then materialized once at exactly the right size instead of
-	// repeatedly doubling a slice of ~600-byte structs. When every torrent
-	// passed, the input already is the result and no copy happens at all.
-	filtered := torrents
-	if len(matched) != len(torrents) {
-		filtered = make([]qbt.Torrent, len(matched))
-		for pos, idx := range matched {
-			filtered[pos] = torrents[idx]
+			placed[i] = true
+			add(domain, i)
 		}
 	}
-
-	if exprFailures > 0 {
-		log.Error().
-			Err(exprErr).
-			Int("failedTorrents", exprFailures).
-			Int("totalTorrents", len(torrents)).
-			Str("expr", filters.Expr).
-			Msg("Failed to evaluate expression")
-	}
-
-	log.Trace().
-		Int("inputTorrents", len(torrents)).
-		Int("filteredTorrents", len(filtered)).
-		Int("statusFilters", len(filters.Status)).
-		Int("excludeStatusFilters", len(filters.ExcludeStatus)).
-		Int("categoryFilters", len(filters.Categories)).
-		Int("excludeCategoryFilters", len(filters.ExcludeCategories)).
-		Int("tagFilters", len(filters.Tags)).
-		Int("excludeTagFilters", len(filters.ExcludeTags)).
-		Int("trackerFilters", len(filters.Trackers)).
-		Int("excludeTrackerFilters", len(filters.ExcludeTrackers)).
-		Msg("Applied manual filtering with multiple selections")
-
-	return filtered
+	return placed
 }
 
-func collectCategoryNames(mainData *qbt.MainData, categories map[string]qbt.Category) []string {
-	var mainCount int
-	if mainData != nil && mainData.Categories != nil {
-		mainCount = len(mainData.Categories)
-	}
-	if len(categories) == 0 && mainCount == 0 {
-		return nil
-	}
-
-	names := make([]string, 0, len(categories)+mainCount)
-	seen := make(map[string]struct{}, len(categories))
-
-	for name := range categories {
-		names = append(names, name)
-		seen[name] = struct{}{}
-	}
-
-	if mainCount > 0 {
-		for name := range mainData.Categories {
-			if _, exists := seen[name]; exists {
-				continue
-			}
-			names = append(names, name)
-			seen[name] = struct{}{}
+// reportEmptiedDomains lists the domains whose exclusions no longer hide a
+// torrent, with the excluded hashes to drop from the mapping.
+func reportEmptiedDomains(in torrentCountsInput, stats map[string]*trackerDomainStats, result *torrentCountsResult) {
+	for domain, hashes := range in.trackers.exclusions {
+		if _, ok := stats[domain]; ok {
+			continue
 		}
-	}
-
-	return names
-}
-
-func expandCategorySet(target map[string]struct{}, parent string, categoryNames []string) {
-	if len(categoryNames) == 0 {
-		return
-	}
-
-	prefix := parent + "/"
-	for _, name := range categoryNames {
-		if strings.HasPrefix(name, prefix) {
-			target[name] = struct{}{}
+		result.emptiedDomains = append(result.emptiedDomains, domain)
+		if in.domainToHashes == nil {
+			continue
 		}
+		if result.unmap == nil {
+			result.unmap = make(map[string][]string)
+		}
+		result.unmap[domain] = slices.Collect(maps.Keys(hashes))
 	}
-}
-
-// Torrent state categories for fast lookup
-var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
-	qbt.TorrentFilterDownloading:        {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	qbt.TorrentFilterUploading:          {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	qbt.TorrentFilter("seeding"):        {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	qbt.TorrentFilterPaused:             {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	qbt.TorrentFilterActive:             {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
-	qbt.TorrentFilterStalled:            {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	qbt.TorrentFilterChecking:           {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
-	qbt.TorrentFilterError:              {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
-	qbt.TorrentFilterMoving:             {qbt.TorrentStateMoving},
-	qbt.TorrentFilterStalledUploading:   {qbt.TorrentStateStalledUp},
-	qbt.TorrentFilterStalledDownloading: {qbt.TorrentStateStalledDl},
-	qbt.TorrentFilterStopped:            {qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	// TorrentFilterRunning is handled specially in matchTorrentStatus as inverse of stopped
-}
-
-// matchTorrentStatus checks if a torrent matches a specific status filter
-// matchTorrentStatusWithTrackerHealth uses cached tracker-health data only for
-// tracker-health statuses; all qBittorrent state filters keep their normal
-// state-based matching.
-func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthSnapshot) bool {
-	switch health := TrackerHealth(strings.ToLower(status)); health {
-	case TrackerHealthUnregistered, TrackerHealthDown, TrackerHealthError:
-		return cachedHealth.Health(torrent.Hash) == health
-	}
-
-	// Handle special cases first
-	switch qbt.TorrentFilter(status) {
-	case qbt.TorrentFilterAll:
-		return true
-	case qbt.TorrentFilterCompleted:
-		return torrent.Progress == 1
-	case qbt.TorrentFilterInactive:
-		// Inactive is the inverse of active
-		return !slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
-	case qbt.TorrentFilterRunning, qbt.TorrentFilterResumed:
-		// Running/Resumed means "not paused and not stopped"
-		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
-		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
-		return !slices.Contains(pausedStates, torrent.State) && !slices.Contains(stoppedStates, torrent.State)
-	case qbt.TorrentFilterStopped, qbt.TorrentFilterPaused:
-		// Stopped/Paused includes both paused and stopped states
-		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
-		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
-		return slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
-	default:
-		// Grouped categories and direct state names fall through below.
-	}
-
-	// For grouped status categories, check if state is in the category
-	if category, exists := torrentStateCategories[qbt.TorrentFilter(status)]; exists {
-		return slices.Contains(category, torrent.State)
-	}
-
-	// For everything else, just do direct equality with the string representation
-	return string(torrent.State) == status
 }

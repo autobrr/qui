@@ -154,9 +154,9 @@ func BenchmarkNormalizeForSearch(b *testing.B) {
 	}
 }
 
-// --- manual filtering -----------------------------------------------------
+// --- list rules -----------------------------------------------------------
 
-func BenchmarkHotManualFilters(b *testing.B) {
+func BenchmarkHotListRules(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
@@ -171,7 +171,7 @@ func BenchmarkHotManualFilters(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				_ = sm.applyManualFilters(nil, torrents, tc.filters, nil, nil, false)
+				_ = listRows(sm, nil, torrents, tc.filters, nil, false, nil)
 			}
 		})
 	}

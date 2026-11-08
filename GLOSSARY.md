@@ -34,6 +34,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. _Avoid_: Action scope, selection payload.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
+- **Sidebar count**: The number beside a sidebar filter. It equals the rows that filter shows with no other filter or search. A merged tracker shows the largest count of its domains. _Avoid_: Filter total.
+- **Completed**: A torrent whose state says it has all its wanted data, also during a recheck. _Avoid_: 100% progress.
+- **Stopped**: A torrent in a paused or stopped state. Running is the opposite. _Avoid_: Paused, as a separate meaning.
+- **Seeding**: A torrent in an upload state, whether or not it sends data. Dashboard "active" counts only those that send data. _Avoid_: Uploading, in user text.
+- **Trackers**: The tracker domains that a torrent belongs to. A torrent with none is in No tracker. _Avoid_: Tracker membership, and the Tracker column for the full set.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
 ## Peers

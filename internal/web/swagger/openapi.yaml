@@ -10151,18 +10151,18 @@ components:
       properties:
         expr:
           type: string
-          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching.
+          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching. An expression that does not compile gives no rows.
           example: 'Hash == "abcd1234" || Hash == "efgh5678"'
         status:
           type: array
           items:
             type: string
-          description: Filter by torrent status
+          description: Filter by torrent status. A value is a status of qui, for example `seeding` or `completed`, or a qBittorrent state name such as `stalledUP`, in any letter case. A value that qui does not know gives no rows.
         excludeStatus:
           type: array
           items:
             type: string
-          description: Array of strings to omit torrents with these statuses
+          description: Array of strings to omit torrents with these statuses. A value that qui does not know gives no rows.
         categories:
           type: array
           items:
@@ -10187,7 +10187,7 @@ components:
           type: array
           items:
             type: string
-          description: Filter by tracker hostnames
+          description: Filter by tracker hostnames. The value "" selects the torrents with no tracker.
         excludeTrackers:
           type: array
           items:

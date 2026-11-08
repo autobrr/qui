@@ -40,7 +40,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		torrents[5].Hash: TrackerHealthError,
 	})
 
-	t.Run("matchTorrentStatus filters correctly", func(t *testing.T) {
+	t.Run("each status matches its states", func(t *testing.T) {
 		testCases := []struct {
 			status   string
 			expected int // Expected number of matches
@@ -59,7 +59,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		for _, tc := range testCases {
 			count := 0
 			for _, torrent := range torrents {
-				if sm.matchTorrentStatusWithTrackerHealth(&torrent, tc.status, cachedHealth) {
+				if def, _ := lookupStatus(tc.status); def.matches(&torrent, cachedHealth) {
 					count++
 				}
 			}
@@ -94,99 +94,6 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		assert.Equal(t, 2, stats.Downloading, "Should have 2 actively downloading torrents")
 		assert.Equal(t, 2, stats.Seeding, "Should have 2 actively seeding torrents")
 	})
-}
-
-func TestSyncManager_TorrentBelongsToTrackerDomain(t *testing.T) {
-	sm := &SyncManager{}
-
-	tests := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		domain   string
-		expected bool
-	}{
-		{
-			name:     "nil torrent returns false",
-			torrent:  nil,
-			domain:   "example.com",
-			expected: false,
-		},
-		{
-			name:     "empty trackers uses Tracker field - match",
-			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
-			domain:   "tracker.example.com",
-			expected: true,
-		},
-		{
-			name:     "empty trackers uses Tracker field - no match",
-			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
-			domain:   "other.com",
-			expected: false,
-		},
-		{
-			name: "trackers slice - first matches",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "first.com",
-			expected: true,
-		},
-		{
-			name: "trackers slice - second matches",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "second.com",
-			expected: true,
-		},
-		{
-			name: "trackers slice - none match",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "third.com",
-			expected: false,
-		},
-		{
-			name: "trackers slice takes precedence over Tracker field",
-			torrent: &qbt.Torrent{
-				Tracker: "http://tracker.example.com/announce",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://different.com/announce"},
-				},
-			},
-			domain:   "tracker.example.com",
-			expected: false, // Trackers slice doesn't contain this domain
-		},
-		{
-			name:     "empty domain",
-			torrent:  &qbt.Torrent{Tracker: "http://example.com/announce"},
-			domain:   "",
-			expected: false,
-		},
-		{
-			name:     "empty tracker field and empty slice",
-			torrent:  &qbt.Torrent{},
-			domain:   "example.com",
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sm.torrentBelongsToTrackerDomain(tt.torrent, tt.domain)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestSyncManager_GetTrackerHealthSnapshot_NilWhenNoCache(t *testing.T) {
@@ -324,7 +231,7 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	// If we reach here without race detector complaints, the test passes
 }
 
-func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
+func TestListRules_Exclusions(t *testing.T) {
 	sm := &SyncManager{}
 
 	torrents := []qbt.Torrent{
@@ -393,50 +300,12 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData, nil, false)
+		result := listRows(sm, nil, torrents, tc.filters, mainData, false, nil)
 		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
 	}
 }
 
-func TestFiltersRequireTrackerData(t *testing.T) {
-	testCases := []struct {
-		name    string
-		filters FilterOptions
-		want    bool
-	}{
-		{
-			name:    "include tracker health statuses",
-			filters: FilterOptions{Status: []string{"unregistered"}},
-			want:    true,
-		},
-		{
-			name:    "exclude tracker health statuses",
-			filters: FilterOptions{ExcludeStatus: []string{"tracker_down"}},
-			want:    true,
-		},
-		{
-			name:    "include tracker error status",
-			filters: FilterOptions{Status: []string{"tracker_error"}},
-			want:    true,
-		},
-		{
-			name:    "non tracker health statuses",
-			filters: FilterOptions{Status: []string{"downloading"}},
-			want:    false,
-		},
-		{
-			name:    "no statuses",
-			filters: FilterOptions{},
-			want:    false,
-		},
-	}
-
-	for _, tc := range testCases {
-		assert.Equal(t, tc.want, filtersRequireTrackerData(tc.filters), tc.name)
-	}
-}
-
-func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
+func TestListRulesUseCachedTrackerHealth(t *testing.T) {
 	sm := &SyncManager{}
 	cachedHealth := NewTrackerHealthSnapshot(map[string]TrackerHealth{
 		"unregistered": TrackerHealthUnregistered,
@@ -450,13 +319,13 @@ func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "Error"},
 	}
 
-	filtered := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, nil, false, cachedHealth)
+	filtered := listRows(sm, nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, false, cachedHealth)
 	assert.Equal(t, []qbt.Torrent{torrents[1], torrents[3]}, filtered)
 
-	excluded := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, nil, false, cachedHealth)
+	excluded := listRows(sm, nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, false, cachedHealth)
 	assert.Equal(t, []qbt.Torrent{torrents[0], torrents[1], torrents[3]}, excluded)
 
-	withoutCache := sm.applyManualFilters(nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, nil, false)
+	withoutCache := listRows(sm, nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, false, nil)
 	assert.Empty(t, withoutCache)
 }
 
