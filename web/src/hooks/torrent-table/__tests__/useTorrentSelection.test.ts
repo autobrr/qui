@@ -25,7 +25,7 @@ function props(torrents: Torrent[], overrides: Partial<UseTorrentSelectionParams
   return {
     visibleTorrents: torrents,
     groupExpansion: COLLAPSED_COPY_GROUPS,
-    groupCopies: false,
+    groupedRows: false,
     isReadOnly: false,
     isCrossInstanceEndpoint: false,
     instanceId: 1,
@@ -76,11 +76,15 @@ describe("useTorrentSelection — shift-click anchor", () => {
     expect(result.current.lastSelectedIndexRef.current).toBeNull()
   })
 
-  it("drops the anchor when Group copies turns off", () => {
-    const { result, rerender } = render({ groupCopies: true })
+  // regression: #3930
+  it.each([
+    ["Group copies turns off", true, false],
+    ["grouped rows arrive after Grouping…", false, true],
+  ])("drops the anchor when %s", (_, before, after) => {
+    const { result, rerender } = render({ groupedRows: before })
     act(() => result.current.handleCheckboxChange(DEFAULT_TORRENTS[1], "1", true))
     expect(result.current.lastSelectedIndexRef.current).toBe(1)
-    rerender(props(DEFAULT_TORRENTS, { groupCopies: false }))
+    rerender(props(DEFAULT_TORRENTS, { groupedRows: after }))
     expect(result.current.lastSelectedIndexRef.current).toBeNull()
   })
 })
