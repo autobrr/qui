@@ -334,6 +334,19 @@ func TestCopyGroupsJob_StopsFiveMinutesAfterTheLastDemand(t *testing.T) {
 	})
 }
 
+// A grouped stream demands while the job runs, so each demand must move the stop.
+func TestCopyGroupsJob_ADemandKeepsARunningJobGoing(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.firstMap()
+		h.wait(copyGroupsIdle - 2*copyGroupsTick)
+		h.demandAndWait()
+		h.wait(copyGroupsIdle - 2*copyGroupsTick)
+		reads := h.lists(1)
+		h.wait(copyGroupsTick)
+		require.Greater(t, h.lists(1), reads, "the job stopped five minutes after the first demand")
+	})
+}
+
 func TestCopyGroupsJob_NoRebuildWithoutAMove(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()

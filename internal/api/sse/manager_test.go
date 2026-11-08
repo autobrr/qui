@@ -28,7 +28,7 @@ import (
 
 func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -62,7 +62,7 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 
 func TestStreamManagerHandleSyncErrorPreservesHealthBlockerStatus(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -97,7 +97,7 @@ func TestStreamManagerHandleSyncErrorPreservesHealthBlockerStatus(t *testing.T) 
 
 func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -133,7 +133,7 @@ func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 
 func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -200,7 +200,7 @@ func TestSyncErrorMessageRetryHints(t *testing.T) {
 
 func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -242,7 +242,7 @@ func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testin
 	synctest.Test(t, func(t *testing.T) {
 		// The staleness stamp is resolved on a fresh goroutine so this callback's fan-out
 		// does not hold up the qBittorrent sync loop.
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -297,7 +297,7 @@ func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testi
 	synctest.Test(t, func(t *testing.T) {
 		// A nil client pool means the default source cannot resolve a sync time, so the
 		// field must be omitted rather than serialized as the time.Time zero value.
-		manager := NewStreamManager(nil, nil, nil, nil)
+		manager := NewStreamManager(nil, nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
@@ -322,7 +322,7 @@ func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testi
 }
 
 func TestStreamManagerHandleSyncErrorWithoutSubscribers(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -332,7 +332,7 @@ func TestStreamManagerHandleSyncErrorWithoutSubscribers(t *testing.T) {
 }
 
 func TestStreamManagerHeartbeatPublishesEvent(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -363,7 +363,7 @@ func TestStreamManagerHeartbeatPublishesEvent(t *testing.T) {
 func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 	store := newTestInstanceStore(t)
 
-	manager := NewStreamManager(nil, nil, nil, store)
+	manager := NewStreamManager(nil, nil, nil, nil, store)
 
 	payload := []map[string]any{
 		{
@@ -394,7 +394,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false, nil)
 	require.NoError(t, err, "failed to seed instance")
 
-	manager := NewStreamManager(nil, nil, nil, store)
+	manager := NewStreamManager(nil, nil, nil, nil, store)
 
 	payload := []map[string]any{
 		{
@@ -419,7 +419,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 }
 
 func TestStreamManagerServeMissingInstanceStore(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	payload := []map[string]any{
 		{
@@ -536,7 +536,7 @@ func newTestInstanceStore(t *testing.T) *models.InstanceStore {
 }
 
 func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// First failure: 2s * 2^1 = 4s
 	interval1 := manager.markSyncFailure(1)
@@ -565,7 +565,7 @@ func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {
 }
 
 func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// Simulate some failures first
 	manager.markSyncFailure(1)
@@ -586,7 +586,7 @@ func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
 }
 
 func TestMarkSyncSuccess_PrimesWithoutPriorState(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// First success without a prior failure should create a primed entry so the
 	// next sync uses the incremental budget.
@@ -614,7 +614,7 @@ func TestStreamManager_syncTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager := NewStreamManager(nil, nil, nil, nil)
+			manager := NewStreamManager(nil, nil, nil, nil, nil)
 			if tt.state != nil {
 				manager.syncBackoff[1] = tt.state
 			}
@@ -642,7 +642,7 @@ func TestStreamManager_syncTimeout_followsClientTimeout(t *testing.T) {
 			require.NoError(t, err)
 			defer pool.Close()
 
-			manager := NewStreamManager(pool, nil, nil, nil)
+			manager := NewStreamManager(pool, nil, nil, nil, nil)
 			require.Equal(t, tt.want, manager.syncTimeout(1), "unprimed instance should get the full budget bounded by the transport")
 		})
 	}
@@ -651,7 +651,7 @@ func TestStreamManager_syncTimeout_followsClientTimeout(t *testing.T) {
 func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 	// syncTimeout reads backoffState fields that markSyncSuccess/markSyncFailure
 	// mutate under m.mu. This must stay race-free; run under `go test -race`.
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	const goroutines = 8
 	const iterations = 500
@@ -687,7 +687,7 @@ func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 }
 
 func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	manager.markSyncSuccess(1)
 
@@ -696,7 +696,7 @@ func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
 }
 
 func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	manager.markSyncSuccess(1)
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1))
@@ -713,7 +713,7 @@ func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
 }
 
 func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// Failure before the first success creates an unprimed entry (the wedge condition).
 	manager.markSyncFailure(1)
@@ -724,7 +724,7 @@ func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
 }
 
 func TestBackoffState_IndependentPerInstance(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// Instance 1: 2 failures
 	manager.markSyncFailure(1)
@@ -754,7 +754,7 @@ func TestBackoffState_IndependentPerInstance(t *testing.T) {
 }
 
 func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -808,7 +808,7 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 }
 
 func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -861,7 +861,7 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 }
 
 func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -953,7 +953,7 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 }
 
 func TestHandleMainData_NilData(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -980,7 +980,7 @@ func TestHandleMainData_NilData(t *testing.T) {
 }
 
 func TestHandleSyncError_NilError(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
@@ -1178,7 +1178,7 @@ func TestParseStreamRequests_OrderNormalization(t *testing.T) {
 }
 
 func TestRegisterSubscription_DuringShutdown(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// Start shutdown
 	err := manager.Shutdown(context.Background())
@@ -1191,7 +1191,7 @@ func TestRegisterSubscription_DuringShutdown(t *testing.T) {
 }
 
 func TestShutdown_WithNilContext(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// Shutdown with nil context should not panic
 	var shutdownCtx context.Context
@@ -1201,7 +1201,7 @@ func TestShutdown_WithNilContext(t *testing.T) {
 }
 
 func TestShutdown_Idempotent(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil, nil)
 
 	// First shutdown
 	err := manager.Shutdown(context.Background())
