@@ -1142,7 +1142,11 @@ func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
 	}
 	evalCtx, hardlinkIndex, err := s.buildEvalContext(ctx, instanceID, instance, torrents, previewNeeds(rule))
-	return evalCtx, hardlinkIndex, instance, err
+	if err != nil {
+		return nil, nil, instance, err
+	}
+	s.askRuleFacts([]*models.Automation{rule}, torrents, evalCtx, nil)
+	return evalCtx, hardlinkIndex, instance, nil
 }
 
 // setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
@@ -1872,6 +1876,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.mu.RUnlock()
 		return exists && now.Sub(ts) < s.cfg.SkipWithin
 	}
+
+	s.askRuleFacts(eligibleRules, torrents, evalCtx, skipCheck)
 
 	// Compute which rules actually have matching torrents that won't be skipped.
 	// This must happen after skipCheck is defined so we only stamp lastRuleRun

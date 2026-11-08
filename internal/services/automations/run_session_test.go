@@ -28,12 +28,13 @@ func (s cannedSession) Resolve(context.Context, ResolveRequest) *CrossMatchResul
 	return s.result
 }
 
-// recordingMatcher answers each Resolve with the components of the asked
+// recordingMatcher answers each group ask with the components of the asked
 // torrents in links, as the cross-seed session does, and records each request.
 type recordingMatcher struct {
 	links  map[string][]string
 	shared map[string]struct{}
 	files  map[string]qbt.TorrentFiles // MemberFiles of the answers
+	exists map[string]struct{}         // the torrents with a cross-seed on this instance
 	mu     sync.Mutex
 	asks   []ResolveRequest
 }
@@ -47,9 +48,12 @@ func (m *recordingMatcher) Resolve(_ context.Context, req ResolveRequest) *Cross
 	defer m.mu.Unlock()
 	m.asks = append(m.asks, req)
 	result := &CrossMatchResult{SameInstanceContentByHash: make(map[string][]string), MemberFiles: make(map[string]qbt.TorrentFiles)}
-	start := req.Hashes
-	if req.All {
+	var start []string
+	switch {
+	case req.Groups && req.All:
 		start = slices.Collect(maps.Keys(m.links))
+	case req.Groups:
+		start = req.Hashes
 	}
 	for _, hash := range start {
 		for _, member := range componentHashes(m.links, hash) {
@@ -58,6 +62,18 @@ func (m *recordingMatcher) Resolve(_ context.Context, req ResolveRequest) *Cross
 				if files, ok := m.files[member]; ok {
 					result.MemberFiles[member] = files
 				}
+			}
+		}
+	}
+	if m.exists != nil {
+		asked := req.Hashes
+		if req.All {
+			asked = slices.Collect(maps.Keys(m.exists))
+		}
+		result.SameInstanceExists = make(map[string]struct{})
+		for _, hash := range asked {
+			if _, ok := m.exists[hash]; ok {
+				result.SameInstanceExists[hash] = struct{}{}
 			}
 		}
 	}
@@ -749,4 +765,173 @@ func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	}
 	slices.Sort(hashes)
 	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
+}
+
+// factService serves library from a recording session that answers Exists from exists.
+func factService(library []stubTorrent, exists map[string]struct{}) func(t *testing.T) (*Service, int, *stubQbt, *recordingMatcher) {
+	return func(t *testing.T) (*Service, int, *stubQbt, *recordingMatcher) {
+		t.Helper()
+		svc, instanceID, stub, matcher := newRecordingStubServiceOf(t, library, false)
+		matcher.exists = exists
+		return svc, instanceID, stub, matcher
+	}
+}
+
+func existsOnSameInstance() *models.RuleCondition {
+	return &models.RuleCondition{Field: models.FieldExistsOnSameInstance, Operator: models.OperatorEqual, Value: "true"}
+}
+
+// factLibrary serves 150 torrents with no cross-seed group: the first 50 on
+// the tracker scope.test, the rest on other.test. Every third torrent has a
+// cross-seed on this instance.
+func factLibrary() ([]stubTorrent, []string, map[string]struct{}) {
+	torrents := make([]stubTorrent, 0, 150)
+	scope := make([]string, 0, 50)
+	exists := make(map[string]struct{})
+	for i := range 150 {
+		hash := fmt.Sprintf("%040x", i+1)
+		tracker := "https://other.test/announce"
+		if i < 50 {
+			tracker = "https://scope.test/announce"
+			scope = append(scope, hash)
+		}
+		if i%3 == 0 {
+			exists[hash] = struct{}{}
+		}
+		torrents = append(torrents, stubTorrent{hash, fmt.Sprintf("Fact.Show.S01E%03d.1080p.WEB.x264-GRP", i), "", tracker})
+	}
+	return torrents, scope, exists
+}
+
+// A rule with an Exists condition asks once for the torrents in its tracker
+// scope, with no group, and deletes the same torrents as an ask for the whole
+// library.
+func TestRunSession_ExistsConditionAsksOnlyTheTrackerScope(t *testing.T) {
+	library, scope, exists := factLibrary()
+	rule := deleteRule(DeleteModeKeepFiles, existsOnSameInstance())
+	rule.TrackerPattern = "scope.test"
+	var want deleteOutcome
+	for _, hash := range scope {
+		if _, ok := exists[hash]; ok {
+			want.deleted = append(want.deleted, hash)
+		}
+	}
+	require.Len(t, want.deleted, 17)
+	runEachFormOn(t, factService(library, exists), rule, want, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
+		require.Len(t, asks, 1)
+		require.False(t, asks[0].All)
+		require.False(t, asks[0].Groups)
+		require.ElementsMatch(t, scope, asks[0].Hashes)
+	})
+}
+
+// A score sort on a cross-seed field scores every torrent, so the rule asks
+// once for the whole list.
+func TestRunSession_ScoreSortOnACrossSeedFieldAsksTheWholeList(t *testing.T) {
+	library, scope, exists := factLibrary()
+	rule := deleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "Fact"})
+	rule.TrackerPattern = "scope.test"
+	rule.SortingConfig = &models.SortingConfig{
+		SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{{Type: models.ScoreRuleTypeConditional, Conditional: &models.ConditionalScoreRule{Condition: existsOnSameInstance(), Score: 1}}},
+	}
+	runEachFormOn(t, factService(library, exists), rule, deleteOutcome{deleted: scope}, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
+		require.Equal(t, []ResolveRequest{{All: true}}, asks)
+	})
+}
+
+// A group delete checks the condition on every member of the GroupID group,
+// so the one ask also holds the members outside the tracker scope.
+func TestRunSession_GroupCheckAsksTheMembersOutsideTheScope(t *testing.T) {
+	library := make([]stubTorrent, 0, 150)
+	scope := make([]string, 0, 50)
+	var partners []string
+	exists := make(map[string]struct{})
+	for k := range 50 {
+		hash := fmt.Sprintf("%040x", k+1)
+		scope = append(scope, hash)
+		library = append(library, stubTorrent{hash, fmt.Sprintf("Group.Show.S01E%03d.1080p.WEB.x264-GRP", k), "", "https://scope.test/announce"})
+		if k%2 == 0 {
+			exists[hash] = struct{}{}
+		}
+	}
+	// The first 10 share a content path with a torrent on another tracker.
+	for k := range 100 {
+		hash := fmt.Sprintf("%040x", 1000+k)
+		name := fmt.Sprintf("Other.Show.S01E%03d.1080p.WEB.x264-GRP", k)
+		if k < 10 {
+			name = fmt.Sprintf("Group.Show.S01E%03d.1080p.WEB.x264-GRP", k)
+			partners = append(partners, hash)
+			if k%4 == 0 {
+				exists[hash] = struct{}{}
+			}
+		}
+		library = append(library, stubTorrent{hash, name, "", "https://other.test/announce"})
+	}
+	rule := deleteRule(DeleteModeKeepFiles, existsOnSameInstance())
+	rule.TrackerPattern = "scope.test"
+	rule.Conditions.Delete.GroupID = "bycontent"
+	rule.Conditions.Grouping = &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bycontent", Keys: []string{"contentPath"}}}}
+	var want deleteOutcome
+	for k := 0; k < 50; k += 2 {
+		switch {
+		case k >= 10:
+			want.deleted = append(want.deleted, scope[k])
+		case k%4 == 0:
+			want.deleted = append(want.deleted, scope[k], partners[k])
+		}
+	}
+	runEachFormOn(t, factService(library, exists), rule, want, func(t *testing.T, asks []ResolveRequest, _ *stubQbt) {
+		require.Len(t, asks, 1)
+		require.False(t, asks[0].All)
+		require.ElementsMatch(t, slices.Concat(scope, partners), asks[0].Hashes)
+	})
+}
+
+// A move that blocks on a cross-seed checks its condition on the cross-seeds
+// of each matched torrent, so it asks for their facts in one ask before the
+// rule loop.
+func TestRunSession_MoveBlockAsksTheCrossSeedFactsOnce(t *testing.T) {
+	const (
+		sessionD = "dddddddddddddddddddddddddddddddddddddddd"
+		sessionE = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	)
+	scopeTracker, otherTracker := "https://scope.test/announce", "https://other.test/announce"
+	// c is the cross-seed of a, and e the cross-seed of d, both on another tracker.
+	library := []stubTorrent{
+		{sessionA, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "", scopeTracker},
+		{sessionB, "Silent.Shore.2021.1080p.BluRay.x264-GRP", "", scopeTracker},
+		{sessionC, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "", otherTracker},
+		{sessionD, "Calm.Bay.2022.1080p.BluRay.x264-GRP", "", scopeTracker},
+		{sessionE, "Calm.Bay.2022.1080p.BluRay.x264-GRP", "", otherTracker},
+	}
+	svc, instanceID, stub, matcher := newRecordingStubServiceOf(t, library, false)
+	matcher.exists = map[string]struct{}{sessionA: {}, sessionC: {}, sessionD: {}, sessionE: {}}
+	rule := moveRule("")
+	rule.TrackerPattern = "scope.test"
+	rule.Conditions.Move.Condition = existsOnSameInstance()
+	rule.Conditions.Move.BlockIfCrossSeed = true
+	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{sessionA, sessionC, sessionD, sessionE}, stub.writtenHashes()["move"])
+	require.Equal(t, []ResolveRequest{
+		{Hashes: []string{sessionA, sessionB, sessionD}},
+		{Hashes: []string{sessionA, sessionD}, Groups: true},
+		{Hashes: []string{sessionC, sessionE}},
+	}, matcher.requests())
+}
+
+// A condition on a torrent that no ask covered reads its facts first, so it
+// never gets "known, no cross-seed" from a torrent that the session did not read.
+func TestRunSession_FactMissReadsTheTorrentFirst(t *testing.T) {
+	t.Parallel()
+	torrent := qbt.Torrent{Hash: sessionA}
+	matcher := &recordingMatcher{exists: map[string]struct{}{sessionA: {}}}
+	svc := &Service{crossMatcher: matcher}
+	evalCtx := &EvalContext{}
+	require.NoError(t, svc.openRunSession(t.Context(), 1, []qbt.Torrent{torrent}, RuleNeeds{CrossMatch: CrossMatchNeeds{SameExists: true}}, evalCtx))
+	require.Empty(t, matcher.requests())
+	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
+	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
+	require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}}}, matcher.requests())
 }

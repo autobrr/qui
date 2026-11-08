@@ -307,7 +307,22 @@ func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *
 		hashes = append(hashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, asked)...)
 	}
 	slices.Sort(hashes)
-	crossSeeds.session.resolveGroups(slices.Compact(hashes), false)
+	hashes = slices.Compact(hashes)
+	crossSeeds.session.resolveGroups(hashes, false)
+	// A move that blocks on a cross-seed checks its condition on each member.
+	if slices.ContainsFunc(moveRules, moveBlockReadsCrossSeedFacts) {
+		var members []string
+		for _, hash := range hashes {
+			members = append(members, memberHashes(crossSeeds.members(hash))...)
+		}
+		slices.Sort(members)
+		crossSeeds.session.resolveFacts(slices.Compact(members))
+	}
+}
+
+func moveBlockReadsCrossSeedFacts(rule *models.Automation) bool {
+	move := rule.Conditions.Move
+	return move.BlockIfCrossSeed && strings.TrimSpace(move.GroupID) == "" && conditionReadsCrossSeedFacts(move.Condition)
 }
 
 // askedMoveGroup is a group of a move GroupID that the read-ahead already asked for.
