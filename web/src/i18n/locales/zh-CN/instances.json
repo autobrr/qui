@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "已禁用",
-      "enabled": "已启用",
       "connected": "已连接",
       "disconnected": "已断开"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 验证：",
       "tlsSkipped": "已跳过",
       "tlsStrict": "严格",
-      "localFileAccess": "本地文件系统访问：",
-      "testingConnection": "正在测试连接..."
+      "testingConnection": "正在测试连接...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "删除实例",
@@ -2058,6 +2057,18 @@
       "failedToDeleteBackup": "删除备份失败",
       "allBackupsDeleted": "所有备份已删除",
       "failedToDeleteBackups": "删除备份失败"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com, so cross-seed link mode falls back to regular mode here."
     }
   }
 }

@@ -58,7 +58,6 @@
     "errors": "Errors",
     "reannounceTooltip": "Automatic tracker reannounce enabled",
     "altSpeedLimits": "Alternative speed limits: {{status}}",
-    "localFileAccess": "Local file access enabled",
     "connectable": "Connectable",
     "portInfo": ". Port: {{port}}",
     "connectionStatus": "qBittorrent connection status: {{status}}",
@@ -138,7 +137,7 @@
       "size": "Size",
       "seeded": "Seeded"
     },
-    "seededTooltip": "Uploaded \u00f7 Content Size \u2014 how many times you've seeded your content",
+    "seededTooltip": "Uploaded ÷ Content Size — how many times you've seeded your content",
     "mergedFrom": "Merged from: {{domains}}",
     "original": "Original: {{domain}}",
     "mergeTooltip": "Merge selected trackers into this group",
@@ -214,7 +213,7 @@
     "noInstances": "No instances configured",
     "getStarted": "Get started by adding your first qBittorrent instance",
     "allDisabled": "All instances are disabled",
-    "enableInstance": "Enable an instance from Settings \u2192 Instances to see dashboard stats.",
+    "enableInstance": "Enable an instance from Settings → Instances to see dashboard stats.",
     "manageInstances": "Manage Instances"
   }
 }

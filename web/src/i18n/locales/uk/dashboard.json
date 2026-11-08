@@ -58,7 +58,6 @@
     "errors": "Помилки",
     "reannounceTooltip": "Автоматичне повторне оголошення трекера увімкнено",
     "altSpeedLimits": "Альтернативні ліміти швидкості: {{status}}",
-    "localFileAccess": "Локальний доступ до файлів увімкнено",
     "connectable": "Підключення можливе",
     "portInfo": ". Порт: {{port}}",
     "connectionStatus": "Статус з'єднання qBittorrent: {{status}}",

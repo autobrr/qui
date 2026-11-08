@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Vypnuto",
-      "enabled": "Zapnuto",
       "connected": "Připojeno",
       "disconnected": "Odpojeno"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS ověření:",
       "tlsSkipped": "Přeskočit",
       "tlsStrict": "Striktní",
-      "localFileAccess": "Lokální přístup k souborům:",
-      "testingConnection": "Testuji připojení..."
+      "testingConnection": "Testuji připojení...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -2124,6 +2123,18 @@
       "success": "Úspěch",
       "failed": "Selhalo",
       "canceled": "Zrušeno"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com, so cross-seed link mode falls back to regular mode here."
     }
   }
 }

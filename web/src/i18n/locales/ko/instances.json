@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "비활성화됨",
-      "enabled": "활성화됨",
       "connected": "연결됨",
       "disconnected": "연결 끊김"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 검증:",
       "tlsSkipped": "건너뜀",
       "tlsStrict": "엄격",
-      "localFileAccess": "로컬 파일 접근:",
-      "testingConnection": "연결 테스트 중..."
+      "testingConnection": "연결 테스트 중...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "인스턴스 삭제",
@@ -2058,6 +2057,18 @@
       "failedToDeleteBackup": "백업 실행을 삭제하지 못했습니다",
       "allBackupsDeleted": "모든 백업을 삭제했습니다",
       "failedToDeleteBackups": "백업을 삭제하지 못했습니다"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com, so cross-seed link mode falls back to regular mode here."
     }
   }
 }
