@@ -1607,6 +1607,9 @@
   "copyGroups": {
     "copies_other": "{{name}}의 추가 사본 {{count}}개",
     "copiesWithProblem_other": "{{name}}의 추가 사본 {{count}}개. 숨겨진 사본에 문제가 있습니다",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

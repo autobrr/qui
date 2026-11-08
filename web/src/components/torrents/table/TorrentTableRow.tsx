@@ -71,6 +71,8 @@ export interface TorrentTableRowProps {
   copies?: number
   /** Only on a collapsed group: a hidden copy has a problem. */
   hiddenCopyProblem?: boolean
+  /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
+  hiddenCopyTicks?: number
   /** Only on a collapsed group whose first-sorted member is not the top row. */
   sortedTorrent?: Torrent
   sortedColumnId?: string
@@ -124,6 +126,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   copyGroupOpen = false,
   copies = 0,
   hiddenCopyProblem = false,
+  hiddenCopyTicks = 0,
   sortedTorrent,
   sortedColumnId,
   nestedCopy = false,
@@ -138,6 +141,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
       open={copyGroupOpen}
       copies={copies}
       hiddenProblem={hiddenCopyProblem}
+      hiddenTicks={hiddenCopyTicks}
       name={compact.incognitoMode ? getLinuxIsoName(shownTorrent.hash) : shownTorrent.name}
       size={size}
       onToggle={onToggleCopyGroup}

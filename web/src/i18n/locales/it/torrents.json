@@ -1686,6 +1686,11 @@
     "copies_other": "{{count}} altre copie di {{name}}",
     "copiesWithProblem_one": "{{count}} altra copia di {{name}}. Una copia nascosta ha un problema",
     "copiesWithProblem_other": "{{count}} altre copie di {{name}}. Una copia nascosta ha un problema",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",
+    "hiddenTicked_one": "{{count}} copia nascosta è selezionata",
+    "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

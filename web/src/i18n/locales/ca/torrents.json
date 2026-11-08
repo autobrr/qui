@@ -1686,6 +1686,11 @@
     "copies_other": "{{count}} còpies més de {{name}}",
     "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
     "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

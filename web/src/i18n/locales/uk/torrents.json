@@ -1844,6 +1844,15 @@
     "copiesWithProblem_few": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
     "copiesWithProblem_many": "Ще {{count}} копій торрента {{name}}. Прихована копія має проблему",
     "copiesWithProblem_other": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_few": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_many": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_other": "+{{hidden}} · вибрано {{count}}",
+    "hiddenTicked_one": "Вибрано {{count}} приховану копію",
+    "hiddenTicked_few": "Вибрано {{count}} приховані копії",
+    "hiddenTicked_many": "Вибрано {{count}} прихованих копій",
+    "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

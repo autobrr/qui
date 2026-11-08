@@ -17,6 +17,8 @@ interface CopyGroupPillProps {
   copies: number
   /** Only on a collapsed group: a hidden copy has a problem. */
   hiddenProblem: boolean
+  /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
+  hiddenTicks: number
   /** The name that the row shows, so each pill has its own accessible name. */
   name: string
   size: CopyGroupPillSize
@@ -27,10 +29,11 @@ const HEIGHT: Record<CopyGroupPillSize, string> = { normal: "h-5", dense: "h-[18
 
 // The "+N" toggle at the end of the name of a Copy group's top row. The name
 // stays the same in both states: aria-expanded tells open from closed.
-export function CopyGroupPill({ id, open, copies, hiddenProblem, name, size, onToggle }: CopyGroupPillProps) {
+export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, name, size, onToggle }: CopyGroupPillProps) {
   const { t } = useTranslation("torrents")
   const canHover = useMediaQuery("(hover: hover)")
-  const label = hiddenProblem ? t("copyGroups.copiesWithProblem", { count: copies, name }) : t("copyGroups.copies", { count: copies, name })
+  const copiesLabel = hiddenProblem ? t("copyGroups.copiesWithProblem", { count: copies, name }) : t("copyGroups.copies", { count: copies, name })
+  const label = hiddenTicks > 0 ? t("copyGroups.labelWithTicks", { label: copiesLabel, ticks: t("copyGroups.hiddenTicked", { count: hiddenTicks }) }) : copiesLabel
   const button = (
     <button
       type="button"
@@ -50,7 +53,7 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, name, size, onT
       )}
     >
       {hiddenProblem && <AlertTriangle className="mr-0.5 h-3.5 w-3.5 text-destructive" aria-hidden="true" />}
-      <span>{t("copyGroups.badge", { hidden: copies })}</span>
+      <span>{hiddenTicks > 0 ? t("copyGroups.badgeTicked", { hidden: copies, count: hiddenTicks }) : t("copyGroups.badge", { hidden: copies })}</span>
       <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden="true" />
     </button>
   )

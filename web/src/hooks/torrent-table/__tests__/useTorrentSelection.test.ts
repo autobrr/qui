@@ -5,6 +5,7 @@
 
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { type SelectionRow, type UseTorrentSelectionParams, useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
+import { COLLAPSED_COPY_GROUPS } from "@/lib/copy-groups"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { Torrent } from "@/types"
 import { act, renderHook } from "@testing-library/react"
@@ -22,7 +23,8 @@ const DEFAULT_TORRENTS = [
 
 function props(torrents: Torrent[], overrides: Partial<UseTorrentSelectionParams> = {}): UseTorrentSelectionParams {
   return {
-    sortedTorrents: torrents,
+    visibleTorrents: torrents,
+    groupExpansion: COLLAPSED_COPY_GROUPS,
     isReadOnly: false,
     isCrossInstanceEndpoint: false,
     instanceId: 1,

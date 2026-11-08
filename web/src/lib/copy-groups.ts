@@ -97,6 +97,17 @@ export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGr
   return visible
 }
 
+/** The ticked members other than the top row, for each group with one. */
+export function countTickedCopies<T extends Torrent>(rows: T[], isTicked: (row: T) => boolean): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const [id, members] of groupMembers(rows)) {
+    const top = topRowOf(members)
+    const ticked = members.filter(member => member !== top && isTicked(member)).length
+    if (ticked > 0) counts.set(id, ticked)
+  }
+  return counts
+}
+
 function hasCopyProblem(row: Pick<Torrent, "state" | "tracker_health">): boolean {
   return row.state === "error" || row.state === "missingFiles" || row.tracker_health !== undefined
 }

@@ -73,7 +73,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
-import { isCopyGroupOpen, summarizeCopyGroups } from "@/lib/copy-groups"
+import { countTickedCopies, isCopyGroupOpen, summarizeCopyGroups } from "@/lib/copy-groups"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { cn } from "@/lib/utils"
 import type {
@@ -128,6 +128,7 @@ const NAME_COLUMN_MIN_WIDTH = 160
 const STRETCH_RESIZE_SETTLE_MS = 120
 // Must match the .ss-row-gutter width in spreadsheet-chrome.css.
 const SPREADSHEET_ROW_GUTTER_WIDTH = 44
+const NO_TICKED_COPIES: ReadonlyMap<string, number> = new Map()
 
 function columnDefId(col: TorrentTableColumnDef): string | null {
   if ("id" in col && col.id) return col.id
@@ -592,7 +593,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleCheckboxPointerDown,
     handleCheckboxChange,
   } = useTorrentSelection({
-    sortedTorrents,
+    visibleTorrents: visibleRows,
+    groupExpansion,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,
@@ -600,6 +602,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   const { selection, publishSummary } = useTorrentSelectionContext()
+  // Select all mode already reaches the hidden copies, so the badge counts no ticks there.
+  const tickedCopies = useMemo(
+    () => copyGroups.size === 0 || selection.isAllSelected || selection.selected.size === 0 ? NO_TICKED_COPIES : countTickedCopies(torrents, isTorrentSelected),
+    [copyGroups, selection, torrents, isTorrentSelected]
+  )
 
   // Memoize columns to avoid unnecessary recalculations
   const { columns, torrentIdentityCounts } = useTorrentTableColumns({
@@ -722,6 +729,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getSelectionIdentity,
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
+    isGrouped: copyGroups.size > 0,
     columnFiltersExpr,
     clientSideFiltering: isCrossSeedFiltering,
     filters,
@@ -1383,6 +1391,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       copyGroupOpen={isGroupOpen}
                       copies={isGroupTop ? group.size - 1 : 0}
                       hiddenCopyProblem={isCollapsedTop && group.hiddenProblem}
+                      hiddenCopyTicks={isCollapsedTop && groupId !== undefined ? tickedCopies.get(groupId) ?? 0 : 0}
                       sortedTorrent={sortedTorrent}
                       sortedColumnId={sortedTorrent ? sortedColumnId : undefined}
                       nestedCopy={isGroupRow && !isGroupTop}

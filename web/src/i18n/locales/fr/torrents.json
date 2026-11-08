@@ -1686,6 +1686,11 @@
     "copies_other": "{{count}} autres copies de {{name}}",
     "copiesWithProblem_one": "{{count}} autre copie de {{name}}. Une copie masquée a un problème",
     "copiesWithProblem_other": "{{count}} autres copies de {{name}}. Une copie masquée a un problème",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} sélectionnée",
+    "badgeTicked_other": "+{{hidden}} · {{count}} sélectionnées",
+    "hiddenTicked_one": "{{count}} copie masquée est sélectionnée",
+    "hiddenTicked_other": "{{count}} copies masquées sont sélectionnées",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }
