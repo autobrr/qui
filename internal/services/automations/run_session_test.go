@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // cannedSession answers every Resolve with one canned result and no member
@@ -405,20 +406,37 @@ func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 
 // An include FREE_SPACE rule that follows hardlinks reads the hardlink copies
 // of its batch and their groups in one ask, before it counts the first claim.
+// It deletes and projects what it does with the groups of the whole library.
 func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	t.Parallel()
 	// copyA and copyB are hardlink copies of source, each in its own group.
 	torrents := []qbt.Torrent{
 		{Hash: "source", SavePath: "/s", ContentPath: "/s/01.mkv", Size: 1000},
 		{Hash: "copyA", SavePath: "/a", ContentPath: "/a/01.mkv", Size: 1000},
-		{Hash: "packA", SavePath: "/a", ContentPath: "/a", Size: 1000},
+		{Hash: "packA", SavePath: "/a", ContentPath: "/a", Size: 2000},
 		{Hash: "copyB", SavePath: "/b", ContentPath: "/b/01.mkv", Size: 1000},
-		{Hash: "packB", SavePath: "/b", ContentPath: "/b", Size: 1000},
+		{Hash: "packB", SavePath: "/b", ContentPath: "/b", Size: 2000},
+	}
+	files := map[string]qbt.TorrentFiles{
+		"source": {{Name: "01.mkv", Size: 1000}},
+		"copyA":  {{Name: "01.mkv", Size: 1000}},
+		"packA":  {{Name: "01.mkv", Size: 1000}, {Name: "02.mkv", Size: 1000}},
+		"copyB":  {{Name: "01.mkv", Size: 1000}},
+		"packB":  {{Name: "01.mkv", Size: 1000}, {Name: "02.mkv", Size: 1000}},
 	}
 	links := map[string][]string{"copyA": {"packA"}, "packA": {"copyA"}, "copyB": {"packB"}, "packB": {"copyB"}}
+	// All five torrents link one inode for 01.mkv.
+	id := hardlink.UnixFileID(1, 1)
 	hardlinks := &HardlinkIndex{
 		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copyA": "one", "copyB": "one"},
 		DeleteSafeGroupBySignature: map[string][]string{"one": {"source", "copyA", "copyB"}},
+		buildState: &hardlinkBuildState{torrentInfoByHash: map[string]*torrentFileInfo{
+			"source": {linkedFiles: []linkedFile{{path: "/s/01.mkv", fileID: id}}},
+			"copyA":  {linkedFiles: []linkedFile{{path: "/a/01.mkv", fileID: id}}},
+			"packA":  {linkedFiles: []linkedFile{{path: "/a/01.mkv", fileID: id}}},
+			"copyB":  {linkedFiles: []linkedFile{{path: "/b/01.mkv", fileID: id}}},
+			"packB":  {linkedFiles: []linkedFile{{path: "/b/01.mkv", fileID: id}}},
+		}},
 	}
 	rule := &models.Automation{
 		ID: 1, TrackerPattern: "*",
@@ -427,20 +445,37 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 			Condition: &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1000"},
 		}},
 	}
-	evalCtx, matcher := openTestRunSession(t, torrents, links, nil)
-	evalCtx.hardlinkIndex = hardlinks
-	evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{GetFreeSpaceRuleKey(rule): {
-		FilesToClear: make(map[string]int64), CrossSeedHashesToClear: make(map[string]struct{}),
-	}}
-	svc := &Service{}
-	svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-		rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: evalCtx.crossSeeds,
-		skip: func(hash string) bool { return hash != "source" },
-	})
+	type outcome struct {
+		selected []string
+		state    FreeSpaceSourceState
+	}
+	run := func(evalCtx *EvalContext, groups *crossSeedGroups) outcome {
+		evalCtx.hardlinkIndex = hardlinks
+		evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{GetFreeSpaceRuleKey(rule): {
+			FilesToClear: make(map[string]int64), CrossSeedHashesToClear: make(map[string]struct{}),
+		}}
+		svc := &Service{}
+		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
+			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups,
+			skip: func(hash string) bool { return hash != "source" },
+		})
+		return outcome{slices.Sorted(maps.Keys(selection.byHash)), *evalCtx.FreeSpaceStates[GetFreeSpaceRuleKey(rule)]}
+	}
+
+	evalCtx, matcher := openTestRunSession(t, torrents, links, files)
+	// The run reads the file lists of the hardlink groups for this rule.
+	evalCtx.crossSeeds.session.loadFiles(t.Context(), hardlinks)
+	scoped := run(evalCtx, evalCtx.crossSeeds)
 	require.Equal(t, []ResolveRequest{
 		{Hashes: []string{"source"}, Groups: true, OtherShared: true},
 		{Hashes: []string{"copyA", "copyB"}, Groups: true},
 	}, matcher.requests())
+
+	whole := &EvalContext{SameInstanceContentByHash: links, CrossSeedFilesByHash: files}
+	require.Equal(t, run(whole, buildCrossSeedGroups(torrents, whole)), scoped)
+	require.Equal(t, []string{"copyA", "copyB", "packA", "packB", "source"}, scoped.selected)
+	// The shared inode counts once, plus 02.mkv of each pack.
+	require.Equal(t, int64(3000), scoped.state.SpaceToClear)
 }
 
 // A and B pick X, X picks neither, and qBittorrent does not return the file
