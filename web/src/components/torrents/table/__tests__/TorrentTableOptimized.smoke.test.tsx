@@ -673,6 +673,20 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toContain("Alpha Copy Of Delta")
   })
 
+  // regression: #3922
+  it("shows the status of the first-sorted copy on a Stacked row under a sort by the status icon column", () => {
+    localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
+    localStorage.setItem("qui-column-sorting:1", JSON.stringify([{ id: "status_icon", desc: false }]))
+    // Only the hidden first-sorted copy differs between the two lists.
+    const seeding = renderGroups(copyGroupRows({ sorted: { state: "uploading" } }))
+    const seedingText = seeding.container.textContent
+    seeding.unmount()
+
+    const { container } = renderGroups(copyGroupRows({ sorted: { state: "pausedUP" } }))
+
+    expect(container.textContent).not.toBe(seedingText)
+  })
+
   it("shows no warning icon for a problem on the top row itself", () => {
     const { container } = renderGroups(copyGroupRows({ top: { state: "error" } }))
     expect(warnings(container).length).toBe(0)
