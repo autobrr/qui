@@ -659,14 +659,26 @@ type moveExpansion struct {
 	ruleByHash map[string]ruleRef
 	moved      map[string]struct{}
 	indexes    map[groupExpandKey]*groupIndex
+	// failedGroups holds the groups that failed a check for the group, so they cannot move
+	// for any trigger.
+	failedGroups map[ruleGroupKey]struct{}
+	groupChecks  int
+}
+
+func newMoveExpansion(in runPlanInput, ruleByHash map[string]ruleRef) *moveExpansion {
+	return &moveExpansion{in: in, ruleByHash: ruleByHash, moved: make(map[string]struct{}), failedGroups: make(map[ruleGroupKey]struct{})}
 }
 
 // planMoves expands the move of each trigger to the group members and the cross-seeds that
 // share files with it. A torrent already at the target path stays out, and a torrent moves to
 // one path only. A pulled-in torrent keeps the rule of the torrent that pulled it in.
 func (s *Service) planMoves(ctx context.Context, in runPlanInput, triggers plannedAction[string]) plannedAction[string] {
+	return s.expandMoves(ctx, newMoveExpansion(in, triggers.rules), triggers)
+}
+
+func (s *Service) expandMoves(ctx context.Context, m *moveExpansion, triggers plannedAction[string]) plannedAction[string] {
+	in := m.in
 	var planned plannedAction[string]
-	m := &moveExpansion{in: in, ruleByHash: triggers.rules, moved: make(map[string]struct{})}
 	for _, path := range slices.Sorted(maps.Keys(triggers.byTarget)) {
 		hashes := triggers.byTarget[path]
 		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, in.torrentByHash, m.ruleByHash, in.crossSeeds)
@@ -725,32 +737,29 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 		m.indexes[rgk] = idx
 	}
 
+	groupKey := ruleGroupKey{ruleID: rule.ID, key: idx.KeyForHash(hash)}
+	if _, failed := m.failedGroups[groupKey]; failed {
+		return nil
+	}
+
 	members := []string{hash}
 	if idx != nil {
 		if found := idx.MembersForHash(hash); len(found) > 0 {
 			members = found
 		}
 	}
-	if !groupHoldsSharedFiles(members, in.crossSeeds) {
+	m.groupChecks++
+	expand, verifyOverlap, minPercent := s.moveGroupChecks(in, rule, state.moveGroupID, idx, hash, members)
+	if !expand {
+		// A trigger without a group key is a group of its own.
+		if groupKey.key != "" {
+			m.failedGroups[groupKey] = struct{}{}
+		}
 		return nil
 	}
-
-	// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-	if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, in.instanceID, rule, state.moveGroupID, idx, hash, in.torrentByHash) {
-		return nil
-	}
-
-	// GroupId semantics are strict: every member must satisfy the move condition.
-	var cond *models.RuleCondition
-	if rule.Conditions != nil && rule.Conditions.Move != nil {
-		cond = rule.Conditions.Move.Condition
-	}
-	if in.evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
-	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
-		groupHasDroppedMember(rule, members, in.torrentByHash) {
+	// Ambiguous ContentPath safety (ContentPath == SavePath): the files of the trigger must
+	// overlap the other members. Another trigger of the group can still pass.
+	if verifyOverlap && !s.triggerOverlapsGroup(ctx, in.instanceID, idx, hash, in.torrentByHash, minPercent) {
 		return nil
 	}
 
@@ -764,6 +773,34 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 		inheritRuleRefForMoveGroup(memberHash, hash, m.ruleByHash)
 	}
 	return expandedHashes
+}
+
+// moveGroupChecks runs the checks that give the same answer for every trigger in the group.
+// It returns whether the group can move, and whether each trigger must first pass the
+// overlap check with minPercent.
+func (s *Service) moveGroupChecks(in runPlanInput, rule *models.Automation, groupID string, idx *groupIndex, hash string, members []string) (expand, verifyOverlap bool, minPercent int) {
+	if !groupHoldsSharedFiles(members, in.crossSeeds) {
+		return false, false, 0
+	}
+	expand, verifyOverlap, minPercent = s.groupAmbiguityPolicy(rule, groupID, idx, hash)
+	if !expand {
+		return false, false, 0
+	}
+
+	// GroupId semantics are strict: every member must satisfy the move condition.
+	var cond *models.RuleCondition
+	if rule.Conditions != nil && rule.Conditions.Move != nil {
+		cond = rule.Conditions.Move.Condition
+	}
+	if in.evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	}
+	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
+	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
+		groupHasDroppedMember(rule, members, in.torrentByHash) {
+		return false, false, 0
+	}
+	return true, verifyOverlap, minPercent
 }
 
 // canMove returns whether the torrent can still join a move to the path: it is not planned for

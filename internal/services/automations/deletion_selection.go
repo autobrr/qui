@@ -121,7 +121,7 @@ type deletionClaim struct {
 	rule *models.Automation
 }
 
-// ruleGroupKey names one keep-files group of one rule.
+// ruleGroupKey names one group of one rule.
 type ruleGroupKey struct {
 	ruleID int
 	key    string
