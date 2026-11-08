@@ -1686,6 +1686,11 @@
     "copies_other": "{{count}} weitere Kopien von {{name}}",
     "copiesWithProblem_one": "{{count}} weitere Kopie von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
     "copiesWithProblem_other": "{{count}} weitere Kopien von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ausgewählt",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ausgewählt",
+    "hiddenTicked_one": "{{count}} ausgeblendete Kopie ist ausgewählt",
+    "hiddenTicked_other": "{{count}} ausgeblendete Kopien sind ausgewählt",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

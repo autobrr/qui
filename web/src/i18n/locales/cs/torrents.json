@@ -1765,6 +1765,13 @@
     "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
     "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
     "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} vybraná",
+    "badgeTicked_few": "+{{hidden}} · {{count}} vybrané",
+    "badgeTicked_other": "+{{hidden}} · {{count}} vybraných",
+    "hiddenTicked_one": "{{count}} skrytá kopie je vybraná",
+    "hiddenTicked_few": "{{count}} skryté kopie jsou vybrané",
+    "hiddenTicked_other": "{{count}} skrytých kopií je vybraných",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

@@ -1607,6 +1607,9 @@
   "copyGroups": {
     "copies_other": "{{name}} 的另外 {{count}} 個副本",
     "copiesWithProblem_other": "{{name}} 的另外 {{count}} 個副本。某個隱藏的副本有問題",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}"
   }
 }
