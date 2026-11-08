@@ -219,7 +219,7 @@ The State field matches these status buckets:
 | --- | --- |
 | `downloading` | Actively downloading |
 | `uploading` | Actively uploading |
-| `completed` | Download finished |
+| `completed` | Progress is 100%. Sidebar Completed reads the state of the torrent instead, so the two differ for a torrent that rechecks, moves, or has an error. |
 | `stopped` | Paused by user |
 | `active` | Has transfer activity |
 | `inactive` | No current activity |
