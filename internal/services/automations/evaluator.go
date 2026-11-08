@@ -54,6 +54,8 @@ type EvalContext struct {
 	// The deletion projection uses the same snapshot and hardlink index as execution.
 	torrentsByHash map[string]qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
+	// crossSeeds holds the groups of the run session, when the rules need one.
+	crossSeeds *crossSeedGroups
 
 	// TrackerHealth is the tracker health snapshot of the instance. It is nil
 	// when the instance has no tracker health yet.

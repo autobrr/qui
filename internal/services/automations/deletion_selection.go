@@ -24,7 +24,7 @@ type deletionSelectionInput struct {
 	// torrents are sorted in place by the sort order of each rule.
 	torrents   []qbt.Torrent
 	evalCtx    *EvalContext
-	crossSeeds crossSeedGroups
+	crossSeeds *crossSeedGroups
 	// skip leaves out the torrents that a live run handled recently. The dry run and the
 	// preview pass nil.
 	skip func(hash string) bool
@@ -172,6 +172,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		claims = append(claims, ruleClaims...)
 	}
 	evalCtx.PersistFreeSpaceSourceState()
+	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
 	// The sort order is final now, so pointers into in.torrents stay valid.
 	triggerTorrents := make(map[string]*qbt.Torrent, len(sel.triggers))
@@ -195,6 +196,26 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds, rejectedGroups)
 	}
 	return sel
+}
+
+// askDeleteGroups asks the run session in one round for the groups of the
+// claimed triggers that expand or preserve, with the hardlink copies that an
+// include rule follows, and for the other-instance Shared-file check.
+func askDeleteGroups(claims []deletionClaim, crossSeeds *crossSeedGroups, hardlinks *HardlinkIndex) {
+	var hashes, linkHashes []string
+	for _, claim := range claims {
+		switch getDeleteMode(claim.rule) {
+		case DeleteModeWithFilesIncludeCrossSeeds:
+			if claim.rule.Conditions.Delete.IncludeHardlinks && hardlinks != nil {
+				linkHashes = append(linkHashes, claim.hash)
+			} else {
+				hashes = append(hashes, claim.hash)
+			}
+		case DeleteModeWithFilesPreserveCrossSeeds:
+			hashes = append(hashes, claim.hash)
+		}
+	}
+	crossSeeds.resolveDeletes(hashes, linkHashes, hardlinks)
 }
 
 func deleteExpandsGroups(rule *models.Automation) bool {
