@@ -145,6 +145,7 @@ describe("InstanceSSHPanel", () => {
     expect(screen.queryByText("preferences.ssh.validation.keyRequired")).toBeNull()
   })
 
+  // regression: #3732
   it("a saved host change leaves no stale key error behind", async () => {
     mocks.api.setSSHCredentials.mockResolvedValue(undefined)
     render(<InstanceSSHPanel instance={storedInstance} />)
@@ -162,8 +163,38 @@ describe("InstanceSSHPanel", () => {
     render(<InstanceSSHPanel instance={storedInstance} />)
     await runTest({ status: "unpinned", hostKey: "AAAA", fingerprint: "SHA256:abc" })
 
+    mocks.api.testSSH.mockResolvedValue({ status: "pinned", fingerprint: "SHA256:abc", capabilities: { sftp: true, statvfs: true, hardlink: true, limits: true, exec: true, gnuUserland: true } })
     fireEvent.click(screen.getByText("preferences.ssh.buttons.confirm"))
     await waitFor(() => expect(mocks.api.confirmSSHHostKey).toHaveBeenCalledWith(7, "AAAA"))
+    await waitFor(() => expect(document.querySelector("[data-ssh-status]")?.getAttribute("data-ssh-status")).toBe("pinned"))
+    expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("the fields are off while a save runs", async () => {
+    let finish: () => void = () => {}
+    mocks.api.setSSHCredentials.mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    setValue("ssh-private-key", "KEY")
+    submitForm()
+    await waitFor(() => expect((document.querySelector("fieldset") as HTMLFieldSetElement).disabled).toBe(true))
+    finish()
+    await waitFor(() => expect((document.querySelector("fieldset") as HTMLFieldSetElement).disabled).toBe(false))
+  })
+
+  // regression: #3732
+  it("a host the server normalized is shown as stored, with no key error", async () => {
+    mocks.api.setSSHCredentials.mockResolvedValue(undefined)
+    const { rerender } = render(<InstanceSSHPanel instance={storedInstance} />)
+    setValue("ssh-host", "Other.Example")
+    setValue("ssh-private-key", "KEY")
+    submitForm()
+    await waitFor(() => expect(mocks.api.setSSHCredentials).toHaveBeenCalledWith(7, { host: "Other.Example", port: 22, username: "qui", privateKey: "KEY" }))
+    // the refetched row carries the lowercased host
+    rerender(<InstanceSSHPanel instance={{ ...storedInstance, sshHost: "other.example" }} />)
+    await waitFor(() => expect((document.getElementById("ssh-host") as HTMLInputElement).value).toBe("other.example"))
+    expect((document.getElementById("ssh-private-key") as HTMLTextAreaElement).value).toBe("")
+    expect(screen.queryByText("preferences.ssh.validation.keyRequired")).toBeNull()
+    expect((screen.getByText("preferences.ssh.buttons.save") as HTMLButtonElement).disabled).toBe(false)
   })
 
   it("Replace asks first, then posts the presented key", async () => {
