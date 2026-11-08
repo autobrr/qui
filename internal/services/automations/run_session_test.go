@@ -718,3 +718,35 @@ func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 	}
 	require.Len(t, hashes, 2*len(torrents))
 }
+
+// Two rules with one GroupID each ask for their own group, also when the keys
+// of both groups are the same text.
+func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
+	t.Parallel()
+	// Under a, c1 and c2 share the content path /data/x. Under b, s1 and s2
+	// share the save path /data/x.
+	torrents := []qbt.Torrent{
+		{Hash: "c1", SavePath: "/c", ContentPath: "/data/x", Tags: "a"},
+		{Hash: "c2", SavePath: "/d", ContentPath: "/data/x"},
+		{Hash: "s1", SavePath: "/data/x", ContentPath: "/data/x/s1.mkv", Tags: "b"},
+		{Hash: "s2", SavePath: "/data/x", ContentPath: "/data/x/s2.mkv"},
+	}
+	moveBy := func(id int, tag, key string) *models.Automation {
+		return &models.Automation{
+			ID: id, Name: tag, TrackerPattern: "*", Enabled: true,
+			Conditions: &models.ActionConditions{
+				Move:     &models.MoveAction{Enabled: true, Path: "/new", GroupID: "g", Condition: tagsContain(tag)},
+				Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "g", Keys: []string{key}}}},
+			},
+		}
+	}
+	rules := []*models.Automation{moveBy(1, "a", "contentPath"), moveBy(2, "b", "savePath")}
+	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
+	asked := make(map[askedMoveGroup]struct{})
+	hashes := make([]string, 0, 2*len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, moveAsks(torrent, rules, torrents, evalCtx, nil, nil, asked)...)
+	}
+	slices.Sort(hashes)
+	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
+}
