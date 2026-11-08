@@ -26,7 +26,7 @@ import type { Instance, SSHProbe, SSHTestResponse } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check, X } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -46,11 +46,31 @@ function sshDefaults(instance: Instance) {
 }
 
 export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
-  const { t } = useTranslation("instances")
-  const [incognitoMode] = useIncognitoMode()
   const queryClient = useQueryClient()
   const onChanged = useCallback(() => queryClient.invalidateQueries({ queryKey: ["instances"] }), [queryClient])
-  const { state, test, save, clear, pin } = useSSHSetup({ instanceId: instance.id, onChanged })
+  const setup = useSSHSetup({ instanceId: instance.id, onChanged })
+
+  // The form starts over from the row whenever the stored endpoint or user
+  // changes: a save that the server normalized, a clear, or another instance.
+  // The test result and the replace dialog live outside it and survive.
+  return (
+    <SSHCredentialsForm
+      key={`${instance.id}:${instance.sshHost ?? ""}:${instance.sshPort ?? ""}:${instance.sshUsername ?? ""}`}
+      instance={instance}
+      setup={setup}
+    />
+  )
+}
+
+interface SSHCredentialsFormProps {
+  instance: Instance
+  setup: ReturnType<typeof useSSHSetup>
+}
+
+function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
+  const { t } = useTranslation("instances")
+  const [incognitoMode] = useIncognitoMode()
+  const { state, test, save, clear, pin } = setup
   const [replaceOpen, setReplaceOpen] = useState(false)
 
   const stored = !!instance.sshUsername
@@ -69,27 +89,17 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
       if (!needsKey && value.privateKey === "") {
         return
       }
-      const saved = { host: value.host.trim(), port: value.port, username: value.username.trim() }
-      if (await save({ ...saved, privateKey: value.privateKey })) {
-        // The row now holds these values, so the form starts over from them:
-        // no stale "key needed" error from the change that was just saved.
-        form.reset({ ...saved, privateKey: "" })
+      if (await save({ host: value.host.trim(), port: value.port, username: value.username.trim(), privateKey: value.privateKey })) {
+        // A changed endpoint remounts the form from the row; a rotated key
+        // alone leaves the row's endpoint as it was, so the field is cleared here.
+        form.reset({ ...form.state.values, privateKey: "" })
         toast.success(t("preferences.ssh.toast.saved"))
       }
     },
   })
 
-  const prevInstanceId = useRef(instance.id)
-  useEffect(() => {
-    if (prevInstanceId.current !== instance.id) {
-      prevInstanceId.current = instance.id
-      form.reset(sshDefaults(instance))
-    }
-  }, [instance, form])
-
   const handleClear = async () => {
     if (await clear()) {
-      form.reset({ host: "", port: 22, username: "", privateKey: "" })
       toast.success(t("preferences.ssh.toast.cleared"))
     }
   }
@@ -123,7 +133,7 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
           </div>
         )}
       >
-        <div className="space-y-6">
+        <fieldset disabled={busy} className="space-y-6">
           {instance.hasLocalFilesystemAccess && stored && (
             <p className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
               {t("preferences.ssh.localWins")}
@@ -269,7 +279,7 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
               )}
             </div>
           )}
-        </div>
+        </fieldset>
       </PreferencesFormShell>
 
       <AlertDialog open={replaceOpen} onOpenChange={setReplaceOpen}>
