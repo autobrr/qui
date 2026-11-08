@@ -56,9 +56,11 @@ type copyGroupsJob struct {
 	firstReads map[int]bool
 	// record holds the instances that ended a first read. No instance leaves it.
 	record map[int]struct{}
-	// fingerprints and builtMarks are those of the last published map.
+	// fingerprints holds no value for an instance whose last read failed.
 	fingerprints      map[int]uint64
 	marks, builtMarks uint64
+	// ids is the last published map. It is nil before the first publish.
+	ids map[int]map[string]uint64
 	// failed holds the time after which an unreadable torrent is read again.
 	failed map[int]map[string]time.Time
 }
@@ -146,7 +148,11 @@ type copyGroupsRun struct {
 	marks        uint64
 	failed       map[int]map[string]time.Time
 	read         []int
-	// retry: nothing moved, so the run rebuilds only if a due failed torrent reads.
+	prev         map[int]map[string]uint64
+	// offline holds the recorded instances that the run does not read.
+	offline []int
+	// retry: nothing moved, so the run rebuilds only if a due failed torrent
+	// reads or its file batch fails.
 	retry bool
 }
 
@@ -183,16 +189,17 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	run := copyGroupsRun{torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, fingerprints: map[int]uint64{}, marks: j.marks, failed: map[int]map[string]time.Time{}}
-	blocked := false
+	listFailed := false
 	for _, id := range active {
-		if !synced[id] {
-			continue
-		}
 		list, ok := lists[id]
 		_, recorded := j.record[id]
+		listFailed = listFailed || ok && list.err != nil
 		switch {
-		case !ok || list.err != nil:
-			blocked = true
+		case !synced[id] || !ok || list.err != nil:
+			if recorded {
+				run.offline = append(run.offline, id)
+				delete(j.fingerprints, id)
+			}
 		case !recorded:
 			if !j.firstReads[id] {
 				j.firstReads[id] = true
@@ -204,11 +211,17 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 			run.failed[id] = maps.Clone(j.failed[id])
 		}
 	}
-	if blocked || j.rebuilding || len(run.torrents) == 0 {
+	if len(run.torrents) == 0 && j.ids == nil && listFailed && !slices.ContainsFunc(active, func(id int) bool { return synced[id] }) {
+		// No instance can sync, so the list shows flat rows and no hint.
+		j.ids = map[int]map[string]uint64{}
+		j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(j.ids, nil))
+	}
+	if j.rebuilding || len(run.torrents) == 0 {
 		return true
 	}
 	run.retry = j.marks == j.builtMarks && maps.Equal(run.fingerprints, j.fingerprints)
 	run.read = slices.Sorted(maps.Keys(j.record))
+	run.prev = j.ids
 	j.rebuilding = true
 	go j.rebuild(ctx, run)
 	return true
@@ -350,27 +363,35 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	failed := make(map[int]map[string]time.Time, len(run.torrents))
 	for id, torrents := range run.torrents {
 		files[id], failed[id], err = j.readFiles(ctx, id, torrents, run.failed[id])
-		if err != nil {
-			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read")
+		if ctx.Err() != nil {
+			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
 			return
 		}
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the entries of an instance, because its file lists could not be read")
+			delete(run.torrents, id)
+			delete(run.fingerprints, id)
+			delete(failed, id)
+			run.offline = append(run.offline, id)
+		}
+	}
+	if len(run.torrents) == 0 {
+		j.mu.Lock()
+		for _, id := range run.offline {
+			delete(j.fingerprints, id)
+		}
+		j.mu.Unlock()
+		return
 	}
 	groups, err := j.svc.FindCopyGroups(ctx, run.torrents, files, settings.CategoryMappingRules, j.key)
 	if err != nil {
 		log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the rebuild stopped")
 		return
 	}
-	ids := make(map[int]map[string]uint64, len(run.torrents))
-	for _, group := range groups {
-		for _, member := range group.Members {
-			if ids[member.InstanceID] == nil {
-				ids[member.InstanceID] = map[string]uint64{}
-			}
-			ids[member.InstanceID][member.Hash] = group.ID
-		}
-	}
+	ids := keepOfflineGroups(groups, run.torrents, run.prev, run.offline)
 
 	j.mu.Lock()
+	j.ids = ids
 	j.fingerprints, j.builtMarks = run.fingerprints, run.marks
 	maps.Copy(j.failed, failed)
 	j.mu.Unlock()
@@ -395,9 +416,13 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) bool 
 			continue
 		}
 		files, failed, err := j.readFiles(ctx, id, due, nil)
-		if err != nil {
+		if ctx.Err() != nil {
 			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups retry stopped")
 			return false
+		}
+		if err != nil {
+			// The rebuild reads the batch again and keeps the entries of the instance.
+			return true
 		}
 		for _, t := range due {
 			read = read || len(files[normalizeHash(t.Hash)]) > 0
@@ -413,4 +438,93 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) bool 
 		maps.Copy(j.failed[id], failed)
 	}
 	return false
+}
+
+// oldGroupIDs links the torrents that shared an old group with an offline
+// instance. Two such ids that join keep the lower one.
+type oldGroupIDs struct {
+	prev   map[int]map[string]uint64
+	parent map[uint64]uint64
+}
+
+func newOldGroupIDs(prev map[int]map[string]uint64, offline []int) *oldGroupIDs {
+	o := &oldGroupIDs{prev: prev, parent: map[uint64]uint64{}}
+	for _, id := range offline {
+		for _, old := range prev[id] {
+			o.parent[old] = old
+		}
+	}
+	return o
+}
+
+func (o *oldGroupIDs) id(instanceID int, hash string) (uint64, bool) {
+	old, ok := o.prev[instanceID][hash]
+	if _, linked := o.parent[old]; !ok || !linked {
+		return 0, false
+	}
+	for o.parent[old] != old {
+		old = o.parent[old]
+	}
+	return old, true
+}
+
+func (o *oldGroupIDs) join(group CopyGroup) {
+	var first uint64
+	linked := false
+	for _, m := range group.Members {
+		old, ok := o.id(m.InstanceID, m.Hash)
+		switch {
+		case !ok:
+		case !linked:
+			first, linked = old, true
+		case old != first:
+			lo, hi := min(old, first), max(old, first)
+			o.parent[hi], first = lo, lo
+		}
+	}
+}
+
+// keepOfflineGroups builds the map from the groups of the instances that the
+// run read. An offline instance keeps its entries, and the torrents that shared
+// an old group with it stay linked under that id, also on the offline instance.
+func keepOfflineGroups(groups []CopyGroup, torrents map[int][]qbittorrent.CrossInstanceTorrentView, prev map[int]map[string]uint64, offline []int) map[int]map[string]uint64 {
+	old := newOldGroupIDs(prev, offline)
+	for _, group := range groups {
+		old.join(group)
+	}
+
+	ids := make(map[int]map[string]uint64, len(torrents)+len(offline))
+	set := func(instanceID int, hash string, id uint64) {
+		if ids[instanceID] == nil {
+			ids[instanceID] = map[string]uint64{}
+		}
+		ids[instanceID][hash] = id
+	}
+	for instanceID, list := range torrents {
+		for i := range list {
+			hash := normalizeHash(list[i].Hash)
+			if id, ok := old.id(instanceID, hash); ok {
+				set(instanceID, hash, id)
+			}
+		}
+	}
+	for _, group := range groups {
+		id := group.ID
+		for _, m := range group.Members {
+			if oldID, ok := old.id(m.InstanceID, m.Hash); ok {
+				id = oldID
+				break
+			}
+		}
+		for _, m := range group.Members {
+			set(m.InstanceID, m.Hash, id)
+		}
+	}
+	for _, instanceID := range offline {
+		for hash := range prev[instanceID] {
+			id, _ := old.id(instanceID, hash)
+			set(instanceID, hash, id)
+		}
+	}
+	return ids
 }
