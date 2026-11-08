@@ -1680,5 +1680,12 @@
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
+    "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
+    "badge": "+{{hidden}}"
   }
 }

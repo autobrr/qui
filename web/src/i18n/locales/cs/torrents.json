@@ -1757,5 +1757,14 @@
         "add_failed": "Torrent nelze přidat."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} další kopie položky {{name}}",
+    "copies_few": "{{count}} další kopie položky {{name}}",
+    "copies_other": "{{count}} dalších kopií položky {{name}}",
+    "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
+    "badge": "+{{hidden}}"
   }
 }

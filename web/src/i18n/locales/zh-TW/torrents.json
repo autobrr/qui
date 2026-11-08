@@ -1603,5 +1603,10 @@
         "add_failed": "加入種子失敗。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 個副本",
+    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 個副本。某個隱藏的副本有問題",
+    "badge": "+{{hidden}}"
   }
 }

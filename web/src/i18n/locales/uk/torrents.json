@@ -1834,5 +1834,16 @@
         "add_failed": "Не вдалося додати торрент."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "Ще {{count}} копія торрента {{name}}",
+    "copies_few": "Ще {{count}} копії торрента {{name}}",
+    "copies_many": "Ще {{count}} копій торрента {{name}}",
+    "copies_other": "Ще {{count}} копії торрента {{name}}",
+    "copiesWithProblem_one": "Ще {{count}} копія торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_few": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_many": "Ще {{count}} копій торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_other": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
+    "badge": "+{{hidden}}"
   }
 }

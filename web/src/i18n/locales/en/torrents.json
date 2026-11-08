@@ -1680,5 +1680,12 @@
         "add_failed": "Failed to add the torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} more copy of {{name}}",
+    "copies_other": "{{count}} more copies of {{name}}",
+    "copiesWithProblem_one": "{{count}} more copy of {{name}}. A hidden copy has a problem",
+    "copiesWithProblem_other": "{{count}} more copies of {{name}}. A hidden copy has a problem",
+    "badge": "+{{hidden}}"
   }
 }

@@ -1680,5 +1680,12 @@
         "add_failed": "Impossible d’ajouter le torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} autre copie de {{name}}",
+    "copies_other": "{{count}} autres copies de {{name}}",
+    "copiesWithProblem_one": "{{count}} autre copie de {{name}}. Une copie masquée a un problème",
+    "copiesWithProblem_other": "{{count}} autres copies de {{name}}. Une copie masquée a un problème",
+    "badge": "+{{hidden}}"
   }
 }

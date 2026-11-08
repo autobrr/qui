@@ -1680,5 +1680,12 @@
         "add_failed": "Der Torrent konnte nicht hinzugefügt werden."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} weitere Kopie von {{name}}",
+    "copies_other": "{{count}} weitere Kopien von {{name}}",
+    "copiesWithProblem_one": "{{count}} weitere Kopie von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "copiesWithProblem_other": "{{count}} weitere Kopien von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "badge": "+{{hidden}}"
   }
 }
