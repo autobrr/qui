@@ -136,30 +136,37 @@ func quietBenchLogs(b *testing.B) {
 }
 
 // BenchmarkRunSessionMove measures a run with one move rule, from
-// buildEvalContext to the Run plan. The rule matches the whole library, either
-// with every torrent still to move or with every torrent at the target.
+// buildEvalContext to the Run plan. In the first two cases the rule matches the
+// whole library, with every torrent still to move or with every torrent at the
+// target. In the last case the rule groups the whole library by save path, and
+// the 2000 Harbor.Watch triggers cannot move because the Quiet.Coast torrents
+// fail the condition.
 func BenchmarkRunSessionMove(b *testing.B) {
 	quietBenchLogs(b)
+	ratioAbove1 := &models.RuleCondition{Field: FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"}
+	harbor := &models.RuleCondition{Field: FieldName, Operator: models.OperatorContains, Value: "Harbor"}
+	savePathGroup := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "save_path", Keys: []string{groupKeySavePath}}}}
 	for _, tc := range []struct {
-		name, path string
-		wantMoves  int
+		name      string
+		move      *models.MoveAction
+		grouping  *models.GroupingConfig
+		wantMoves int
 	}{
-		{"every torrent moves", "/data/new", 3000},
-		{"every torrent at the target", "/data", 0},
+		{"every torrent moves", &models.MoveAction{Enabled: true, Path: "/data/new", Condition: ratioAbove1}, nil, 3000},
+		{"every torrent at the target", &models.MoveAction{Enabled: true, Path: "/data", Condition: ratioAbove1}, nil, 0},
+		{"group that cannot move", &models.MoveAction{Enabled: true, Path: "/data/new", GroupID: "save_path", Condition: harbor}, savePathGroup, 0},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			benchmarkMoveRun(b, tc.path, tc.wantMoves)
+			benchmarkMoveRun(b, &models.Automation{
+				ID: 2, Name: "move", TrackerPattern: "*", Enabled: true,
+				Conditions: &models.ActionConditions{Grouping: tc.grouping, Move: tc.move},
+			}, tc.wantMoves)
 		})
 	}
 }
 
-func benchmarkMoveRun(b *testing.B, path string, wantMoves int) {
-	move := &models.Automation{
-		ID: 2, Name: "move", TrackerPattern: "*", Enabled: true,
-		Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: path, Condition: &models.RuleCondition{
-			Field: FieldRatio, Operator: models.OperatorGreaterThan, Value: "1",
-		}}},
-	}
+func benchmarkMoveRun(b *testing.B, move *models.Automation, wantMoves int) {
+	path := move.Conditions.Move.Path
 	rules := []*models.Automation{move}
 	svc, instance, fileReads := benchRunService(b, 1000)
 	ctx := b.Context()

@@ -3170,11 +3170,22 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 	triggerHash string,
 	torrentByHash map[string]qbt.Torrent,
 ) bool {
+	expand, verifyOverlap, minPercent := s.groupAmbiguityPolicy(rule, groupID, idx, triggerHash)
+	if !expand || !verifyOverlap {
+		return expand
+	}
+	return s.triggerOverlapsGroup(ctx, instanceID, idx, triggerHash, torrentByHash, minPercent)
+}
+
+// groupAmbiguityPolicy is the part of the ambiguity policy that holds for every trigger in
+// the group of triggerHash. It returns whether the group can expand, and whether each trigger
+// must first pass the overlap check with minPercent.
+func (s *Service) groupAmbiguityPolicy(rule *models.Automation, groupID string, idx *groupIndex, triggerHash string) (expand, verifyOverlap bool, minPercent int) {
 	if idx == nil || triggerHash == "" {
-		return true
+		return true, false, 0
 	}
 	if !idx.IsAmbiguousForHash(triggerHash) {
-		return true
+		return true, false, 0
 	}
 
 	def := (*models.GroupDefinition)(nil)
@@ -3185,7 +3196,7 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		def = builtinGroupDefinition(groupID)
 	}
 	if def == nil || !containsKey(def.Keys, groupKeyContentPath) {
-		return true
+		return true, false, 0
 	}
 
 	policy := strings.TrimSpace(def.AmbiguousPolicy)
@@ -3193,24 +3204,28 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		policy = groupAmbiguousVerifyOverlap
 	}
 	if policy == groupAmbiguousSkip {
-		return false
+		return false, false, 0
 	}
 
 	if s == nil || s.filesReader == nil {
-		return false
+		return false, false, 0
 	}
+
+	minPercent = def.MinFileOverlapPercent
+	if minPercent <= 0 {
+		minPercent = minFileOverlapPercent
+	}
+	return true, true, minPercent
+}
+
+// triggerOverlapsGroup returns whether the files of the trigger overlap the files of each
+// other member of its group by minPercent or more.
+func (s *Service) triggerOverlapsGroup(ctx context.Context, instanceID int, idx *groupIndex, triggerHash string, torrentByHash map[string]qbt.Torrent, minPercent int) bool {
 	triggerTorrent, ok := torrentByHash[triggerHash]
 	if !ok {
 		return false
 	}
-
-	minPercent := def.MinFileOverlapPercent
-	if minPercent <= 0 {
-		minPercent = minFileOverlapPercent
-	}
-
-	members := idx.MembersForHash(triggerHash)
-	for _, otherHash := range members {
+	for _, otherHash := range idx.MembersForHash(triggerHash) {
 		if otherHash == triggerHash {
 			continue
 		}
