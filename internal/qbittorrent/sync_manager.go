@@ -470,6 +470,7 @@ type SyncManager struct {
 	// drops its file list from the file cache.
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
 	copyGroups          atomic.Pointer[CopyGroups]
+	copyGroupsDemand    atomic.Pointer[func()]
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -1713,6 +1714,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var copyGroupsReady *bool
 	var groupedRows []copyGroupPageRow
 	if GroupCopiesRequested(ctx) {
+		sm.demandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
 		if *copyGroupsReady && !summary {
@@ -2029,6 +2031,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	var copyGroupsReady *bool
 	if groupCopies {
+		sm.demandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, requestInstanceIDs))
 		if *copyGroupsReady {

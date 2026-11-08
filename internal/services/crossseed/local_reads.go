@@ -316,8 +316,10 @@ func (s *Service) readLocalFiles(rules []models.CategoryMappingRule, name, categ
 }
 
 // forgetLocalRead drops the remembered read of one torrent, after qui renamed,
-// moved, or deleted it. A fill that reads the torrent now does not store it.
+// moved, or deleted it, and marks the Copy groups for a rebuild. A fill that
+// reads the torrent now does not store it.
 func (s *Service) forgetLocalRead(instanceID int, hash string) {
+	s.copyGroups.mark()
 	memo := &s.localReadMemo
 	key := localReadKey{instanceID: instanceID, hash: normalizeHash(hash)}
 	memo.mu.Lock()
@@ -326,10 +328,11 @@ func (s *Service) forgetLocalRead(instanceID int, hash string) {
 	delete(memo.filling, key)
 }
 
-// forgetLocalReads drops every remembered read, because the category mapping
-// rules change the reads. A fill that runs now stores nothing, and the next
-// caller starts a new one.
+// forgetLocalReads drops every remembered read and marks the Copy groups for a
+// rebuild, because the category mapping rules change the reads. A fill that
+// runs now stores nothing, and the next caller starts a new one.
 func (s *Service) forgetLocalReads() {
+	s.copyGroups.mark()
 	memo := &s.localReadMemo
 	memo.mu.Lock()
 	defer memo.mu.Unlock()
