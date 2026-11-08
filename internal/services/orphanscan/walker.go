@@ -177,7 +177,9 @@ type fileKeys struct {
 	linked map[fsops.FileKey]int
 	// linkedInUse chains the paths of hardlinked torrent files, so linkedAliases can tell their aliases from other hardlinks.
 	linkedInUse map[fsops.FileKey]int
-	refs        []aliasRef
+	// relinked are the torrent files whose paths the walk met with one link and with more, so linkedInUse misses a path.
+	relinked map[fsops.FileKey]struct{}
+	refs     []aliasRef
 	// incomplete is set once a regular file had no key, so a second path to it could go unmatched.
 	incomplete bool
 	// fileDirs are the folders that hold a torrent file the walk met. Neither
@@ -197,12 +199,18 @@ func newFileKeys() *fileKeys {
 		others:      make(map[fsops.FileKey]int),
 		linked:      make(map[fsops.FileKey]int),
 		linkedInUse: make(map[fsops.FileKey]int),
+		relinked:    make(map[fsops.FileKey]struct{}),
 		fileDirs:    make(map[string]struct{}),
 	}
 }
 
 func (k *fileKeys) addInUse(key fsops.FileKey, path string, nlinks uint64) {
+	_, seen := k.inUse[key]
+	_, linked := k.linkedInUse[key]
 	k.inUse[key] = struct{}{}
+	if seen && linked != (nlinks > 1) {
+		k.relinked[key] = struct{}{}
+	}
 	if nlinks > 1 {
 		k.chain(k.linkedInUse, key, path)
 	}
@@ -298,8 +306,8 @@ func (k *fileKeys) linkedAliases(ctx context.Context, backend fsops.Backend, ins
 			continue
 		}
 		torrents, ok := k.linkedInUse[key]
-		if !ok {
-			// The torrent's file had one link when the walk met it, so every path stays.
+		if _, relinked := k.relinked[key]; !ok || relinked {
+			// A torrent path to the file was met with one link, so every path stays.
 			inUse = k.paths(inUse, head)
 			continue
 		}

@@ -88,7 +88,7 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *t
 
 // A hardlink of a listed file made since the scan is its own directory entry,
 // so the delete removes the listed one and the torrent keeps its file.
-// regression: #3596
+// regression: #3908
 func TestExecuteDeletion_DeletesHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-hardlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -783,4 +783,110 @@ func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing
 	held, err := ids.holds(t.Context(), backend, info)
 	require.NoError(t, err)
 	require.True(t, held, "the alias is the first torrent's own entry")
+}
+
+// A torrent path the walk met with a different link count than another one
+// had its link count changed during the walk. The entry check has only the
+// paths met with more than one link, so every path to the file stays, as
+// when no torrent path had more than one.
+// regression: #3908
+func TestLinkedAliases_KeepsAliasOfATorrentFileWhoseLinkCountChangedDuringTheWalk(t *testing.T) {
+	type visit struct {
+		path   string
+		nlinks uint64
+	}
+	for _, tc := range []struct {
+		name  string
+		inUse func(first, second string) []visit
+	}{
+		{"linked after the only torrent path", func(first, _ string) []visit { return []visit{{first, 1}} }},
+		{"linked between two torrent paths", func(first, second string) []visit { return []visit{{first, 1}, {second, 2}} }},
+		{"unlinked between two torrent paths", func(first, second string) []visit { return []visit{{second, 2}, {first, 1}} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			first := filepath.Join(root, "a", "movie.mkv")
+			second := filepath.Join(root, "b", "movie.mkv")
+			require.NoError(t, os.MkdirAll(filepath.Dir(first), 0o755))
+			require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
+			require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
+			alias := filepath.Join(root, "alias")
+			symlinkOrSkip(t, filepath.Dir(first), alias)
+
+			backend := local.NewBackend()
+			info, err := backend.Lstat(t.Context(), first)
+			require.NoError(t, err)
+			key, ok := fsops.FileKeyOf(info.FileID, nil)
+			require.True(t, ok)
+
+			keys := newFileKeys()
+			for _, v := range tc.inUse(first, second) {
+				keys.addInUse(key, v.path, v.nlinks)
+			}
+			aliasPath := filepath.Join(alias, "movie.mkv")
+			keys.addOther(key, aliasPath, 2)
+
+			require.Contains(t, keys.linkedAliases(t.Context(), backend, nil), aliasPath, "the alias is the first torrent's own entry")
+		})
+	}
+}
+
+// A torrent file read with one link protects a target hardlinked to it since,
+// because the read kept no path to compare the target's entry with.
+// regression: #3908
+func TestHolds_KeepsAHardlinkOfATorrentFileReadWithOneLink(t *testing.T) {
+	root := t.TempDir()
+	torrentPath := filepath.Join(root, "a", "movie.mkv")
+	target := filepath.Join(root, "b", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(torrentPath), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.WriteFile(torrentPath, []byte("x"), 0o600))
+
+	backend := local.NewBackend()
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{torrentPath}, false)
+	require.NoError(t, err)
+	require.NoError(t, os.Link(torrentPath, target))
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.True(t, held)
+}
+
+type lstatFails struct {
+	fsops.Backend
+	path string
+}
+
+func (b lstatFails) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	if p == b.path {
+		return nil, fs.ErrPermission
+	}
+	return b.Backend.Lstat(ctx, p)
+}
+
+// A torrent path qui cannot read again could be the target's own entry, so the
+// delete of the target fails.
+// regression: #3908
+func TestHolds_FailsWhenATorrentPathCannotBeReadAgain(t *testing.T) {
+	root := t.TempDir()
+	readable := filepath.Join(root, "a", "movie.mkv")
+	unreadable := filepath.Join(root, "b", "movie.mkv")
+	target := filepath.Join(root, "c", "movie.mkv")
+	for _, p := range []string{readable, unreadable, target} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	}
+	require.NoError(t, os.WriteFile(readable, []byte("x"), 0o600))
+	require.NoError(t, os.Link(readable, unreadable))
+	require.NoError(t, os.Link(readable, target))
+
+	backend := lstatFails{Backend: local.NewBackend(), path: unreadable}
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{readable, unreadable}, false)
+	require.NoError(t, err)
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	_, err = ids.holds(t.Context(), backend, info)
+	require.ErrorIs(t, err, fs.ErrPermission)
 }

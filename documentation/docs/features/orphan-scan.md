@@ -137,6 +137,8 @@ Otherwise, qui reports the path as unavailable.
 
 <OrphanScanDefaultIgnores />
 
+If you keep hardlinks of torrent files inside a scan root on purpose, for example a media library below a save path, add an ignore path for that folder. Otherwise qui lists each of those hardlinks as an orphan, and auto-cleanup can delete them with no confirmation.
+
 If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. qui still reads an ignore path that is a torrent's file or holds one, and an ignored save path that is a symbolic link to a folder, to learn which files the torrents use. A second path to one of those files elsewhere, such as a bind mount, is then not flagged. qui lists nothing there. If such a path is missing, qui skips it. If qui cannot read it for another reason, the run is a [partial scan](#partial-scans). If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path. Filesystem-root ignore paths keep the scan paths in the run, but files under those roots are ignored. Paths on other drives or shares are still scanned normally. If the ignores cover every scan path, an otherwise successful run completes with no orphans.
 
 ## Max items per run behavior
