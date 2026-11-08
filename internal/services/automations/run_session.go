@@ -37,7 +37,7 @@ type runSession struct {
 	tagGroups bool
 }
 
-// openRunSession asks for the whole library when a reader other than the include and preserve deletes reads groups or facts.
+// openRunSession asks for the whole library when a reader other than the deletes reads groups or facts.
 func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
 	session, err := s.crossMatcher.OpenCrossMatchSession(ctx, instanceID, needs.CrossMatch)
 	if err != nil {
@@ -66,7 +66,7 @@ func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents [
 	cm := needs.CrossMatch
 	facts := cm.SameExists || cm.SameSeeding || cm.SameTags || cm.OtherExists || cm.OtherSeeding
 	if facts || needs.CrossSeedGroupsAll {
-		r.resolve(ResolveRequest{All: true, Groups: needs.CrossSeedGroupsAll, OtherShared: needs.CrossSeedSharedAll})
+		r.resolve(ResolveRequest{All: true, Groups: needs.CrossSeedGroupsAll})
 	}
 	return nil
 }
@@ -89,13 +89,14 @@ func (r *runSession) covered(hash string) bool {
 	return grouped
 }
 
-// resolveDeletes follows the hardlink copies of linkHashes and their groups, so the expansion meets no miss.
-func (g *crossSeedGroups) resolveDeletes(hashes, linkHashes []string, hardlinks *HardlinkIndex) {
+// resolveDeletes follows the hardlink copies of linkHashes and their groups, so the expansion and the
+// FREE_SPACE projection meet no miss. otherShared also asks for the Shared-file check.
+func (g *crossSeedGroups) resolveDeletes(hashes, linkHashes []string, hardlinks *HardlinkIndex, otherShared bool) {
 	if g == nil || g.session == nil || len(hashes)+len(linkHashes) == 0 {
 		return
 	}
 	r := g.session
-	r.resolveGroups(slices.Concat(hashes, linkHashes), !r.sharedRead)
+	r.resolveGroups(slices.Concat(hashes, linkHashes), otherShared && !r.sharedRead)
 	if hardlinks == nil {
 		return
 	}
@@ -326,4 +327,40 @@ func (r *runSession) readMissingFiles(ctx context.Context, hashes []string) {
 			Msg("automations: some cross-seed files could not be loaded")
 	}
 	maps.Copy(r.files, filesByHash)
+}
+
+// freeSpaceReadAheadBatch is the first read-ahead batch of a FREE_SPACE delete rule.
+const freeSpaceReadAheadBatch = 32
+
+// freeSpaceReadAhead reads the groups of the torrents that a FREE_SPACE delete rule can claim next.
+// Each claim changes the FREE_SPACE value, so a batch holds every torrent in the rule's scope.
+type freeSpaceReadAhead struct {
+	groups      *crossSeedGroups
+	hardlinks   *HardlinkIndex // nil when the expansion follows no hardlink copy
+	otherShared bool
+	size        int
+	next        int // the first position in sort order that no batch holds
+}
+
+func newFreeSpaceReadAhead(groups *crossSeedGroups, hardlinks *HardlinkIndex, otherShared bool) *freeSpaceReadAhead {
+	if groups == nil || groups.session == nil {
+		return nil
+	}
+	return &freeSpaceReadAhead{groups: groups, hardlinks: hardlinks, otherShared: otherShared, size: freeSpaceReadAheadBatch}
+}
+
+// ask must get the same sorted torrents and inScope on each call, with i ascending.
+func (a *freeSpaceReadAhead) ask(torrents []qbt.Torrent, i int, inScope func(*qbt.Torrent) bool) {
+	if a == nil || i < a.next {
+		return
+	}
+	var batch []string
+	for ; i < len(torrents) && len(batch) < a.size; i++ {
+		if inScope(&torrents[i]) {
+			batch = append(batch, torrents[i].Hash)
+		}
+	}
+	a.next = i
+	a.size *= 2
+	a.groups.resolveDeletes(nil, batch, a.hardlinks, a.otherShared)
 }

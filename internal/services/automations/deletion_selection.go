@@ -215,7 +215,7 @@ func askDeleteGroups(claims []deletionClaim, crossSeeds *crossSeedGroups, hardli
 			hashes = append(hashes, claim.hash)
 		}
 	}
-	crossSeeds.resolveDeletes(hashes, linkHashes, hardlinks)
+	crossSeeds.resolveDeletes(hashes, linkHashes, hardlinks, true)
 }
 
 func deleteExpandsGroups(rule *models.Automation) bool {
@@ -246,29 +246,42 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 		}
 	}
 
-	var claims []deletionClaim
-	for _, torrent := range in.torrents {
+	inScope := func(torrent *qbt.Torrent) bool {
 		if sel.isClaimed(torrent.Hash) || (in.skip != nil && in.skip(torrent.Hash)) {
-			continue
-		}
-		if !trackers.match(rule.TrackerPattern, torrent, s) {
-			continue
+			return false
 		}
 		// A torrent without a private value drops out of a rule that reads it. ADR 0039.
-		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate {
+		return trackers.match(rule.TrackerPattern, *torrent, s) && (!readsPrivate || !qbittorrent.PrivateUnknown(torrent))
+	}
+	var readAhead *freeSpaceReadAhead
+	if projects && in.evalCtx.FilesToClear != nil {
+		var hardlinks *HardlinkIndex
+		if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && deleteAction.IncludeHardlinks {
+			hardlinks = in.evalCtx.hardlinkIndex
+		}
+		readAhead = newFreeSpaceReadAhead(in.crossSeeds, hardlinks, deleteKeepsFilesForOtherInstances(deleteAction))
+	}
+
+	var claims []deletionClaim
+	for i := range in.torrents {
+		torrent := &in.torrents[i]
+		if !inScope(torrent) {
 			continue
 		}
 		// Safety: delete must always have an explicit condition.
-		if deleteAction.Condition == nil || !shouldDeleteTorrent(rule, &torrent, in.evalCtx) {
+		if deleteAction.Condition == nil || !shouldDeleteTorrent(rule, torrent, in.evalCtx) {
 			countNotMet()
 			continue
 		}
-		if projects && !updateCumulativeFreeSpaceCleared(torrent, in.evalCtx, deleteMode, in.crossSeeds, deleteAction.IncludeHardlinks) {
-			countNotMet()
-			if deleteMode == DeleteModeWithFiles {
-				return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+		if projects {
+			readAhead.ask(in.torrents, i, inScope)
+			if !updateCumulativeFreeSpaceCleared(*torrent, in.evalCtx, deleteMode, in.crossSeeds, deleteAction.IncludeHardlinks) {
+				countNotMet()
+				if deleteMode == DeleteModeWithFiles {
+					return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+				}
+				continue
 			}
-			continue
 		}
 		claims = append(claims, deletionClaim{hash: torrent.Hash, rule: rule})
 	}
