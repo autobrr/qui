@@ -736,10 +736,8 @@
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",
-      "tooltip": "Busca arquivos no disco que não fazem mais parte do qBittorrent.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
-      "noLocalAccess": "Acesso Local Ausente",
-      "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
       "remoteLimits": "A exclusão e a auto-limpeza em uma instância remota precisam da identidade dos arquivos, que o qui só consegue ler quando o servidor permite executar GNU find e stat.",
       "remoteNoIdentity": "Esta instância remota não permite isso, então o qui não consegue saber quando dois caminhos são o mesmo arquivo, e um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize. As varreduras aqui podem ser visualizadas e exportadas, mas não excluídas.",
       "on": "Ligado",
@@ -797,7 +795,9 @@
         "cancelFailed": "Falha ao cancelar"
       },
       "errorMessage": "Mensagem de erro",
-      "scanPaths": "Caminhos de verificação"
+      "scanPaths": "Caminhos de verificação",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -1292,14 +1292,14 @@
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
-        "pathSourceLocalAccessRequired": "Localização Manual (Requer que o Acesso Local esteja ativado)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
-          "localAccessRequired": "A origem de espaço livre por caminho requer o \"Acesso ao Sistema de Arquivos Local\".",
-          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
-        }
+          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",
@@ -1490,7 +1490,6 @@
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
-        "enableLocalAccessOrDefault": "Ative o Acesso ao Sistema de Arquivos Local nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\"",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
         "fieldMultiplierInvalid": "O multiplicador de campo deve ser um número válido.",
@@ -1507,7 +1506,8 @@
         "groupIdInvalid": "Apague os espaços e use underlines nesse Id Customizado.",
         "selectGroupKey": "Requer chaves.",
         "groupExists": "O nome já está sendo usado por outro grupamento.",
-        "customGroupAdded": "Grupo personalizado adicionado"
+        "customGroupAdded": "Grupo personalizado adicionado",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"

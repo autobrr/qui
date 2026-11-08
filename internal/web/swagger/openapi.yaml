@@ -6553,7 +6553,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan settings
-      description: Get orphan file scanning settings for an instance. Requires local filesystem access.
+      description: Get orphan file scanning settings for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6564,14 +6564,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanSettings'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
     put:
       tags:
         - Orphan Scan
       summary: Update orphan scan settings
-      description: Update orphan file scanning settings for an instance. Requires local filesystem access.
+      description: Update orphan file scanning settings for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -6590,7 +6590,7 @@ paths:
         '400':
           description: Invalid settings (e.g., non-absolute ignore paths)
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
 
@@ -6615,7 +6615,7 @@ paths:
                     format: int64
                     description: ID of the created scan run
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
         '409':
@@ -6626,7 +6626,7 @@ paths:
       tags:
         - Orphan Scan
       summary: List orphan scan runs
-      description: Get recent orphan scan runs for an instance. Requires local filesystem access.
+      description: Get recent orphan scan runs for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: limit
@@ -6647,7 +6647,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/OrphanScanRun'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
 
@@ -6689,7 +6689,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanRunWithFiles'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
     delete:
@@ -6720,7 +6720,7 @@ paths:
         '400':
           description: Run already finished
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
         '409':
@@ -6757,7 +6757,7 @@ paths:
         '409':
           description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance that does not report file identity, or whose scan did not read it for every file, where the run stays preview_ready. And when the instance's filesystem access or SSH endpoint changed since the scan, which marks the run failed.
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
 

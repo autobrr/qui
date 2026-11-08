@@ -1580,7 +1580,7 @@
       "dropped": "整季包已加入。已排除的目標：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack.",
         "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
         "no_base_directory": "請為此實例設定連結基礎目錄。",
         "no_episode_files": "此整季包中未找到可播放的單集檔案。",

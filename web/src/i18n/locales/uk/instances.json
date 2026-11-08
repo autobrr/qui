@@ -772,10 +772,8 @@
     "orphanScanOverview": {
       "title": "Орфанне сканування",
       "noInstancesDescription": "Екземпляри не налаштовані. Додайте його в налаштуваннях, щоб користуватися цією послугою.",
-      "tooltip": "Знаходить файли на диску, не пов'язані з жодним торентом у qBittorrent.\nПотребує увімкненого доступу до локальної файлової системи для кожного екземпляра.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Сканує каталоги завантажень і визначає файли-сироти для очищення.",
-      "noLocalAccess": "Немає локального доступу",
-      "noLocalAccessTooltip": "qui і qBittorrent повинні працювати на одній машині. Увімкніть «Доступ до локальної файлової системи» в налаштуваннях екземпляра, щоб використовувати сканування сиріт.",
       "remoteLimits": "Видалення та автоматичне очищення на віддаленому екземплярі потребують ідентичності файлів, яку qui може прочитати, лише якщо сервер дозволяє запускати GNU find і stat.",
       "remoteNoIdentity": "Цей віддалений екземпляр цього не дозволяє, тому qui не може визначити, що два шляхи ведуть до одного файлу, і файл, доступний за другим шляхом, наприклад через bind mount, може потрапити до списку, навіть якщо його використовує торент. Сканування тут можна переглядати й експортувати, але не видаляти.",
       "on": "Увімкнено",
@@ -843,7 +841,9 @@
         "cancelFailed": "Не вдалося скасувати"
       },
       "errorMessage": "Повідомлення про помилку",
-      "scanPaths": "Шляхи сканування"
+      "scanPaths": "Шляхи сканування",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Попередній перегляд сиріт",
@@ -1350,14 +1350,14 @@
         "defaultSource": "За замовчуванням (qBittorrent)",
         "pathSource": "Шлях на сервері",
         "pathSourceWindowsUnsupported": "Шлях на сервері (не підтримується в Windows)",
-        "pathSourceLocalAccessRequired": "Шлях на сервері (потребує локального доступу)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Введіть шлях для перевірки вільного місця (наприклад, точка монтування)",
         "errors": {
           "unsupportedWindows": "Джерело вільного простору на основі шляху не підтримується в Windows.",
-          "localAccessRequired": "Потребує увімкнення «Доступу до локальної файлової системи» в налаштуваннях екземпляра.",
-          "pathRequired": "Потрібен шлях, якщо використовується «Шлях на сервері»."
-        }
+          "pathRequired": "Потрібен шлях, якщо використовується «Шлях на сервері».",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Згруповані групи умов",
@@ -1548,7 +1548,6 @@
         "switchedIntervalForFreeSpace": "Змінено на 5-хвилинний інтервал, оскільки видалення у вільному просторі мають ~5 хвилин відновлення",
         "pathSourceUnsupportedWindows": "Джерело вільного простору на основі шляху не підтримується в Windows. Переключено на qBittorrent за замовчуванням.",
         "switchFreeSpaceSourceDefault": "Змінити джерело вільного простору на значення за замовчуванням (qBittorrent)",
-        "enableLocalAccessOrDefault": "Увімкніть доступ до локальної файлової системи в налаштуваннях екземпляра або використовуйте значення за замовчуванням (qBittorrent)",
         "enterPathOrDefault": "Введіть шлях або поверніть джерело вільного простору на значення за замовчуванням (qBittorrent)",
         "addScoreRule": "Додайте принаймні одне правило оцінки для сортування оцінок",
         "fieldMultiplierInvalid": "Множник поля має бути дійсним числом",
@@ -1565,7 +1564,8 @@
         "groupIdInvalid": "Група ID має містити лише буквено-цифрові символи та підкреслення",
         "selectGroupKey": "Виберіть принаймні один ключ",
         "groupExists": "Група з цим ID вже існує",
-        "customGroupAdded": "Спеціальна група додана"
+        "customGroupAdded": "Спеціальна група додана",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Включати",
       "trackerMatchExclude": "Виключити"

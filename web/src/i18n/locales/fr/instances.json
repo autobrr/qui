@@ -730,10 +730,8 @@
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
       "noInstancesDescription": "Aucune instance configurée. Ajoutez-en une dans les paramètres.",
-      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès au système de fichiers local.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
-      "noLocalAccess": "Pas d'accès local",
-      "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
       "remoteLimits": "La suppression et le nettoyage automatique sur une instance distante nécessitent l'identité des fichiers, que l'application ne peut lire que si le serveur lui permet d'exécuter GNU find et stat.",
       "remoteNoIdentity": "Cette instance distante ne le permet pas : l'application ne sait donc pas reconnaître deux chemins menant au même fichier, et un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise. Les analyses ici peuvent être consultées et exportées, mais pas supprimées.",
       "on": "On",
@@ -791,7 +789,9 @@
         "cancelFailed": "Échec de l'annulation"
       },
       "errorMessage": "Message d'erreur",
-      "scanPaths": "Chemins d’analyse"
+      "scanPaths": "Chemins d’analyse",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
@@ -1286,14 +1286,14 @@
         "defaultSource": "Par défaut (qBittorrent)",
         "pathSource": "Chemin sur le serveur",
         "pathSourceWindowsUnsupported": "Chemin sur le serveur (non supporté sur Windows)",
-        "pathSourceLocalAccessRequired": "Chemin sur le serveur (requiert Accès local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Entrez le chemin pour vérifier l'espace libre",
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
-          "localAccessRequired": "Source d'espace basée sur un chemin requiert l'accès local.",
-          "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'."
-        }
+          "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'.",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Groupes de conditions",
@@ -1484,7 +1484,6 @@
         "switchedIntervalForFreeSpace": "Basculé sur un intervalle de 5m en raison du délai de nettoyage de l'Espace libre",
         "pathSourceUnsupportedWindows": "Source basée sur un chemin non supportée sur Windows. Basculement sur qBittorrent par défaut.",
         "switchFreeSpaceSourceDefault": "Basculer la source d'espace libre sur Défaut (qBittorrent)",
-        "enableLocalAccessOrDefault": "Activer l'accès local dans les paramètres de l'instance, ou utiliser Défaut (qBittorrent)",
         "enterPathOrDefault": "Entrez un chemin ou basculez la source d'espace sur Défaut (qBittorrent)",
         "addScoreRule": "Ajouter au moins une règle pour le tri par Score",
         "fieldMultiplierInvalid": "Le multiplicateur de champ doit être un nombre",
@@ -1501,7 +1500,8 @@
         "groupIdInvalid": "L'ID de groupe doit contenir uniquement des caractères alphanumériques et des tirets bas",
         "selectGroupKey": "Sélectionnez au moins une clé",
         "groupExists": "Un groupe avec cet ID existe déjà",
-        "customGroupAdded": "Groupe personnalisé ajouté"
+        "customGroupAdded": "Groupe personnalisé ajouté",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Inclure",
       "trackerMatchExclude": "Exclure"

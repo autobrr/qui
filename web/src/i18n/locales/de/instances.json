@@ -736,10 +736,8 @@
     "orphanScanOverview": {
       "title": "Orphan-Scan",
       "noInstancesDescription": "Keine Instanzen konfiguriert. Füge in den Einstellungen eine hinzu, um diesen Dienst zu nutzen.",
-      "tooltip": "Findet Dateien auf dem Datenträger, die keinem Torrent in qBittorrent zugeordnet sind.\nErfordert, dass der lokale Dateisystemzugriff für jede Instanz aktiviert ist.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Durchsucht Download-Verzeichnisse und identifiziert Orphan-Dateien zum Aufräumen.",
-      "noLocalAccess": "Kein lokaler Zugriff",
-      "noLocalAccessTooltip": "qui und qBittorrent müssen auf derselben Maschine laufen. Aktiviere \"Lokaler Dateisystemzugriff\" in den Instanzeinstellungen, um den Orphan-Scan zu nutzen.",
       "remoteLimits": "Löschen und Auto-Cleanup auf einer Remote-Instanz brauchen die Dateiidentität, die qui nur lesen kann, wenn der Server GNU find und stat ausführen lässt.",
       "remoteNoIdentity": "Diese Remote-Instanz lässt das nicht zu. qui erkennt daher nicht, wenn zwei Pfade dieselbe Datei sind, und eine Datei, die über einen zweiten Pfad erreichbar ist, etwa per Bind-Mount, kann gelistet werden, obwohl ein Torrent sie nutzt. Scans hier lassen sich ansehen und exportieren, aber nicht löschen.",
       "on": "An",
@@ -797,7 +795,9 @@
         "cancelFailed": "Abbruch fehlgeschlagen"
       },
       "errorMessage": "Fehlermeldung",
-      "scanPaths": "Scan-Pfade"
+      "scanPaths": "Scan-Pfade",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Orphan-Vorschau",
@@ -1292,14 +1292,14 @@
         "defaultSource": "Standard (qBittorrent)",
         "pathSource": "Pfad auf dem Server",
         "pathSourceWindowsUnsupported": "Pfad auf dem Server (unter Windows nicht unterstützt)",
-        "pathSourceLocalAccessRequired": "Pfad auf dem Server (erfordert lokalen Zugriff)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Gib den Pfad ein, auf dem der freie Speicher geprüft werden soll (z. B. einen Mountpoint)",
         "errors": {
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
-          "localAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen Dateisystemzugriff.",
-          "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich."
-        }
+          "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich.",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Gruppierte Bedingungsgruppen",
@@ -1490,7 +1490,6 @@
         "switchedIntervalForFreeSpace": "Zum 5-Minuten-Intervall gewechselt, da Löschungen für freien Speicher eine Abkühlzeit von ~5 Minuten haben",
         "pathSourceUnsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt. Zum qBittorrent-Standard gewechselt.",
         "switchFreeSpaceSourceDefault": "Quelle für freien Speicher auf Standard (qBittorrent) umstellen",
-        "enableLocalAccessOrDefault": "Aktiviere den lokalen Dateisystemzugriff in den Instanzeinstellungen oder verwende Standard (qBittorrent)",
         "enterPathOrDefault": "Gib einen Pfad ein oder stelle die Quelle für freien Speicher zurück auf Standard (qBittorrent)",
         "addScoreRule": "Füge mindestens eine Score-Regel für die Score-Sortierung hinzu",
         "fieldMultiplierInvalid": "Der Feld-Multiplikator muss eine gültige Zahl sein",
@@ -1507,7 +1506,8 @@
         "groupIdInvalid": "Die Gruppen-ID darf nur alphanumerische Zeichen und Unterstriche enthalten",
         "selectGroupKey": "Wähle mindestens einen Schlüssel",
         "groupExists": "Eine Gruppe mit dieser ID existiert bereits",
-        "customGroupAdded": "Benutzerdefinierte Gruppe hinzugefügt"
+        "customGroupAdded": "Benutzerdefinierte Gruppe hinzugefügt",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Einschließen",
       "trackerMatchExclude": "Ausschließen"

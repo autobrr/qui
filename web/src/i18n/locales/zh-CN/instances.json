@@ -718,10 +718,8 @@
     "orphanScanOverview": {
       "title": "孤立项目扫描",
       "noInstancesDescription": "未配置实例。请在设置中添加实例以使用此服务。",
-      "tooltip": "查找磁盘上与 qBittorrent 中任何种子都不关联的文件。\n需要为每个实例启用本地文件系统访问。",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "扫描下载目录并识别孤立文件以进行清理。",
-      "noLocalAccess": "无本地访问权限",
-      "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
       "remoteLimits": "在远程实例上删除和自动清理需要文件标识，只有服务器允许 qui 运行 GNU find 和 stat 时才能读取。",
       "remoteNoIdentity": "此远程实例不允许这样做，因此 qui 无法判断两个路径是否指向同一文件，可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。此处的扫描只能预览和导出，不能删除。",
       "on": "开",
@@ -774,7 +772,9 @@
         "cancelFailed": "取消失败"
       },
       "errorMessage": "错误信息",
-      "scanPaths": "扫描路径"
+      "scanPaths": "扫描路径",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "孤立项目预览",
@@ -1263,14 +1263,14 @@
         "defaultSource": "默认（qBittorrent）",
         "pathSource": "服务器路径",
         "pathSourceWindowsUnsupported": "服务器路径（Windows 不支持）",
-        "pathSourceLocalAccessRequired": "服务器路径（需要本地访问权限）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "输入要检查可用空间的路径（例如挂载点）",
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
-          "localAccessRequired": "基于路径的可用空间来源需要本地文件系统访问权限。",
-          "pathRequired": "使用\"服务器路径\"时，路径为必填项。"
-        }
+          "pathRequired": "使用\"服务器路径\"时，路径为必填项。",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "分组条件组",
@@ -1461,7 +1461,6 @@
         "switchedIntervalForFreeSpace": "已切换到 5 分钟间隔，因为可用空间删除有约 5 分钟的冷却时间",
         "pathSourceUnsupportedWindows": "Windows 不支持基于路径的可用空间来源。已切换到 qBittorrent 默认值。",
         "switchFreeSpaceSourceDefault": "将可用空间来源切换为默认（qBittorrent）",
-        "enableLocalAccessOrDefault": "请在实例设置中启用本地文件系统访问，或使用默认（qBittorrent）",
         "enterPathOrDefault": "请输入路径或将可用空间来源切换回默认（qBittorrent）",
         "addScoreRule": "得分排序至少需要一条得分规则",
         "fieldMultiplierInvalid": "字段乘数必须是有效数字",
@@ -1478,7 +1477,8 @@
         "groupIdInvalid": "分组 ID 只能包含字母、数字和下划线",
         "selectGroupKey": "请至少选择一个键",
         "groupExists": "已存在具有此 ID 的分组",
-        "customGroupAdded": "已添加自定义分组"
+        "customGroupAdded": "已添加自定义分组",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除"

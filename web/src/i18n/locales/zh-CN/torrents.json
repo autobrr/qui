@@ -1580,7 +1580,7 @@
       "dropped": "整季包已添加。已排除的目标：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack.",
         "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
         "no_base_directory": "请为此实例配置链接基础目录。",
         "no_episode_files": "此整季包中未找到可播放的单集文件。",

@@ -1580,7 +1580,7 @@
       "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack.",
         "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
         "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
         "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",

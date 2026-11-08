@@ -1811,7 +1811,7 @@
       "dropped": "Пакет додано. Пропущені цілі: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Для складання пакета цьому екземпляру потрібен доступ до локальної файлової системи.",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack.",
         "no_link_mode": "Увімкніть жорсткі посилання або reflink для цього екземпляра, щоб вибрати кілька цілей.",
         "no_base_directory": "Налаштуйте базовий каталог посилань для цього екземпляра.",
         "no_episode_files": "У пакеті не знайдено відтворюваних файлів епізодів.",

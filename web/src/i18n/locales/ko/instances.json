@@ -718,10 +718,8 @@
     "orphanScanOverview": {
       "title": "고아 항목 스캔",
       "noInstancesDescription": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",
-      "tooltip": "qBittorrent의 어떤 토렌트와도 연결되지 않은 디스크상의 파일을 찾습니다.\n각 인스턴스에 로컬 파일시스템 접근이 활성화되어 있어야 합니다.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "다운로드 디렉터리를 스캔하여 정리할 고아 파일을 식별합니다.",
-      "noLocalAccess": "로컬 접근 없음",
-      "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 항목 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
       "remoteLimits": "원격 인스턴스에서 삭제와 자동 정리를 하려면 파일 식별 정보가 필요하며, qui는 서버가 GNU find와 stat 실행을 허용할 때만 이를 읽을 수 있습니다.",
       "remoteNoIdentity": "이 원격 인스턴스는 이를 허용하지 않으므로 qui는 두 경로가 같은 파일인지 구분할 수 없고, 바인드 마운트처럼 두 번째 경로로 접근 가능한 파일은 토렌트가 사용 중이어도 목록에 표시될 수 있습니다. 여기서의 스캔은 미리 보고 내보낼 수 있지만 삭제할 수는 없습니다.",
       "on": "켜짐",
@@ -774,7 +772,9 @@
         "cancelFailed": "취소하지 못했습니다"
       },
       "errorMessage": "오류 메시지",
-      "scanPaths": "검사 경로"
+      "scanPaths": "검사 경로",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "고아 항목 미리 보기",
@@ -1263,14 +1263,14 @@
         "defaultSource": "기본값(qBittorrent)",
         "pathSource": "서버의 경로",
         "pathSourceWindowsUnsupported": "서버의 경로(Windows에서 지원되지 않음)",
-        "pathSourceLocalAccessRequired": "서버의 경로(로컬 접근 필요)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "여유 공간을 확인할 경로를 입력하세요(예: 마운트 지점)",
         "errors": {
           "unsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다.",
-          "localAccessRequired": "경로 기반 여유 공간 소스에는 로컬 파일시스템 접근이 필요합니다.",
-          "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다."
-        }
+          "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다.",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "그룹화된 조건 그룹",
@@ -1461,7 +1461,6 @@
         "switchedIntervalForFreeSpace": "여유 공간 삭제에는 약 5분의 대기 시간이 있으므로 5분 간격으로 전환했습니다",
         "pathSourceUnsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다. qBittorrent 기본값으로 전환했습니다.",
         "switchFreeSpaceSourceDefault": "여유 공간 소스를 기본값(qBittorrent)으로 전환",
-        "enableLocalAccessOrDefault": "인스턴스 설정에서 로컬 파일시스템 접근을 활성화하거나 기본값(qBittorrent)을 사용하세요",
         "enterPathOrDefault": "경로를 입력하거나 여유 공간 소스를 기본값(qBittorrent)으로 다시 전환하세요",
         "addScoreRule": "점수 정렬을 위해 점수 규칙을 하나 이상 추가하세요",
         "fieldMultiplierInvalid": "필드 곱셈기는 유효한 숫자여야 합니다",
@@ -1478,7 +1477,8 @@
         "groupIdInvalid": "그룹 ID는 영숫자와 밑줄만 포함해야 합니다",
         "selectGroupKey": "키를 하나 이상 선택하세요",
         "groupExists": "이 ID를 가진 그룹이 이미 존재합니다",
-        "customGroupAdded": "사용자 지정 그룹이 추가되었습니다"
+        "customGroupAdded": "사용자 지정 그룹이 추가되었습니다",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "포함",
       "trackerMatchExclude": "제외"

@@ -230,7 +230,8 @@
       "qbittorrent50": "Requer qBittorrent 5.0+",
       "qbittorrent52": "Requer qBittorrent 5.2+",
       "localFilesystemAccess": "Requer Acesso ao Sistema de Arquivos Local",
-      "remoteInstance": "Indisponível em instâncias remotas"
+      "remoteInstance": "Indisponível em instâncias remotas",
+      "filesystemAccess": "Requires filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "ruleSkip": "Não é executada nesta instância: {{field}} requer {{requires}}."
   }
