@@ -712,8 +712,7 @@ func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bo
 	}
 }
 
-// matchesStateValue matches against the torrent "status" buckets used by the sidebar filters
-// (e.g. "errored", "stalled_uploading") with a fallback to exact torrent.State string matching.
+// matchesStateValue reads "completed" as 100% progress, but sidebar Completed reads the state (#3870).
 func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
@@ -721,7 +720,6 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 	}
 
 	switch strings.ToLower(normalized) {
-	// Sidebar status buckets
 	case "completed":
 		return torrent.Progress >= 1.0
 	case "downloading":
@@ -729,6 +727,7 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			qbt.TorrentStateDownloading,
 			qbt.TorrentStateStalledDl,
 			qbt.TorrentStateMetaDl,
+			qbt.TorrentStateForcedMetaDl,
 			qbt.TorrentStateQueuedDl,
 			qbt.TorrentStateAllocating,
 			qbt.TorrentStateCheckingDl,
