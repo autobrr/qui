@@ -1682,11 +1682,10 @@
     }
   },
   "copyGroups": {
-    "expand_one": "Mostra {{count}} còpia amagada",
-    "expand_other": "Mostra {{count}} còpies amagades",
-    "collapse_one": "Amaga {{count}} còpia",
-    "collapse_other": "Amaga {{count}} còpies",
-    "badge": "+{{hidden}}",
-    "hiddenProblem": "Una còpia amagada té un problema"
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
+    "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
+    "badge": "+{{hidden}}"
   }
 }

@@ -472,11 +472,10 @@ function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Tor
   ]
 }
 
-const chevrons = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label^=\"copyGroups.\"]"))
-const warnings = (container: HTMLElement) => container.querySelectorAll("[role=\"img\"][aria-label=\"copyGroups.hiddenProblem\"]")
+const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label^=\"copyGroups.\"]"))
+const warnings = (container: HTMLElement) => container.querySelectorAll("button[aria-label^=\"copyGroups.copiesWithProblem\"]")
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
 const cellOf = (row: HTMLElement, columnId: string) => row.querySelector(`[data-torrent-column-measure="${columnId}"]`) as HTMLElement
-const indents = (row: HTMLElement) => row.querySelectorAll("span.w-5[aria-hidden=\"true\"]")
 
 function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
   scenario.rows = rows
@@ -503,14 +502,13 @@ describe("TorrentTableOptimized Copy groups", () => {
     scenario.copyGroupsReady = undefined
   })
 
-  it("shows no chevron, badge, warning icon, or indent on rows with no group id", () => {
+  it("shows no pill on rows with no group id", () => {
     scenario.rows = [...torrents.slice(0, 2), makeTorrent({ hash: "hash-err", name: "Error Release", state: "error" })]
     const { container } = renderTable()
 
-    expect(chevrons(container)).toEqual([])
+    expect(pills(container)).toEqual([])
     expect(warnings(container).length).toBe(0)
     expect(container.textContent).not.toContain("copyGroups.badge")
-    expect(container.querySelectorAll("span.w-5[aria-hidden=\"true\"]").length).toBe(0)
   })
 
   it("gives the grid an unknown row count on a grouped list and the torrent total on a flat list", () => {
@@ -528,68 +526,51 @@ describe("TorrentTableOptimized Copy groups", () => {
       localStorage.setItem("qui-torrent-desktop-view-mode", viewMode)
     })
 
-    it("shows a collapsed group as one row with a chevron and a badge for the hidden copies", () => {
+    it("shows a collapsed group as one row with a pill that counts the hidden copies", () => {
       const { container } = renderGroups(copyGroupRows())
 
       expect(container.textContent).toContain("Delta Release")
       expect(container.textContent).toContain("Echo Release")
       expect(container.textContent).not.toContain("Delta Release copy C")
-      const [chevron, ...others] = chevrons(container)
+      const [pill, ...others] = pills(container)
       expect(others).toEqual([])
-      expect(chevron.getAttribute("aria-expanded")).toBe("false")
-      expect(chevron.getAttribute("aria-label")).toBe("copyGroups.expand {\"count\":2}")
-      expect(rowOf(container, "Delta Release").textContent).toContain("copyGroups.badge {\"hidden\":2}")
+      expect(pill.getAttribute("aria-expanded")).toBe("false")
+      expect(pill.getAttribute("aria-label")).toBe("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
+      expect(pill.textContent).toContain("copyGroups.badge {\"hidden\":2}")
+      expect(rowOf(container, "Delta Release").contains(pill)).toBe(true)
     })
 
-    it("opens and closes the group from the chevron without a change to the ticks or the details panel", () => {
+    it("opens and closes the group from the pill without a change to the ticks or the details panel", () => {
       const onTorrentSelect = vi.fn()
       const { container } = renderGroups(copyGroupRows(), { onTorrentSelect })
       fireEvent.click(within(container).getByText("Echo Release"), { ctrlKey: true })
       expect(isRowChecked(container, "Echo Release")).toBe(true)
 
-      fireEvent.click(chevrons(container)[0])
+      fireEvent.click(pills(container)[0])
 
       expect(container.textContent).toContain("Delta Release copy B")
       expect(container.textContent).toContain("Delta Release copy C")
-      expect(chevrons(container).map(c => c.getAttribute("aria-expanded"))).toEqual(["true"])
-      expect(container.textContent).not.toContain("copyGroups.badge")
+      expect(pills(container).map(c => c.getAttribute("aria-expanded"))).toEqual(["true"])
       expect(isRowChecked(container, "Delta Release")).toBe(false)
       expect(isRowChecked(container, "Echo Release")).toBe(true)
 
-      fireEvent.click(chevrons(container)[0])
+      fireEvent.click(pills(container)[0])
 
       expect(container.textContent).not.toContain("Delta Release copy C")
       expect(isRowChecked(container, "Echo Release")).toBe(true)
       expect(onTorrentSelect).not.toHaveBeenCalled()
     })
 
-    it("shows one chevron while Expand all is on", () => {
+    it("shows one pill while Expand all is on", () => {
       const { container } = renderGroups(copyGroupRows())
 
       act(() => controller.current?.toggleExpandAll())
 
       expect(container.textContent).toContain("Delta Release copy C")
-      expect(chevrons(container).length).toBe(1)
+      expect(pills(container).length).toBe(1)
     })
 
-    it("indents the other members of an open group", () => {
-      const { container } = renderGroups(copyGroupRows())
-      fireEvent.click(chevrons(container)[0])
-
-      if (viewMode === "compact") {
-        expect(rowOf(container, "Delta Release").className).not.toContain("pl-8")
-        expect(rowOf(container, "Delta Release copy B").className).toContain("pl-8")
-        expect(rowOf(container, "Delta Release copy C").className).toContain("pl-8")
-        expect(rowOf(container, "Echo Release").className).not.toContain("pl-8")
-      } else {
-        expect(indents(rowOf(container, "Delta Release")).length).toBe(0)
-        expect(indents(cellOf(rowOf(container, "Delta Release copy B"), "name")).length).toBe(1)
-        expect(indents(cellOf(rowOf(container, "Delta Release copy C"), "name")).length).toBe(1)
-        expect(indents(rowOf(container, "Echo Release")).length).toBe(0)
-      }
-    })
-
-    it("shows the warning icon when a hidden copy changes to an error, and none when the group is open", () => {
+    it("shows the warning pill when a hidden copy changes to an error, and a plain pill when the group is open", () => {
       const rows = copyGroupRows()
       const view = renderGroups(rows)
       expect(warnings(view.container).length).toBe(0)
@@ -598,7 +579,7 @@ describe("TorrentTableOptimized Copy groups", () => {
       view.showRows([rows[0], rows[1], { ...rows[2], state: "error" }, rows[3]])
       expect(warnings(view.container).length).toBe(1)
 
-      fireEvent.click(chevrons(view.container)[0])
+      fireEvent.click(pills(view.container)[0])
       expect(warnings(view.container).length).toBe(0)
     })
 
@@ -633,7 +614,7 @@ describe("TorrentTableOptimized Copy groups", () => {
       const { container } = renderGroups(copyGroupRows())
       const collapsedAdded = cellOf(rowOf(container, "Delta Release"), "added_on").textContent
 
-      fireEvent.click(chevrons(container)[0])
+      fireEvent.click(pills(container)[0])
 
       // An open group shows the own value of each row.
       expect(collapsedAdded).toBe(cellOf(rowOf(container, "Delta Release copy B"), "added_on").textContent)
@@ -651,17 +632,17 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(cellOf(rowOf(view.container, "Delta Release"), "added_on").textContent).not.toBe(before)
     })
 
-    it("puts a working chevron in the first cell after the select cell when the Name column is hidden", () => {
+    it("puts a working pill next to the checkbox when the Name column is hidden", () => {
       localStorage.setItem("qui-column-visibility:1", JSON.stringify({ name: false }))
       const { container } = renderGroups(copyGroupRows())
-      const firstRowPriority = () => container.querySelectorAll("[data-torrent-column-measure=\"priority\"]")
-      const collapsedRows = firstRowPriority().length
+      const selectCells = () => container.querySelectorAll("[data-torrent-column-measure=\"select\"]")
+      const collapsedRows = selectCells().length
 
-      const chevron = firstRowPriority()[0].querySelector("button[aria-label^=\"copyGroups.\"]") as HTMLButtonElement
-      expect(chevron).not.toBeNull()
-      fireEvent.click(chevron)
+      const pill = selectCells()[0].querySelector("button[aria-label^=\"copyGroups.\"]") as HTMLButtonElement
+      expect(pill).not.toBeNull()
+      fireEvent.click(pill)
 
-      expect(firstRowPriority().length).toBe(collapsedRows + 2)
+      expect(selectCells().length).toBe(collapsedRows + 2)
     })
   })
 
@@ -687,7 +668,45 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toBe(seedingText)
   })
 
-  it("shows no warning icon for a problem on the top row itself", () => {
+  describe("the tooltip of the pill", () => {
+    // jsdom has no matchMedia; without one, the device counts as one that cannot hover.
+    function setCanHover(canHover: boolean) {
+      window.matchMedia = ((query: string) => ({
+        matches: canHover && query === "(hover: hover)",
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }
+
+    afterEach(() => {
+      delete (window as { matchMedia?: unknown }).matchMedia
+    })
+
+    it("names the pill on a device that can hover", async () => {
+      setCanHover(true)
+      const { container, findByRole } = renderGroups(copyGroupRows())
+
+      // A keyboard user tabs to the pill.
+      fireEvent.keyDown(pills(container)[0], { key: "Tab" })
+      act(() => pills(container)[0].focus())
+
+      expect((await findByRole("tooltip")).textContent).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
+    })
+
+    it("stays closed on a tap on a touch screen, which only opens the group", () => {
+      setCanHover(false)
+      const { container, queryByRole } = renderGroups(copyGroupRows())
+
+      fireEvent.pointerDown(pills(container)[0], { pointerType: "touch" })
+      fireEvent.click(pills(container)[0])
+
+      expect(pills(container)[0].getAttribute("aria-expanded")).toBe("true")
+      expect(queryByRole("tooltip")).toBeNull()
+    })
+  })
+
+  it("shows no warning pill for a problem on the top row itself", () => {
     const { container } = renderGroups(copyGroupRows({ top: { state: "error" } }))
     expect(warnings(container).length).toBe(0)
   })
@@ -699,7 +718,7 @@ describe("TorrentTableOptimized Copy groups", () => {
     [{ tracker_health: "tracker_down" }, true],
     [{ tracker_health: "tracker_error" }, true],
     [{ state: "stalledUP" }, false],
-  ] as const)("shows the warning icon for a hidden copy with %o: %s", (hidden, expected) => {
+  ] as const)("shows the warning pill for a hidden copy with %o: %s", (hidden, expected) => {
     const { container } = renderGroups(copyGroupRows({ third: hidden }))
     expect(warnings(container).length).toBe(expected ? 1 : 0)
   })

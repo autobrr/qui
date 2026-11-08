@@ -1682,11 +1682,10 @@
     }
   },
   "copyGroups": {
-    "expand_one": "Show {{count}} hidden copy",
-    "expand_other": "Show {{count}} hidden copies",
-    "collapse_one": "Hide {{count}} copy",
-    "collapse_other": "Hide {{count}} copies",
-    "badge": "+{{hidden}}",
-    "hiddenProblem": "A hidden copy has a problem"
+    "copies_one": "{{count}} more copy of {{name}}",
+    "copies_other": "{{count}} more copies of {{name}}",
+    "copiesWithProblem_one": "{{count}} more copy of {{name}}. A hidden copy has a problem",
+    "copiesWithProblem_other": "{{count}} more copies of {{name}}. A hidden copy has a problem",
+    "badge": "+{{hidden}}"
   }
 }

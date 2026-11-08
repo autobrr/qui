@@ -5,9 +5,9 @@
 
 import type { SpeedUnit } from "@/lib/speedUnits"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
-import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
+import { getLinuxIsoName } from "@/lib/incognito"
+import { centersSelectCheckbox, getCopyGroupAccentClass, getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import type { TrackerCustomizationLookup } from "@/lib/tracker-customizations"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import {
@@ -16,13 +16,12 @@ import {
   type ColumnSizingState,
   type ColumnVisibilityState
 } from "@tanstack/react-table"
-import { AlertTriangle, ChevronRight } from "lucide-react"
 import { memo } from "react"
-import { useTranslation } from "react-i18next"
 import { TorrentContextMenu, type TorrentContextMenuProps } from "../TorrentContextMenu"
 import type { TableViewMode } from "../TorrentTableColumns"
 import type { TorrentRow, TorrentTableColumnDef } from "../tanstackTableFeatures"
 import { CompactRow } from "./CompactRow"
+import { CopyGroupPill, type CopyGroupPillSize } from "./CopyGroupPill"
 
 // Everything the per-row context menu needs except the row-specific fields.
 // The parent memoizes ONE bundle for all rows, so the row comparator checks a
@@ -80,50 +79,6 @@ export interface TorrentTableRowProps {
   onToggleCopyGroup: (id: string) => void
 }
 
-interface CopyGroupControlsProps {
-  id: string
-  open: boolean
-  copies: number
-  hiddenProblem: boolean
-  onToggle: (id: string) => void
-}
-
-// The chevron and the icon keep their size; in a narrow cell the badge clips,
-// so the name of the chevron also gives the count.
-function CopyGroupControls({ id, open, copies, hiddenProblem, onToggle }: CopyGroupControlsProps) {
-  const { t } = useTranslation("torrents")
-  const problemLabel = t("copyGroups.hiddenProblem")
-  return (
-    <span className="flex shrink-0 items-center gap-1 mr-1">
-      <button
-        type="button"
-        className="flex shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
-        aria-expanded={open}
-        aria-label={open ? t("copyGroups.collapse", { count: copies }) : t("copyGroups.expand", { count: copies })}
-        onClick={(event) => {
-          event.stopPropagation()
-          onToggle(id)
-        }}
-      >
-        <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
-      </button>
-      {hiddenProblem && (
-        <span role="img" aria-label={problemLabel} title={problemLabel} className="flex shrink-0">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-        </span>
-      )}
-      {!open && (
-        <Badge variant="secondary" className="px-1 py-0 text-xs">
-          {t("copyGroups.badge", { hidden: copies })}
-        </Badge>
-      )}
-    </span>
-  )
-}
-
-// Matches the chevron and its gap, so the copies of an open group look nested.
-const COPY_INDENT = <span className="w-5 shrink-0" aria-hidden="true" />
-
 // TanStack Table rebuilds the Row wrapper whenever the data array changes, so
 // comparing `row` by reference would defeat the memo on every stream tick. The
 // render-relevant identity of a row is the underlying torrent object — stable
@@ -175,15 +130,21 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   onToggleCopyGroup,
 }: TorrentTableRowProps) {
   const torrent = row.original
-  const groupControls = copyGroupId !== undefined && (
-    <CopyGroupControls
+  // The pill names the torrent that the row shows: under a name sort, the
+  // collapsed row shows the name of the first-sorted member.
+  const shownTorrent = sortedTorrent && sortedColumnId === "name" ? sortedTorrent : torrent
+  const pill = (size: CopyGroupPillSize) => copyGroupId !== undefined && (
+    <CopyGroupPill
       id={copyGroupId}
       open={copyGroupOpen}
       copies={copies}
       hiddenProblem={hiddenCopyProblem}
+      name={compact.incognitoMode ? getLinuxIsoName(shownTorrent.hash) : shownTorrent.name}
+      size={size}
       onToggle={onToggleCopyGroup}
     />
   )
+  const groupAccent = (copyGroupOpen || nestedCopy) && getCopyGroupAccentClass(copyGroupOpen)
 
   if (desktopViewMode === "compact") {
     // A Stacked row has no cells: it shows the sorted field of the first-sorted member.
@@ -194,8 +155,8 @@ export const TorrentTableRow = memo(function TorrentTableRow({
         <CompactRow
           torrent={torrent}
           displayTorrent={displayTorrent}
-          groupControls={groupControls}
-          nested={nestedCopy}
+          groupPill={pill("stacked")}
+          groupAccentClass={groupAccent || undefined}
           rowId={row.id}
           rowIndex={virtualIndex}
           isSelected={isSelected}
@@ -224,12 +185,16 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   }
 
   const cells = row.getVisibleCells()
-  const groupCellId = groupControls || nestedCopy ? (cells.find(cell => cell.column.id === "name") ?? cells.find(cell => cell.column.id !== "select"))?.id : undefined
+  // The pill sits at the end of the Name cell. With Name hidden it sits in the
+  // first cell that is not an icon column, which are too narrow for it. That is
+  // the select cell, which the table widens for it, unless select is hidden too.
+  const pillCellId = copyGroupId === undefined ? undefined : (cells.find(cell => cell.column.id === "name")
+    ?? cells.find(cell => cell.column.id !== "status_icon" && cell.column.id !== "tracker_icon"))?.id
 
   return (
     <TorrentContextMenu {...menu} torrent={torrent} isSelected={isRowSelected}>
       <div
-        className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualIndex)}`}
+        className={cn("flex cursor-pointer hover:bg-accent/40", getRowBackgroundClass(isRowSelected, isSelected, virtualIndex), groupAccent)}
         style={{
           position: "absolute",
           top: 0,
@@ -258,15 +223,15 @@ export const TorrentTableRow = memo(function TorrentTableRow({
               className={cn(
                 "flex items-center overflow-hidden min-w-0",
                 // Select and compact columns are centered to match header
-                (isSelectColumn || isCompactColumn) && "justify-center",
+                (isCompactColumn || (isSelectColumn && centersSelectCheckbox(cell.column.getSize()))) && "justify-center",
                 desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2"
               )}
             >
-              {cell.id === groupCellId && (nestedCopy ? COPY_INDENT : groupControls)}
               {flexRender(
                 cell.column.columnDef.cell,
                 sortedTorrent && cell.column.id === sortedColumnId ? sortedCellContext(cell.getContext(), sortedTorrent) : cell.getContext()
               )}
+              {cell.id === pillCellId && pill(desktopViewMode === "dense" ? "dense" : "normal")}
             </div>
           )
         })}

@@ -1759,13 +1759,12 @@
     }
   },
   "copyGroups": {
-    "expand_one": "Zobrazit {{count}} skrytou kopii",
-    "expand_few": "Zobrazit {{count}} skryté kopie",
-    "expand_other": "Zobrazit {{count}} skrytých kopií",
-    "collapse_one": "Skrýt {{count}} kopii",
-    "collapse_few": "Skrýt {{count}} kopie",
-    "collapse_other": "Skrýt {{count}} kopií",
-    "badge": "+{{hidden}}",
-    "hiddenProblem": "Skrytá kopie má problém"
+    "copies_one": "{{count}} další kopie položky {{name}}",
+    "copies_few": "{{count}} další kopie položky {{name}}",
+    "copies_other": "{{count}} dalších kopií položky {{name}}",
+    "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
+    "badge": "+{{hidden}}"
   }
 }

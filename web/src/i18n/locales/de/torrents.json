@@ -1682,11 +1682,10 @@
     }
   },
   "copyGroups": {
-    "expand_one": "{{count}} ausgeblendete Kopie anzeigen",
-    "expand_other": "{{count}} ausgeblendete Kopien anzeigen",
-    "collapse_one": "{{count}} Kopie ausblenden",
-    "collapse_other": "{{count}} Kopien ausblenden",
-    "badge": "+{{hidden}}",
-    "hiddenProblem": "Eine ausgeblendete Kopie hat ein Problem"
+    "copies_one": "{{count}} weitere Kopie von {{name}}",
+    "copies_other": "{{count}} weitere Kopien von {{name}}",
+    "copiesWithProblem_one": "{{count}} weitere Kopie von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "copiesWithProblem_other": "{{count}} weitere Kopien von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "badge": "+{{hidden}}"
   }
 }

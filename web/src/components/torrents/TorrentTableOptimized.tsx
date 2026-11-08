@@ -30,6 +30,7 @@ import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { GROUPED_SELECT_COLUMN_WIDTH } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
 import { useTable } from "@tanstack/react-table"
@@ -636,10 +637,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [columns, columnVisibility, columnSizing])
   const availableWidth = containerWidth - (showRowGutter ? SPREADSHEET_ROW_GUTTER_WIDTH : 0)
   const effectiveStretch = stretchNameColumn && fixedColsWidth + NAME_COLUMN_MIN_WIDTH <= availableWidth
+  const widenSelect = copyGroupsReady && columnVisibility.name === false
   const effectiveColumnSizing = useMemo(() => {
-    if (!effectiveStretch) return columnSizing
-    return { ...columnSizing, name: availableWidth - fixedColsWidth }
-  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth])
+    const sizing = widenSelect ? { ...columnSizing, select: GROUPED_SELECT_COLUMN_WIDTH } : columnSizing
+    if (!effectiveStretch) return sizing
+    return { ...sizing, name: availableWidth - fixedColsWidth }
+  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth, widenSelect])
 
   const table = useTable({
     features: torrentTableFeatures,

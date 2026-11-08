@@ -22,10 +22,10 @@ interface CompactRowProps {
   torrent: Torrent
   /** What the row shows; the checkbox still gets `torrent`. */
   displayTorrent?: Torrent
-  /** The Copy group controls, in front of the name. */
-  groupControls?: ReactNode
-  /** A member under the top row of an open Copy group. */
-  nested?: boolean
+  /** The Copy group pill, after the name. */
+  groupPill?: ReactNode
+  /** The left bar on the rows of an open Copy group. */
+  groupAccentClass?: string
   rowId: string
   rowIndex: number
   isSelected: boolean
@@ -49,8 +49,8 @@ interface CompactRowProps {
 export function CompactRow({
   torrent: rowTorrent,
   displayTorrent: torrent = rowTorrent,
-  groupControls,
-  nested = false,
+  groupPill,
+  groupAccentClass,
   rowId,
   rowIndex,
   isSelected,
@@ -94,7 +94,7 @@ export function CompactRow({
     <div
       className={cn(
         "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
-        nested && "pl-8",
+        groupAccentClass,
         getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
       )}
       style={style}
@@ -140,10 +140,10 @@ export function CompactRow({
             </span>
           )}
         </div>
-        {groupControls}
         <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
           {displayName}
         </h3>
+        {groupPill}
         <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
           {statusBadgeLabel}
         </Badge>
