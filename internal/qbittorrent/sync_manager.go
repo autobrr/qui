@@ -1714,7 +1714,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var copyGroupsReady *bool
 	var groupedRows []copyGroupPageRow
 	if GroupCopiesRequested(ctx) {
-		sm.demandCopyGroups()
+		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
 		if *copyGroupsReady && !summary {
@@ -2031,7 +2031,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	var copyGroupsReady *bool
 	if groupCopies {
-		sm.demandCopyGroups()
+		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, requestInstanceIDs))
 		if *copyGroupsReady {

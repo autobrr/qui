@@ -432,6 +432,21 @@ func (b *fpBuf) optional(tv *qbittorrent.TorrentView) {
 	b.bit(tv.Private != nil)
 }
 
+// copyGroup appends the Copy group of the row. A rebuild of the groups changes it
+// with no change in the torrent.
+func (b *fpBuf) copyGroup(g *qbittorrent.CopyGroupRow) {
+	b.bit(g != nil)
+	if g == nil {
+		return
+	}
+	b.str(g.ID)
+	b.bit(g.FirstSorted != nil)
+	if g.FirstSorted != nil {
+		b.i64(int64(g.FirstSorted.InstanceID))
+		b.str(g.FirstSorted.Hash)
+	}
+}
+
 func (b fpBuf) sum() uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write(b)
@@ -448,6 +463,7 @@ func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
 	b.optional(&tv)
+	b.copyGroup(tv.CopyGroup)
 	return b.sum()
 }
 
@@ -459,6 +475,7 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
 	b.optional(&tv)
+	b.copyGroup(tv.CopyGroup)
 	if t := tv.Torrent; t != nil {
 		b.i64(t.TimeActive)
 		b.i64(t.SeedingTime)
@@ -488,6 +505,7 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 		b.torrent(c.Torrent)
 		b.str(string(c.TrackerHealth))
 		b.optional(c.TorrentView)
+		b.copyGroup(c.CopyGroup)
 	}
 	b.i64(int64(c.InstanceID))
 	b.str(c.InstanceName)

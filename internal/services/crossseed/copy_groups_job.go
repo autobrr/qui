@@ -73,7 +73,7 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	}
 }
 
-// StartCopyGroups lets list requests start the Copy groups job. Its runs use ctx.
+// StartCopyGroups lets list requests and grouped streams start the Copy groups job. Its runs use ctx.
 func (s *Service) StartCopyGroups(ctx context.Context) {
 	j := s.copyGroups
 	if j == nil {
