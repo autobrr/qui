@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -60,5 +61,31 @@ func BenchmarkBatchReads(b *testing.B) {
 			}
 			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*readHashes), "ns/hash")
 		})
+	}
+}
+
+func BenchmarkCacheFilesBatch(b *testing.B) {
+	const torrents = 800
+	const filesPerTorrent = 7
+
+	db := testdb.NewMigratedSQLite(b, "filesmanager-bench")
+	ctx := b.Context()
+	seedInstanceRow(ctx, b, db, 1)
+	svc := NewService(db)
+
+	files := make(map[string]qbt.TorrentFiles, torrents)
+	for i := range torrents {
+		list := make(qbt.TorrentFiles, filesPerTorrent)
+		for idx := range list {
+			list[idx] = qbt.TorrentFile{Index: idx, Name: fmt.Sprintf("Release.%d/file%d.mkv", i, idx), Size: int64(i*10 + idx), Progress: 1, IsSeed: idx%2 == 0, PieceRange: []int{idx, idx + 1}}
+		}
+		files[fmt.Sprintf("%040x", i)] = list
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := svc.CacheFilesBatch(ctx, 1, files); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

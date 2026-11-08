@@ -100,7 +100,7 @@ func (m *localMatchContext) getSourceFiles() error {
 
 	normalizer := normalizerForService(m.svc)
 	m.sourceFiles = contentFiles(srcFiles, normalizer)
-	m.sourceData = newSameDataFiles(m.sourceSavePath, srcFiles, normalizer)
+	m.sourceData = newSameDataFiles(m.sourceSavePath, srcFiles, normalizer, false)
 	return nil
 }
 

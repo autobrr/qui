@@ -613,6 +613,13 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult = crossseed.CrossMatchResult
 
+// CrossMatchSession answers the Shared-file groups and the cross-seed facts of
+// the torrents that a reader asks for.
+type CrossMatchSession = crossseed.CrossMatchSession
+
+// ResolveRequest names the torrents that one CrossMatchSession.Resolve answers.
+type ResolveRequest = crossseed.ResolveRequest
+
 // filesReader is the slice of the sync manager the hardlink index, the
 // missing-files check, the skipped-files check, the any-instance season
 // pack set, and the file overlap checks read. ADR 0005.
@@ -624,7 +631,7 @@ type filesReader interface {
 // CrossMatcher provides cross-seed torrent matching using content-aware
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
-	BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult
+	OpenCrossMatchSession(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) (CrossMatchSession, error)
 }
 
 // Service periodically applies automation rules to torrents for all active instances.
@@ -1101,12 +1108,10 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
-	if needs.CrossMatch != (CrossMatchNeeds{}) {
-		result := s.buildCrossMatchSets(ctx, instanceID, needs.CrossMatch)
-		if result != nil && result.Err != nil {
-			return nil, nil, fmt.Errorf("failed to build cross-seed snapshot: %w", result.Err)
+	if needs.CrossMatch != (CrossMatchNeeds{}) && s.crossMatcher != nil {
+		if err := s.openRunSession(ctx, instanceID, torrents, needs, evalCtx); err != nil {
+			return nil, nil, fmt.Errorf("failed to build cross-seed snapshot: %w", err)
 		}
-		s.applyCrossMatchResult(evalCtx, result)
 	}
 
 	if needs.SeasonPack {
@@ -1301,7 +1306,7 @@ func newCrossSeedExpansionState() *crossSeedExpansionState {
 func deleteCrossSeedGroup(
 	trigger qbt.Torrent,
 	torrents map[string]qbt.Torrent,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	hardlinks *HardlinkIndex,
 	alreadyIncluded map[string]struct{},
 	fetchFiles torrentFilesFetcher,
@@ -1332,7 +1337,7 @@ func deleteCrossSeedGroup(
 	for i := 0; i < len(queue); i++ {
 		member := queue[i]
 		if _, checked := contentChecked[member.Hash]; !checked {
-			group, ok := crossSeedGroupMembers(member, crossSeeds[member.Hash], alreadyIncluded, fetchFiles)
+			group, ok := crossSeedGroupMembers(member, crossSeeds.members(member.Hash), alreadyIncluded, fetchFiles)
 			if !ok {
 				return nil, false
 			}
@@ -1502,7 +1507,7 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 }
 
 // shouldApplyCategoryAction checks if category action should apply to torrent.
-func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionConfig, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
+func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionConfig, evalCtx *EvalContext, crossSeeds *crossSeedGroups) bool {
 	if !catAction.enabled {
 		return false
 	}
@@ -2016,6 +2021,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 		defer cancel()
+		crossSeeds.setContext(ctx)
 	}
 
 	plan := s.buildRunPlan(ctx, runPlanInput{
@@ -2639,14 +2645,35 @@ func normalizePath(p string) string {
 	return pathComparisonNormalizer.Normalize(p)
 }
 
-// crossSeedGroups maps a torrent hash to its cross-seed group: the torrents on
+// crossSeedGroups holds the cross-seed group of each torrent: the torrents on
 // the instance that share at least one file on disk with it, directly or
-// through another member, itself included. All members map to one slice. A
-// torrent without a cross-seed has no entry. The cross-seed matcher decides
-// which torrents share any file, including files that match classification ignores.
-type crossSeedGroups map[string][]qbt.Torrent
+// through another member, itself included. All members share one slice. A
+// torrent without a cross-seed has no group. The cross-seed matcher decides
+// which torrents share any file, including files that match classification
+// ignores. With a run session, a torrent that no ask covered is read first
+// (ADR 0042). A nil value holds no group.
+type crossSeedGroups struct {
+	byHash  map[string][]qbt.Torrent
+	session *runSession
+}
 
-func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSeedGroups {
+// members returns the group of the torrent, or nil when it has no cross-seed.
+func (g *crossSeedGroups) members(hash string) []qbt.Torrent {
+	if g == nil {
+		return nil
+	}
+	if g.session != nil {
+		g.session.ensureGroups(hash)
+	}
+	return g.byHash[hash]
+}
+
+// buildCrossSeedGroups returns the groups of the run session, or without one
+// the groups of the links in evalCtx.
+func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) *crossSeedGroups {
+	if evalCtx != nil && evalCtx.crossSeeds != nil {
+		return evalCtx.crossSeeds
+	}
 	if evalCtx == nil || len(evalCtx.SameInstanceContentByHash) == 0 {
 		return nil
 	}
@@ -2656,7 +2683,7 @@ func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSee
 		byHash[t.Hash] = t
 	}
 
-	groups := make(crossSeedGroups)
+	groups := make(map[string][]qbt.Torrent)
 	for _, t := range torrents {
 		if _, grouped := groups[t.Hash]; grouped || len(sharing[t.Hash]) == 0 {
 			continue
@@ -2681,19 +2708,19 @@ func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSee
 			groups[member.Hash] = members
 		}
 	}
-	return groups
+	return &crossSeedGroups{byHash: groups}
 }
 
 // key identifies the cross-seed group of a torrent. A torrent without a
 // cross-seed is a group of its own.
-func (g crossSeedGroups) key(t qbt.Torrent) string {
-	if members := g[t.Hash]; len(members) > 0 {
+func (g *crossSeedGroups) key(t qbt.Torrent) string {
+	if members := g.members(t.Hash); len(members) > 0 {
 		return members[0].Hash
 	}
 	return t.Hash
 }
 
-func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef, groups crossSeedGroups) map[string]ruleRef {
+func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef, groups *crossSeedGroups) map[string]ruleRef {
 	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
 		return nil
 	}
@@ -2747,11 +2774,18 @@ func inheritRuleRefForMoveGroup(expandedHash, triggerHash string, ruleByHash map
 	ruleByHash[expandedHash] = ref
 }
 
-func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups crossSeedGroups, evalCtx *EvalContext, hardlinks *HardlinkIndex) {
-	if len(groups) == 0 && hardlinks == nil {
+func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups *crossSeedGroups, evalCtx *EvalContext, hardlinks *HardlinkIndex) {
+	if groups != nil && groups.session != nil {
+		groups.session.loadFiles(ctx, hardlinks)
 		return
 	}
-	hashes := slices.Sorted(maps.Keys(groups))
+	if groups == nil && hardlinks == nil {
+		return
+	}
+	var hashes []string
+	if groups != nil {
+		hashes = slices.Sorted(maps.Keys(groups.byHash))
+	}
 	if hardlinks != nil {
 		for _, group := range hardlinks.DeleteSafeGroupBySignature {
 			hashes = append(hashes, group...)
@@ -2780,7 +2814,7 @@ type categoryExpansion struct {
 // other members of each trigger's cross-seed group. A torrent already in the
 // category or in the batch, one whose own rule chose another category, or one
 // the run deletes stays out.
-func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups, deleting map[string]selectedDeletion) []categoryExpansion {
+func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds *crossSeedGroups, deleting map[string]selectedDeletion) []categoryExpansion {
 	taken := make(map[string]struct{}, len(batch))
 	for _, hash := range batch {
 		taken[hash] = struct{}{}
@@ -2791,7 +2825,7 @@ func categoryCrossSeedExpansion(category string, batch []string, states map[stri
 		if state == nil || !state.categoryIncludeCrossSeeds || state.categoryGroupID != "" {
 			continue
 		}
-		for _, member := range crossSeeds[hash] {
+		for _, member := range crossSeeds.members(hash) {
 			if _, ok := taken[member.Hash]; ok || member.Category == category {
 				continue
 			}
@@ -2955,10 +2989,10 @@ func crossSeedGroupMembers(
 	return verified, true
 }
 
-func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, crossSeeds crossSeedGroups, filesByHash map[string]qbt.TorrentFiles) bool {
+func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, crossSeeds *crossSeedGroups, filesByHash map[string]qbt.TorrentFiles) bool {
 	verifiedHashes, ok := crossSeedGroupMembers(
 		torrent,
-		crossSeeds[torrent.Hash],
+		crossSeeds.members(torrent.Hash),
 		nil,
 		cachedTorrentFilesFetcher(filesByHash),
 	)
@@ -2999,7 +3033,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 // state entry (seeded with their current tags) so the tag diff loop computes
 // a correct per-sibling desired set - SetTags replaces a torrent's
 // whole tag list, so deltas must never be shared.
-func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds crossSeedGroups) {
+func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds *crossSeedGroups) {
 	// Deterministic trigger order keeps sibling attribution stable when several
 	// triggers in one group expand the same tag.
 	var triggerHashes []string
@@ -3021,7 +3055,7 @@ func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleBy
 			if ruleByID[intent.rule.id] == nil {
 				continue
 			}
-			for _, sibTorrent := range crossSeeds[hash] {
+			for _, sibTorrent := range crossSeeds.members(hash) {
 				if sibTorrent.Hash != hash {
 					exp.inject(sibTorrent, tag, intent)
 				}
@@ -3195,13 +3229,13 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 // groupHoldsSharedFiles reports whether every torrent that shares a file with
 // a member is also a member. Moving a member moves the files that the other
 // torrent still needs.
-func groupHoldsSharedFiles(members []string, crossSeeds crossSeedGroups) bool {
+func groupHoldsSharedFiles(members []string, crossSeeds *crossSeedGroups) bool {
 	inGroup := make(map[string]struct{}, len(members))
 	for _, hash := range members {
 		inGroup[hash] = struct{}{}
 	}
 	for _, hash := range members {
-		for _, peer := range crossSeeds[hash] {
+		for _, peer := range crossSeeds.members(hash) {
 			if _, ok := inGroup[peer.Hash]; !ok {
 				return false
 			}
@@ -3231,7 +3265,7 @@ func allGroupMembersMatchCategoryAction(
 	torrentByHash map[string]qbt.Torrent,
 	catAction categoryActionConfig,
 	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 ) bool {
 	if len(members) == 0 {
 		return false
@@ -3264,7 +3298,7 @@ func allGroupMembersMatchCategoryAction(
 func deleteFreesSpace(
 	mode string,
 	torrent qbt.Torrent,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	filesByHash map[string]qbt.TorrentFiles,
 ) bool {
 	switch mode {
@@ -3407,44 +3441,6 @@ func ruleNeedsCrossSeedFiles(rule *models.Automation) bool {
 
 func rulesNeedCrossSeedFiles(rules []*models.Automation) bool {
 	return slices.ContainsFunc(rules, ruleNeedsCrossSeedFiles)
-}
-
-// buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.
-func (s *Service) buildCrossMatchSets(ctx context.Context, instanceID int, needs CrossMatchNeeds) *CrossMatchResult {
-	if s.crossMatcher != nil {
-		return s.crossMatcher.BuildCrossMatchSets(ctx, instanceID, needs)
-	}
-	return &CrossMatchResult{}
-}
-
-// applyCrossMatchResult populates the EvalContext with cross-match hash sets.
-func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatchResult) {
-	if result == nil {
-		return
-	}
-	if result.SameInstanceExists != nil {
-		evalCtx.SameInstanceCrossSeedHashSet = result.SameInstanceExists
-	}
-	if result.SameInstanceSeeding != nil {
-		evalCtx.SameInstanceCrossSeedSeedingHashSet = result.SameInstanceSeeding
-	}
-	if result.SameInstanceTagsByHash != nil {
-		evalCtx.SameInstanceCrossSeedTagsByHash = result.SameInstanceTagsByHash
-	}
-	if result.SameInstanceContentByHash != nil {
-		evalCtx.SameInstanceContentByHash = result.SameInstanceContentByHash
-	}
-	if result.OtherInstanceExists != nil {
-		evalCtx.CrossInstanceHashSet = result.OtherInstanceExists
-	}
-	if result.OtherInstanceSeeding != nil {
-		evalCtx.CrossInstanceSeedingHashSet = result.OtherInstanceSeeding
-	}
-	evalCtx.SameInstanceCrossSeedUnknown = result.SameInstanceUnknown
-	evalCtx.CrossInstanceUnknown = result.OtherInstanceUnknown
-	evalCtx.CrossInstanceSharedHashSet = result.OtherInstanceShared
-	evalCtx.CrossInstanceSharedUnknown = result.OtherInstanceSharedUnknown
-	evalCtx.OfflineLocalInstances = result.OfflineLocalInstances
 }
 
 // otherInstanceKeepsFiles reports whether a torrent on another instance can
@@ -4441,7 +4437,7 @@ func executeBatch(
 	currentBatch []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	ruleStats map[int]*ruleRunStats,
@@ -4465,7 +4461,7 @@ func (s *Service) buildAndExecuteBatches(
 	eligibleRules []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	skipCheck func(hash string) bool,
 	ruleStats map[int]*ruleRunStats,
 	states map[string]*torrentDesiredState,

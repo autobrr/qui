@@ -44,7 +44,7 @@ func tagExpansionRule(action *models.TagAction) *models.Automation {
 
 // crossSeedGroupsForTest groups the torrents that share a content path, the
 // way the matcher groups the torrents that share a file.
-func crossSeedGroupsForTest(torrents []qbt.Torrent) crossSeedGroups {
+func crossSeedGroupsForTest(torrents []qbt.Torrent) *crossSeedGroups {
 	return buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
 

@@ -58,6 +58,10 @@ func (m parityCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 	return &CrossMatchResult{SameInstanceContentByHash: m.sameContent}
 }
 
+func (m parityCrossMatcher) OpenCrossMatchSession(ctx context.Context, instanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
+}
+
 // newDryRunParityService boots a Service against a stub qBittorrent that serves the fixture.
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()
@@ -97,6 +101,7 @@ type stubQbt struct {
 	refuse func(path string, form url.Values) bool
 	// webAPIVersion replaces the default Web API version 2.10.0.
 	webAPIVersion string
+	fileReads     int // torrents/files requests
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -129,6 +134,7 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v2/torrents/files":
 		s.mu.Lock()
 		files, ok := s.files[r.URL.Query().Get("hash")]
+		s.fileReads++
 		s.mu.Unlock()
 		if !ok {
 			files = `[]`

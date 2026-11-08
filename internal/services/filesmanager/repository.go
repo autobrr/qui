@@ -199,7 +199,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 
 	// Collect all file rows to batch insert
-	var allRows []fileRow
+	allRows := make([]fileRow, 0, len(files))
 	for hash, fileGroup := range filesByHash {
 		hashID, ok := hashIDMap[hash]
 		if !ok {
