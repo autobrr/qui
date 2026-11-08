@@ -56,6 +56,8 @@ type EvalContext struct {
 	hardlinkIndex  *HardlinkIndex
 	// crossSeeds holds the groups of the run session, when the rules need one.
 	crossSeeds *crossSeedGroups
+	// moveChecks holds what askMoveGroups found during one processTorrents call.
+	moveChecks map[moveCheckKey]checkedMove
 
 	// TrackerHealth is the tracker health snapshot of the instance. It is nil
 	// when the instance has no tracker health yet.

@@ -278,8 +278,10 @@ func TestCrossMatchSession_ScopedAskEqualsWholeLibrary(t *testing.T) {
 				for _, h := range ask {
 					require.Equal(t, wantSession[h], componentOf(scoped.SameInstanceContentByHash, h), "scoped group of %s", h)
 					require.Equal(t, wantSession[h], componentOf(whole.SameInstanceContentByHash, h), "whole-library group of %s", h)
-					compareFacts(t, "groups", h, scoped, full)
 					compareFacts(t, "no groups", h, facts, full)
+					for _, member := range wantSession[h] {
+						compareFacts(t, "groups", member, scoped, full)
+					}
 				}
 				require.Equal(t, full.OtherInstanceShared, scoped.OtherInstanceShared, "the library-wide shared check")
 				require.Equal(t, full.OtherInstanceSharedUnknown, scoped.OtherInstanceSharedUnknown)

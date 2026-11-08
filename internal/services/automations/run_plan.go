@@ -673,9 +673,8 @@ func (s *Service) planMoves(ctx context.Context, in runPlanInput, triggers plann
 		normalizedDest := normalizePath(path)
 
 		// Before moving, we need to expand move targets to avoid breaking related torrents.
-		var expandedHashes []string
+		var expandedHashes, legacyTriggers []string
 		m.indexes = make(map[groupExpandKey]*groupIndex)
-		legacyKeysToExpand := make(map[string]struct{})
 
 		for _, hash := range hashes {
 			if _, exists := m.moved[hash]; exists {
@@ -691,14 +690,12 @@ func (s *Service) planMoves(ctx context.Context, in runPlanInput, triggers plann
 			// Legacy cross-seed expansion behavior
 			expandedHashes = append(expandedHashes, hash)
 			m.moved[hash] = struct{}{}
-			if t, exists := in.torrentByHash[hash]; exists {
-				legacyKeysToExpand[in.crossSeeds.key(t)] = struct{}{}
+			if _, exists := in.torrentByHash[hash]; exists {
+				legacyTriggers = append(legacyTriggers, hash)
 			}
 		}
 
-		if len(legacyKeysToExpand) > 0 {
-			expandedHashes = append(expandedHashes, m.legacyCrossSeeds(legacyKeysToExpand, normalizedDest, ruleByCrossSeedKey)...)
-		}
+		expandedHashes = append(expandedHashes, m.legacyCrossSeeds(legacyTriggers, normalizedDest, ruleByCrossSeedKey)...)
 
 		for _, hash := range expandedHashes {
 			planned.add(path, hash, m.ruleByHash[hash])
@@ -782,15 +779,17 @@ func (m *moveExpansion) canMove(hash, normalizedDest string) bool {
 	return ok && normalizePath(t.SavePath) != normalizedDest
 }
 
-// legacyCrossSeeds returns the cross-seeds of the legacy triggers that move with them.
-func (m *moveExpansion) legacyCrossSeeds(keys map[string]struct{}, normalizedDest string, ruleByCrossSeedKey map[string]ruleRef) []string {
+// legacyCrossSeeds returns the cross-seeds of the legacy triggers that move with them: the
+// members of their groups.
+func (m *moveExpansion) legacyCrossSeeds(triggers []string, normalizedDest string, ruleByCrossSeedKey map[string]ruleRef) []string {
 	var expandedHashes []string
-	for _, t := range m.in.torrents {
-		if !m.canMove(t.Hash, normalizedDest) {
-			continue
-		}
-		key := m.in.crossSeeds.key(t)
-		if _, matched := keys[key]; matched {
+	for _, trigger := range triggers {
+		members := m.in.crossSeeds.members(trigger)
+		key := m.in.crossSeeds.key(m.in.torrentByHash[trigger])
+		for _, t := range members {
+			if !m.canMove(t.Hash, normalizedDest) {
+				continue
+			}
 			expandedHashes = append(expandedHashes, t.Hash)
 			m.moved[t.Hash] = struct{}{}
 			inheritRuleRefForCrossSeed(t.Hash, key, m.ruleByHash, ruleByCrossSeedKey)
