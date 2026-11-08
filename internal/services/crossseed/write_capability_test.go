@@ -64,15 +64,15 @@ func TestPartialPoolRefusesRemoteInstance(t *testing.T) {
 		{"remote", remote, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			service := &Service{
+			service := &partialPoolCoordinator{
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{tc.instance.ID: tc.instance}},
 				automationStore: &models.CrossSeedStore{},
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
 
-			assert.Equal(t, tc.pooled, service.partialPoolAdmissionEnabled(t.Context(), tc.instance, true, &CrossSeedRequest{}, false), "partial pool admission")
+			assert.Equal(t, tc.pooled, service.joinEnabled(t.Context(), tc.instance, true, &CrossSeedRequest{}, false), "partial pool admission")
 
 			member := &models.CrossSeedPartialPoolMember{InstanceID: tc.instance.ID, Mode: models.CrossSeedPartialPoolModeHardlink}
 			enabled, err := service.partialPoolMemberModeEnabled(t.Context(), member)

@@ -25,6 +25,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tmaxmax/go-sse"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -107,6 +109,10 @@ type StreamOptions struct {
 	Filters     qbittorrent.FilterOptions
 	// Summary asks for the totals of the view without its rows.
 	Summary bool
+	// GroupCopies asks for Copy groups, as the groupCopies query parameter of a list request does.
+	GroupCopies bool
+	// hideTrackerPasskeys makes its own group, because the subscribers of a group share one payload.
+	hideTrackerPasskeys bool
 }
 
 // isMultiInstance reports whether the subscription aggregates multiple instances.
@@ -160,7 +166,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s|%t",
+		"%s|%d|%d|%s|%s|%s|%s|%t|%t",
 		instanceKey,
 		opts.Page,
 		opts.Limit,
@@ -169,7 +175,16 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(opts.Search),
 		strconv.Quote(filtersKey),
 		opts.Summary,
+		opts.GroupCopies,
 	)
+}
+
+func streamGroupKey(opts StreamOptions) string {
+	key := streamOptionsKey(opts)
+	if opts.hideTrackerPasskeys {
+		key += "|hideTrackerPasskeys"
+	}
+	return key
 }
 
 // syncProvider is the subset of *qbittorrent.SyncManager that the StreamManager
@@ -181,6 +196,19 @@ type syncProvider interface {
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
+}
+
+// versionWatcher tells a tick that an instance version changed since the last
+// frame. It stays apart from syncProvider, which ADR 0005 caps at five methods.
+type versionWatcher interface {
+	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
+}
+
+// copyGroupsDemand keeps the Copy groups job running while a grouped stream is
+// open, because the browser sends no list request while the stream works. It
+// stays apart from syncProvider, which ADR 0005 caps at five methods.
+type copyGroupsDemand interface {
+	DemandCopyGroups()
 }
 
 // instanceStore is the subset of *models.InstanceStore that the StreamManager
@@ -200,6 +228,8 @@ type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
+	versions    versionWatcher
+	copyGroups  copyGroupsDemand
 	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
@@ -247,6 +277,8 @@ type StreamManager struct {
 // reaches the session.
 type streamConnection struct {
 	id string
+	// apiKeyID is the API key that opened the connection, and 0 for a session.
+	apiKeyID int
 
 	mu sync.Mutex
 	// subs holds the subscriptions of the connection by id. It is nil after the
@@ -425,7 +457,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore instanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, copyGroups copyGroupsDemand, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -439,6 +471,8 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		server:         &sse.Server{},
 		clientPool:     clientPool,
 		syncManager:    syncManager,
+		versions:       versions,
+		copyGroups:     copyGroups,
 		instanceDB:     instanceStore,
 		subscriptions:  make(map[string]*subscriptionState),
 		instanceIndex:  make(map[int]map[string]*subscriptionState),
@@ -540,13 +574,14 @@ func (m *StreamManager) Stats() StreamStats {
 
 // openConnection registers a new stream connection. A connection with activity
 // gets activity events on its topic.
-func (m *StreamManager) openConnection(activity bool) *streamConnection {
+func (m *StreamManager) openConnection(activity bool, apiKeyID int) *streamConnection {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextConnectionID++
 	ready := make(chan struct{})
 	conn := &streamConnection{
 		id:        fmt.Sprintf("qui-conn-%d", m.nextConnectionID),
+		apiKeyID:  apiKeyID,
 		subs:      make(map[string]*subscriptionState),
 		ready:     ready,
 		markReady: sync.OnceFunc(func() { close(ready) }),
@@ -636,7 +671,7 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 		id:        id,
 		options:   opts,
 		created:   time.Now(),
-		groupKey:  streamOptionsKey(opts),
+		groupKey:  streamGroupKey(opts),
 		clientKey: clientKey,
 		conn:      conn,
 		joining:   joining,
@@ -902,8 +937,9 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	if !m.validateInstances(w, r, requests) {
 		return
 	}
+	applyPasskeyAccess(r, requests)
 
-	conn := m.openConnection(activityRequested)
+	conn := m.openConnection(activityRequested, requestAPIKeyID(r))
 	defer m.closeConnection(conn)
 	ctx := context.WithValue(r.Context(), connectionContextKey, conn)
 	if len(requests) > 0 {
@@ -974,8 +1010,9 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	m.server.ServeHTTP(sessionWriter, req)
 }
 
-// validateInstances checks that each instance of the requests exists. It writes
-// the error response and returns false when one does not.
+// validateInstances checks that the API key may read torrents and reach each
+// instance of the requests, and that each instance exists. It writes the error
+// response and returns false when a check fails.
 func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request, requests []streamRequest) bool {
 	instanceIDs := make(map[int]struct{}, len(requests))
 	for _, req := range requests {
@@ -985,8 +1022,14 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 			instanceIDs[instanceID] = struct{}{}
 		}
 	}
+	if len(instanceIDs) > 0 && !middleware.HasPermission(w, r, models.AreaTorrents, models.LevelRead) {
+		return false
+	}
 
 	for instanceID := range instanceIDs {
+		if !middleware.CanReachInstance(w, r, instanceID) {
+			return false
+		}
 		exists, err := m.instanceExists(r.Context(), instanceID)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to check instance existence")
@@ -1001,6 +1044,21 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 	return true
 }
 
+func applyPasskeyAccess(r *http.Request, requests []streamRequest) {
+	hide := !middleware.CanReadTrackerPasskeys(r)
+	for i := range requests {
+		requests[i].options.hideTrackerPasskeys = hide
+		requests[i].options.Filters.HideTrackerPasskeys = hide
+	}
+}
+
+func requestAPIKeyID(r *http.Request) int {
+	if key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
+		return key.ID
+	}
+	return 0
+}
+
 // subscriptionChange is the body of POST /stream/subscriptions.
 type subscriptionChange struct {
 	ConnectionID string                 `json:"connectionId"`
@@ -1008,10 +1066,10 @@ type subscriptionChange struct {
 	Remove       []string               `json:"remove"`
 }
 
-// ChangeSubscriptions adds and removes subscriptions on an open connection. It
-// removes first, and an added key replaces a subscription with the same key. A
-// new subscription gets its init on the connection before any other frame, and
-// the other subscriptions get no init.
+// ChangeSubscriptions adds and removes subscriptions on a connection that the
+// caller opened. It removes first, and an added key replaces a subscription with
+// the same key. A new subscription gets its init on the connection before any
+// other frame, and the other subscriptions get no init.
 func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if m.closing.Load() {
 		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
@@ -1031,6 +1089,7 @@ func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Reque
 	if !m.validateInstances(w, r, requests) {
 		return
 	}
+	applyPasskeyAccess(r, requests)
 
 	remove := make(map[string]struct{}, len(change.Remove)+len(requests))
 	for _, key := range change.Remove {
@@ -1043,7 +1102,8 @@ func (m *StreamManager) ChangeSubscriptions(w http.ResponseWriter, r *http.Reque
 	m.mu.RLock()
 	conn := m.connections[change.ConnectionID]
 	m.mu.RUnlock()
-	if conn == nil {
+	// Connection IDs are sequential, so an ID alone proves nothing.
+	if conn == nil || conn.apiKeyID != requestAPIKeyID(r) {
 		http.Error(w, "connection not found", http.StatusNotFound)
 		return
 	}
@@ -1661,6 +1721,9 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 
 		var payload *StreamPayload
 		switch {
+		// A version read after the last frame changes the rows and the version
+		// list of the view, so it rebuilds.
+		case m.versions.WebAPIVersionsChanged(m.ctx, group.baselineVersions()):
 		// A cross-instance view carries no server state, so it rebuilds.
 		case (meta.serverState != nil || meta.idle) && !opts.isMultiInstance():
 			// The same bound as a rebuild, so a stalled task count request
@@ -1788,6 +1851,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	if opts.Summary {
 		ctx = qbittorrent.WithSummary(ctx)
 	}
+	if opts.GroupCopies {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).
@@ -1877,6 +1943,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
 	}
 
+	if opts.hideTrackerPasskeys {
+		response = response.WithoutTrackerPasskeys()
+	}
 	return response, nil
 }
 
@@ -2461,6 +2530,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 				return
 			case <-timer.C:
 				m.publishHeartbeat(instanceID)
+				m.demandCopyGroups(instanceID)
 				m.enqueueIdleTicks(instanceID) //nolint:contextcheck // a tick builds on the manager context, like every other tick
 				// Jitter each interval so per-instance heartbeats do not align into a
 				// synchronized burst through the single dispatcher.
@@ -2470,6 +2540,15 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 	}()
 
 	return loop
+}
+
+func (m *StreamManager) demandCopyGroups(instanceID int) {
+	for _, group := range m.groupsForInstance(instanceID) {
+		if group.options.GroupCopies {
+			m.copyGroups.DemandCopyGroups()
+			return
+		}
+	}
 }
 
 func (m *StreamManager) publishHeartbeat(instanceID int) {
@@ -2515,6 +2594,7 @@ type streamRequestPayload struct {
 	Search      string                     `json:"search"`
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
 	Summary     bool                       `json:"summary"`
+	GroupCopies bool                       `json:"groupCopies"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2588,13 +2668,17 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 	}
 
 	opts := StreamOptions{
-		Page:    page,
-		Limit:   limit,
-		Sort:    sort,
-		Order:   order,
-		Search:  p.Search,
-		Filters: filters,
-		Summary: p.Summary,
+		Page:        page,
+		Limit:       limit,
+		Sort:        sort,
+		Order:       order,
+		Search:      p.Search,
+		Filters:     filters,
+		Summary:     p.Summary,
+		GroupCopies: p.GroupCopies,
+	}
+	if p.Summary && p.GroupCopies {
+		return StreamOptions{}, errors.New("summary has no rows to group")
 	}
 
 	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and

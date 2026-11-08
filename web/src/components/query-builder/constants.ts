@@ -4,7 +4,7 @@
  */
 
 import type { TFunction } from "i18next";
-import type { ConditionField, ConditionOperator } from "@/types";
+import type { AutomationRuleSkip, ConditionField, ConditionOperator } from "@/types";
 import { CONDITION_FIELDS } from "./fields.generated";
 
 // find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
@@ -30,6 +30,17 @@ function getFieldSpec(field: string): FieldSpec {
   // Own keys only: saved rules can hold any id, and "constructor" would read Object.prototype.
   return Object.hasOwn(CONDITION_FIELDS, field) ? CONDITION_FIELDS[field as ConditionField] : UNKNOWN_FIELD;
 }
+
+function sortKind(field: ConditionField): "number" | "text" | undefined {
+  return (CONDITION_FIELDS[field] as { sort?: "number" | "text" }).sort;
+}
+
+// The fields that the sort dropdown and the score dropdown of a workflow offer. A clock field gives every
+// torrent the same value, so the dropdowns leave it out. The backend still accepts it.
+export const SORT_FIELDS: ReadonlySet<ConditionField> = new Set((Object.keys(CONDITION_FIELDS) as ConditionField[])
+  .filter((field) => sortKind(field) !== undefined && !field.startsWith("SYSTEM_")));
+
+export const SCORE_FIELDS: ReadonlySet<ConditionField> = new Set([...SORT_FIELDS].filter((field) => sortKind(field) === "number"));
 
 // The field type picks the value input of a condition.
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
@@ -124,8 +135,10 @@ export const FIELD_GROUPS = [
   },
 ];
 
-// Capability types for disabling fields/states in query builder
-export type CapabilityKey = "trackerHealth" | "read" | "trustedIdentity"
+// The capability that each field needs before it has data: a field of the instance capabilities
+// response, or an instance capability. The Go condition field table names it.
+type RequiresOf<S> = S extends { requires: infer R } ? R : never
+export type CapabilityKey = RequiresOf<FieldSpec>
 
 export type Capabilities = Record<CapabilityKey, boolean>
 
@@ -139,25 +152,16 @@ export interface DisabledStateValue {
   reason: string
 }
 
-// The backend gates the "local filesystem access" fields on trusted identity, which only a local
-// instance has.
-const REQUIREMENT_CAPABILITIES = {
-  "qBittorrent 5.1+": "trackerHealth",
-  "local filesystem access": "trustedIdentity",
-  "filesystem access": "read",
-} as const satisfies Record<FieldSpec extends { requires: infer R } ? R : never, CapabilityKey>;
-
-// The capability that each field needs before it has data.
 export const FIELD_REQUIREMENTS: Partial<Record<ConditionField, CapabilityKey>> = Object.fromEntries(
   Object.entries(CONDITION_FIELDS).flatMap(([field, spec]) =>
-    "requires" in spec ? [[field, REQUIREMENT_CAPABILITIES[spec.requires]]] : []
+    "requires" in spec ? [[field, spec.requires]] : []
   )
 );
 
 export const STATE_VALUE_REQUIREMENTS = {
-  tracker_down: "trackerHealth",
-  tracker_error: "trackerHealth",
-} as const;
+  tracker_down: "supportsTrackerHealth",
+  tracker_error: "supportsTrackerHealth",
+} as const satisfies Record<string, CapabilityKey>;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)
 export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
@@ -169,22 +173,49 @@ export function getFieldLabel(field: string, t: TFunction): string {
   return t(`queryBuilder.fields.${field}`);
 }
 
+/** Get translated reason a rule does not run on this instance */
+export function getRuleSkipReason(skip: Partial<AutomationRuleSkip> | undefined, t: TFunction): string {
+  return t("queryBuilder.ruleSkip", {
+    ns: "automations",
+    field: t([`queryBuilder.fields.${skip?.field}`, "common:status.unknown"], { ns: "automations" }),
+    requires: skip?.requires,
+  });
+}
+
 /** Get translated reason a field or state value is unavailable on this instance */
 export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isRemote = false): string {
-  if (capability === "trackerHealth") {
-    return t("queryBuilder.capabilityReasons.trackerHealth", { ns: "automations" });
+  switch (capability) {
+    case "supportsLiveReannounce":
+    case "supportsListFieldsV5":
+      return t("queryBuilder.capabilityReasons.qbittorrent50", { ns: "automations" });
+    case "supportsTrackerHealth":
+      return t("queryBuilder.capabilityReasons.trackerHealth", { ns: "automations" });
+    case "supportsListCreatedBy":
+      return t("queryBuilder.capabilityReasons.qbittorrent52", { ns: "automations" });
+    case "trustedIdentity":
+      // Trusted identity needs local access, which a remote instance can never have.
+      return isRemote ?
+        t("queryBuilder.capabilityReasons.remoteInstance", { ns: "automations" }) :
+        t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
+    case "read":
+      // An instance without Read has no filesystem access, and local access is the setting that gives it.
+      return t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
+    default:
+      // A new requirement in the Go table fails the type check here until it has a reason.
+      return capability satisfies never;
   }
-  // Trusted identity needs local access, which a remote instance can never have.
-  if (capability === "trustedIdentity" && isRemote) {
-    return t("queryBuilder.capabilityReasons.remoteInstance", { ns: "automations" });
-  }
-  // An instance without Read has no filesystem access, and local access is the setting that gives it.
-  return t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
+}
+
+/** The fields that the instance has no data for, with the reason */
+export function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: TFunction): DisabledField[] {
+  return Object.entries(FIELD_REQUIREMENTS)
+    .filter(([, capability]) => !capabilities[capability])
+    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 /** Get translated label for a field group */
 export function getFieldGroupLabel(label: string, t: TFunction): string {
-  return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });
+  return t(`queryBuilder.fieldGroups.${label}`);
 }
 
 // Numeric fields show these operators as symbols, which need no translation.

@@ -106,8 +106,10 @@ export interface Torrent {
   hash: string
   infohash_v1: string
   infohash_v2: string
-  popularity: number
-  private: boolean
+  // The server leaves out popularity and private before qBittorrent 5.0, which
+  // does not send them in the torrent list, and private for a torrent without metadata.
+  popularity?: number
+  private?: boolean
   last_activity: number
   max_ratio: number
   max_seeding_time: number
@@ -124,7 +126,8 @@ export interface Torrent {
   progress: number
   ratio: number
   ratio_limit: number
-  reannounce: number
+  // The server leaves it out before qBittorrent 5.0, which does not send it in the torrent list.
+  reannounce?: number
   save_path: string
   seeding_time: number
   seeding_time_limit: number
@@ -147,6 +150,14 @@ export interface Torrent {
   uploaded: number
   uploaded_session: number
   upspeed: number
+  /** Only on a row of a Copy group with two or more matching torrents, when the request asked for groups. */
+  copy_group?: CopyGroupRow
+}
+
+export interface CopyGroupRow {
+  id: string
+  /** Only on the Group representative: the torrent whose place the group takes in the sort. */
+  first_sorted?: { instance_id: number; hash: string }
 }
 
 export interface DuplicateTorrentMatch {
@@ -277,8 +288,12 @@ export interface TorrentResponse {
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE
+  /** Web API version of each instance in the response, keyed by instance ID; "" while unknown. */
+  webAPIVersions?: Record<number, string>
   /** Frontend-assembled only: number of pages combined into this loaded-window response. */
   windowPageCount?: number
+  /** Only when the request asked for groups. False while the server has no Copy groups yet; the rows are then flat. */
+  copyGroupsReady?: boolean
 }
 
 export interface AddTorrentFailedURL {

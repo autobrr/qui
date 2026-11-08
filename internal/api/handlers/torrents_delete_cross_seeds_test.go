@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -25,9 +26,14 @@ type fakeDeleteMatches struct {
 	hashes map[int][]string
 }
 
-func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error) {
-	f.hashes[instanceID] = slices.Sorted(slices.Values(hashes))
-	return []crossseed.LocalMatch{{InstanceID: instanceID, Hash: "fff", MatchType: "content_path"}}, nil
+func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error) {
+	for instanceID, hashes := range selection {
+		f.hashes[instanceID] = slices.Sorted(slices.Values(hashes))
+	}
+	return &crossseed.DeleteMatchesResponse{
+		Matches:   []crossseed.LocalMatch{{InstanceID: 7, Hash: "fff", MatchType: "content_path"}},
+		Unchecked: []crossseed.UncheckedInstance{{InstanceID: 8, InstanceName: "offline", Reason: crossseed.UncheckedOffline}},
+	}, nil
 }
 
 // A select-all check covers the torrents of the filter beyond the loaded rows,
@@ -54,7 +60,7 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 
 	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
-	setUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
 		{Name: "A", Hash: "aaa", AddedOn: 3},
 		{Name: "B", Hash: "bbb", AddedOn: 2},
 		{Name: "C", Hash: "ccc", AddedOn: 1},
@@ -73,7 +79,8 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, map[int][]string{instance.ID: {"aaa", "bbb"}}, finder.hashes)
-	var response crossseed.LocalMatchesResponse
+	var response crossseed.DeleteMatchesResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Equal(t, []crossseed.LocalMatch{{InstanceID: instance.ID, Hash: "fff", MatchType: "content_path"}}, response.Matches)
+	require.Equal(t, []crossseed.LocalMatch{{InstanceID: 7, Hash: "fff", MatchType: "content_path"}}, response.Matches)
+	require.Equal(t, []crossseed.UncheckedInstance{{InstanceID: 8, InstanceName: "offline", Reason: crossseed.UncheckedOffline}}, response.Unchecked)
 }

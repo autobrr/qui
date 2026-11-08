@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -60,8 +61,9 @@ type HardlinkIndex struct {
 	GroupBySignature map[string][]string
 
 	// DeleteSafeSignatureByHash maps torrent hash to its hardlink signature for torrents whose
-	// hardlinks stay fully inside qBittorrent. Used by delete/include-hardlinks expansion and
-	// FREE_SPACE dedupe so destructive paths never follow outside links.
+	// hardlinks stay fully inside this instance's torrents, with no routed link. Used by
+	// delete/include-hardlinks expansion and FREE_SPACE dedupe so destructive paths never
+	// follow outside links.
 	DeleteSafeSignatureByHash map[string]string
 
 	// DeleteSafeGroupBySignature maps signature to list of delete-safe torrent hashes sharing it.
@@ -86,6 +88,10 @@ type HardlinkIndex struct {
 
 	// digest identifies the torrent set used to build this index.
 	digest string
+
+	// routedDigest identifies the routed torrents of the Cross-seed instance
+	// that this index counted. A change forces a full build.
+	routedDigest string
 
 	// buildState holds the scan results and the link counts of this instance only.
 	// Phase 2 (cross-instance augmentation) and incremental updates read it, and
@@ -115,12 +121,26 @@ type hardlinkBuildState struct {
 	globalFileIDMap   map[fsops.FileKey]*fileIDTracker
 	seenPaths         map[string]struct{}
 	torrentInfoByHash map[string]*torrentFileInfo
+	// routedFiles are the hardlinked files of the routed torrents on the
+	// Cross-seed instance, at Source instance paths (ADR 0035). They count as
+	// links to other torrents, have no scope of their own, and keep each Source
+	// torrent that shares a file with them out of the delete-safe groups.
+	routedFiles []linkedFile
 }
 
 // key binds a FileID this instance reported to the filesystem it came from.
 // ok is false for an ID that names no file; see fsops.FileKeyOf.
 func (state *hardlinkBuildState) key(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, state.instance)
+}
+
+// hasRoutedLink reports whether a routed torrent links one of info's files.
+func (state *hardlinkBuildState) hasRoutedLink(info *torrentFileInfo) bool {
+	return slices.ContainsFunc(info.linkedFiles, func(lf linkedFile) bool {
+		key, ok := state.key(lf.fileID)
+		tracker := state.globalFileIDMap[key]
+		return ok && tracker != nil && tracker.routed
+	})
 }
 
 // linkedFile records one hardlinked file exactly as the disk reported it. Keeping
@@ -156,22 +176,41 @@ var globalHardlinkIndexCache = &hardlinkIndexCache{
 // GetHardlinkIndex returns a cached, incrementally updated, or freshly built hardlink
 // index for the given instance. A change to the torrent set is folded in by re-reading
 // only the torrents whose links it can have changed; the full rebuild runs when the
-// last full build ages past hardlinkIndexTTL, when too much of the set changed at once, or when
-// no previous scan is available to build on.
+// last full build ages past hardlinkIndexTTL, when too much of the set changed at once,
+// when no previous scan is available to build on, or when the routed torrents of the
+// Cross-seed instance changed. When qui cannot read the routed torrents, it returns an
+// empty index that it does not cache, so every scope reads unknown for this run.
 func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent) *HardlinkIndex {
 	if s == nil || s.filesReader == nil {
 		return nil
 	}
 
+	// The routed torrents of the Cross-seed instance link to files of this
+	// instance (ADR 0035). Without them, a scope can read a routed link as
+	// outside qBittorrent, so the scope stays unknown for this run.
+	var routed *crossseedroute.RoutedTorrents
+	if s.crossSeedRoutes != nil {
+		var err error
+		if routed, err = s.crossSeedRoutes.ListRouted(ctx, s.routedTorrents, instanceID); err != nil {
+			logRoutedUnavailable(instanceID, err)
+			return &HardlinkIndex{}
+		}
+	}
+
 	// Compute digest of current torrent set
 	currentDigest := computeTorrentSetDigest(torrents)
+	var routedDigest string
+	if routed != nil {
+		routedDigest = computeTorrentSetDigest(routed.Torrents)
+	}
 
 	// Check cache
 	globalHardlinkIndexCache.mu.RLock()
 	cached := globalHardlinkIndexCache.indices[instanceID]
 	globalHardlinkIndexCache.mu.RUnlock()
 
-	fresh := cached != nil && time.Since(cached.builtAt) < hardlinkIndexTTL
+	// A changed set of routed torrents is not fresh, so it forces a full build.
+	fresh := cached != nil && time.Since(cached.builtAt) < hardlinkIndexTTL && cached.routedDigest == routedDigest
 	if fresh && cached.digest == currentDigest {
 		return cached
 	}
@@ -180,16 +219,16 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// and refetches each one once per hardlinkFilesCacheMaxAge.
 	buildCtx := qbittorrent.WithFilesCacheMaxAge(ctx, hardlinkFilesCacheMaxAge)
 
-	// Build index with singleflight to prevent duplicate builds. The digest keys the
-	// call so concurrent callers looking at the same torrent set share one build.
-	key := strconv.Itoa(instanceID) + ":" + currentDigest
+	// Build index with singleflight to prevent duplicate builds. The digests key the
+	// call so concurrent callers looking at the same torrent sets share one build.
+	key := strconv.Itoa(instanceID) + ":" + currentDigest + ":" + routedDigest
 	result, err, _ := globalHardlinkIndexCache.sf.Do(key, func() (any, error) {
 		if fresh {
 			if updated := s.updateHardlinkIndex(buildCtx, instanceID, cached, torrents, currentDigest); updated != nil {
 				return updated, nil
 			}
 		}
-		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest), nil
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest, routed, routedDigest), nil
 	})
 	if err != nil {
 		return nil
@@ -201,11 +240,16 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	}
 
 	// Validate digest matches (paranoid check for edge cases)
-	if idx.digest != currentDigest {
+	if idx.digest != currentDigest || idx.routedDigest != routedDigest {
 		// Rebuild with correct digest
-		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest)
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest, routed, routedDigest)
 	}
 	return idx
+}
+
+func logRoutedUnavailable(instanceID int, err error) {
+	log.Warn().Err(err).Int("instanceID", instanceID).
+		Msg("automations: cannot read the routed torrents of the Cross-seed instance, hardlink scope stays unknown for this run")
 }
 
 // computeTorrentSetDigest creates a digest identifying the current torrent set.
@@ -244,6 +288,8 @@ func computeTorrentSetDigest(torrents []qbt.Torrent) string {
 type fileIDTracker struct {
 	nlink           uint64
 	uniquePathCount int
+	// routed is true when a routed torrent on the Cross-seed instance links the file.
+	routed bool
 }
 
 // scanTorrentFiles reads one torrent's files off disk and records what it found.
@@ -318,7 +364,7 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 // Scans taken at different moments can disagree on a file's link count. The higher
 // count wins, because it is the one that reports links outside the torrent set, and
 // that answer excludes the torrent from the delete-safe groups.
-func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*torrentFileInfo) *hardlinkBuildState {
+func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*torrentFileInfo, routedFiles []linkedFile) *hardlinkBuildState {
 	globalFileIDMap := make(map[fsops.FileKey]*fileIDTracker)
 	seenPaths := make(map[string]struct{})
 
@@ -343,11 +389,30 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 		}
 	}
 
+	// A routed file counts only on a file that a torrent of this instance holds.
+	// Its path joins seenPaths, so the cross-instance step does not count it a
+	// second time on a Cross-seed instance with Local Filesystem Access. Its link
+	// count is left out: an incremental update keeps the routed scan, and a count
+	// from before a removal would read as an outside link.
+	for _, lf := range routedFiles {
+		key, ok := fsops.FileKeyOf(lf.fileID, instance)
+		tracker := globalFileIDMap[key]
+		if !ok || tracker == nil {
+			continue
+		}
+		tracker.routed = true
+		if _, seen := seenPaths[lf.path]; !seen {
+			seenPaths[lf.path] = struct{}{}
+			tracker.uniquePathCount++
+		}
+	}
+
 	return &hardlinkBuildState{
 		instance:          instance,
 		globalFileIDMap:   globalFileIDMap,
 		seenPaths:         seenPaths,
 		torrentInfoByHash: torrentInfoByHash,
+		routedFiles:       routedFiles,
 	}
 }
 
@@ -422,8 +487,8 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 
 	// The new index has no cross-instance scope yet, so CrossScopeByHash starts nil
 	// and callers that need it augment again.
-	index := &HardlinkIndex{digest: digest, builtAt: cached.builtAt}
-	stats := index.applyLinkState(deriveLinkCounts(previous.instance, torrentInfoByHash))
+	index := &HardlinkIndex{digest: digest, routedDigest: cached.routedDigest, builtAt: cached.builtAt}
+	stats := index.applyLinkState(deriveLinkCounts(previous.instance, torrentInfoByHash, previous.routedFiles))
 
 	globalHardlinkIndexCache.mu.Lock()
 	globalHardlinkIndexCache.indices[instanceID] = index
@@ -715,7 +780,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 // The complexity is inherent to the single-pass algorithm that avoids multiple filesystem scans.
 //
 //nolint:gocyclo,funlen,revive // complexity is inherent to the single-pass design
-func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string) *HardlinkIndex {
+func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string, routed *crossseedroute.RoutedTorrents, routedDigest string) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
 		SignatureByHash:            make(map[string]string),
@@ -724,6 +789,7 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		DeleteSafeGroupBySignature: make(map[string][]string),
 		ScopeByHash:                make(map[string]string),
 		digest:                     digest,
+		routedDigest:               routedDigest,
 		// builtAt is set at the end of a successful build to avoid TTL issues with slow builds
 	}
 
@@ -786,8 +852,22 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
+	var routedFiles []linkedFile
+	if routed != nil {
+		if err := routed.LoadFiles(ctx, s.routedTorrents); err != nil {
+			logRoutedUnavailable(instanceID, err)
+			return index
+		}
+		for _, torrent := range routed.Torrents {
+			routedFiles = append(routedFiles, scanTorrentFiles(ctx, backend, torrent, routed.Files[torrent.Hash]).linkedFiles...)
+		}
+		if ctx.Err() != nil {
+			return index
+		}
+	}
+
 	// Phase 2: derive scope, signatures and groups from the scan results.
-	stats := index.applyLinkState(deriveLinkCounts(instance, torrentInfoByHash))
+	stats := index.applyLinkState(deriveLinkCounts(instance, torrentInfoByHash, routedFiles))
 
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
 	index.builtAt = time.Now()
@@ -865,7 +945,8 @@ func (idx *HardlinkIndex) applyLinkState(state *hardlinkBuildState) indexStats {
 		sig := computeFileIDSignature(info.fileIDs)
 		idx.SignatureByHash[hash] = sig
 		idx.GroupBySignature[sig] = append(idx.GroupBySignature[sig], hash)
-		if !hasOutsideLinks {
+		// Deleting the group frees nothing while a routed torrent holds a file.
+		if !hasOutsideLinks && !state.hasRoutedLink(info) {
 			idx.DeleteSafeSignatureByHash[hash] = sig
 			idx.DeleteSafeGroupBySignature[sig] = append(idx.DeleteSafeGroupBySignature[sig], hash)
 		}

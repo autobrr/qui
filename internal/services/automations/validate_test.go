@@ -986,6 +986,14 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "External program action requires a valid program selection"},
 		{name: "invalid sorting config", edit: func(r *models.Automation) { r.SortingConfig = &models.SortingConfig{SchemaVersion: "2"} },
 			wantMsg: "Invalid sorting config: invalid schema version: 2"},
+		{name: "sort by a field that cannot sort", edit: func(r *models.Automation) {
+			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: FieldHash}
+		}, wantMsg: "Invalid sorting config: unknown sort field: HASH"},
+		{name: "score rule on a text field", edit: func(r *models.Automation) {
+			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionASC, ScoreRules: []models.ScoreRule{{
+				Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: FieldName, Multiplier: 1},
+			}}}
+		}, wantMsg: "Invalid sorting config: field multiplier requires numeric field, got: NAME"},
 		{name: "keep-files delete on free space", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, Condition: freeSpaceBelow}}),
 			wantMsg: "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed."},
 		{name: "delete group outside keep files", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeWithFiles, GroupID: "cross_seed_content_save_path", Condition: cond(FieldSize)}}),

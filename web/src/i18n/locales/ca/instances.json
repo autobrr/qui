@@ -542,7 +542,6 @@
       "dryRun": "Execució de prova",
       "removed": "Suprimit",
       "executed": "Executat",
-      "copyHash": "Copia el hash",
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regla: {{name}}",
@@ -591,7 +590,8 @@
         "move": "Mou",
         "externalProgram": "Programa extern",
         "dryRun": "Execució de prova",
-        "exportToInstance": "Exporta a una instància"
+        "exportToInstance": "Exporta a una instància",
+        "ruleSkipped": "Regla no executada"
       },
       "shareLimit": {
         "global": "Global",
@@ -653,6 +653,7 @@
         "delete": "Elimina"
       },
       "enableDeleteRule": "Activa la regla d'eliminació",
+      "enableTagRule": "Activa la regla d'etiquetes",
       "enableCategoryRule": "Activa la regla de categoria → {{category}}",
       "enableRuleImmediately": "Si ho confirmes, aquesta regla s'activarà immediatament.",
       "noTorrentsMatch": "Ara mateix no hi ha cap torrent que coincideixi amb \"{{name}}\".",
@@ -700,12 +701,31 @@
         "exportedTorrents": "S'han exportat {{count}} torrents a CSV",
         "exportFailed": "No s'ha pogut exportar la previsualització",
         "deletedActivityEntries": "S'han eliminat {{count}} entrades d'activitat",
-        "deleteActivityFailed": "No s'ha pogut eliminar l'activitat",
-        "hashCopied": "S'ha copiat el hash"
+        "deleteActivityFailed": "No s'ha pogut eliminar l'activitat"
       },
       "exported": "Exportat",
       "tagActions_one": "{{count}} acció d'etiqueta",
-      "tagActions_other": "{{count}} accions d'etiqueta"
+      "tagActions_other": "{{count}} accions d'etiqueta",
+      "skipped": "Omesa"
+    },
+    "runWorkflowNow": {
+      "action": "Executa ara",
+      "title": "Vols executar \"{{name}}\" ara?",
+      "description": "qui executa el workflow desat una vegada ara i aplica les seves accions als torrents que coincideixen. També s'executa quan el workflow està desactivat.",
+      "dryRunDescription": "Aquest workflow està configurat com a execució de prova, així que qui només registra què faria. Cap torrent canvia.",
+      "actions": "Accions",
+      "cancel": "Cancel·la",
+      "confirm": "Executa ara",
+      "toast": {
+        "running": "S'està executant \"{{name}}\"…",
+        "completed": "S'ha completat l'execució de \"{{name}}\"",
+        "noChanges": "S'ha completat l'execució de \"{{name}}\". Cap torrent necessitava canvis.",
+        "completedWithErrors": "S'ha completat l'execució de \"{{name}}\" amb errors. Consulta el registre d'activitat.",
+        "dryRunCompleted": "S'ha completat l'execució de prova de \"{{name}}\"",
+        "inProgress": "Hi ha una execució en curs. Torna-ho a provar d'aquí a un moment.",
+        "failed": "No s'ha pogut executar el workflow",
+        "skipped": "\"{{name}}\" no s'ha executat. Consulta el registre d'activitat."
+      }
     },
     "workflowDialog": {
       "editWorkflow": "Edita el workflow",
@@ -804,6 +824,7 @@
         "title": "Acció",
         "addAction": "Afegeix una acció",
         "selectAction": "Selecciona una acció...",
+        "runOrderHelp": "Les accions s'executen en l'ordre que es mostra. Cada acció veu el torrent tal com era quan va començar l'execució, de manera que un programa extern que s'executa després d'un moviment encara rep el camí de desada antic.",
         "speedLimits": "Límits de velocitat",
         "shareLimits": "Límits de compartició",
         "pause": "Atura",
@@ -856,6 +877,7 @@
         "strategyReplace": "Substitueix-les al client",
         "replaceDescription": "El mode de substitució força un restabliment complet d'aquestes etiquetes a tot el client abans d'aplicar aquesta regla.",
         "managedDescription": "El mode gestionat manté les etiquetes al dia amb actualitzacions diferencials; la sincronització completa afegeix les etiquetes als torrents coincidents i les treu dels que no ho són.",
+        "includeAffectedCrossSeeds": "Inclou-hi els cross-seed afectats",
         "useTrackerName": "Fes servir el nom del tracker com a etiqueta",
         "useDisplayName": "Fes servir el nom a mostrar",
         "aboutDisplayNames": "Sobre els noms a mostrar",
@@ -917,8 +939,7 @@
       "enableDryRunPrompt": {
         "title": "Vols activar l'execució de prova?",
         "description": "L'execució de prova simula totes les accions sense canviar res. Pots revisar els torrents afectats al registre d'activitat.",
-        "enableWithout": "Activa-ho sense execució de prova",
-        "enableWith": "Activa-ho amb execució de prova"
+        "saveAndEnable": "Desa i activa"
       },
       "freeSpace": {
         "title": "Origen de l'espai lliure",
@@ -1006,11 +1027,13 @@
       "preview": {
         "confirmDeleteRule": "Confirma la regla d'eliminació",
         "previewDeleteRule": "Previsualitza la regla d'eliminació",
+        "confirmTagChange": "Confirma els canvis d'etiquetes",
         "confirmCategoryChange": "Confirma el canvi de categoria → {{category}}",
         "deleteEnabledSummary": "Aquesta regla afectarà {{count}} torrent que hi coincideix ara mateix.",
         "deleteEnabledSummary_other": "Aquesta regla afectarà {{count}} torrents que hi coincideixen ara mateix.",
         "deleteDisabledSummary": "{{count}} torrent coincidiria amb aquesta regla si s'activés.",
         "deleteDisabledSummary_other": "{{count}} torrents coincidirien amb aquesta regla si s'activés.",
+        "tagPrefix": "Aquesta regla actualitzarà les etiquetes de",
         "categoryPrefix": "Aquesta regla mourà",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrents",
@@ -1066,7 +1089,8 @@
           "moved": "Mou",
           "externalProgram": "Programa extern",
           "noMatches": "Cap coincidència",
-          "exportedToInstance": "Exporta a una instància"
+          "exportedToInstance": "Exporta a una instància",
+          "ruleSkipped": "Regla no executada"
         },
         "actionFallback": "Acció desconeguda ({{action}})",
         "summary": {
@@ -1167,8 +1191,6 @@
       "tryDifferentSearch": "Prova un altre terme de cerca o neteja el filtre.",
       "eventsWillAppear": "Els esdeveniments apareixeran aquí quan es detectin torrents encallats.",
       "enableMonitoring": "Activa la vigilància per començar a fer el seguiment dels torrents encallats.",
-      "hashCopied": "S'ha copiat el hash",
-      "copyHash": "Copia el hash",
       "outcomes": {
         "succeeded": "Correcte",
         "failed": "Fallit",
@@ -1299,8 +1321,6 @@
       "ratio": "Ràtio",
       "added": "Afegit",
       "original": "Original: {{domain}}",
-      "hashCopied": "S'ha copiat el hash",
-      "copyHash": "Copia el hash",
       "loading": "S'està carregant...",
       "notAvailable": "Els detalls de l'execució no estan disponibles (només hi són a la memòria).",
       "failedToLoad": "No s'han pogut carregar els detalls de l'execució.",
@@ -1328,7 +1348,8 @@
         "external_program": "Programa extern",
         "auto_managed": "Gestionat automàticament",
         "dry_run_no_match": "Execució de prova (cap coincidència)",
-        "exported_to_instance": "Exporta a una instància"
+        "exported_to_instance": "Exporta a una instància",
+        "rule_skipped": "Regla no executada"
       }
     },
     "orphanScanOverview": {
@@ -1357,11 +1378,12 @@
       "viewPreview": "Mostra la previsualització",
       "recentScans": "Exploracions recents",
       "scannedPaths": "Camins d'exploració seleccionats ({{total}})",
+      "scanPathsLoading": "Carregant els camins d'exploració...",
+      "scanPathsLoadFailed": "No s'han pogut carregar els camins d'exploració",
       "zeroOrphans": "0 orfes",
       "deletedStats": "{{deleted}} eliminats · {{size}}",
       "partialFailure": "Error parcial: comprova les exploracions recents",
       "partialFailureExpand": "Error parcial: desplega'l per veure'n els detalls",
-      "copiedToClipboard": "S'ha copiat al porta-retalls",
       "noScansYet": "Encara no s'ha fet cap exploració. Fes clic a «Explora ara» per trobar els orfes.",
       "statusClean": "Net",
       "statusPartial": "Exploració parcial",
@@ -1392,7 +1414,9 @@
       "deletedFiles_other": "{{count}} fitxers",
       "deletedDirs_one": "{{count}} directori",
       "deletedDirs_other": "{{count}} directoris",
-      "deletedSeparator": ", "
+      "deletedSeparator": ", ",
+      "errorMessage": "Missatge d'error",
+      "scanPaths": "Camins d'exploració"
     },
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",

@@ -7,7 +7,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// regression: #3726
+func TestParseLintPaths(t *testing.T) {
+	raw := []byte(`{"Issues": [
+		{"FromLinter": "gocognit", "Pos": {"Filename": "internal\\api\\handlers\\auth.go"}},
+		{"FromLinter": "gocognit", "Pos": {"Filename": "internal/api/handlers/auth.go"}},
+		{"FromLinter": "contextcheck", "Pos": {"Filename": "internal\\api/handlers/auth.go"}}
+	]}`)
+	got, err := parseLint(raw)
+	require.NoError(t, err)
+	assert.Equal(t, counts{
+		"gocognit":     {"internal/api/handlers/auth.go": 2},
+		"contextcheck": {"internal/api/handlers/auth.go": 1},
+	}, got)
+}
 
 func TestCompare(t *testing.T) {
 	allow := counts{"nilerr": {"a.go": 2, "b.go": 1}}

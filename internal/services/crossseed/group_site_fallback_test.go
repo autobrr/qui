@@ -615,7 +615,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 		&CrossSeedRequest{SearchDecision: decision.provenance().bindSource(instanceID, sourceHash)},
 		svc.releaseCache.Parse(packName),
 		files,
-		nil,
+		nil, nil,
 	)
 	require.NotEqual(t, "no_match", result.Status,
 		"the add-plan gate must use the same derived pack identity as candidate discovery")

@@ -46,15 +46,32 @@ var SlashPaths PathDialect = slashPaths{}
 
 type hostPaths struct{}
 
-func (hostPaths) Join(base, name string) string           { return filepath.Join(base, name) }
-func (hostPaths) Dir(p string) string                     { return filepath.Dir(p) }
-func (hostPaths) Base(p string) string                    { return filepath.Base(p) }
-func (hostPaths) Clean(p string) string                   { return filepath.Clean(p) }
-func (hostPaths) IsAbs(p string) bool                     { return filepath.IsAbs(p) }
-func (hostPaths) Rel(base, target string) (string, error) { return filepath.Rel(base, target) }
-func (hostPaths) FromSlash(p string) string               { return filepath.FromSlash(p) }
-func (hostPaths) ToSlash(p string) string                 { return filepath.ToSlash(p) }
-func (hostPaths) Separator() string                       { return string(filepath.Separator) }
+func (hostPaths) Join(base, name string) string { return filepath.Join(base, name) }
+func (hostPaths) Dir(p string) string           { return filepath.Dir(p) }
+func (hostPaths) Base(p string) string          { return filepath.Base(p) }
+func (hostPaths) Clean(p string) string         { return filepath.Clean(p) }
+func (hostPaths) IsAbs(p string) bool           { return filepath.IsAbs(p) }
+func (hostPaths) Rel(base, target string) (string, error) {
+	return filepath.Rel(shareRootWithSeparator(base), shareRootWithSeparator(target))
+}
+func (hostPaths) FromSlash(p string) string { return filepath.FromSlash(p) }
+func (hostPaths) ToSlash(p string) string   { return filepath.ToSlash(p) }
+func (hostPaths) Separator() string         { return string(filepath.Separator) }
+
+// shareRootWithSeparator gives a UNC share root one spelling: filepath.Rel never
+// returns for \\host\share against \\host\share\ (Go 1.27.3). A volume the
+// separator would change, such as \\host with no share, stays as it is.
+func shareRootWithSeparator(p string) string {
+	vol := filepath.VolumeName(p)
+	if vol == "" {
+		return p
+	}
+	withSeparator := vol + string(filepath.Separator)
+	if filepath.Clean(p) == vol && filepath.VolumeName(withSeparator) == vol {
+		return withSeparator
+	}
+	return p
+}
 
 type slashPaths struct{}
 

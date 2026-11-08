@@ -760,6 +760,37 @@ func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testin
 	})
 }
 
+// regression: #3707
+func TestWaitForCompletionTorrentReady_ErroredSourceGoesOnToItsRefusal(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		hash := "abababababababababababababababababababab"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+			hash: {
+				{
+					Hash:     hash,
+					Name:     "partial",
+					Progress: 0.27,
+					State:    qbt.TorrentStateCheckingResumeData,
+				},
+				{
+					Hash:     hash,
+					Name:     "partial",
+					Progress: 0.27,
+					State:    qbt.TorrentStateMissingFiles,
+				},
+			},
+		})
+		svc := &Service{syncManager: syncMock}
+
+		ready, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+			Hash: hash,
+			Name: "partial",
+		})
+		require.NoError(t, err)
+		require.Equal(t, qbt.TorrentStateMissingFiles, ready.State)
+	})
+}
+
 func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		hash := "ffffffffffffffffffffffffffffffffffffffff"
@@ -924,4 +955,8 @@ func TestHandleTorrentCompletion_BurstReadsSettingsOncePerInstance(t *testing.T)
 	wg.Wait()
 
 	assert.Equal(t, int64(2), q.settingsReads.Load())
+}
+
+func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

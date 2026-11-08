@@ -42,7 +42,7 @@ func TestSafeDeleteEmptyDir_SkipsDirectoryRemovedBeforeReadDir(t *testing.T) {
 	}
 
 	backend := disappearingDirBackend{Backend: newTestBackend()}
-	disp, err := safeDeleteEmptyDir(t.Context(), root, target, backend)
+	disp, err := safeDeleteEmptyDir(t.Context(), root, target, newTestProtected(t, fsops.HostPaths, nil, nil), backend)
 	if err != nil {
 		t.Fatal(err)
 	}

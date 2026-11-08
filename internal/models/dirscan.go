@@ -144,7 +144,7 @@ type DirScanFile struct {
 	FilePath           string            `json:"filePath"`
 	FileSize           int64             `json:"fileSize"`
 	FileModTime        time.Time         `json:"fileModTime"`
-	FileID             []byte            `json:"-"` // hardlink.FileID.Bytes(): one kind byte plus 24 identity bytes
+	FileID             []byte            `json:"-"` // hardlink.FileID.Bytes(): one kind byte plus 24 identity bytes, and for a remote file a tag of the endpoint that read it
 	Status             DirScanFileStatus `json:"status"`
 	MatchedTorrentHash string            `json:"matchedTorrentHash,omitempty"`
 	MatchedIndexerID   *int              `json:"matchedIndexerId,omitempty"`
@@ -1386,6 +1386,9 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 
 	searchedIndexerIDs := marshalSearchedIndexerIDs(file.SearchedIndexerIDs)
 
+	// UTC because pgx stores a non-UTC time in a TIMESTAMP column as its wall clock and drops the offset.
+	fileModTime := file.FileModTime.UTC()
+
 	// Handle renames via FileID where possible: if we have a platform-neutral FileID
 	// and a tracked row exists for it, update its file_path instead of creating a new row.
 	if len(file.FileID) > 0 {
@@ -1401,7 +1404,7 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			    searched_indexer_ids = ?,
 			    last_processed_at = CURRENT_TIMESTAMP
 			WHERE directory_id = ? AND file_id = ?
-		`, file.FilePath, file.FileSize, file.FileModTime, file.FileID, file.Status,
+		`, file.FilePath, file.FileSize, fileModTime, file.FileID, file.Status,
 			matchedTorrentHash, matchedIndexerID, searchedIndexerIDs, file.DirectoryID, file.FileID)
 		if err != nil {
 			// If the target path is already tracked, fall back to the path-upsert which will merge state.
@@ -1436,7 +1439,7 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			matched_indexer_id = excluded.matched_indexer_id,
 			searched_indexer_ids = excluded.searched_indexer_ids,
 			last_processed_at = CURRENT_TIMESTAMP
-	`, file.DirectoryID, file.FilePath, file.FileSize, file.FileModTime, file.FileID,
+	`, file.DirectoryID, file.FilePath, file.FileSize, fileModTime, file.FileID,
 		file.Status, matchedTorrentHash, matchedIndexerID, searchedIndexerIDs)
 	if err != nil {
 		return fmt.Errorf("upsert file: %w", err)

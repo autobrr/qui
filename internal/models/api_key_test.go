@@ -19,7 +19,7 @@ func TestAPIKeyStoreValidateAPIKeyRecordsLastUsed(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "api-keys")
 	store := models.NewAPIKeyStore(db)
 
-	rawKey, key, err := store.Create(ctx, "autobrr")
+	rawKey, key, err := store.Create(ctx, "autobrr", models.AllPermissions(), nil)
 	require.NoError(t, err)
 
 	lastUsed := func() *time.Time {
@@ -64,7 +64,7 @@ func TestAPIKeyStoreLastUsedPostgresIntegrationSessionTimeZone(t *testing.T) {
 
 	ctx := t.Context()
 	store := models.NewAPIKeyStore(testdb.NewMigratedPostgres(t, "api-keys-tz"))
-	rawKey, key, err := store.Create(ctx, "autobrr")
+	rawKey, key, err := store.Create(ctx, "autobrr", models.AllPermissions(), nil)
 	require.NoError(t, err)
 
 	_, err = store.ValidateAPIKey(ctx, rawKey)
@@ -77,4 +77,70 @@ func TestAPIKeyStoreLastUsedPostgresIntegrationSessionTimeZone(t *testing.T) {
 		return lastUsed != nil
 	}, 5*time.Second, 10*time.Millisecond)
 	require.WithinDuration(t, time.Now(), *lastUsed, 5*time.Second)
+}
+
+func TestAPIKeyStoreAccessSQLite(t *testing.T) {
+	checkAPIKeyStoreAccess(t, models.NewAPIKeyStore(testdb.NewMigratedSQLite(t, "api-key-access")))
+}
+
+func TestAPIKeyStoreAccessPostgresIntegration(t *testing.T) {
+	checkAPIKeyStoreAccess(t, models.NewAPIKeyStore(testdb.NewMigratedPostgres(t, "api-key-access")))
+}
+
+func checkAPIKeyStoreAccess(t *testing.T, store *models.APIKeyStore) {
+	t.Helper()
+	ctx := t.Context()
+	torrentsRead := []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}
+
+	rawKey, created, err := store.Create(ctx, "dashboard", torrentsRead, nil)
+	require.NoError(t, err)
+	require.Equal(t, torrentsRead, created.Permissions)
+	require.Equal(t, []int{}, created.InstanceIDs)
+
+	validated, err := store.ValidateAPIKey(ctx, rawKey)
+	require.NoError(t, err)
+	require.Equal(t, torrentsRead, validated.Permissions)
+	require.Equal(t, []int{}, validated.InstanceIDs)
+
+	crossSeedRun := []models.Permission{
+		{Area: models.AreaCrossSeed, Level: models.LevelRun},
+		{Area: models.AreaDirScan, Level: models.LevelRun},
+	}
+	updated, err := store.Update(ctx, created.ID, "autobrr", crossSeedRun, []int{3, 7})
+	require.NoError(t, err)
+	require.Equal(t, "autobrr", updated.Name)
+	require.Equal(t, created.KeyHash, updated.KeyHash)
+	require.WithinDuration(t, created.CreatedAt, updated.CreatedAt, time.Second)
+
+	keys, err := store.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+	require.Equal(t, "autobrr", keys[0].Name)
+	require.Equal(t, crossSeedRun, keys[0].Permissions)
+	require.Equal(t, []int{3, 7}, keys[0].InstanceIDs)
+
+	_, err = store.Update(ctx, created.ID+100, "missing", crossSeedRun, nil)
+	require.ErrorIs(t, err, models.ErrAPIKeyNotFound)
+}
+
+func TestValidatePermissions(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		perms []models.Permission
+		ok    bool
+	}{
+		{"every permission", models.AllPermissions(), true},
+		{"empty list", nil, false},
+		{"unknown area", []models.Permission{{Area: "users", Level: models.LevelRead}}, false},
+		{"level the area does not allow", []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRun}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := models.ValidatePermissions(tc.perms)
+			if tc.ok {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
 }

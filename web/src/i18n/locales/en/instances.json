@@ -505,7 +505,6 @@
       "dryRun": "Dry run",
       "removed": "Removed",
       "executed": "Executed",
-      "copyHash": "Copy hash",
       "original": "Original: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Rule: {{name}}",
@@ -556,7 +555,8 @@
         "move": "Move",
         "externalProgram": "External program",
         "dryRun": "Dry-run",
-        "exportToInstance": "Export to instance"
+        "exportToInstance": "Export to instance",
+        "ruleSkipped": "Rule not run"
       },
       "shareLimit": {
         "global": "Global",
@@ -617,6 +617,7 @@
         "cancel": "Cancel",
         "delete": "Delete"
       },
+      "enableTagRule": "Enable Tag Rule",
       "enableDeleteRule": "Enable Delete Rule",
       "enableCategoryRule": "Enable Category Rule → {{category}}",
       "enableRuleImmediately": "Confirming will enable this rule immediately.",
@@ -665,10 +666,29 @@
         "exportedTorrents": "Exported {{count}} torrents to CSV",
         "exportFailed": "Failed to export preview",
         "deletedActivityEntries": "Deleted {{count}} activity entries",
-        "deleteActivityFailed": "Failed to delete activity",
-        "hashCopied": "Hash copied"
+        "deleteActivityFailed": "Failed to delete activity"
       },
-      "exported": "Exported"
+      "exported": "Exported",
+      "skipped": "Skipped"
+    },
+    "runWorkflowNow": {
+      "action": "Run now",
+      "title": "Run \"{{name}}\" now?",
+      "description": "qui runs the saved workflow one time now and applies its actions to the matching torrents. It also runs when the workflow is disabled.",
+      "dryRunDescription": "This workflow is set to dry-run, so qui only records what it would do. No torrent changes.",
+      "actions": "Actions",
+      "cancel": "Cancel",
+      "confirm": "Run now",
+      "toast": {
+        "running": "Running \"{{name}}\"…",
+        "completed": "Run completed for \"{{name}}\"",
+        "noChanges": "Run completed for \"{{name}}\". No torrent needed a change.",
+        "completedWithErrors": "Run completed for \"{{name}}\" with errors. See the activity log.",
+        "dryRunCompleted": "Dry-run completed for \"{{name}}\"",
+        "inProgress": "A run is in progress. Try again in a moment.",
+        "failed": "Failed to run the workflow",
+        "skipped": "\"{{name}}\" did not run. See the activity log."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Loading preview. This might take a while...",
@@ -739,6 +759,8 @@
       "viewPreview": "View Preview",
       "recentScans": "Recent Scans",
       "scannedPaths": "Selected scan paths ({{total}})",
+      "scanPathsLoading": "Loading scan paths...",
+      "scanPathsLoadFailed": "Failed to load scan paths",
       "zeroOrphans": "0 orphans",
       "deletedStats": "{{deleted}} deleted · {{size}}",
       "deletedFiles_one": "{{count}} file",
@@ -748,7 +770,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Partial failure - check recent scans",
       "partialFailureExpand": "Partial failure - expand for details",
-      "copiedToClipboard": "Copied to clipboard",
       "noScansYet": "No scans run yet. Click \"Scan Now\" to find orphans.",
       "statusClean": "Clean",
       "statusPartial": "Partial scan",
@@ -768,7 +789,9 @@
         "scanStartFailed": "Failed to start scan",
         "scanCanceled": "Scan canceled",
         "cancelFailed": "Failed to cancel"
-      }
+      },
+      "errorMessage": "Error message",
+      "scanPaths": "Scan paths"
     },
     "orphanScanPreview": {
       "title": "Orphan Preview",
@@ -917,8 +940,6 @@
       "ratio": "Ratio",
       "added": "Added",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash copied",
-      "copyHash": "Copy hash",
       "loading": "Loading...",
       "notAvailable": "Run details not available (in-memory only).",
       "failedToLoad": "Failed to load run details.",
@@ -946,7 +967,8 @@
         "external_program": "External program",
         "auto_managed": "Auto managed",
         "dry_run_no_match": "Dry-run (no match)",
-        "exported_to_instance": "Export to instance"
+        "exported_to_instance": "Export to instance",
+        "rule_skipped": "Rule not run"
       }
     },
     "reannounceOverview": {
@@ -982,8 +1004,6 @@
       "tryDifferentSearch": "Try a different search term or clear the filter.",
       "eventsWillAppear": "Events will appear here when stalled torrents are detected.",
       "enableMonitoring": "Enable monitoring to start tracking stalled torrents.",
-      "hashCopied": "Hash copied",
-      "copyHash": "Copy hash",
       "outcomes": {
         "succeeded": "Succeeded",
         "failed": "Failed",
@@ -1152,6 +1172,7 @@
         "title": "Action",
         "addAction": "Add action",
         "selectAction": "Select an action...",
+        "runOrderHelp": "Actions run in the order shown. Each action sees the torrent as it was when the run started, so an external program that runs after a move still gets the old save path.",
         "speedLimits": "Speed limits",
         "shareLimits": "Share limits",
         "pause": "Pause",
@@ -1204,6 +1225,7 @@
         "strategyReplace": "Replace in client",
         "replaceDescription": "Replace mode forces a full client-wide reset of these tags before applying this rule.",
         "managedDescription": "Managed mode keeps tags accurate with diff-based updates; Full sync adds tags to matches and removes them from non-matches.",
+        "includeAffectedCrossSeeds": "Include affected cross-seeds",
         "useTrackerName": "Use tracker name as tag",
         "useDisplayName": "Use display name",
         "aboutDisplayNames": "About display names",
@@ -1348,11 +1370,13 @@
       "preview": {
         "confirmDeleteRule": "Confirm Delete Rule",
         "previewDeleteRule": "Preview Delete Rule",
+        "confirmTagChange": "Confirm Tag Changes",
         "confirmCategoryChange": "Confirm Category Change → {{category}}",
         "deleteEnabledSummary": "This rule will affect {{count}} torrent that currently match.",
         "deleteEnabledSummary_other": "This rule will affect {{count}} torrents that currently match.",
         "deleteDisabledSummary": "{{count}} torrent would match this rule if enabled.",
         "deleteDisabledSummary_other": "{{count}} torrents would match this rule if enabled.",
+        "tagPrefix": "This rule will update tags on",
         "categoryPrefix": "This rule will move",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrents",
@@ -1364,8 +1388,7 @@
       "enableDryRunPrompt": {
         "title": "Enable dry run?",
         "description": "Dry run simulates all actions without changing anything. You can review affected torrents in the activity log.",
-        "enableWithout": "Enable without dry run",
-        "enableWith": "Enable with dry run"
+        "saveAndEnable": "Save and enable"
       },
       "customGroup": {
         "title": "Add custom group",
@@ -1414,7 +1437,8 @@
           "moved": "Move",
           "externalProgram": "External program",
           "noMatches": "No matches",
-          "exportedToInstance": "Export to instance"
+          "exportedToInstance": "Export to instance",
+          "ruleSkipped": "Rule not run"
         },
         "actionFallback": "Unknown action ({{action}})",
         "summary": {

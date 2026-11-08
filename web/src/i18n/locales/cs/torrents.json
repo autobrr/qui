@@ -138,6 +138,8 @@
     "error": "Nepodařilo se zkontrolovat křížová sdílení",
     "retry": "Zkusit znovu",
     "noCrossSeeds": "Nenalezena žádná křížová sdílení",
+    "uncheckedOffline": "{{instance}} nelze zkontrolovat: qui se k ní nemůže připojit.",
+    "uncheckedDisabled": "{{instance}} nebyla zkontrolována: v qui je vypnutá.",
     "deleteCrossSeeds": "Tyto křížová sdílení budou také smazány",
     "deletingFilesBreaks": "Smazání souborů rozbije tyto křížová sdílení",
     "dataPreserved": "Křížová sdílení detekována: data budou zachována",
@@ -880,7 +882,8 @@
       "fewerIndexers": "Vyhledávejte s méně indexery",
       "useRss": "Použijte funkci RSS automatizace pro trvalé křížové sdílení",
       "checkIndexers": "Zkontrolujte help stránky indexerů a zjistěte, které jsou omezené"
-    }
+    },
+    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrovat {{column}}",
@@ -1076,7 +1079,6 @@
     "torrentCount_other": "{{count}} torrenty",
     "torrentsLoaded": "{{loaded}} z {{total}} torrentů načteno",
     "scrollForMore": "(skrolovat pro více)",
-    "loading": "Načítání...",
     "freeSpace": "Volné místo",
     "switchToBits": "Přepnout na bitů za sekundu (bps)",
     "switchToBytes": "Přepnout na bajtů za sekundu (B/s)",
@@ -1142,7 +1144,6 @@
     "closePanel": "Zavřít detailní panel",
     "unknownError": "Neznámá chyba",
     "toast": {
-      "copied": "{{type}} zkopírováno do schránky",
       "copyFailed": "Nepodařilo se zkopírovat do schránky",
       "peersAdded": "Peerové přidány úspěšně",
       "peersFailed": "Nepodařilo se přidat peery: {{error}}",
@@ -1199,20 +1200,14 @@
       "loadedSummary_other": "{{count}} shody torrentů nalezeny napříč všemi instancemi",
       "deleteMatches": "Smazat shody ({{count}})",
       "deleteThisTorrent": "Smazat tento torrent",
-      "checkingMoreInstances": "Kontrolují se další instance...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Přesně stejný torrent (stejný info hash)",
-      "savePathMatch": "Složka pro uložení",
-      "savePathDescription": "Stejná složka pro uložení a stejný název souboru",
-      "selectTorrent": "Vybrat {{name}}"
+      "selectTorrent": "Vybrat {{name}}",
+      "openTorrent": "Otevřít {{name}}"
     },
     "sections": {
       "generalInformation": "Obecné informace",
       "transferStatistics": "Přenosové statistiky",
-      "speed": "Rychlost",
       "queueManagement": "Správa fronty",
       "timeInformation": "Časové informace",
-      "timestamps": "Časové značky",
       "activeTrackers": "Aktivní trackery",
       "connectedPeers": "Připojení peerů",
       "fileContents": "Obsah souborů"
@@ -1239,10 +1234,7 @@
       "added": "Přidáno",
       "completed": "Dokončeno",
       "created": "Vytvořeno",
-      "leechers": "Stahovatelé",
-      "peerProgress": "Postup stahování peeru",
-      "connection": "Připojení:",
-      "flags": "Vlajky:"
+      "leechers": "Stahovatelé"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
@@ -1251,9 +1243,6 @@
       "connectedPeers_one": "{{count}} peer připojen",
       "connectedPeers_few": "{{count}} peeři připojeni",
       "connectedPeers_other": "{{count}} peerů připojených",
-      "httpSources_one": "{{count}} zdroj",
-      "httpSources_few": "{{count}} zdroje",
-      "httpSources_other": "{{count}} zdroje",
       "selectedFiles": "{{selected}} z {{total}} vybraných",
       "files_one": "{{count}} soubor",
       "files_few": "{{count}} soubory",
@@ -1262,7 +1251,6 @@
     "values": {
       "normal": "Normální",
       "queued": "V frontě {{state}}",
-      "seeder": "Sdílící",
       "unknownClient": "Neznámý klient"
     },
     "actions": {
@@ -1271,14 +1259,12 @@
       "selectAll": "Všechny",
       "selectNone": "Žádné"
     },
-    "peer": {
-      "flagLabel": "Vlajka {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Nenalezen žádný soubor"
     },
     "selectAll": "Vybrat vše",
-    "deselectAll": "Vybrat žádné"
+    "deselectAll": "Vybrat žádné",
+    "trackerMessageHidden": "Zpráva trackeru je v režimu Incognito skrytá"
   },
   "generalTab": {
     "name": "Název:",
@@ -1323,6 +1309,7 @@
     "status": "Stav",
     "tracker": "Tracker",
     "seeds": "Seedy",
+    "peers": "Peerové",
     "leeches": "Stahovatelé",
     "downloaded": "Stáhnuto",
     "message": "Zpráva",
@@ -1433,11 +1420,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
-    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
-    "toast": {
-      "savePathCopied": "Složka pro uložení zkopírována",
-      "copyFailed": "Kopírování selhalo"
-    }
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte."
   },
   "addTorrentDialog": {
     "title": "Přidat nový torrent",
@@ -1730,6 +1713,7 @@
     "tags": "Štítky",
     "newTagPlaceholder": "Zadejte štítek a stiskněte Enter",
     "savePath": "Cesta uložení (skutečné umístění)",
+    "routedTo": "Křížové sdílení jde do instance pro křížové sdílení {{instance}}.",
     "cancel": "Zrušit",
     "apply": "Přidat cross-seed",
     "applying": "Přidávání...",
@@ -1757,6 +1741,8 @@
         "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",
         "target_not_found": "Cíl nebyl v této instanci nalezen.",
         "incomplete": "Stahování cíle není dokončeno.",
+        "not_settled": "Tento torrent se stále přesouvá nebo kontroluje. Zkuste to znovu, až to skončí.",
+        "errored": "Tento torrent má chybu nebo chybějící soubory. Opravte to a zkuste to znovu.",
         "no_episode_identity": "Číslo epizody nelze rozpoznat.",
         "file_list_unavailable": "Seznam souborů cíle není dostupný.",
         "episode_file_invalid": "Cíl musí obsahovat jeden přehratelný soubor s identitou vybrané epizody.",
@@ -1771,5 +1757,14 @@
         "add_failed": "Torrent nelze přidat."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} další kopie položky {{name}}",
+    "copies_few": "{{count}} další kopie položky {{name}}",
+    "copies_other": "{{count}} dalších kopií položky {{name}}",
+    "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
+    "badge": "+{{hidden}}"
   }
 }

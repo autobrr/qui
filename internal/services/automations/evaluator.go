@@ -54,13 +54,12 @@ type EvalContext struct {
 	// The deletion projection uses the same snapshot and hardlink index as execution.
 	torrentsByHash map[string]qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
+	// crossSeeds holds the groups of the run session, when the rules need one.
+	crossSeeds *crossSeedGroups
 
-	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
-	UnregisteredSet map[string]struct{}
-	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
-	TrackerDownSet map[string]struct{}
-	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
-	TrackerErrorSet map[string]struct{}
+	// TrackerHealth is the tracker health snapshot of the instance. It is nil
+	// when the instance has no tracker health yet.
+	TrackerHealth *qbittorrent.TrackerHealthSnapshot
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
@@ -129,7 +128,7 @@ type EvalContext struct {
 	SameInstanceCrossSeedTagsByHash map[string][]string
 	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
 	// instance that share at least one file on disk with it (self excluded).
-	// Built when a delete, move, or category action groups cross-seeds;
+	// Built when a delete, move, category, or tag action groups cross-seeds;
 	// buildCrossSeedGroups reads it.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
@@ -138,6 +137,14 @@ type EvalContext struct {
 	// rule that tests for "no cross-seed" cannot act on a read error.
 	SameInstanceCrossSeedUnknown map[string]struct{}
 	CrossInstanceUnknown         map[string]struct{}
+	// CrossInstanceSharedHashSet holds the torrents that share a file with a
+	// torrent on another instance, and CrossInstanceSharedUnknown the torrents
+	// that qui could not check. OfflineLocalInstances names the offline
+	// instances with local file access. Built for the delete modes that
+	// preserve or include cross-seeds; otherInstanceKeepsFiles reads them.
+	CrossInstanceSharedHashSet map[string]struct{}
+	CrossInstanceSharedUnknown map[string]struct{}
+	OfflineLocalInstances      []string
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
@@ -382,7 +389,7 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
-		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) {
+		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) || (cond.Field == FieldPrivate && qbittorrent.PrivateUnknown(&torrent)) {
 			return false, false
 		}
 		result = evaluateLeaf(cond, torrent, ctx)
@@ -611,11 +618,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldSuperSeeding:
 		return compareBool(torrent.SuperSeeding, cond)
 	case FieldIsUnregistered:
-		isUnregistered := false
-		if ctx != nil && ctx.UnregisteredSet != nil {
-			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
-		}
-		return compareBool(isUnregistered, cond)
+		return compareBool(ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered, cond)
 
 	case FieldHardlinkScope:
 		return compareHardlinkScope(ctx.HardlinkScopeByHash[torrent.Hash], cond)
@@ -688,10 +691,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSet), cond)
 	case FieldSeasonPackStatusAnyInstance:
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSetAnyInstance), cond)
-
-	default:
-		return false
 	}
+	return false
 }
 
 func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
@@ -711,8 +712,7 @@ func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bo
 	}
 }
 
-// matchesStateValue matches against the torrent "status" buckets used by the sidebar filters
-// (e.g. "errored", "stalled_uploading") with a fallback to exact torrent.State string matching.
+// matchesStateValue reads "completed" as 100% progress, but sidebar Completed reads the state (#3870).
 func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
@@ -720,7 +720,6 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 	}
 
 	switch strings.ToLower(normalized) {
-	// Sidebar status buckets
 	case "completed":
 		return torrent.Progress >= 1.0
 	case "downloading":
@@ -728,6 +727,7 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			qbt.TorrentStateDownloading,
 			qbt.TorrentStateStalledDl,
 			qbt.TorrentStateMetaDl,
+			qbt.TorrentStateForcedMetaDl,
 			qbt.TorrentStateQueuedDl,
 			qbt.TorrentStateAllocating,
 			qbt.TorrentStateCheckingDl,
@@ -790,24 +790,8 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 		return torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles
 	case "missingfiles":
 		return torrent.State == qbt.TorrentStateMissingFiles
-	case "unregistered":
-		if ctx == nil || ctx.UnregisteredSet == nil {
-			return false
-		}
-		_, ok := ctx.UnregisteredSet[torrent.Hash]
-		return ok
-	case "tracker_down":
-		if ctx == nil || ctx.TrackerDownSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerDownSet[torrent.Hash]
-		return ok
-	case "tracker_error":
-		if ctx == nil || ctx.TrackerErrorSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerErrorSet[torrent.Hash]
-		return ok
+	case "unregistered", "tracker_down", "tracker_error":
+		return ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealth(strings.ToLower(normalized))
 	}
 
 	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").

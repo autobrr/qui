@@ -22,7 +22,7 @@ If you have one server, run qui on that server. Some seedbox providers install q
 - **Single Binary**: No dependencies. Download and run.
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
 - **Large Collections**: Handles thousands of torrents
-- **Themeable**: Multiple built-in color themes, plus sideloadable [custom themes](./features/custom-themes.md) (premium), with a shared collection in [qui-community-themes](https://github.com/autobrr/qui-community-themes)
+- **Themeable**: Multiple built-in color themes, including the themes from [qui-community-themes](https://github.com/autobrr/qui-community-themes) (license required), plus sideloadable [custom themes](./features/custom-themes.md) (license required)
 - **Base URL Support**: Serve from a subdirectory (for example `/qui/`) behind a reverse proxy
 - **OIDC Single Sign-On**: Authenticate through your [OpenID Connect provider](./configuration/oidc.md)
 - **External Programs**: Launch [custom scripts](./features/external-programs.md) from the torrent context menu
@@ -76,6 +76,6 @@ GPL-2.0-or-later
 
 ## Supported torrent clients
 
-qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, or Transmission, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
+qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, Transmission, or uTorrent, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
 
 For compatible qBittorrent versions, see the [qBittorrent Version Compatibility](./advanced/compatibility.md) page.

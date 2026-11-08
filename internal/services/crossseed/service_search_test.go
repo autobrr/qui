@@ -2295,3 +2295,11 @@ func gazelleClientsForTest() (*gazelleClientSet, error) {
 		},
 	}, nil
 }
+
+func (*queueTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*gazelleSkipHashSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

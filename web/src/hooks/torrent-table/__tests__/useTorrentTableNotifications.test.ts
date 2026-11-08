@@ -4,6 +4,7 @@
  */
 
 import { type UseTorrentTableNotificationsParams, useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
+import { EMPTY_ACTION_TARGET, type ActionTarget } from "@/lib/torrent-selection"
 import { makeTorrent } from "@/test/mockTorrent"
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
@@ -26,13 +27,8 @@ function makeParams(overrides: Partial<UseTorrentTableNotificationsParams> = {})
     allowSubcategories: false,
     supportsTrackerHealth: false,
     onSelectionChange: vi.fn(),
-    selectedHashes: [],
-    selectedTorrents: [],
-    effectiveSelectionCount: 0,
-    selectAllExcludeHashes: undefined,
-    selectAllExcludedTargets: [],
+    actionTarget: EMPTY_ACTION_TARGET,
     selectedTotalSize: 0,
-    selectAllFilters: undefined,
     ...overrides,
   }
 }
@@ -101,36 +97,11 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
 })
 
 describe("useTorrentTableNotifications — onSelectionChange", () => {
-  it("publishes the selection summary", () => {
-    const params = makeParams({
-      selectedHashes: ["a"],
-      selectedTorrents: [makeTorrent({ hash: "a" })],
-      effectiveSelectionCount: 1,
-      selectedTotalSize: 100,
-    })
+  it("publishes the Action target with the size", () => {
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a" })] }
+    const params = makeParams({ actionTarget, selectedTotalSize: 100 })
     renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({
-      selectedHashes: ["a"],
-      selectedTorrents: params.selectedTorrents,
-      totalSelectionCount: 1,
-      selectedTotalSize: 100,
-      excludeHashes: [],
-      excludeTargets: [],
-      selectAllFilters: undefined,
-    })
-  })
-
-  it("carries the excluded targets and selectAllFilters in Select all mode", () => {
-    const targets = [{ instanceId: 1, hash: "x" }]
-    const filters = { status: [], excludeStatus: [], categories: [], excludeCategories: [], tags: [], excludeTags: [], trackers: [], excludeTrackers: [], expr: "e" } as UseTorrentTableNotificationsParams["selectAllFilters"]
-    const params = makeParams({
-      selectAllExcludedTargets: targets,
-      selectAllFilters: filters,
-    })
-    renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    const summary = vi.mocked(params.onSelectionChange!).mock.calls[0][0]
-    expect(summary?.excludeTargets).toBe(targets)
-    expect(summary?.selectAllFilters).toBe(filters)
+    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, selectedTotalSize: 100 })
   })
 
   it("fires even while loading (no loading gate on selection)", () => {

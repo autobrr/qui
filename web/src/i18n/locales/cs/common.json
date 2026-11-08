@@ -101,17 +101,19 @@
     "cancel": "Zrušit",
     "close": "Zavřít",
     "create": "Vytvořit",
-    "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat"
+    "select": "Vybrat",
+    "copyValue": "Kopírovat {{label}}"
   },
   "placeholders": {
     "search": "Hledat...",
     "selectItems": "Vybrat položky..."
   },
   "feedback": {
-    "noResultsFound": "Žádné výsledky."
+    "noResultsFound": "Žádné výsledky.",
+    "copied": "{{label}} byl zkopírován do schránky",
+    "copyFailed": "Nepodařilo se zkopírovat do schránky"
   },
   "errors": {
     "unknown": "Neznámá chyba",
@@ -150,11 +152,10 @@
     "dark": "Tmavý",
     "system": "Systém",
     "theme": "Vzhled",
-    "premium": "Premiové",
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
+    "premiumThemeError": "Tento vzhled vyžaduje licenci. Otevřete Nastavení → Motivy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
@@ -251,6 +252,9 @@
     "perkSuffix": "na Discordu a naši věčnou vděčnost.",
     "yearly": "{{price}} / rok",
     "monthly": "{{price}} / měsíc",
-    "notLicense": "Prémiové motivy jsou samostatný jednorázový nákup."
+    "notLicense": "Licence k motivům je samostatný jednorázový nákup."
+  },
+  "labels": {
+    "path": "Cesta"
   }
 }

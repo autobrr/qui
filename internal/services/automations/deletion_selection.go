@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // deletionSelectionInput is what the Deletion selection reads. The run, the dry run and
@@ -23,7 +24,7 @@ type deletionSelectionInput struct {
 	// torrents are sorted in place by the sort order of each rule.
 	torrents   []qbt.Torrent
 	evalCtx    *EvalContext
-	crossSeeds crossSeedGroups
+	crossSeeds *crossSeedGroups
 	// skip leaves out the torrents that a live run handled recently. The dry run and the
 	// preview pass nil.
 	skip func(hash string) bool
@@ -171,6 +172,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		claims = append(claims, ruleClaims...)
 	}
 	evalCtx.PersistFreeSpaceSourceState()
+	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
 	// The sort order is final now, so pointers into in.torrents stay valid.
 	triggerTorrents := make(map[string]*qbt.Torrent, len(sel.triggers))
@@ -196,6 +198,26 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 	return sel
 }
 
+// askDeleteGroups asks the run session in one round for the groups of the
+// claimed triggers that expand or preserve, with the hardlink copies that an
+// include rule follows, and for the other-instance Shared-file check.
+func askDeleteGroups(claims []deletionClaim, crossSeeds *crossSeedGroups, hardlinks *HardlinkIndex) {
+	var hashes, linkHashes []string
+	for _, claim := range claims {
+		switch getDeleteMode(claim.rule) {
+		case DeleteModeWithFilesIncludeCrossSeeds:
+			if claim.rule.Conditions.Delete.IncludeHardlinks && hardlinks != nil {
+				linkHashes = append(linkHashes, claim.hash)
+			} else {
+				hashes = append(hashes, claim.hash)
+			}
+		case DeleteModeWithFilesPreserveCrossSeeds:
+			hashes = append(hashes, claim.hash)
+		}
+	}
+	crossSeeds.resolveDeletes(hashes, linkHashes, hardlinks)
+}
+
 func deleteExpandsGroups(rule *models.Automation) bool {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return false
@@ -216,6 +238,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	projects := !in.eligibleView && ConditionUsesField(deleteAction.Condition, FieldFreeSpace)
+	readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 	stats := getOrCreateRuleStats(in.stats, rule)
 	countNotMet := func() {
 		if stats != nil {
@@ -229,6 +252,10 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 			continue
 		}
 		if !trackers.match(rule.TrackerPattern, torrent, s) {
+			continue
+		}
+		// A torrent without a private value drops out of a rule that reads it. ADR 0039.
+		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate {
 			continue
 		}
 		// Safety: delete must always have an explicit condition.
@@ -303,13 +330,15 @@ func (s *Service) expandDeleteTrigger(
 		if len(expanded.hardlinkCopySet) > 0 {
 			logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
 		}
-		addAll(slices.Sorted(maps.Keys(expanded.expandedSet)), DeleteModeWithFiles, logMsg, expanded.hardlinkCopySet)
-	case DeleteModeWithFilesPreserveCrossSeeds:
-		if shouldPreserveCrossSeedFiles(trigger, in.crossSeeds, in.evalCtx.CrossSeedFilesByHash) {
-			addAll([]string{trigger.Hash}, DeleteModeKeepFiles, "automations: removing torrent (preserve cross-seeds - keeping files)", nil)
-		} else {
-			addAll([]string{trigger.Hash}, DeleteModeWithFiles, logMsgRemoveTorrentWithFiles, nil)
+		hashes := slices.Sorted(maps.Keys(expanded.expandedSet))
+		if keepMsg, keep := groupKeepsFilesForOtherInstances(in.evalCtx, hashes); keep {
+			addAll(hashes, DeleteModeKeepFiles, keepMsg, expanded.hardlinkCopySet)
+			return
 		}
+		addAll(hashes, DeleteModeWithFiles, logMsg, expanded.hardlinkCopySet)
+	case DeleteModeWithFilesPreserveCrossSeeds:
+		batchMode, logMsg := preserveCrossSeedsDelete(trigger, in)
+		addAll([]string{trigger.Hash}, batchMode, logMsg, nil)
 	case DeleteModeKeepFiles:
 		groupID := strings.TrimSpace(deleteAction.GroupID)
 		if groupID == "" {
@@ -331,7 +360,8 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
-		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) {
+		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
+			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return
 		}
@@ -339,4 +369,28 @@ func (s *Service) expandDeleteTrigger(
 	default:
 		addAll([]string{trigger.Hash}, deleteMode, logMsgRemoveTorrentWithFiles, nil)
 	}
+}
+
+// groupKeepsFilesForOtherInstances runs otherInstanceKeepsFiles for each member
+// of a group. The members share files, so one member that another instance
+// needs keeps the files of all.
+func groupKeepsFilesForOtherInstances(evalCtx *EvalContext, hashes []string) (logMsg string, keep bool) {
+	for _, hash := range hashes {
+		if logMsg, keep := otherInstanceKeepsFiles(evalCtx, hash); keep {
+			return logMsg, true
+		}
+	}
+	return "", false
+}
+
+// preserveCrossSeedsDelete keeps the files of the trigger when a torrent on
+// this instance or on another instance can need them.
+func preserveCrossSeedsDelete(trigger qbt.Torrent, in deletionSelectionInput) (batchMode, logMsg string) {
+	if keepMsg, keep := otherInstanceKeepsFiles(in.evalCtx, trigger.Hash); keep {
+		return DeleteModeKeepFiles, keepMsg
+	}
+	if shouldPreserveCrossSeedFiles(trigger, in.crossSeeds, in.evalCtx.CrossSeedFilesByHash) {
+		return DeleteModeKeepFiles, "automations: removing torrent (preserve cross-seeds - keeping files)"
+	}
+	return DeleteModeWithFiles, logMsgRemoveTorrentWithFiles
 }

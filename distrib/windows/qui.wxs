@@ -41,6 +41,7 @@
         <RegistryValue Root="HKCU" Key="Software\autobrr\qui" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
         <File Id="QuiExe" Name="qui.exe" Source="qui.exe" />
         <File Id="QuiTrayExe" Name="qui-tray.exe" Source="qui-tray.exe" />
+        <File Id="ThirdPartyNotices" Name="THIRD_PARTY_NOTICES" Source="THIRD_PARTY_NOTICES" />
         <!-- An explicit Target keeps wixl from making an advertised shortcut. -->
         <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="qui" Target="[#QuiTrayExe]" WorkingDirectory="INSTALLFOLDER" />
         <!-- wixl ignores Permanent="no". The "-" prefix makes the uninstall remove the entry. -->

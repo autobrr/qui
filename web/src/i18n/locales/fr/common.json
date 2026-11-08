@@ -101,17 +101,19 @@
     "cancel": "Annuler",
     "close": "Fermer",
     "create": "Créer",
-    "copyPath": "Copier le chemin",
     "scrollToTop": "Défiler vers le haut",
     "search": "Rechercher",
-    "select": "Sélectionner"
+    "select": "Sélectionner",
+    "copyValue": "Copier {{label}}"
   },
   "placeholders": {
     "search": "Rechercher...",
     "selectItems": "Sélectionner des éléments..."
   },
   "feedback": {
-    "noResultsFound": "Aucun résultat trouvé."
+    "noResultsFound": "Aucun résultat trouvé.",
+    "copied": "{{label}} copié dans le presse-papiers",
+    "copyFailed": "Échec de la copie"
   },
   "errors": {
     "unknown": "Erreur inconnue",
@@ -150,11 +152,10 @@
     "dark": "Sombre",
     "system": "Système",
     "theme": "Thème",
-    "premium": "Premium",
     "switchedToMode": "Passé en mode {{mode}}",
     "switchedToTheme": "Passé au thème {{theme}}",
     "switchedToThemeVariation": "Passé au thème {{theme}} ({{variation}})",
-    "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence."
+    "premiumThemeError": "Ce thème nécessite une licence. Ouvrez Paramètres → Thèmes pour activer une licence."
   },
   "updateBanner": {
     "updateAvailable": "Mise à jour disponible",
@@ -244,6 +245,9 @@
     "perkSuffix": "sur Discord et notre éternelle gratitude.",
     "yearly": "{{price}} / an",
     "monthly": "{{price}} / mois",
-    "notLicense": "Les thèmes premium font l'objet d'un achat unique distinct."
+    "notLicense": "La licence des thèmes fait l'objet d'un achat unique distinct."
+  },
+  "labels": {
+    "path": "Chemin"
   }
 }

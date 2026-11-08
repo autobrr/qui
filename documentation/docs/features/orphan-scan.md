@@ -15,9 +15,10 @@ Orphan scan finds and removes files in your download directories that no torrent
 ## How it works
 
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
-2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches, such as a hardlink, a bind mount or a path through a symlinked folder, as long as the scan reaches the torrent's file too.
+2. qui flags files that no torrent references as orphans. A file a torrent references also protects the other paths to it that the scan reaches through a bind mount or a symlinked folder, as long as the scan reaches the torrent's file too. Such a path has the same file name and the same folder as the torrent's file. A hardlink of a torrent's file is a separate entry in a folder, so qui lists it as an orphan. If you delete a hardlink, the torrent keeps its file. You free no space, because the torrent's file holds the same data.
 3. Before you confirm deletion, you preview the list.
-4. qui deletes the files, then removes the directories the preview listed.
+4. qui re-checks each listed file against the files your torrents use now, by path and by file identity. A file that a torrent started to use through a bind mount or a symlinked folder since the preview stays. qui deletes a hardlink of such a file, and the torrent keeps its own file. A listed folder that a torrent now reaches through another path stays too, even when the torrent has not written anything yet. qui reads the folders along your torrents' paths only when the preview lists a folder. A file or folder your torrents use that is missing protects nothing, because qBittorrent cannot read it either. On Linux, macOS and remote instances, the same goes for a path that runs into a symbolic link loop. qui skips a file your torrents use when it is not allowed to look it up, so another path to it is not protected. If qui is not allowed to look up a folder that your torrents use, the deletion stops before qui deletes anything, because qBittorrent could reach a listed folder through it. The deletion also stops if qui cannot read one of those files or folders for any other reason. This includes a file that qui can look up but whose file identity it is not allowed to read, for example because of a Windows ACL.
+5. qui deletes the files, then removes the directories the preview listed.
 
 :::note
 When matching paths, qui normalizes Unicode paths to canonical NFC form. If the filesystem and qBittorrent report composed and decomposed forms of the same name, this normalization prevents false orphans. On normalization-sensitive filesystems, qui treats two byte-distinct canonical-equivalent names as one logical path.
@@ -82,12 +83,15 @@ These are never reported, even when empty:
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction.
+- A directory that a torrent's save path, or a folder inside the torrent, reaches through a symbolic link, a bind mount or a Windows junction, and any directory that holds one. This holds even before the torrent writes anything. If qui cannot read one of those folders for a reason other than a missing folder, it lists no directory in that run, and the run is a [partial scan](#partial-scans). This includes a folder that qui is not allowed to look up, because a torrent could reach a listed directory through it.
 
 On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. When a torrent's save path is itself a symbolic link to a folder, qui reads the folder through the link only to learn which files the torrent uses, and does not list those files where it finds them at the link's target. Nothing is listed or deleted through the link. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
 
 On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
+qui lists a Blu-ray or DVD folder (`BDMV` or `VIDEO_TS`) as one item. If that folder holds a symbolic link to a file that a torrent uses, deletion keeps the whole folder, even when the torrent uses its own path to the file and not the link. The run reports "a torrent now uses a file in this folder through another path", and each new scan lists the folder again. Remove the link to let qui delete the folder.
+
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, one a torrent now reaches through another path, or one that has since become a scan root, a category destination or a monitored folder is reported as skipped, not failed.
 
 ## Partial scans
 
@@ -103,7 +107,7 @@ Paths skipped before scanning appear in the warning.
 
 Partial scans skip automatic cleanup.
 You can review the warning and delete the listed orphan files manually.
-Before deletion, qui refreshes torrent ownership data and applies its normal deletion checks.
+Before deletion, qui refreshes torrent ownership data, re-checks the listed files as [How it works](#how-it-works) describes, and applies its normal deletion checks.
 After successful manual deletion, the run keeps its **Partial scan** label.
 If all deletion attempts fail, the run shows **Failed** and keeps both the scan warning and the deletion error.
 
@@ -132,6 +136,8 @@ Otherwise, qui reports the path as unavailable.
 | Max files threshold | If the orphan file count is at or below this threshold, auto-delete orphans. Directories do not count. | 100 |
 
 <OrphanScanDefaultIgnores />
+
+If you keep hardlinks of torrent files inside a scan root on purpose, for example a media library below a save path, add an ignore path for that folder. Otherwise qui lists each of those hardlinks as an orphan, and auto-cleanup can delete them with no confirmation.
 
 If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. qui still reads an ignore path that is a torrent's file or holds one, and an ignored save path that is a symbolic link to a folder, to learn which files the torrents use. A second path to one of those files elsewhere, such as a bind mount, is then not flagged. qui lists nothing there. If such a path is missing, qui skips it. If qui cannot read it for another reason, the run is a [partial scan](#partial-scans). If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path. Filesystem-root ignore paths keep the scan paths in the run, but files under those roots are ignored. Paths on other drives or shares are still scanned normally. If the ignores cover every scan path, an otherwise successful run completes with no orphans.
 

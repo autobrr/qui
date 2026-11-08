@@ -112,8 +112,8 @@ func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 
 type unavailableCrossMatcher struct{ err error }
 
-func (m unavailableCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
-	return &CrossMatchResult{Err: m.err}
+func (m unavailableCrossMatcher) OpenCrossMatchSession(context.Context, int, CrossMatchNeeds) (CrossMatchSession, error) {
+	return nil, m.err
 }
 
 func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {

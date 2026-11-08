@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -26,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -46,7 +46,7 @@ type torrentDownloader interface {
 }
 
 type deleteMatchFinder interface {
-	FindDeleteMatches(ctx context.Context, instanceID int, hashes []string) ([]crossseed.LocalMatch, error)
+	FindDeleteMatches(ctx context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error)
 }
 
 type torrentContentResolver interface {
@@ -178,6 +178,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		strings.EqualFold(preferParam, "cached")
 
 	ctx := r.Context()
+	if groupCopiesParam(r) {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 	if preferCached {
 		ctx = qbittorrent.WithSkipFreshData(ctx)
 	}
@@ -214,6 +217,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
+	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
 	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
@@ -239,7 +243,15 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		response = response.WithoutTrackerPasskeys()
+	}
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func groupCopiesParam(r *http.Request) bool {
+	groupCopies, _ := strconv.ParseBool(r.URL.Query().Get("groupCopies"))
+	return groupCopies
 }
 
 // GetTorrentField returns field values for torrents matching either the current filters
@@ -288,6 +300,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" && req.Field != "magnet_uri" {
 		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, tags, or magnet_uri")
+		return
+	}
+	if req.Field == "magnet_uri" && !middleware.HasPermission(w, r, models.AreaTorrents, models.LevelWrite) {
 		return
 	}
 
@@ -376,6 +391,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
 	torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), instanceID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 	if err != nil {
 		if instanceID != allInstancesID && respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
@@ -759,7 +775,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
-				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
+				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
 				failedCount++
 				lastError = err
@@ -805,12 +821,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
-						log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
+						log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
 						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
 					} else if err := torrentURLAddFailureError(resp); err != nil {
-						log.Error().
+						log.Debug().
 							Int("instanceID", instanceID).
 							Str("url", redact.URLString(url)).
 							Int64("successCount", resp.SuccessCount).
@@ -840,12 +856,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
 							}
-							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
 							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
 							failedCount++
 							lastError = err
 						} else if err := torrentURLAddFailureError(resp); err != nil {
-							log.Error().
+							log.Debug().
 								Int("instanceID", instanceID).
 								Str("url", redact.URLString(magnetURL)).
 								Int64("successCount", resp.SuccessCount).
@@ -860,7 +876,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 						}
 						continue
 					}
-					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
+					log.Debug().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -872,7 +888,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", redact.URLString(url)).Msg("Failed to add downloaded torrent")
+					log.Debug().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", redact.URLString(url)).Msg("Failed to add downloaded torrent")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -905,7 +921,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
+					log.Debug().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -913,7 +929,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if err := torrentURLAddFailureError(resp); err != nil {
-					log.Error().
+					log.Debug().
 						Int("instanceID", instanceID).
 						Str("url", redact.URLString(url)).
 						Int64("successCount", resp.SuccessCount).
@@ -933,6 +949,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					Msg("Skipped empty URLs in add torrent request")
 			}
 		}
+	}
+
+	if failedCount > 0 {
+		log.Error().Err(lastError).Int("instanceID", instanceID).Int("added", addedCount).Int("failed", failedCount).
+			Msg("Failed to add torrents")
 	}
 
 	// Check if any torrents failed
@@ -1360,6 +1381,8 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
+		req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
+
 		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 		if selectErr != nil {
 			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
@@ -1428,22 +1451,19 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	matches := []crossseed.LocalMatch{}
-	for _, targetInstanceID := range slices.Sorted(maps.Keys(targetsByInstance)) {
-		found, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetInstanceID, targetsByInstance[targetInstanceID])
-		if findErr != nil {
-			// The dialog closed and the browser cancelled the request.
-			if r.Context().Err() != nil {
-				return
-			}
-			log.Error().Err(findErr).Int("instanceID", targetInstanceID).Msg("Failed to check cross-seeds for delete")
-			RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+	response, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetsByInstance)
+	if findErr != nil {
+		// The dialog closed and the browser cancelled the request.
+		if r.Context().Err() != nil {
 			return
 		}
-		matches = append(matches, found...)
+		log.Error().Err(findErr).Int("instanceID", instanceID).Msg("Failed to check cross-seeds for delete")
+		RespondError(w, mapCrossSeedErrorStatus(findErr), findErr.Error())
+		return
 	}
 
-	RespondJSON(w, http.StatusOK, crossseed.LocalMatchesResponse{Matches: matches})
+	hideMatchPasskeys(r, response.Matches)
+	RespondJSON(w, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {
@@ -1723,6 +1743,11 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for domain, trackerURL := range trackers {
+			trackers[domain] = qbittorrent.TrackerOrigin(trackerURL)
+		}
+	}
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
@@ -1853,6 +1878,9 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		trackers = qbittorrent.TrackersWithoutPasskeys(trackers)
+	}
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
@@ -2542,6 +2570,11 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for i := range tasks {
+			qbittorrent.HideTrackerURLs(tasks[i].Trackers)
+		}
+	}
 	RespondJSON(w, http.StatusOK, tasks)
 }
 
@@ -2724,8 +2757,13 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 
 	// A poll stands in for the stream, so it starts background syncs. The
 	// stream itself reads this function with WithSkipFreshData.
+	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
+	ctx := r.Context()
+	if groupCopiesParam(r) {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-		r.Context(),
+		ctx,
 		limit,
 		offset,
 		sort,
@@ -2744,6 +2782,9 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		response = response.WithoutTrackerPasskeys()
+	}
 	RespondJSON(w, http.StatusOK, response)
 }
 

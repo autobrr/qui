@@ -1,0 +1,256 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider, useSearch } from "@tanstack/react-router"
+import { act, cleanup, render, screen } from "@testing-library/react"
+import { useCallback, useEffect, useState } from "react"
+import { afterEach, describe, expect, it } from "vitest"
+
+import { useMobileDetailsHistory } from "./useMobileDetailsHistory"
+
+// The page in small: a list with a details view. A torrent in the URL at mount
+// opens the view, as the deep link fetch of the page does.
+function Page() {
+  const search = useSearch({ strict: false }) as { torrent?: string }
+  const [shown, setShown] = useState<string | null>(search.torrent ?? null)
+  // A torrent that comes into the URL, as on Forward, opens the view too. The
+  // page fetches it first, so a close in the same render wins: this effect
+  // runs before the effects of the hook.
+  useEffect(() => {
+    if (search.torrent) setShown(search.torrent)
+  }, [search.torrent])
+  const onClosed = useCallback(() => setShown(null), [])
+  const [mobile, setMobile] = useState(true)
+  const details = useMobileDetailsHistory({ enabled: mobile, urlHash: search.torrent, shownHash: shown, onClosed })
+  const open = (hash: string) => {
+    setShown(hash)
+    details.open(hash, prev => ({ ...prev, torrent: hash }))
+  }
+  return (
+    <>
+      <output>{shown ?? "list"}</output>
+      <button onClick={() => open("a")}>open</button>
+      {/* A match of the shown torrent */}
+      <button onClick={() => open("b")}>open match</button>
+      <button onClick={details.close}>close</button>
+      <button onClick={() => setMobile(false)}>resize to desktop</button>
+    </>
+  )
+}
+
+function mount(entries: string[]) {
+  const history = createMemoryHistory({ initialEntries: entries })
+  const rootRoute = createRootRoute()
+  const listRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/list",
+    component: Page,
+    validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
+  })
+  // A second list, as the list of another instance
+  const list2Route = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/list2",
+    component: Page,
+    validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
+  })
+  const otherRoute = createRoute({ getParentRoute: () => rootRoute, path: "/other" })
+  const router = createRouter({ routeTree: rootRoute.addChildren([listRoute, list2Route, otherRoute]), history })
+  render(<RouterProvider router={router} />)
+  return { history }
+}
+
+type Rig = ReturnType<typeof mount>
+
+async function settle() {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+}
+
+async function click(name: string) {
+  await act(async () => screen.getByRole("button", { name }).click())
+  await settle()
+}
+
+async function back({ history }: Rig) {
+  await act(async () => history.back())
+  await settle()
+}
+
+function shown() {
+  return screen.getByRole("status").textContent
+}
+
+// One Back from the list leaves the page
+function leavesInOneBack(rig: Rig) {
+  expect(shown()).toBe("list")
+  expect(rig.history.location.pathname).toBe("/list")
+  expect(rig.history.location.search).toBe("")
+  rig.history.back()
+  expect(rig.history.location.pathname).toBe("/other")
+}
+
+afterEach(() => {
+  cleanup()
+  sessionStorage.clear()
+})
+
+describe("useMobileDetailsHistory", () => {
+  it("closes the view on Back", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    expect(shown()).toBe("a")
+
+    await back(rig)
+    leavesInOneBack(rig)
+  })
+
+  it("goes back over its entry on close, so the next Back leaves the page", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  it("closes on one Back when the same torrent opens a second time", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await click("close")
+    await click("open")
+    expect(shown()).toBe("a")
+
+    await back(rig)
+    leavesInOneBack(rig)
+  })
+
+  it("keeps its count over a reload with the view open", async () => {
+    mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    cleanup()
+
+    // A reload keeps the entries and their __TSR_index, and drops the rest of history.state
+    const rig = mount(["/other", "/list", "/list?torrent=a"])
+    await settle()
+    expect(shown()).toBe("a")
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3702
+  it("closes on one Back when the same torrent opens again after a link from another page", async () => {
+    // The link pushed no count, so the close replaces the URL in place
+    const rig = mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("close")
+    await click("open")
+    expect(shown()).toBe("a")
+
+    await back(rig)
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("starts a new count when it opens from a list entry that Back left a count on", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    // The list of another instance takes the history index of the closed view
+    await act(async () => rig.history.push("/list2"))
+    await settle()
+
+    await click("open")
+    await click("close")
+    expect(rig.history.location.pathname).toBe("/list2")
+    expect(shown()).toBe("list")
+  })
+
+  // regression: #3703
+  it("closes in place when a link to a torrent takes the index of a view that Back left", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    cleanup()
+
+    // A link from another page to another torrent lands on the index that the closed view had
+    const linked = mount(["/other", "/list", "/list2?torrent=b"])
+    await settle()
+    expect(shown()).toBe("b")
+
+    await click("close")
+    expect(linked.history.location.pathname).toBe("/list2")
+    expect(linked.history.location.search).toBe("")
+    expect(shown()).toBe("list")
+  })
+
+  // regression: #3703
+  it("goes back over its entry on close after Back and Forward", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await back(rig)
+    await act(async () => rig.history.forward())
+    await settle()
+    expect(shown()).toBe("a")
+
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("closes a view that a link opened when a close goes back to it from a match", async () => {
+    const rig = mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    expect(shown()).toBe("b")
+
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("closes a view that a link opened when a close goes back to it from the same torrent", async () => {
+    const rig = mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    await click("open")
+    expect(shown()).toBe("a")
+
+    await click("close")
+    leavesInOneBack(rig)
+  })
+
+  // regression: #3703
+  it("shows the next open after a close that went back to a view that a link opened", async () => {
+    mount(["/other", "/list?torrent=a"])
+    await settle()
+    await click("open match")
+    await click("open")
+    await click("close")
+
+    await click("open match")
+    expect(shown()).toBe("b")
+  })
+
+  // regression: #3703
+  it("closes in place on the desktop layout after a resize", async () => {
+    const rig = mount(["/other", "/list"])
+    await settle()
+    await click("open")
+    await click("resize to desktop")
+
+    await click("close")
+    expect(shown()).toBe("list")
+    expect(rig.history.location.search).toBe("")
+    // No step back in the history: the desktop has no entry per open
+    expect(rig.history.location.state.__TSR_index).toBe(2)
+  })
+})

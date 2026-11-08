@@ -130,3 +130,7 @@ func TestGetSourceFiles_EmptyFileListReturnsError(t *testing.T) {
 	require.Contains(t, err.Error(), "empty file list")
 	require.Equal(t, err, matchCtx.sourceFilesErr, "Error should be stored on matchCtx.sourceFilesErr")
 }
+
+func (*localMatchSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

@@ -46,6 +46,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
+import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -176,9 +177,7 @@ export function Header({
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
+      ...instanceCapabilitiesQuery(instance.id),
       enabled: isAllInstancesRoute,
     })),
   })
@@ -586,15 +585,8 @@ export function Header({
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
                 instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
-                selectedHashes={selectionSummary.selectedHashes}
-                selectedTorrents={selectionSummary.selectedTorrents}
-                isAllSelected={selection.isAllSelected}
-                totalSelectionCount={selectionSummary.totalSelectionCount}
+                actionTarget={selectionSummary.actionTarget}
                 totalSelectionSize={selectionSummary.selectedTotalSize}
-                filters={selectionSummary.selectAllFilters}
-                search={routeSearch?.q}
-                excludeHashes={selectionSummary.excludeHashes}
-                excludeTargets={selectionSummary.excludeTargets}
                 onComplete={clearSelection}
               />
             </div>

@@ -9,6 +9,11 @@
 - Fetch Effects must guard stale responses with cleanup/abort.
 - Reference: https://react.dev/learn/you-might-not-need-an-effect
 
+## React state
+
+- If a component holds two or more `useState` values that change together, or that must not be true at the same time (`isLoading` and `error`), put them in one `useReducer`. Type the state and the actions as discriminated unions, so that a test can send actions to the reducer and check the next state.
+- A single value that changes on its own stays in `useState`.
+
 ## Field help
 
 - Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.

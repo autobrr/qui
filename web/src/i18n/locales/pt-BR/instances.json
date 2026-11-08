@@ -505,7 +505,6 @@
       "dryRun": "Simulação (Dry run)",
       "removed": "Removido",
       "executed": "Executado",
-      "copyHash": "Copiar hash",
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regra: {{name}}",
@@ -556,7 +555,8 @@
         "move": "Mover",
         "externalProgram": "Programa externo",
         "dryRun": "Simulação (Dry-run)",
-        "exportToInstance": "Exportar"
+        "exportToInstance": "Exportar",
+        "ruleSkipped": "Regra não executada"
       },
       "shareLimit": {
         "global": "Global",
@@ -617,6 +617,7 @@
         "cancel": "Cancelar",
         "delete": "Excluir"
       },
+      "enableTagRule": "Ativar Regra de Tags",
       "enableDeleteRule": "Ativar Regra de Exclusão",
       "enableCategoryRule": "Ativar Mudança de Categoria → {{category}}",
       "enableRuleImmediately": "Isto ativará a regra imediatamente.",
@@ -665,10 +666,29 @@
         "exportedTorrents": "Exportados {{count}} para CSV",
         "exportFailed": "Falha no exporte",
         "deletedActivityEntries": "Apagadas {{count}} entradas",
-        "deleteActivityFailed": "Falha ao excluir histórico",
-        "hashCopied": "Hash copiado"
+        "deleteActivityFailed": "Falha ao excluir histórico"
       },
-      "exported": "Exportado"
+      "exported": "Exportado",
+      "skipped": "Ignorada"
+    },
+    "runWorkflowNow": {
+      "action": "Executar agora",
+      "title": "Executar \"{{name}}\" agora?",
+      "description": "O qui executa o workflow salvo uma vez agora e aplica as ações dele aos torrents correspondentes. Ele também é executado quando o workflow está desativado.",
+      "dryRunDescription": "Este workflow está configurado como simulação, então o qui só registra o que faria. Nenhum torrent é alterado.",
+      "actions": "Ações",
+      "cancel": "Cancelar",
+      "confirm": "Executar agora",
+      "toast": {
+        "running": "Executando \"{{name}}\"…",
+        "completed": "Execução concluída para \"{{name}}\"",
+        "noChanges": "Execução concluída para \"{{name}}\". Nenhum torrent precisava de alteração.",
+        "completedWithErrors": "Execução concluída para \"{{name}}\" com erros. Veja o registro de atividades.",
+        "dryRunCompleted": "Simulação concluída para \"{{name}}\"",
+        "inProgress": "Há uma execução em andamento. Tente novamente em instantes.",
+        "failed": "Falha ao executar o workflow",
+        "skipped": "\"{{name}}\" não foi executada. Veja o registro de atividades."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Carregando estimativas...",
@@ -739,6 +759,8 @@
       "viewPreview": "Ver Detalhes",
       "recentScans": "Escaneamentos Recentes",
       "scannedPaths": "Caminhos selecionados para verificação ({{total}})",
+      "scanPathsLoading": "Carregando caminhos de verificação...",
+      "scanPathsLoadFailed": "Falha ao carregar os caminhos de verificação",
       "zeroOrphans": "0 órfãos",
       "deletedStats": "{{deleted}} apagados · {{size}}",
       "deletedFiles_one": "{{count}} arquivo",
@@ -748,7 +770,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Falha parcial - verifique as atividades",
       "partialFailureExpand": "Falha parcial - veja detalhes",
-      "copiedToClipboard": "Copiado para área de transferência",
       "noScansYet": "Nenhum escaneamento realizado ainda. Clique em \"Escanear Agora\" para encontrar órfãos.",
       "statusClean": "Limpo",
       "statusPartial": "Verificação parcial",
@@ -768,7 +789,9 @@
         "scanStartFailed": "Falha ao iniciar",
         "scanCanceled": "Escaneamento cancelado",
         "cancelFailed": "Falha ao cancelar"
-      }
+      },
+      "errorMessage": "Mensagem de erro",
+      "scanPaths": "Caminhos de verificação"
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -917,8 +940,6 @@
       "ratio": "Proporção",
       "added": "Adicionado",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash copiado",
-      "copyHash": "Copiar hash",
       "loading": "Carregando...",
       "notAvailable": "Detalhes indisponíveis (apenas mantido em memória).",
       "failedToLoad": "Falha ao carregar detalhes.",
@@ -946,7 +967,8 @@
         "external_program": "Programa rodado",
         "auto_managed": "Gerenciamento Automático",
         "dry_run_no_match": "Simulação (Sem correspondência)",
-        "exported_to_instance": "Exportado"
+        "exported_to_instance": "Exportado",
+        "rule_skipped": "Regra não executada"
       }
     },
     "reannounceOverview": {
@@ -984,8 +1006,6 @@
       "tryDifferentSearch": "Altere sua busca.",
       "eventsWillAppear": "Eventos de reanúncio aparecerão aqui.",
       "enableMonitoring": "Ligue para acompanhar o histórico.",
-      "hashCopied": "Copiado",
-      "copyHash": "Copiar hash",
       "form": {
         "instanceMissing": "Instância não encontrada",
         "settingsSaved": "Configurações atualizadas.",
@@ -1152,6 +1172,7 @@
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
         "selectAction": "Qual ação...",
+        "runOrderHelp": "As ações são executadas na ordem mostrada. Cada ação vê o torrent como ele estava quando a execução começou, então um programa externo executado após uma movimentação ainda recebe o caminho de salvamento antigo.",
         "speedLimits": "Limites de Velocidade",
         "shareLimits": "Limites de Ratio / Compartilhamento",
         "pause": "Pausar o torrent",
@@ -1204,6 +1225,7 @@
         "strategyReplace": "Substituir no cliente",
         "replaceDescription": "O modo Substituir força uma redefinição completa dessas tags em todo o cliente antes de aplicar esta regra.",
         "managedDescription": "Diferencial. Só adicionará se o torrent não possuir a Tag.",
+        "includeAffectedCrossSeeds": "Incluir os cross-seeds afetados",
         "useTrackerName": "Sincronizar a tag para o nome do tracker",
         "useDisplayName": "Usar 'Display Name'",
         "aboutDisplayNames": "Sobre Nomes",
@@ -1348,11 +1370,13 @@
       "preview": {
         "confirmDeleteRule": "Confirmar Exclusão de Torrent",
         "previewDeleteRule": "Visualizar Exclusão de Torrent",
+        "confirmTagChange": "Confirmar Mudanças de Tags",
         "confirmCategoryChange": "Confirmar Mudança para {{category}}",
         "deleteEnabledSummary": "No ar: Afetará {{count}} arquivo.",
         "deleteEnabledSummary_other": "No ar: Afetará {{count}} arquivos.",
         "deleteDisabledSummary": "Se ligado agora: {{count}} torrent seria impactado.",
         "deleteDisabledSummary_other": "Se ligado agora: {{count}} torrents seriam impactados.",
+        "tagPrefix": "A regra atualizará as tags de",
         "categoryPrefix": "A regra realocará",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrents",
@@ -1364,8 +1388,7 @@
       "enableDryRunPrompt": {
         "title": "Ativar simulação?",
         "description": "A simulação executa todas as ações sem alterar nada. Você pode revisar os torrents afetados no histórico.",
-        "enableWithout": "Não, Ativar Direto",
-        "enableWith": "Sim, Modo Simulação (Recomendado)"
+        "saveAndEnable": "Salvar e ativar"
       },
       "customGroup": {
         "title": "Customizar Grupamento",
@@ -1414,7 +1437,8 @@
           "moved": "Mover",
           "externalProgram": "Programa externo",
           "noMatches": "Nenhuma correspondência",
-          "exportedToInstance": "Exportar"
+          "exportedToInstance": "Exportar",
+          "ruleSkipped": "Regra não executada"
         },
         "actionFallback": "Ação desconhecida ({{action}})",
         "summary": {

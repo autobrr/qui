@@ -4,8 +4,8 @@
  */
 
 import type { TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
-import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useEffect, useRef } from "react"
 
 type FilteredDataUpdate = (
@@ -35,13 +35,8 @@ export interface UseTorrentTableNotificationsParams {
   supportsTrackerHealth: boolean
   // onSelectionChange effect inputs. The table publishes null when it unmounts.
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
-  selectedHashes: string[]
-  selectedTorrents: Torrent[]
-  effectiveSelectionCount: number
-  selectAllExcludeHashes?: string[]
-  selectAllExcludedTargets: TorrentActionTarget[]
+  actionTarget: ActionTarget
   selectedTotalSize: number
-  selectAllFilters?: TorrentFilters
 }
 
 /**
@@ -69,13 +64,8 @@ export function useTorrentTableNotifications({
   allowSubcategories,
   supportsTrackerHealth,
   onSelectionChange,
-  selectedHashes,
-  selectedTorrents,
-  effectiveSelectionCount,
-  selectAllExcludeHashes,
-  selectAllExcludedTargets,
+  actionTarget,
   selectedTotalSize,
-  selectAllFilters,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
     instanceId?: number
@@ -158,16 +148,8 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    onSelectionChange?.({
-      selectedHashes,
-      selectedTorrents,
-      totalSelectionCount: effectiveSelectionCount,
-      selectedTotalSize,
-      excludeHashes: selectAllExcludeHashes ?? [],
-      excludeTargets: selectAllExcludedTargets,
-      selectAllFilters,
-    })
-  }, [onSelectionChange, selectedHashes, selectedTorrents, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters])
+    onSelectionChange?.({ actionTarget, selectedTotalSize })
+  }, [onSelectionChange, actionTarget, selectedTotalSize])
 
   useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

@@ -24,6 +24,10 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
 
+Search has one exception for a HYBRID tag on only one name. If HYBRID is the only difference and the reported sizes are within the size tolerance, search keeps the result. The file comparison after the download then decides. RSS uses this rule too, but only for feed items with the exact size of a local torrent. If the sizes are outside the tolerance, the rejection reason shows the size gap, for example `HYBRID (size differs by 7.20%)`.
+
+The Cross-Seed tab of a torrent and the autobrr webhook keep HYBRID strict. Their exception is an exact size when both names have a group tag. Then the exact-size rule below can match the pair.
+
 If strict release matching rejects an approved metadata difference, some discovery methods use an exact reported byte count.
 
 Interactive Torznab search, Library Scan, and completion search share this rule. RSS uses the title and byte count from the feed before its single download.
@@ -58,8 +62,9 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `below_threshold` | Skipped | The matched local files cover less than 95% of the release in hardlink or reflink mode. qui skips the match before it adds the torrent. | See [release matching](#release-didnt-match) and [Hardlink Mode](./hardlink-mode.md). This limit is fixed and is not a setting. |
 | `requires_hardlink_reflink` | Skipped | The torrent layout scatters rootless or extra files in regular reuse mode. | Enable [Hardlink Mode](./hardlink-mode.md) or [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative), or download the torrent normally. |
 | `size_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it because the torrent file list did not match the source sizes. | Compare the torrent files on the trackers. This protects you from treating different content as a valid cross-seed. See [release matching](#release-didnt-match). |
-| `content_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
+| `content_mismatch` | Skipped | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
 | `hardlink_error` | Failed | You enabled hardlink mode, but qui failed to create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
+| `partial_pool_registration_error` | Failed | qBittorrent added the torrent, but qui could not add it to the pool for [pooled partial completion](./hardlink-mode.md#pooled-partial-completion). qui keeps the torrent stopped. | Do not start the torrent in qBittorrent. In hardlink mode, a start skips the resume check of qui, and a failed piece can change the files of the source torrent. Remove the torrent, then read the qui log for the pool error. |
 | `reflink_error` | Failed | You enabled reflink mode, but qui failed to create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
 | `no_save_path` | Failed | qui did not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Check the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
 | `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add (`error`), a required file or folder rename failed or qui could not confirm it in qBittorrent (`alignment_failed`), or qui failed to pause a misaligned torrent after an alignment failure (`pause_failed`). | Check the instance connection, qBittorrent logs, and save path/category behavior in [Categories and tags](./rules.md#category-behavior-details). |
@@ -91,7 +96,7 @@ Common reasons:
 
 If the pack matches except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Season packs > Matching settings**.
 
-Open **Cross-Seed > Season packs** to review recent season-pack activity. The page displays the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
+Open **Cross-Seed > Season packs** to review recent season-pack activity. The page displays the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. The list shows only applied runs by default. To show other runs, turn on the **Ready**, **Skipped**, or **Failed** chip. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
 
 See [Season Packs](./season-packs.md) for the full flow, setup requirements, and season-pack-specific debugging steps.
 

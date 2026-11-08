@@ -3,21 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import { EMPTY_SELECTION, selectionReducer, type TorrentSelectionEvent, type TorrentSelectionState } from "@/lib/torrent-selection"
-import type { Torrent, TorrentFilters } from "@/types"
+import { EMPTY_SELECTION, selectionReducer, type ActionTarget, type TorrentSelectionEvent, type TorrentSelectionState } from "@/lib/torrent-selection"
 import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
 
 // What the desktop table resolves from the selection for the header management bar.
 export interface TorrentSelectionSummary {
-  selectedHashes: string[]
-  selectedTorrents: Torrent[]
-  totalSelectionCount: number
+  actionTarget: ActionTarget
   selectedTotalSize: number
-  excludeHashes: string[]
-  excludeTargets: TorrentActionTarget[]
-  selectAllFilters?: TorrentFilters
 }
 
 interface TorrentSelectionContextType {

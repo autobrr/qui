@@ -60,19 +60,8 @@ type CrossSeedRequest struct {
 	// arbiter of a wrong pick.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	// Used by RSS automation to respect RSSSourceCategories setting.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeTags []string `json:"-"`
+	// sourceFilter limits which local torrents can be the source of this add.
+	sourceFilter sourceFilter
 	// SearchDecision is private provenance carried only by cached search results.
 	// It binds apply to the source torrent and every relaxation search admitted.
 	SearchDecision searchDecisionProvenance `json:"-"`
@@ -102,6 +91,11 @@ type InstanceCrossSeedResult struct {
 	// MatchedTorrent is the existing torrent that matched (if any).
 	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add (ADR 0035). InstanceID stays the instance that
+	// holds the match. Both are empty for an add that is not routed.
+	CrossSeedInstanceID   int    `json:"cross_seed_instance_id,omitzero"`
+	CrossSeedInstanceName string `json:"cross_seed_instance_name,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool
 }
@@ -172,18 +166,9 @@ type FindCandidatesRequest struct {
 	// (Manual match). Requires exactly one target instance.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// Source filters - used to restrict which existing torrents are considered as candidates.
-	// These are applied when fetching torrents (if no pre-built snapshot is provided).
-	// Internal-only, not exposed via JSON API.
-
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	SourceFilterExcludeTags []string `json:"-"`
+	// sourceFilter limits which existing torrents count as candidates when no
+	// pre-built snapshot is provided.
+	sourceFilter sourceFilter
 	// SearchDecision binds a cached decision to the source torrent. Apply keeps
 	// that verdict for the source torrent and does not decide the pair again.
 	SearchDecision searchDecisionProvenance `json:"-"`
@@ -230,6 +215,9 @@ type CrossSeedCandidate struct {
 	MatchType string `json:"match_type"`
 	// titleRescue binds the title bypass to the exact local source torrent.
 	titleRescue bool
+	// route is set when InstanceID routes its cross-seeds. InstanceID stays the
+	// instance that holds the match, so that the Match verdict keeps comparing it.
+	route *candidateRoute
 }
 
 // TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.
@@ -369,6 +357,28 @@ type ApplyTorrentSearchResponse struct {
 // LocalMatchesResponse contains torrents from all instances that match a source torrent.
 type LocalMatchesResponse struct {
 	Matches []LocalMatch `json:"matches"`
+}
+
+// Reasons of an UncheckedInstance.
+const (
+	UncheckedOffline  = "offline"
+	UncheckedDisabled = "disabled"
+)
+
+// DeleteMatchesResponse holds the torrents that a delete with files affects,
+// and the instances with local filesystem access that the check could not
+// read, so that the list never reads as complete when it is not.
+type DeleteMatchesResponse struct {
+	Matches   []LocalMatch        `json:"matches"`
+	Unchecked []UncheckedInstance `json:"unchecked_instances"`
+}
+
+// UncheckedInstance is an instance that the delete check did not check.
+// Reason is UncheckedOffline or UncheckedDisabled.
+type UncheckedInstance struct {
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+	Reason       string `json:"reason"`
 }
 
 // LocalMatch represents a torrent that matches the source across instances.
@@ -559,6 +569,7 @@ type SeasonPackApplyResponse struct {
 	Reason          string  `json:"reason,omitempty"`
 	Message         string  `json:"message,omitempty"`
 	InstanceID      int     `json:"instanceId,omitempty"`
+	AddedInstanceID int     `json:"addedInstanceId,omitzero"`
 	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
 	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
 	Coverage        float64 `json:"coverage,omitempty"`

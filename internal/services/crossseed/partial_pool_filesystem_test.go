@@ -81,7 +81,7 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	require.NoError(t, err)
 	target := partialPoolMemberByTorrentKey(pool, "target")
 	require.NotNil(t, target)
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:    store,
 		partialPoolCreated: map[int64]*hardlinktree.Created{target.Files[0].ID: created},
 	}
@@ -133,7 +133,7 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	pool, err = store.GetPartialPool(ctx, pool.ID)
 	require.NoError(t, err)
 	target = partialPoolMemberByTorrentKey(pool, "target")
-	restarted := &Service{automationStore: store, partialPoolCreated: make(map[int64]*hardlinktree.Created)}
+	restarted := &partialPoolCoordinator{automationStore: store, partialPoolCreated: make(map[int64]*hardlinktree.Created)}
 	rolledBack, retry = restarted.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool)
 	require.False(t, rolledBack)
 	require.False(t, retry)
@@ -186,7 +186,7 @@ func TestPartialPoolHardlinkRollbackRejectsStaleAdmission(t *testing.T) {
 	require.Equal(t, staleTarget.ID, currentTarget.ID)
 	require.NotEqual(t, staleTarget.CreatedAt, currentTarget.CreatedAt)
 
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:    store,
 		partialPoolCreated: map[int64]*hardlinktree.Created{staleTarget.Files[0].ID: created},
 	}
@@ -244,10 +244,10 @@ func TestPartialPoolHardlinkMissingFilesSettlesRollbackBeforeExceptionalState(t 
 			targetSnapshot.fileByIndex[0] = targetSnapshot.files[0]
 
 			sync := &recheckResumeSyncManager{}
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				syncManager:     sync,
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
@@ -305,7 +305,7 @@ func TestPartialPoolOrphanedPropagationClaimResetsOrRetries(t *testing.T) {
 				targetFile.Status = models.CrossSeedPartialPoolFileStatusVerifying
 			}
 			targetSnapshot := partialPoolTestSnapshot(target, targetFile.SizeBytes)
-			service := &Service{automationStore: store}
+			service := &partialPoolCoordinator{automationStore: store}
 			service.finishPartialPoolPropagation(t.Context(), pool, target, targetFile, map[int64]*partialPoolMemberSnapshot{
 				target.ID: targetSnapshot,
 			}, make(map[int64]bool))
@@ -366,7 +366,7 @@ func TestPartialPoolReflinkVerificationFailureKeepsTargetForRepair(t *testing.T)
 	snapshot := partialPoolTestSnapshot(target, 50)
 	snapshot.files[0].Progress = 0.5
 	snapshot.fileByIndex[0] = snapshot.files[0]
-	service := &Service{automationStore: store}
+	service := &partialPoolCoordinator{automationStore: store}
 	service.reconcilePartialPoolRechecking(ctx, time.Now(), pool, target, snapshot, 100)
 
 	pool, err = store.GetPartialPool(ctx, pool.ID)
@@ -446,13 +446,13 @@ func TestPartialPoolPersistedPropagationRetriesInstanceLookupFailure(t *testing.
 		target.TorrentKey: snapshots[target.ID].files,
 	}}
 	instance := &models.Instance{ID: instanceID, HasLocalFilesystemAccess: true, UseReflinks: true}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:             store,
 		instanceStore:               &flakyPartialPoolInstanceStore{instance: instance, failuresRemaining: 1},
 		syncManager:                 syncManager,
 		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
 		reflinkMaterializer:         partialPoolTestMaterializeTree,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -560,7 +560,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableOrIncompleteSource(t *
 			require.NoError(t, os.WriteFile(stagingPath, []byte("orphaned crash clone"), 0o600))
 
 			materializerCalled := false
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					materializerCalled = true
@@ -582,7 +582,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableOrIncompleteSource(t *
 				}}
 				service.syncManager = syncManager
 				service.partialPoolTorrentRefresher = partialPoolTestRefreshTorrentStates
-				service.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				service.settings = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				}
 				snapshots = map[int64]*partialPoolMemberSnapshot{
@@ -671,7 +671,7 @@ func TestPartialPoolPropagationRejectsStaleAdmissionBeforeMaterialization(t *tes
 			targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
 			snapshots := map[int64]*partialPoolMemberSnapshot{source.ID: sourceSnapshot, target.ID: targetSnapshot}
 			materializerCalled := false
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				instanceStore: newOrderedInstanceStore(&models.Instance{
 					ID:                       instanceID,
@@ -683,7 +683,7 @@ func TestPartialPoolPropagationRejectsStaleAdmissionBeforeMaterialization(t *tes
 					materializerCalled = true
 					return nil, errors.New("stale admission reached materializer")
 				},
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
@@ -761,11 +761,11 @@ func TestPartialPoolPropagationFinalTransitionFailureRetainsRetryState(t *testin
 			targetSnapshot := partialPoolTestSnapshot(target, target.Files[0].SizeBytes)
 			targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
 			snapshots := map[int64]*partialPoolMemberSnapshot{source.ID: sourceSnapshot, target.ID: targetSnapshot}
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore:     store,
 				instanceStore:       newOrderedInstanceStore(instance),
 				reflinkMaterializer: partialPoolTestMaterializeTree,
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
@@ -973,7 +973,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			sync := &recheckResumeSyncManager{filesByHash: filesByHash}
 			materializerRoot := ""
 			materializeCalls := 0
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				partialPoolTorrentRefresher: func(ctx context.Context, snapshots map[int64]*partialPoolMemberSnapshot, members ...*models.CrossSeedPartialPoolMember) bool {
 					if liveRefreshBlocked {
@@ -1006,7 +1006,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 					}
 					return partialPoolTestMaterializeTree(ctx, root, plan)
 				},
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
@@ -1255,7 +1255,7 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 		target.TorrentKey: targetSnapshot.files,
 	}
 	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:             store,
 		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
 		instanceStore: newOrderedInstanceStore(&models.Instance{
@@ -1265,7 +1265,7 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 		}),
 		syncManager:         sync,
 		reflinkMaterializer: partialPoolTestMaterializeTree,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1413,7 +1413,7 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 		target.TorrentKey:         targetSnapshot.files,
 	}
 	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore:             store,
 		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
 		instanceStore: newOrderedInstanceStore(&models.Instance{
@@ -1423,7 +1423,7 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 		}),
 		syncManager:         sync,
 		reflinkMaterializer: partialPoolTestMaterializeTree,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1510,7 +1510,7 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 	require.NoError(t, os.WriteFile(stagingPath, []byte("orphaned crash clone"), 0o600))
 	require.NoError(t, os.WriteFile(cleanupFaultPath, []byte("unknown occupant"), 0o600))
 
-	service := &Service{automationStore: store}
+	service := &partialPoolCoordinator{automationStore: store}
 	service.observePartialPoolMembers(t.Context(), time.Now(), pool, map[int]partialPoolTorrentInventory{
 		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}, true),
 	})
@@ -1609,7 +1609,7 @@ func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		partialPoolCreated: map[int64]*hardlinktree.Created{
 			member.Files[0].ID: {},
@@ -1626,7 +1626,7 @@ func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 }
 
 func TestPartialPoolCreatedConcurrentAccess(t *testing.T) {
-	service := &Service{}
+	service := &partialPoolCoordinator{}
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	for worker := range 8 {
@@ -1688,10 +1688,10 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 	snapshots[target.ID].torrent.Hash = target.TorrentKey
 	snapshots[target.ID].torrent.State = qbt.TorrentStateDownloading
 	sync := &scopedPartialPoolSyncManager{bulkActionErr: errors.New("synthetic pause failure")}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -1829,7 +1829,7 @@ func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 
 	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
 	stateRefreshes := make(map[int64]int, len(pool.Members))
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		partialPoolTorrentRefresher: func(ctx context.Context, snapshots map[int64]*partialPoolMemberSnapshot, members ...*models.CrossSeedPartialPoolMember) bool {
 			for _, member := range members {
@@ -1843,7 +1843,7 @@ func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 			UseHardlinks:             true,
 		}),
 		syncManager: sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}

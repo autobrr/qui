@@ -499,7 +499,6 @@
       "dryRun": "Simulation (Dry run)",
       "removed": "Supprimé",
       "executed": "Exécuté",
-      "copyHash": "Copier le hash",
       "original": "Original : {{domain}}",
       "programLabel": "Programme : {{name}}",
       "ruleLabel": "Règle : {{name}}",
@@ -550,7 +549,8 @@
         "move": "Move",
         "externalProgram": "Programme externe",
         "dryRun": "Simulation",
-        "exportToInstance": "Exporter vers l'instance"
+        "exportToInstance": "Exporter vers l'instance",
+        "ruleSkipped": "Règle non exécutée"
       },
       "shareLimit": {
         "global": "Global",
@@ -611,6 +611,7 @@
         "cancel": "Annuler",
         "delete": "Supprimer"
       },
+      "enableTagRule": "Activer la règle de tags",
       "enableDeleteRule": "Activer la règle de suppression",
       "enableCategoryRule": "Activer la règle de catégorie → {{category}}",
       "enableRuleImmediately": "Confirmer activera cette règle immédiatement.",
@@ -659,10 +660,29 @@
         "exportedTorrents": "{{count}} torrents exportés au format CSV",
         "exportFailed": "Échec de l'exportation de l'aperçu",
         "deletedActivityEntries": "{{count}} entrées d'activité supprimées",
-        "deleteActivityFailed": "Échec de la suppression de l'activité",
-        "hashCopied": "Hash copié"
+        "deleteActivityFailed": "Échec de la suppression de l'activité"
       },
-      "exported": "Exporté"
+      "exported": "Exporté",
+      "skipped": "Ignorée"
+    },
+    "runWorkflowNow": {
+      "action": "Exécuter maintenant",
+      "title": "Exécuter \"{{name}}\" maintenant ?",
+      "description": "qui exécute une fois maintenant le workflow enregistré et applique ses actions aux torrents correspondants. Il s'exécute aussi quand le workflow est désactivé.",
+      "dryRunDescription": "Ce workflow est configuré en simulation : qui enregistre seulement ce qu'il ferait. Aucun torrent ne change.",
+      "actions": "Actions",
+      "cancel": "Annuler",
+      "confirm": "Exécuter maintenant",
+      "toast": {
+        "running": "Exécution de \"{{name}}\"…",
+        "completed": "Exécution terminée pour \"{{name}}\"",
+        "noChanges": "Exécution terminée pour \"{{name}}\". Aucun torrent ne nécessitait de modification.",
+        "completedWithErrors": "Exécution terminée pour \"{{name}}\" avec des erreurs. Consultez le journal d'activité.",
+        "dryRunCompleted": "Simulation terminée pour \"{{name}}\"",
+        "inProgress": "Une exécution est en cours. Réessayez dans un instant.",
+        "failed": "Impossible d'exécuter le workflow",
+        "skipped": "« {{name}} » ne s'est pas exécutée. Consultez le journal d'activité."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Chargement de l'aperçu. Cela peut prendre un moment...",
@@ -733,6 +753,8 @@
       "viewPreview": "Voir l'aperçu",
       "recentScans": "Analyses récentes",
       "scannedPaths": "Chemins sélectionnés pour l’analyse ({{total}})",
+      "scanPathsLoading": "Chargement des chemins d’analyse...",
+      "scanPathsLoadFailed": "Impossible de charger les chemins d’analyse",
       "zeroOrphans": "0 orphelins",
       "deletedStats": "{{deleted}} supprimés · {{size}}",
       "deletedFiles_one": "{{count}} fichier",
@@ -742,7 +764,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Échec partiel - vérifier les analyses récentes",
       "partialFailureExpand": "Échec partiel - développer pour plus de détails",
-      "copiedToClipboard": "Copié dans le presse-papiers",
       "noScansYet": "Aucune analyse lancée. Cliquez sur 'Analyser maintenant' pour trouver les orphelins.",
       "statusClean": "Nettoyer",
       "statusPartial": "Analyse partielle",
@@ -762,7 +783,9 @@
         "scanStartFailed": "Échec du démarrage de l'analyse",
         "scanCanceled": "Analyse annulée",
         "cancelFailed": "Échec de l'annulation"
-      }
+      },
+      "errorMessage": "Message d'erreur",
+      "scanPaths": "Chemins d’analyse"
     },
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
@@ -911,8 +934,6 @@
       "ratio": "Ratio",
       "added": "Ajouté",
       "original": "Original : {{domain}}",
-      "hashCopied": "Hash copié",
-      "copyHash": "Copier le hash",
       "loading": "Chargement...",
       "notAvailable": "Détails d'exécution non disponibles (en mémoire uniquement).",
       "failedToLoad": "Échec du chargement des détails d'exécution.",
@@ -940,7 +961,8 @@
         "external_program": "Programme externe",
         "auto_managed": "Géré automatiquement",
         "dry_run_no_match": "Simulation (aucune correspondance)",
-        "exported_to_instance": "Exporter vers l'instance"
+        "exported_to_instance": "Exporter vers l'instance",
+        "rule_skipped": "Règle non exécutée"
       }
     },
     "reannounceOverview": {
@@ -976,8 +998,6 @@
       "tryDifferentSearch": "Essayez un autre terme de recherche ou effacez le filtre.",
       "eventsWillAppear": "Les événements apparaîtront ici lorsque des torrents bloqués seront détectés.",
       "enableMonitoring": "Activez la surveillance pour commencer le suivi des torrents bloqués.",
-      "hashCopied": "Hash copié",
-      "copyHash": "Copier le hash",
       "outcomes": {
         "succeeded": "Réussi",
         "failed": "Échoué",
@@ -1146,6 +1166,7 @@
         "title": "Action",
         "addAction": "Ajouter une action",
         "selectAction": "Sélectionner une action...",
+        "runOrderHelp": "Les actions s'exécutent dans l'ordre affiché. Chaque action voit le torrent tel qu'il était au début de l'exécution : un programme externe lancé après un déplacement reçoit donc encore l'ancien chemin d'enregistrement.",
         "speedLimits": "Limites de vitesse",
         "shareLimits": "Limites de partage",
         "pause": "Pause",
@@ -1198,6 +1219,7 @@
         "strategyReplace": "Remplacer dans le client",
         "replaceDescription": "Le mode Remplacer force une réinitialisation complète de ces tags avant d'appliquer cette règle.",
         "managedDescription": "Le mode Géré maintient les tags précis ; la Synchronisation complète ajoute et supprime.",
+        "includeAffectedCrossSeeds": "Inclure les cross-seeds affectés",
         "useTrackerName": "Utiliser le nom du tracker comme tag",
         "useDisplayName": "Utiliser le nom d'affichage",
         "aboutDisplayNames": "À propos des noms d'affichage",
@@ -1342,11 +1364,13 @@
       "preview": {
         "confirmDeleteRule": "Confirmer la règle de suppression",
         "previewDeleteRule": "Prévisualiser la règle de suppression",
+        "confirmTagChange": "Confirmer les modifications de tags",
         "confirmCategoryChange": "Confirmer changement de catégorie → {{category}}",
         "deleteEnabledSummary": "Cette règle affectera {{count}} torrent correspondant actuellement.",
         "deleteEnabledSummary_other": "Cette règle affectera {{count}} torrents correspondants actuellement.",
         "deleteDisabledSummary": "{{count}} torrent correspondrait si activé.",
         "deleteDisabledSummary_other": "{{count}} torrents correspondraient si activés.",
+        "tagPrefix": "Cette règle mettra à jour les tags de",
         "categoryPrefix": "Cette règle déplacera",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrents",
@@ -1358,8 +1382,7 @@
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",
         "description": "La simulation simule les actions sans rien modifier. Consultez l'historique d'activité.",
-        "enableWithout": "Activer sans simulation",
-        "enableWith": "Activer avec simulation"
+        "saveAndEnable": "Enregistrer et activer"
       },
       "customGroup": {
         "title": "Ajouter un groupe personnalisé",
@@ -1408,7 +1431,8 @@
           "moved": "Move",
           "externalProgram": "Programme externe",
           "noMatches": "Aucune correspondance",
-          "exportedToInstance": "Exporter vers l'instance"
+          "exportedToInstance": "Exporter vers l'instance",
+          "ruleSkipped": "Règle non exécutée"
         },
         "actionFallback": "Action inconnue ({{action}})",
         "summary": {

@@ -153,7 +153,7 @@ func TestBuildFileMapFromTorrents_FailsWhenStableTorrentMissingFiles(t *testing.
 
 	_, err := buildFileMapFromTorrents(fsops.HostPaths, []qbt.Torrent{
 		{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
-	}, map[string]qbt.TorrentFiles{})
+	}, map[string]qbt.TorrentFiles{}, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stable torrents returned no files")
 }
@@ -172,6 +172,7 @@ func TestBuildFileMapFromTorrents_IgnoresTorrentWithoutMetadataAtSharedRoot(t *t
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(root)}, result.scanRoots)
@@ -193,6 +194,7 @@ func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(stableRoot)}, result.scanRoots)
@@ -213,6 +215,7 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Empty(t, result.scanRoots)
@@ -366,16 +369,20 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 				ContentPath: filepath.Join(trackerDir, "My.Torrent", "file1.mkv"),
 				State:       qbt.TorrentStatePausedUp,
 			},
+			{Hash: "plain", SavePath: categoryRoot, State: qbt.TorrentStatePausedUp},
 		},
 		map[string]qbt.TorrentFiles{
 			"abc123": {
 				{Name: "My.Torrent/file1.mkv", Size: 1000},
 				{Name: "My.Torrent/file2.srt", Size: 100},
 			},
+			"plain": {{Name: "plain.mkv", Size: 1}},
 		},
+		true,
 	)
 	require.NoError(t, err)
 
+	assert.Len(t, result.torrentPaths, 5)
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file1.mkv")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file2.srt")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(trackerDir, "My.Torrent", "file1.mkv")))
@@ -403,6 +410,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t 
 				{Name: "subs/file.srt", Size: 100},
 			},
 		},
+		false,
 	)
 	require.NoError(t, err)
 
@@ -432,6 +440,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 				{Name: "movie.mkv", Size: 1000},
 			},
 		},
+		false,
 	)
 	require.NoError(t, err)
 
@@ -463,6 +472,7 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 			"upper": {{Name: "Show.S01/Show.S01E01.mkv", Size: 1000}},
 			"lower": {{Name: "Movie.2024/Movie.2024.mkv", Size: 2000}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 

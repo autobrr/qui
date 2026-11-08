@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Група для цієї умови",
     "aboutGroupSelectionAriaLabel": "Про вибір групи згрупованої умови",
     "groupTooltip": "Ця група застосовується лише до цього рядка умови. Використовуйте різні групи в інших рядках GROUP_SIZE/IS_GROUPED за потреби.",
+    "aboutHardlinkScopeAriaLabel": "Про область жорстких посилань",
+    "hardlinkScopeTooltip": "Поза qBittorrent означає жорстке посилання, яке не належить жодному торенту. Враховується імпорт у бібліотеку, а також забуте посилання всередині теки завантажень.",
     "min": "Мін",
     "max": "Макс",
     "wrappingRangeHint": "Діапазон перевертається: відповідає {{min}} і вище, потім усьому, що нижче {{max}}.",
@@ -217,6 +219,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",
+      "qbittorrent50": "Потребує qBittorrent 5.0+",
+      "qbittorrent52": "Потребує qBittorrent 5.2+",
       "localFilesystemAccess": "Потребує локального доступу до файлової системи",
       "remoteInstance": "Недоступно на віддалених екземплярах"
     },
@@ -229,6 +233,7 @@
       "error": "Помилка",
       "tracker_error": "Помилка трекера",
       "unreachable": "Недоступний"
-    }
+    },
+    "ruleSkip": "Не запускається на цьому екземплярі: {{field}} потребує {{requires}}."
   }
 }

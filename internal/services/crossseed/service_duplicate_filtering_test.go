@@ -951,12 +951,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1006,12 +1001,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1261,4 +1251,8 @@ func (*duplicateFilteringSyncManager) GetCategories(context.Context, int) (map[s
 
 func (*duplicateFilteringSyncManager) CreateCategory(context.Context, int, string, string) error {
 	return nil
+}
+
+func (*duplicateFilteringSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

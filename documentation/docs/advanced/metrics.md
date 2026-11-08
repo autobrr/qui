@@ -75,6 +75,12 @@ The qBittorrent metrics use the `instance_id` and `instance_name` labels. Tracke
 | `qbittorrent_tracker_downloaded_bytes` | Gauge | `instance_id`, `instance_name`, `tracker_name` | Downloaded bytes from current torrents in the tracker group. |
 | `qbittorrent_tracker_total_size_bytes` | Gauge | `instance_id`, `instance_name`, `tracker_name` | Current content size for the tracker group. qui counts a shared content path once within each group. |
 | `qui_db_wedged_transaction_total` | Counter | None | SQLite nested-transaction detections since qui started. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_duration_seconds` | Histogram | None | Time cross-seed matching spends comparing a candidate's files with a local torrent's files. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_calls_total` | Counter | None | File comparisons since qui started. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_exact_match_total` | Counter | None | File comparisons that ended in an exact match since qui started. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_partial_match_total` | Counter | None | File comparisons that ended in a partial match since qui started. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_size_match_total` | Counter | None | File comparisons that ended in a size-only match since qui started. A qui restart resets this value. |
+| `qui_crossseed_get_match_type_no_match_total` | Counter | None | File comparisons that ended in no match since qui started. A qui restart resets this value. |
 
 qui also exports the standard `go_*` and `process_*` metrics from the Prometheus Go client. Those series depend on the Go and client-library versions.
 

@@ -32,6 +32,7 @@ const (
 	ActivityActionAutoManaged         = "auto_managed"         // Batch auto management operation
 	ActivityActionExportedToInstance  = "exported_to_instance" // Export torrent to another instance
 	ActivityActionDryRunNoMatch       = "dry_run_no_match"     // Manual dry-run completed with no matching actions
+	ActivityActionRuleSkipped         = "rule_skipped"         // Rule reads a field that the instance does not send
 )
 
 // Activity outcome types
@@ -39,6 +40,7 @@ const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"
 	ActivityOutcomeDryRun  = "dry-run"
+	ActivityOutcomeSkipped = "skipped"
 )
 
 type AutomationActivity struct {
@@ -69,7 +71,8 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		return nil
 	}
 
-	_, err := s.insert(ctx, activity)
+	id, err := s.insert(ctx, activity)
+	activity.ID = id
 	return err
 }
 
@@ -83,6 +86,7 @@ func (s *AutomationActivityStore) CreateWithID(ctx context.Context, activity *Au
 		return 0, err
 	}
 
+	activity.ID = id
 	return id, nil
 }
 
