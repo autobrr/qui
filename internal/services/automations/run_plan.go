@@ -780,13 +780,17 @@ func (m *moveExpansion) canMove(hash, normalizedDest string) bool {
 }
 
 // legacyCrossSeeds returns the cross-seeds of the legacy triggers that move with them: the
-// members of their groups.
+// members of their groups, each group walked once.
 func (m *moveExpansion) legacyCrossSeeds(triggers []string, normalizedDest string, ruleByCrossSeedKey map[string]ruleRef) []string {
 	var expandedHashes []string
+	walked := make(map[string]struct{})
 	for _, trigger := range triggers {
-		members := m.in.crossSeeds.members(trigger)
 		key := m.in.crossSeeds.key(m.in.torrentByHash[trigger])
-		for _, t := range members {
+		if _, seen := walked[key]; seen {
+			continue
+		}
+		walked[key] = struct{}{}
+		for _, t := range m.in.crossSeeds.members(trigger) {
 			if !m.canMove(t.Hash, normalizedDest) {
 				continue
 			}

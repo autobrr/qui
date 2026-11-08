@@ -295,6 +295,7 @@ func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *
 		return
 	}
 	evalCtx.moveChecks = make(map[moveCheckKey]checkedMove)
+	asked := make(map[askedMoveGroup]struct{})
 	var hashes []string
 	for _, torrent := range torrents {
 		if skipCheck != nil && skipCheck(torrent.Hash) {
@@ -303,15 +304,21 @@ func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *
 		if state := states[torrent.Hash]; state != nil && state.shouldMove {
 			continue
 		}
-		hashes = append(hashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate)...)
+		hashes = append(hashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, asked)...)
 	}
 	slices.Sort(hashes)
 	crossSeeds.session.resolveGroups(slices.Compact(hashes), false)
 }
 
+// askedMoveGroup is a group of a move GroupID that the read-ahead already asked for.
+type askedMoveGroup struct {
+	rule *models.Automation
+	key  string
+}
+
 // moveAsks returns the torrent when the move of a rule that matches its tracker can apply to it,
-// with the members of the move GroupID.
-func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool) []string {
+// with the members of the move GroupID that asked does not hold yet.
+func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedMoveGroup]struct{}) []string {
 	state := &torrentDesiredState{trackerDomains: collectTrackerDomains(torrent, sm)}
 	var hashes []string
 	for _, rule := range rules {
@@ -330,7 +337,12 @@ func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.To
 		}
 		hashes = append(hashes, torrent.Hash)
 		if groupID := strings.TrimSpace(move.GroupID); groupID != "" {
-			hashes = append(hashes, getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm).MembersForHash(torrent.Hash)...)
+			idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+			group := askedMoveGroup{rule, idx.KeyForHash(torrent.Hash)}
+			if _, seen := asked[group]; !seen {
+				asked[group] = struct{}{}
+				hashes = append(hashes, idx.MembersForHash(torrent.Hash)...)
+			}
 		}
 	}
 	return hashes

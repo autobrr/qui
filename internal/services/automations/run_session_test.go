@@ -694,3 +694,27 @@ func TestRunSession_MoveMissReadsTheStateFirst(t *testing.T) {
 	require.False(t, state.shouldMove)
 	require.Equal(t, 1, stats.MoveBlockedByCrossSeed)
 }
+
+// The read-ahead asks for the members of a move GroupID once, not once for
+// each matched member.
+func TestMoveAsks_GroupMembersOnce(t *testing.T) {
+	t.Parallel()
+	torrents := make([]qbt.Torrent, 0, 20)
+	for i := range 20 {
+		torrents = append(torrents, qbt.Torrent{Hash: fmt.Sprintf("h%02d", i), SavePath: "/old", ContentPath: fmt.Sprintf("/old/%02d.mkv", i), Tags: "mv"})
+	}
+	rule := &models.Automation{
+		ID: 1, Name: "move", TrackerPattern: "*", Enabled: true,
+		Conditions: &models.ActionConditions{
+			Move:     &models.MoveAction{Enabled: true, Path: "/new", GroupID: "bysave", Condition: tagsContain("mv")},
+			Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}},
+		},
+	}
+	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
+	asked := make(map[askedMoveGroup]struct{})
+	hashes := make([]string, 0, 2*len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, moveAsks(torrent, []*models.Automation{rule}, torrents, evalCtx, nil, nil, asked)...)
+	}
+	require.Len(t, hashes, 2*len(torrents))
+}
