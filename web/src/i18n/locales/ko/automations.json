@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "이 조건의 그룹",
     "aboutGroupSelectionAriaLabel": "그룹화된 조건의 그룹 선택 정보",
     "groupTooltip": "이 그룹은 이 조건 행에만 적용됩니다. 필요한 경우 다른 GROUP_SIZE/IS_GROUPED 행에 다른 그룹을 사용하세요.",
+    "aboutHardlinkScopeAriaLabel": "하드링크 범위 정보",
+    "hardlinkScopeTooltip": "qBittorrent 외부는 어떤 토렌트에도 속하지 않는 하드링크를 뜻합니다. 라이브러리 가져오기뿐 아니라 다운로드 폴더 안에 남은 링크도 포함됩니다.",
     "min": "최소",
     "max": "최대",
     "wrappingRangeHint": "범위가 순환합니다: {{min}} 이상에 일치하고, 이어서 {{max}} 미만의 모든 값에 일치합니다.",

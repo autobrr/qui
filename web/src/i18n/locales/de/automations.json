@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Gruppe für diese Bedingung",
     "aboutGroupSelectionAriaLabel": "Über die Gruppenauswahl gruppierter Bedingungen",
     "groupTooltip": "Diese Gruppe gilt nur für diese Bedingungszeile. Verwende bei Bedarf unterschiedliche Gruppen für andere GROUP_SIZE/IS_GROUPED-Zeilen.",
+    "aboutHardlinkScopeAriaLabel": "Über den Hardlink-Bereich",
+    "hardlinkScopeTooltip": "Außerhalb von qBittorrent bedeutet ein Hardlink, der zu keinem Torrent gehört. Das gilt für einen Import in die Bibliothek und auch für einen verwaisten Link im Download-Ordner.",
     "min": "Min",
     "max": "Max",
     "wrappingRangeHint": "Bereich läuft um: trifft auf {{min}} und höher zu, dann auf alles unter {{max}}.",
