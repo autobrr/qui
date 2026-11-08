@@ -706,6 +706,20 @@ describe("TorrentTableOptimized Copy groups", () => {
     })
   })
 
+  // regression: #3922
+  it("names the torrent that a Stacked row shows in incognito mode under a name sort", () => {
+    localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
+    localStorage.setItem("qui-incognito-mode", "true")
+    localStorage.setItem("qui-column-sorting:1", JSON.stringify([{ id: "name", desc: false }]))
+    const { container } = renderGroups(copyGroupRows({ sorted: { name: "Alpha Copy Of Delta" } }))
+
+    const pill = pills(container)[0]
+    const shownName = pill.closest("div.cursor-pointer")?.querySelector("h3")?.textContent
+
+    expect(shownName).toBeTruthy()
+    expect(pill.getAttribute("aria-label")).toContain(JSON.stringify({ name: shownName }).slice(1, -1))
+  })
+
   it("shows no warning pill for a problem on the top row itself", () => {
     const { container } = renderGroups(copyGroupRows({ top: { state: "error" } }))
     expect(warnings(container).length).toBe(0)

@@ -130,10 +130,9 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   onToggleCopyGroup,
 }: TorrentTableRowProps) {
   const torrent = row.original
-  // The pill names the torrent that the row shows: under a name sort, the
-  // collapsed row shows the name of the first-sorted member.
-  const shownTorrent = sortedTorrent && sortedColumnId === "name" ? sortedTorrent : torrent
-  const pill = (size: CopyGroupPillSize) => copyGroupId !== undefined && (
+  // The pill names the torrent whose name the row shows, so a screen reader
+  // hears the same name, also in incognito mode, where the hash picks the name.
+  const pill = (size: CopyGroupPillSize, shownTorrent: Torrent) => copyGroupId !== undefined && (
     <CopyGroupPill
       id={copyGroupId}
       open={copyGroupOpen}
@@ -155,7 +154,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
         <CompactRow
           torrent={torrent}
           displayTorrent={displayTorrent}
-          groupPill={pill("stacked")}
+          groupPill={pill("stacked", displayTorrent)}
           groupAccentClass={groupAccent || undefined}
           rowId={row.id}
           rowIndex={virtualIndex}
@@ -231,7 +230,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
                 cell.column.columnDef.cell,
                 sortedTorrent && cell.column.id === sortedColumnId ? sortedCellContext(cell.getContext(), sortedTorrent) : cell.getContext()
               )}
-              {cell.id === pillCellId && pill(desktopViewMode === "dense" ? "dense" : "normal")}
+              {cell.id === pillCellId && pill(desktopViewMode === "dense" ? "dense" : "normal", sortedTorrent && sortedColumnId === "name" ? sortedTorrent : torrent)}
             </div>
           )
         })}
