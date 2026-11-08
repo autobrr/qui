@@ -97,7 +97,7 @@ type backupReader interface {
 	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	GetTags(ctx context.Context, instanceID int) ([]string, error)
-	GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error)
+	OmitsTrackersOnExport(ctx context.Context, instanceID int) (bool, error)
 	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
 }
 
@@ -723,13 +723,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		sort.Strings(snapshotTags)
 	}
 
-	webAPIVersion := ""
-	patchTrackers := false
-	if version, err := s.reader.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
-		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
-	} else {
-		webAPIVersion = version
-		patchTrackers = shouldInjectTrackerMetadata(version)
+	// A 4.6 export without its trackers must not pass as a good backup.
+	patchTrackers, err := s.reader.OmitsTrackersOnExport(ctx, j.instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decide on tracker patching: %w", err)
 	}
 
 	timestamp := s.now().UTC().Format("20060102T150405Z")
@@ -791,7 +788,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			// bounded by exportWorkers regardless of how the pool schedules.
 			var lastExportElapsed time.Duration
 			for idx := range indexes {
-				res, err := s.exportBackupTorrent(gctx, j, torrents[idx], patchTrackers, webAPIVersion, &lastExportElapsed)
+				res, err := s.exportBackupTorrent(gctx, j, torrents[idx], patchTrackers, &lastExportElapsed)
 				if err != nil {
 					return err
 				}
@@ -962,7 +959,7 @@ type exportedTorrent struct {
 // the cache. It touches no order-dependent backup state, so callers may run it
 // concurrently for distinct torrents. lastExportElapsed carries the adaptive
 // delay state between consecutive calls on the same worker.
-func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.Torrent, patchTrackers bool, webAPIVersion string, lastExportElapsed *time.Duration) (exportedTorrent, error) {
+func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.Torrent, patchTrackers bool, lastExportElapsed *time.Duration) (exportedTorrent, error) {
 	select {
 	case <-ctx.Done():
 		return exportedTorrent{}, ctx.Err()
@@ -1028,7 +1025,7 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 			data = patched
 			// ensure cached entry is rebuilt with the corrected payload
 			blobRelPath = nil
-			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
+			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Injected tracker metadata into exported torrent")
 		}
 	}
 

@@ -1239,6 +1239,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Nachricht",
@@ -1664,6 +1665,7 @@
         "target_not_found": "Ziel in dieser Instanz nicht gefunden.",
         "incomplete": "Der Download des Ziels ist unvollständig.",
         "not_settled": "Dieser Torrent wird noch verschoben oder geprüft. Versuche es erneut, wenn der Vorgang abgeschlossen ist.",
+        "errored": "Dieser Torrent hat einen Fehler oder fehlende Dateien. Behebe das Problem und versuche es erneut.",
         "no_episode_identity": "Die Episodennummer konnte nicht erkannt werden.",
         "file_list_unavailable": "Die Dateiliste des Ziels ist nicht verfügbar.",
         "episode_file_invalid": "Das Ziel muss genau eine abspielbare Datei mit der ausgewählten Episodenkennung enthalten.",
@@ -1678,5 +1680,17 @@
         "add_failed": "Der Torrent konnte nicht hinzugefügt werden."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} weitere Kopie von {{name}}",
+    "copies_other": "{{count}} weitere Kopien von {{name}}",
+    "copiesWithProblem_one": "{{count}} weitere Kopie von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "copiesWithProblem_other": "{{count}} weitere Kopien von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ausgewählt",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ausgewählt",
+    "hiddenTicked_one": "{{count}} ausgeblendete Kopie ist ausgewählt",
+    "hiddenTicked_other": "{{count}} ausgeblendete Kopien sind ausgewählt",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

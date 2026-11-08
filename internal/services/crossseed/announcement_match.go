@@ -32,8 +32,9 @@ type announcementMatchPolicy struct {
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
 	episodeMap *models.EpisodeMap
-	// sourceReads holds the local torrents of the scan that readLocalTorrents
-	// read from their files. Without it, a local torrent reads by its name.
+	// sourceReads holds the local torrents of the scan that a local read
+	// (requestLocalReads) read from their files. Without it, a local torrent
+	// reads by its name.
 	sourceReads localReads
 }
 

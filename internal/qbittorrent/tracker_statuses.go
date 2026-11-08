@@ -28,6 +28,7 @@ var defaultUnregisteredStatuses = []string{
 	"not exist",
 	"not registered",
 	"nuked",
+	"other:",
 	"pack is available",
 	"packs are available",
 	"problem with description",

@@ -135,6 +135,8 @@ paths:
         - Authentication
       summary: Logout
       description: End the current session
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Logged out successfully
@@ -178,6 +180,8 @@ paths:
                   minLength: 8
                   writeOnly: true
                   description: New password will be hashed and never returned in responses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Password changed. Every session is ended, including the caller's.
@@ -215,6 +219,8 @@ paths:
         - API Keys
       summary: List API keys
       description: Get all API keys for the current user
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of API keys
@@ -228,20 +234,18 @@ paths:
       tags:
         - API Keys
       summary: Create API key
-      description: Generate a new API key
+      description: Generate a new API key with the Permissions it holds.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  description: Descriptive name for the API key
+              $ref: '#/components/schemas/ApiKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
         '201':
           description: API key created
           content:
@@ -259,10 +263,48 @@ paths:
                   createdAt:
                     type: string
                     format: date-time
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyPermission'
+                  instanceIds:
+                    type: array
+                    items:
+                      type: integer
                   message:
                     type: string
 
   /api/api-keys/{id}:
+    put:
+      tags:
+        - API Keys
+      summary: Update API key
+      description: Set the name, the Permissions, and the Instance limit of an API key. The change applies on the next request of the key.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyRequest'
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
+        '404':
+          description: API key not found
     delete:
       tags:
         - API Keys
@@ -274,6 +316,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: API key deleted successfully
@@ -286,6 +330,8 @@ paths:
         - Client API Keys
       summary: List client API keys
       description: Get all client API keys for external applications
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of client API keys
@@ -316,6 +362,8 @@ paths:
                 instanceId:
                   type: integer
                   description: ID of the qBittorrent instance to proxy to
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: Client API key created
@@ -351,6 +399,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Client API key deleted successfully
@@ -410,6 +460,8 @@ paths:
                     $ref: '#/components/schemas/PathMapping'
                   default: []
                   description: Path mappings to convert remote paths to local paths (useful for remote instances)
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: External program created
@@ -462,6 +514,8 @@ paths:
                   items:
                     $ref: '#/components/schemas/PathMapping'
                   description: Path mappings to convert remote paths to local paths
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: External program updated
@@ -484,6 +538,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: External program deleted successfully
@@ -1255,6 +1311,8 @@ paths:
                 privateKey:
                   type: string
                   description: PEM-encoded private key without a passphrase. Write-only.
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials stored
@@ -1277,6 +1335,8 @@ paths:
         an orphan scan deletion runs on the instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials cleared
@@ -1301,6 +1361,8 @@ paths:
         failed request.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Dial result
@@ -1333,6 +1395,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pinned
@@ -1367,6 +1431,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pin replaced
@@ -1688,14 +1754,18 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, `summary`, and `groupCopies`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
             same fields as the torrent list filters. If `summary` is true, the
             frames carry the totals, stats, counts, and server state of the view,
-            but no rows. `summary` needs a single `instanceId`.
+            but no rows. `summary` needs a single `instanceId`. If `groupCopies` is
+            true, the frames carry Copy groups and `copyGroupsReady`, as the torrent
+            list does with `groupCopies=true`. A frame follows when the groups
+            change, also when no torrent changed. `groupCopies` cannot be combined
+            with `summary`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -1746,7 +1816,8 @@ paths:
         connection before any other event of that subscription. The other
         subscriptions of the connection get no `init`. A connection holds at
         most 64 subscriptions. When the connection closes, the server removes
-        each of its subscriptions.
+        each of its subscriptions. Only the API key or session that opened the
+        connection can change it. Any other caller gets a 404.
       requestBody:
         required: true
         content:
@@ -1833,6 +1904,12 @@ paths:
           schema:
             type: string
             description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`)
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
       responses:
         '200':
           description: Paginated torrent list
@@ -1844,13 +1921,26 @@ paths:
                   torrents:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Torrent'
+                      allOf:
+                        - $ref: '#/components/schemas/Torrent'
+                        - type: object
+                          properties:
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   total:
                     type: integer
                   page:
                     type: integer
                   limit:
                     type: integer
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
     post:
       tags:
         - Torrents
@@ -2133,7 +2223,7 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it. An API key needs write access to torrents for `magnet_uri`, because the link holds the announce URL with the tracker passkey.
                   enum:
                     - name
                     - hash
@@ -2214,6 +2304,8 @@ paths:
                       List of per-torrent field values for the matching torrents. When `field=tags`, each item is the raw
                       comma-separated tag string returned for one matching torrent, and an empty string indicates
                       an untagged torrent.
+        '403':
+          description: 'The API key needs `Torrents: write` to read `magnet_uri`'
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:
@@ -2259,7 +2351,7 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent trackers
-      description: Get list of trackers for a torrent
+      description: Get list of trackers for a torrent. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -3416,7 +3508,7 @@ paths:
       tags:
         - Trackers
       summary: List active trackers
-      description: Get active tracker domains and representative tracker URLs for an instance
+      description: Get active tracker domains and representative tracker URLs for an instance. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -3442,6 +3534,7 @@ paths:
         Run one saved automation on the instance now and apply its actions. The run ignores the interval of the automation, and it also runs a disabled automation.
         An automation with dryRun set stays a simulation and writes dry-run activity rows.
         Only one run applies actions on an instance at a time. If a run is in progress, the request returns 409 and applies nothing.
+        If the automation reads a field that the qBittorrent version of the instance does not send, the run applies nothing and writes one `rule_skipped` activity row. Its details give the `field` and the version that the field `requires`.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - in: path
@@ -3668,6 +3761,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License activated successfully
@@ -3710,6 +3805,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License validated successfully
@@ -3743,6 +3840,8 @@ paths:
         - Licenses
       summary: Check premium access
       description: Check if any active licenses grant premium access
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Premium access status
@@ -3760,6 +3859,8 @@ paths:
         - Licenses
       summary: List licenses
       description: List all stored licenses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses retrieved
@@ -3792,6 +3893,8 @@ paths:
           required: true
           schema:
             type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License deleted successfully
@@ -3804,6 +3907,8 @@ paths:
         - Licenses
       summary: Refresh licenses
       description: Refresh all stored licenses from the licensing service
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses refreshed successfully
@@ -4096,6 +4201,12 @@ paths:
               JSON-encoded filter options. Must include the `expr` field for cross-instance filtering.
               See CrossInstanceFilterOptions schema for structure details.
             example: '{"expr":"Hash == \"abcd1234\" || Hash == \"efgh5678\""}'
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
       responses:
         '200':
           description: Paginated torrent list from all instances
@@ -4117,16 +4228,26 @@ paths:
                             instance_name:
                               type: string
                               description: Name of the instance this torrent belongs to
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
                   total:
                     type: integer
                   hasMore:
                     type: boolean
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   isCrossInstance:
                     type: boolean
                     default: true
                   partialResults:
                     type: boolean
                     description: Indicates if some instances failed to respond
+                  webAPIVersions:
+                    type: object
+                    description: Web API version of each instance in the response, keyed by instance ID. An empty string means the version is unknown.
+                    additionalProperties:
+                      type: string
         '400':
           description: Missing or invalid filters parameter
           content:
@@ -4433,7 +4554,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '500':
           description: Failed to create directory
 
@@ -4477,7 +4598,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '404':
           description: Directory not found
         '500':
@@ -6086,6 +6207,8 @@ paths:
         - System
       summary: Restart qui
       description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      security:
+        - SessionAuth: []
       responses:
         '202':
           description: The restart started
@@ -6120,6 +6243,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SelfUpdateRequest'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: The new binary is in place. qui restarts next.
@@ -7136,7 +7261,13 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API key for authentication
+      description: |
+        API key for authentication. Browser-only routes refuse every API key with
+        403 "API key not allowed; use the web UI": API key and client API key
+        management, system update and restart, instance SSH credential and host-key
+        routes, change password, logout, license routes, and external program
+        create, update, and delete. When authentication is disabled, qui ignores
+        API keys and these routes accept the request.
     ApiKeyQuery:
       type: apiKey
       in: query
@@ -7350,6 +7481,56 @@ components:
           type: string
           format: date-time
           nullable: true
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: The Instance limit. An empty list means every instance.
+          items:
+            type: integer
+
+    ApiKeyPermission:
+      type: object
+      description: One area and one level. Write includes read and run. Run does not include read.
+      required:
+        - area
+        - level
+      properties:
+        area:
+          type: string
+          enum: [instances, torrents, crossSeed, dirScan, automations, rss, backups, orphanScan, externalPrograms, indexers, arr, notifications, settings, logs, system]
+        level:
+          type: string
+          enum: [read, run, write]
+
+    ApiKeyRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+          description: Descriptive name for the API key
+        permissions:
+          type: array
+          description: Each area allows only some levels. The list must not be empty.
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: >-
+            The Instance limit: the instances that the key can reach. An empty list means
+            every instance, also the ones added later. A new instance does not join a list
+            that is not empty, and a deleted instance stays in the list and matches nothing.
+            Each id must be an instance, but an edit can keep a deleted instance that the key
+            holds. A key with a list gets a 403 on another instance, on an automation that
+            exports to another instance, and on the cross-seed, Dir Scan, and cross-instance
+            routes.
+          items:
+            type: integer
 
     ClientApiKey:
       type: object
@@ -7895,6 +8076,15 @@ components:
         supportsShareLimitsMode:
           type: boolean
           description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
+        supportsLiveReannounce:
+          type: boolean
+          description: Whether the torrent list has the seconds until the next announce (Web API 2.10.0+, qBittorrent 5.0+).
+        supportsListFieldsV5:
+          type: boolean
+          description: Whether the torrent list has popularity, private and comment (Web API 2.11.2+, qBittorrent 5.0.0rc1+).
+        supportsListCreatedBy:
+          type: boolean
+          description: Whether the torrent list has created_by (Web API 2.15.1+, qBittorrent 5.2+).
         webAPIVersion:
           type: string
           nullable: true
@@ -7927,6 +8117,23 @@ components:
           description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
+    CopyGroupRow:
+      type: object
+      description: Sent only on a row of a Copy group with two or more matching torrents. A plain row has no `copy_group`.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: Group id, 16 hex characters. It changes when qui restarts.
+        first_sorted:
+          type: object
+          description: Sent on the Group representative only. The torrent whose place the group takes in the sort.
+          required: [instance_id, hash]
+          properties:
+            instance_id:
+              type: integer
+            hash:
+              type: string
     Torrent:
       type: object
       properties:
@@ -7964,6 +8171,16 @@ components:
           type: integer
         completedOn:
           type: integer
+        reannounce:
+          type: integer
+          format: int64
+          description: Seconds until qBittorrent next announces the torrent. Omitted for instances before Web API 2.10.0 (qBittorrent 5.0), which do not send it in the torrent list.
+        popularity:
+          type: number
+          description: Popularity of the torrent. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list.
+        private:
+          type: boolean
+          description: Whether the torrent is private. Omitted for instances before Web API 2.11.2 (qBittorrent 5.0.0rc1), which do not send it in the torrent list, and for a torrent without metadata, such as a magnet link.
         savePath:
           type: string
 
@@ -8501,6 +8718,15 @@ components:
         status:
           type: string
           description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
+        class:
+          type: string
+          description: What the result means for its reader. stranded means that qBittorrent holds the torrent, but qui could not finish the add. A status that qui does not know has the class failed.
+          enum:
+            - added
+            - exists
+            - skipped
+            - stranded
+            - failed
         message:
           type: string
           nullable: true
@@ -8849,10 +9075,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -8895,6 +9117,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -8915,22 +9157,50 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -8992,10 +9262,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -9039,6 +9305,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -9059,6 +9345,54 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          default: false
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          default: false
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          default: false
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          default: false
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          default: false
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          default: true
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
@@ -9066,16 +9400,6 @@ components:
           type: boolean
           default: false
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -9123,9 +9447,11 @@ components:
         createdAt:
           type: string
           format: date-time
+          readOnly: true
         updatedAt:
           type: string
           format: date-time
+          readOnly: true
 
     CrossSeedAutomationStatus:
       type: object
@@ -9192,7 +9518,7 @@ components:
               reason:
                 type: string
                 description: Empty for a paired target. Otherwise names why the target was rejected or dropped at apply.
-                enum: ['', target_not_found, incomplete, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
+                enum: ['', target_not_found, incomplete, errored, not_settled, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
         matched_episodes:
           type: integer
         total_episodes:
@@ -9911,7 +10237,7 @@ components:
           description: Torrent state
         tracker:
           type: string
-          description: Primary tracker URL
+          description: Primary tracker URL. A key without write access to torrents gets its scheme and host.
         tracker_health:
           type: string
           enum: [unregistered, tracker_down, tracker_error]
@@ -9929,18 +10255,18 @@ components:
       properties:
         expr:
           type: string
-          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching.
+          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching. An expression that does not compile gives no rows.
           example: 'Hash == "abcd1234" || Hash == "efgh5678"'
         status:
           type: array
           items:
             type: string
-          description: Filter by torrent status
+          description: Filter by torrent status. A value is a status of qui, for example `seeding` or `completed`, or a qBittorrent state name such as `stalledUP`, in any letter case. A value that qui does not know gives no rows.
         excludeStatus:
           type: array
           items:
             type: string
-          description: Array of strings to omit torrents with these statuses
+          description: Array of strings to omit torrents with these statuses. A value that qui does not know gives no rows.
         categories:
           type: array
           items:
@@ -9965,7 +10291,7 @@ components:
           type: array
           items:
             type: string
-          description: Filter by tracker hostnames
+          description: Filter by tracker hostnames. The value "" selects the torrents with no tracker.
         excludeTrackers:
           type: array
           items:
@@ -10132,7 +10458,10 @@ components:
           type: array
           items:
             type: string
-          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan. Only the response for one run includes this field; the runs list leaves it out.
+        scanPathCount:
+          type: integer
+          description: Number of entries in scanPaths.
         filesFound:
           type: integer
           description: Number of orphan entries found, files and abandoned directories together

@@ -566,6 +566,10 @@ func (app *Application) runServer() {
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
 	}
+	if err := cfg.Config.ValidateOIDCAllowedUser(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
+	}
+	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -812,7 +816,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
@@ -828,6 +832,7 @@ func (app *Application) runServer() {
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
+		crossSeedService.StopCopyGroups()
 	}()
 	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
 	partialPoolDone := make(chan struct{})
@@ -992,6 +997,7 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		crossSeedService.StartCopyGroups(automationCtx)
 		go func() {
 			defer close(partialPoolDone)
 			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)

@@ -225,7 +225,7 @@ func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
 				slashEntry("/data/Other", "Other", fs.ModeDir),
 				slashEntry("/data/Other/b.mkv", "Other/b.mkv", 0),
 			)
-			result, err := NewScanner(newSlashBackend(walk...)).ScanDirectory(t.Context(), "/data")
+			result, err := NewScanner(newRecordingBackend(walk...)).ScanDirectory(t.Context(), "/data")
 			require.NoError(t, err)
 			require.Len(t, result.Searchees, 1)
 			require.Equal(t, "/data/Other", result.Searchees[0].Path)
@@ -279,21 +279,46 @@ func (lostStatBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 	return nil, fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
 }
 
+// lostIdentityBackend answers every Stat and loses the connection on its
+// identity read, which a remote backend reports only in FileIDErr.
+type lostIdentityBackend struct{ fsops.Backend }
+
+func (lostIdentityBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	return &fsops.LstatInfo{
+		Path: p, Size: 1,
+		FileIDErr: fmt.Errorf("stat: %w", fsops.ErrConnectionLost),
+	}, nil
+}
+
 // A lost connection while the root links are read fails the scan, where the
-// links would otherwise be dropped as if they led nowhere.
-// regression: #3613
+// links would otherwise be dropped as if they led nowhere, or kept with no
+// identity.
 func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
-	target := filepath.Join(t.TempDir(), "Film.2024.mkv")
-	writeTestFile(t, target, 1)
-	symlinkOrSkip(t, target, filepath.Join(root, "Film.2024.mkv"))
-	writeTestFile(t, filepath.Join(root, "Other", "other.mkv"), 1)
+	for _, tt := range []struct {
+		name    string
+		backend fsops.Backend
+	}{
+		// regression: #3613
+		{name: "stat", backend: lostStatBackend{Backend: local.NewBackend()}},
+		// regression: #3755
+		{name: "identity read", backend: lostIdentityBackend{Backend: local.NewBackend()}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	result, err := NewScanner(lostStatBackend{Backend: local.NewBackend()}).ScanDirectory(t.Context(), root)
-	require.ErrorIs(t, err, fsops.ErrConnectionLost)
-	require.Nil(t, result)
+			root := t.TempDir()
+			target := filepath.Join(t.TempDir(), "Film.2024.mkv")
+			writeTestFile(t, target, 1)
+			symlinkOrSkip(t, target, filepath.Join(root, "Film.2024.mkv"))
+			writeTestFile(t, filepath.Join(root, "Other", "other.mkv"), 1)
+
+			result, err := NewScanner(tt.backend).ScanDirectory(t.Context(), root)
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.Nil(t, result)
+		})
+	}
 }
 
 // A Full scan of N searchees walks the backend once and lists no folder for

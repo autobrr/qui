@@ -44,7 +44,7 @@ func tagExpansionRule(action *models.TagAction) *models.Automation {
 
 // crossSeedGroupsForTest groups the torrents that share a content path, the
 // way the matcher groups the torrents that share a file.
-func crossSeedGroupsForTest(torrents []qbt.Torrent) crossSeedGroups {
+func crossSeedGroupsForTest(torrents []qbt.Torrent) *crossSeedGroups {
 	return buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
 
@@ -93,7 +93,7 @@ func TestExpandTagStatesForCrossSeeds_PropagatesToSiblings(t *testing.T) {
 			require.Contains(t, sib.currentTags, "keep-me", "sibling state must be seeded with its own current tags")
 
 			// The diff loop must produce a per-sibling desired set that keeps unrelated
-			// tags (SetTorrentTags replaces the whole list).
+			// tags (SetTags replaces the whole list).
 			sibChange := buildTagChangesForTest(states)["sibling"]
 			require.NotNil(t, sibChange)
 			assert.ElementsMatch(t, tt.wantAdd, sibChange.toAdd)

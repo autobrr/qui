@@ -5,14 +5,19 @@ package handlers
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 )
@@ -132,10 +137,38 @@ func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		if err := hideTrackerPreferences(view); err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to hide tracker preferences")
+			http.Error(w, "Failed to get preferences", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preference view")
 	}
+}
+
+func hideTrackerPreferences(view []prefcatalog.Field) error {
+	for i := range view {
+		if !slices.Contains([]string{"add_trackers", "add_trackers_url", "add_trackers_url_list"}, view[i].Key) {
+			continue
+		}
+		var value string
+		if err := jsonv2.Unmarshal(view[i].Value, &value); err != nil {
+			return fmt.Errorf("read %s: %w", view[i].Key, err)
+		}
+		lines := strings.Split(value, "\n")
+		qbittorrent.HideTrackerURLs(lines)
+		hidden, err := jsonv2.Marshal(strings.Join(lines, "\n"))
+		if err != nil {
+			return fmt.Errorf("write %s: %w", view[i].Key, err)
+		}
+		view[i].Value = hidden
+	}
+	return nil
 }
 
 // GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode

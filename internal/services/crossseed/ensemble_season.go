@@ -128,7 +128,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 
 	for i := range torrents {
 		torrent := &torrents[i]
-		if torrent.Progress < 1.0 {
+		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)
@@ -207,25 +207,15 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		return false, nil
 	}
 
-	release := s.releaseCache.Parse(torrent.Name)
-	searchQuery := BuildTorznabQuery(torrent.Name, release, false)
-	contentInfo := DetermineContentType(release)
+	source := s.matcher().readName(torrent.Name)
+	searchReq := s.matcher().buildTorznabRequest(torznabRequestInput{
+		torrentName: torrent.Name,
+		source:      source,
+		contentInfo: DetermineContentType(source.release),
+		indexerIDs:  state.resolvedTorznabIndexerIDs,
+	}).req
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
-
-	searchReq := &jackett.TorznabSearchRequest{
-		Query:            searchQuery.Query,
-		ReleaseName:      torrent.Name,
-		Limit:            effectiveTorznabCrossSeedSearchLimit(0),
-		IndexerIDs:       state.resolvedTorznabIndexerIDs,
-		ReturnAllResults: true,
-	}
-	if len(contentInfo.Categories) > 0 {
-		searchReq.Categories = contentInfo.Categories
-	}
-	if searchQuery.Season != nil {
-		searchReq.Season = searchQuery.Season
-	}
 
 	resp, err := s.searchOnce(searchCtx, searchReq)
 	if err != nil {
@@ -249,7 +239,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		}
 	}
 
-	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchQuery.Query, resp, processedAt)
+	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchReq.Query, resp, processedAt)
 	return true, nil
 }
 

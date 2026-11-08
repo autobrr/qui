@@ -1239,6 +1239,7 @@
     "status": "Statut",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Pairs",
     "leeches": "Leeches",
     "downloaded": "Téléchargés",
     "message": "Message",
@@ -1664,6 +1665,7 @@
         "target_not_found": "Cible introuvable dans cette instance.",
         "incomplete": "Le téléchargement de la cible est incomplet.",
         "not_settled": "Ce torrent est encore en cours de déplacement ou de vérification. Réessayez une fois l'opération terminée.",
+        "errored": "Ce torrent comporte une erreur ou des fichiers manquants. Corrigez le problème, puis réessayez.",
         "no_episode_identity": "Le numéro d’épisode est illisible.",
         "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
         "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",
@@ -1678,5 +1680,17 @@
         "add_failed": "Impossible d’ajouter le torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} autre copie de {{name}}",
+    "copies_other": "{{count}} autres copies de {{name}}",
+    "copiesWithProblem_one": "{{count}} autre copie de {{name}}. Une copie masquée a un problème",
+    "copiesWithProblem_other": "{{count}} autres copies de {{name}}. Une copie masquée a un problème",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} sélectionnée",
+    "badgeTicked_other": "+{{hidden}} · {{count}} sélectionnées",
+    "hiddenTicked_one": "{{count}} copie masquée est sélectionnée",
+    "hiddenTicked_other": "{{count}} copies masquées sont sélectionnées",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

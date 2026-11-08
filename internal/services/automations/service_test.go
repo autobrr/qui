@@ -1286,10 +1286,10 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 		"copy2":    {{Name: "02.mkv", Size: 1000}},
 		"pack2":    {{Name: "02.mkv", Size: 1000}, {Name: "03.mkv", Size: 1000}},
 	}
-	groups := crossSeedGroups{
+	groups := &crossSeedGroups{byHash: map[string][]qbt.Torrent{
 		"copy": torrents[1:4], "pack": torrents[1:4], "episode2": torrents[1:4],
 		"copy2": torrents[4:], "pack2": torrents[4:],
-	}
+	}}
 	hardlinks := &HardlinkIndex{
 		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copy": "one", "episode2": "two", "copy2": "two"},
 		DeleteSafeGroupBySignature: map[string][]string{"one": {"source", "copy"}, "two": {"episode2", "copy2"}},
@@ -1331,7 +1331,7 @@ func TestSharedSidecarKeepsFilesAndBlocksGroupDeletion(t *testing.T) {
 		first.Hash:  {{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}},
 		second.Hash: {{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}},
 	}
-	require.True(t, shouldPreserveCrossSeedFiles(first, crossSeedGroups{first.Hash: group, second.Hash: group}, files))
+	require.True(t, shouldPreserveCrossSeedFiles(first, &crossSeedGroups{byHash: map[string][]qbt.Torrent{first.Hash: group, second.Hash: group}}, files))
 	_, ok := crossSeedGroupMembers(first, group, nil, cachedTorrentFilesFetcher(files))
 	require.False(t, ok, "partial overlap must keep both torrents and their files")
 }
@@ -1902,7 +1902,7 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	}
 
 	// findCrossSeedGroup should return both a and b for target a
-	group := testCrossSeedGroups(allTorrents)[allTorrents[0].Hash]
+	group := testCrossSeedGroups(allTorrents).members(allTorrents[0].Hash)
 	require.NotNil(t, group)
 	assert.Len(t, group, 2)
 

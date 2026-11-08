@@ -77,6 +77,8 @@ VOLUME /config
 # Copy binary and entrypoint
 COPY --from=go-builder /app/qui /usr/local/bin/
 COPY distrib/docker/entrypoint.sh /entrypoint.sh
+# The release workflow writes this file with scripts/notices.
+COPY THIRD_PARTY_NOTICES /usr/share/doc/qui/THIRD_PARTY_NOTICES
 
 # Verify Compose user mode still works when shared PUID/PGID variables are present.
 RUN PUID=99 PGID=100 su-exec 99:100 /entrypoint.sh --version
@@ -85,7 +87,8 @@ EXPOSE 7476
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:7476/health || \
+        wget --no-verbose --tries=1 --spider 'http://[::1]:7476/health' || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]

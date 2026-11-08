@@ -19,8 +19,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -69,6 +71,25 @@ type automationSettingsRequest struct {
 	SeasonPackCategory             string                          `json:"seasonPackCategory"`
 	SeasonPackCategoryRules        []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
 	CategoryMappingRules           []models.CategoryMappingRule    `json:"categoryMappingRules"`
+	RSSSourceCategories            []string                        `json:"rssSourceCategories"`
+	RSSSourceTags                  []string                        `json:"rssSourceTags"`
+	RSSSourceExcludeCategories     []string                        `json:"rssSourceExcludeCategories"`
+	RSSSourceExcludeTags           []string                        `json:"rssSourceExcludeTags"`
+	WebhookSourceCategories        []string                        `json:"webhookSourceCategories"`
+	WebhookSourceTags              []string                        `json:"webhookSourceTags"`
+	WebhookSourceExcludeCategories []string                        `json:"webhookSourceExcludeCategories"`
+	WebhookSourceExcludeTags       []string                        `json:"webhookSourceExcludeTags"`
+	// nil keeps a default that is not the zero value.
+	RSSAutomationTags            *[]string `json:"rssAutomationTags"`
+	SeededSearchTags             *[]string `json:"seededSearchTags"`
+	CompletionSearchTags         *[]string `json:"completionSearchTags"`
+	WebhookTags                  *[]string `json:"webhookTags"`
+	SkipPieceBoundarySafetyCheck *bool     `json:"skipPieceBoundarySafetyCheck"`
+	InheritSourceTags            bool      `json:"inheritSourceTags"`
+	SkipAutoResumeRSS            bool      `json:"skipAutoResumeRss"`
+	SkipAutoResumeSeededSearch   bool      `json:"skipAutoResumeSeededSearch"`
+	SkipAutoResumeCompletion     bool      `json:"skipAutoResumeCompletion"`
+	SkipAutoResumeWebhook        bool      `json:"skipAutoResumeWebhook"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool    `json:"gazelleEnabled"`
 	RedactedAPIKey       *string `json:"redactedApiKey"`
@@ -135,6 +156,13 @@ type automationSettingsPatchRequest struct {
 	OrpheusAPIKey                *string                          `json:"orpheusApiKey,omitempty"`
 	SeasonPackTVDBAPIKey         *string                          `json:"seasonPackTvdbApiKey,omitempty"`
 	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
+}
+
+func valueOrDefault[T any](v *T, def T) T {
+	if v == nil {
+		return def
+	}
+	return *v
 }
 
 type optionalInt struct {
@@ -525,62 +553,64 @@ func NewCrossSeedHandler(
 
 // Routes registers the cross-seed routes with explicit middleware ordering.
 func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler) http.Handler, apiKeyQueryMiddleware func(http.Handler) http.Handler) {
+	crossSeed := middleware.Permissions(models.AreaCrossSeed)
+
 	// Register instance-scoped route at top level
-	r.With(authMiddleware).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+	r.With(authMiddleware, crossSeed.Read).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
-		r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.AutobrrApply)
+		r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/apply", h.AutobrrApply)
 		r.Route("/webhook", func(r chi.Router) {
-			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.WebhookCheck)
+			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/check", h.WebhookCheck)
 		})
 
 		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
-			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
-			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
-			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
-			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
+			r.With(crossSeed.Read).Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
+			r.With(crossSeed.Read).Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
+			r.With(crossSeed.Read).Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
+			r.With(crossSeed.Write).Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
-		r.With(authMiddleware).Get("/settings", h.GetAutomationSettings)
-		r.With(authMiddleware).Patch("/settings", h.PatchAutomationSettings)
-		r.With(authMiddleware).Put("/settings", h.UpdateAutomationSettings)
-		r.With(authMiddleware).Get("/status", h.GetAutomationStatus)
-		r.With(authMiddleware).Get("/runs", h.ListAutomationRuns)
-		r.With(authMiddleware).Post("/run", h.TriggerAutomationRun)
-		r.With(authMiddleware).Post("/run/cancel", h.CancelAutomationRun)
+		r.With(authMiddleware, crossSeed.Read).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware, crossSeed.Write).Patch("/settings", h.PatchAutomationSettings)
+		r.With(authMiddleware, crossSeed.Write).Put("/settings", h.UpdateAutomationSettings)
+		r.With(authMiddleware, crossSeed.Read).Get("/status", h.GetAutomationStatus)
+		r.With(authMiddleware, crossSeed.Read).Get("/runs", h.ListAutomationRuns)
+		r.With(authMiddleware, crossSeed.Run).Post("/run", h.TriggerAutomationRun)
+		r.With(authMiddleware, crossSeed.Run).Post("/run/cancel", h.CancelAutomationRun)
 		r.With(authMiddleware).Route("/blocklist", func(r chi.Router) {
-			r.Get("/", h.ListBlocklist)
-			r.Post("/", h.AddBlocklistEntry)
-			r.Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
+			r.With(crossSeed.Read).Get("/", h.ListBlocklist)
+			r.With(crossSeed.Write).Post("/", h.AddBlocklistEntry)
+			r.With(crossSeed.Write).Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
 		})
 		r.With(authMiddleware).Route("/search", func(r chi.Router) {
-			r.Get("/settings", h.GetSearchSettings)
-			r.Patch("/settings", h.PatchSearchSettings)
-			r.Get("/status", h.GetSearchRunStatus)
-			r.Post("/run", h.StartSearchRun)
-			r.Post("/run/cancel", h.CancelSearchRun)
-			r.Get("/runs", h.ListSearchRunHistory)
+			r.With(crossSeed.Read).Get("/settings", h.GetSearchSettings)
+			r.With(crossSeed.Write).Patch("/settings", h.PatchSearchSettings)
+			r.With(crossSeed.Read).Get("/status", h.GetSearchRunStatus)
+			r.With(crossSeed.Run).Post("/run", h.StartSearchRun)
+			r.With(crossSeed.Run).Post("/run/cancel", h.CancelSearchRun)
+			r.With(crossSeed.Read).Get("/runs", h.ListSearchRunHistory)
 		})
 		r.With(authMiddleware).Route("/manual", func(r chi.Router) {
-			r.Post("/proposals", h.ManualMatchProposals)
-			r.Post("/apply", h.ManualMatchApply)
-			r.Post("/assemble/check", h.ManualAssembleCheck)
-			r.Post("/assemble", h.ManualAssembleApply)
+			r.With(crossSeed.Read).Post("/proposals", h.ManualMatchProposals)
+			r.With(crossSeed.Write).Post("/apply", h.ManualMatchApply)
+			r.With(crossSeed.Read).Post("/assemble/check", h.ManualAssembleCheck)
+			r.With(crossSeed.Write).Post("/assemble", h.ManualAssembleApply)
 		})
 		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
-			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
-			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
+			r.With(crossSeed.Read).Get("/{instanceID}", h.GetInstanceCompletionSettings)
+			r.With(crossSeed.Write).Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
 		})
 		r.With(authMiddleware).Route("/routes", func(r chi.Router) {
-			r.Get("/", h.ListCrossSeedRoutes)
-			r.Get("/{instanceID}", h.GetCrossSeedRoute)
-			r.Put("/{instanceID}", h.SaveCrossSeedRoute)
-			r.Delete("/{instanceID}", h.ClearCrossSeedRoute)
-			r.Post("/{instanceID}/test", h.TestCrossSeedRoute)
+			r.With(crossSeed.Read).Get("/", h.ListCrossSeedRoutes)
+			r.With(crossSeed.Read).Get("/{instanceID}", h.GetCrossSeedRoute)
+			r.With(crossSeed.Write).Put("/{instanceID}", h.SaveCrossSeedRoute)
+			r.With(crossSeed.Write).Delete("/{instanceID}", h.ClearCrossSeedRoute)
+			r.With(crossSeed.Write).Post("/{instanceID}/test", h.TestCrossSeedRoute)
 		})
 		r.Route("/season-pack", func(r chi.Router) {
-			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.SeasonPackCheck)
-			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.SeasonPackApply)
-			r.With(authMiddleware).Get("/runs", h.ListSeasonPackRuns)
+			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/check", h.SeasonPackCheck)
+			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/apply", h.SeasonPackApply)
+			r.With(authMiddleware, crossSeed.Read).Get("/runs", h.ListSeasonPackRuns)
 		})
 	})
 }
@@ -675,7 +705,17 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	hideMatchPasskeys(r, response.Matches)
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
+	if middleware.CanReadTrackerPasskeys(r) {
+		return
+	}
+	for i := range matches {
+		matches[i].Tracker = qbittorrent.TrackerOrigin(matches[i].Tracker)
+	}
 }
 
 // SearchTorrentMatches godoc
@@ -868,6 +908,7 @@ func mapCrossSeedErrorStatus(err error) int {
 		errors.Is(err, crossseed.ErrTorrentNotFound),
 		errors.Is(err, crossseed.ErrTorrentNotComplete),
 		errors.Is(err, crossseed.ErrSourceNotSettled),
+		errors.Is(err, crossseed.ErrSourceErrored),
 		errors.Is(err, crossseed.ErrNoIndexersConfigured):
 		return http.StatusBadRequest
 	default:
@@ -1013,12 +1054,11 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	defaults := models.DefaultCrossSeedAutomationSettings()
+
 	// nil keeps the default so PUT clients without the field do not silently
 	// switch to "only complete torrents" (0).
-	autoResumeMaxDownloadMB := models.DefaultAutoResumeMaxDownloadMB
-	if req.AutoResumeMaxDownloadMB != nil {
-		autoResumeMaxDownloadMB = *req.AutoResumeMaxDownloadMB
-	}
+	autoResumeMaxDownloadMB := valueOrDefault(req.AutoResumeMaxDownloadMB, defaults.AutoResumeMaxDownloadMB)
 	if autoResumeMaxDownloadMB < 0 {
 		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
 		return
@@ -1053,6 +1093,24 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackCategory:             strings.TrimSpace(req.SeasonPackCategory),
 		SeasonPackCategoryRules:        normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
 		CategoryMappingRules:           normalizeCategoryMappingRules(req.CategoryMappingRules),
+		RSSSourceCategories:            req.RSSSourceCategories,
+		RSSSourceTags:                  req.RSSSourceTags,
+		RSSSourceExcludeCategories:     req.RSSSourceExcludeCategories,
+		RSSSourceExcludeTags:           req.RSSSourceExcludeTags,
+		WebhookSourceCategories:        req.WebhookSourceCategories,
+		WebhookSourceTags:              req.WebhookSourceTags,
+		WebhookSourceExcludeCategories: req.WebhookSourceExcludeCategories,
+		WebhookSourceExcludeTags:       req.WebhookSourceExcludeTags,
+		RSSAutomationTags:              valueOrDefault(req.RSSAutomationTags, defaults.RSSAutomationTags),
+		SeededSearchTags:               valueOrDefault(req.SeededSearchTags, defaults.SeededSearchTags),
+		CompletionSearchTags:           valueOrDefault(req.CompletionSearchTags, defaults.CompletionSearchTags),
+		WebhookTags:                    valueOrDefault(req.WebhookTags, defaults.WebhookTags),
+		InheritSourceTags:              req.InheritSourceTags,
+		SkipAutoResumeRSS:              req.SkipAutoResumeRSS,
+		SkipAutoResumeSeededSearch:     req.SkipAutoResumeSeededSearch,
+		SkipAutoResumeCompletion:       req.SkipAutoResumeCompletion,
+		SkipAutoResumeWebhook:          req.SkipAutoResumeWebhook,
+		SkipPieceBoundarySafetyCheck:   valueOrDefault(req.SkipPieceBoundarySafetyCheck, defaults.SkipPieceBoundarySafetyCheck),
 		GazelleEnabled:                 req.GazelleEnabled,
 		RedactedAPIKey:                 patchSecret(req.RedactedAPIKey),
 		OrpheusAPIKey:                  patchSecret(req.OrpheusAPIKey),

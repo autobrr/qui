@@ -4,6 +4,8 @@
  */
 
 import type {
+  ApiKey,
+  ApiKeyRequest,
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
@@ -34,6 +36,7 @@ import type {
   CrossSeedRouteStatus,
   CrossSeedRouteTestResult,
   CrossSeedInstanceResult,
+  CrossSeedResultClass,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
   CrossSeedRun,
@@ -490,6 +493,7 @@ type RawCrossSeedInstanceResult = {
   instance_name: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
   cross_seed_instance_id?: number
@@ -502,6 +506,7 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     instanceName: instance.instance_name,
     success: instance.success,
     status: instance.status,
+    class: instance.class,
     message: instance.message,
     crossSeedInstanceId: instance.cross_seed_instance_id,
     crossSeedInstanceName: instance.cross_seed_instance_name,
@@ -563,6 +568,7 @@ export interface StreamSubscription {
   search?: string
   filters?: TorrentFilters | null
   summary?: boolean
+  groupCopies?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -577,6 +583,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     search: stream.search ?? "",
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
   }
 }
 
@@ -736,17 +743,40 @@ class ApiClient {
     authorizationUrl: string
     disableBuiltInLogin: boolean
     issuerUrl: string
+    providerUnavailable: boolean
   }> {
     try {
-      return await this.request("/auth/oidc/config")
-    } catch {
-      // Return default config if OIDC is not configured
-      return {
-        enabled: false,
-        authorizationUrl: "",
-        disableBuiltInLogin: false,
-        issuerUrl: "",
+      const config = await this.request<{
+        enabled: boolean
+        authorizationUrl: string
+        disableBuiltInLogin: boolean
+        issuerUrl: string
+      }>("/auth/oidc/config")
+      return { ...config, providerUnavailable: false }
+    } catch (error) {
+      // 503: OIDC is configured, but qui has not reached the identity provider yet.
+      if (error instanceof APIError && error.status === 503) {
+        const data = error.data as { disableBuiltInLogin?: boolean } | undefined
+        return {
+          enabled: true,
+          authorizationUrl: "",
+          disableBuiltInLogin: data?.disableBuiltInLogin === true,
+          issuerUrl: "",
+          providerUnavailable: true,
+        }
       }
+      // OIDC is off: 404 when the routes are not registered, 428 before setup (RequireSetup skips it when OIDC is on).
+      if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
+        return {
+          enabled: false,
+          authorizationUrl: "",
+          disableBuiltInLogin: false,
+          issuerUrl: "",
+          providerUnavailable: false,
+        }
+      }
+      // A 429 from the /auth throttle or a network error says nothing about the login policy.
+      throw error
     }
   }
 
@@ -980,6 +1010,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -991,6 +1022,7 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,
@@ -1074,6 +1106,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1087,6 +1120,7 @@ class ApiClient {
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`,
@@ -2167,20 +2201,21 @@ class ApiClient {
   }
 
   // API Key endpoints
-  async getApiKeys(): Promise<{
-    id: number
-    name: string
-    key?: string
-    createdAt: string
-    lastUsedAt?: string
-  }[]> {
+  async getApiKeys(): Promise<ApiKey[]> {
     return this.request("/api-keys")
   }
 
-  async createApiKey(name: string): Promise<{ id: number; key: string; name: string }> {
+  async createApiKey(data: ApiKeyRequest): Promise<{ id: number; key: string; name: string }> {
     return this.request("/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateApiKey(id: number, data: ApiKeyRequest): Promise<ApiKey> {
+    return this.request(`/api-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 

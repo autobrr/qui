@@ -30,6 +30,7 @@ import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { GROUPED_SELECT_COLUMN_WIDTH } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
 import { useTable } from "@tanstack/react-table"
@@ -72,6 +73,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
+import { countTickedCopies, isCopyGroupOpen, summarizeCopyGroups } from "@/lib/copy-groups"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { cn } from "@/lib/utils"
 import type {
@@ -126,6 +128,7 @@ const NAME_COLUMN_MIN_WIDTH = 160
 const STRETCH_RESIZE_SETTLE_MS = 120
 // Must match the .ss-row-gutter width in spreadsheet-chrome.css.
 const SPREADSHEET_ROW_GUTTER_WIDTH = 44
+const NO_TICKED_COPIES: ReadonlyMap<string, number> = new Map()
 
 function columnDefId(col: TorrentTableColumnDef): string | null {
   if ("id" in col && col.id) return col.id
@@ -377,6 +380,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     streamRetryAttempt,
     isCrossSeedFiltering,
     isCrossInstanceEndpoint,
+    visibleRows,
+    groupExpansion,
+    toggleGroup,
+    copyGroupsReady,
   } = useTorrentListController({
     instanceId,
     instanceIds,
@@ -554,6 +561,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
+  // The warning icon and the sorted value read all loaded rows, hidden copies included.
+  const copyGroups = useMemo(() => summarizeCopyGroups(torrents), [torrents])
+  // With no sort set by the user, the server sorts by added time.
+  const sortedColumnId = sorting[0]?.id ?? "added_on"
 
   const effectiveServerState = useEffectiveServerState({ instanceId, serverState })
 
@@ -582,7 +593,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleCheckboxPointerDown,
     handleCheckboxChange,
   } = useTorrentSelection({
-    sortedTorrents,
+    visibleTorrents: visibleRows,
+    groupExpansion,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,
@@ -590,6 +602,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   const { selection, publishSummary } = useTorrentSelectionContext()
+  // Select all mode already reaches the hidden copies, so the badge counts no ticks there.
+  const tickedCopies = useMemo(
+    () => copyGroups.size === 0 || selection.isAllSelected || selection.selected.size === 0 ? NO_TICKED_COPIES : countTickedCopies(torrents, isTorrentSelected),
+    [copyGroups, selection, torrents, isTorrentSelected]
+  )
 
   // Memoize columns to avoid unnecessary recalculations
   const { columns, torrentIdentityCounts } = useTorrentTableColumns({
@@ -627,14 +644,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [columns, columnVisibility, columnSizing])
   const availableWidth = containerWidth - (showRowGutter ? SPREADSHEET_ROW_GUTTER_WIDTH : 0)
   const effectiveStretch = stretchNameColumn && fixedColsWidth + NAME_COLUMN_MIN_WIDTH <= availableWidth
+  const widenSelect = copyGroupsReady && columnVisibility.name === false
   const effectiveColumnSizing = useMemo(() => {
-    if (!effectiveStretch) return columnSizing
-    return { ...columnSizing, name: availableWidth - fixedColsWidth }
-  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth])
+    const sizing = widenSelect ? { ...columnSizing, select: GROUPED_SELECT_COLUMN_WIDTH } : columnSizing
+    if (!effectiveStretch) return sizing
+    return { ...sizing, name: availableWidth - fixedColsWidth }
+  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth, widenSelect])
 
   const table = useTable({
     features: torrentTableFeatures,
-    data: sortedTorrents,
+    data: visibleRows,
     columns,
     // For cross-seed filtering, enable client-side sorting and filtering
     // For regular filtering, backend handles sorting and column filters
@@ -710,6 +729,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getSelectionIdentity,
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
+    isGrouped: copyGroups.size > 0,
     columnFiltersExpr,
     clientSideFiltering: isCrossSeedFiltering,
     filters,
@@ -1267,7 +1287,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
             aria-label={t("tableView.tableAriaLabel")}
-            aria-rowcount={totalCount}
+            // -1 is the ARIA value for an unknown count: the visible rows of a grouped list are known only after all pages load.
+            aria-rowcount={copyGroupsReady ? -1 : totalCount}
             aria-colcount={table.getVisibleLeafColumns().length}
             onDropPayload={handleDropPayload}
           >
@@ -1338,6 +1359,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   const rowInstanceID = (torrent as Partial<CrossInstanceTorrent>).instanceId ?? instanceId
                   const isSelected = selectedTorrent?.hash === torrent.hash && selectedInstanceID === rowInstanceID
                   const isRowSelected = isTorrentSelected(torrent)
+                  const groupId = torrent.copy_group?.id
+                  const group = groupId === undefined ? undefined : copyGroups.get(groupId)
+                  const isGroupRow = group !== undefined && group.size > 1
+                  const isGroupTop = isGroupRow && group.top === torrent
+                  const isGroupOpen = groupId !== undefined && isGroupTop && isCopyGroupOpen(groupExpansion, groupId)
+                  const isCollapsedTop = isGroupTop && !isGroupOpen
+                  const sortedTorrent = isCollapsedTop && group.firstSorted !== torrent ? group.firstSorted : undefined
 
                   return (
                     <TorrentTableRow
@@ -1359,6 +1387,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       compact={compactRowProps}
                       onRowClick={handleRowClick}
                       onRowContextMenu={handleRowContextMenu}
+                      copyGroupId={isGroupTop ? groupId : undefined}
+                      copyGroupOpen={isGroupOpen}
+                      copies={isGroupTop ? group.size - 1 : 0}
+                      hiddenCopyProblem={isCollapsedTop && group.hiddenProblem}
+                      hiddenCopyTicks={isCollapsedTop && groupId !== undefined ? tickedCopies.get(groupId) ?? 0 : 0}
+                      sortedTorrent={sortedTorrent}
+                      sortedColumnId={sortedTorrent ? sortedColumnId : undefined}
+                      nestedCopy={isGroupRow && !isGroupTop}
+                      onToggleCopyGroup={toggleGroup}
                     />
                   )
                 })}

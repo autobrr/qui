@@ -555,7 +555,8 @@
         "move": "Sposta",
         "externalProgram": "Programma esterno",
         "dryRun": "Dry run",
-        "exportToInstance": "Esporta nell'istanza"
+        "exportToInstance": "Esporta nell'istanza",
+        "ruleSkipped": "Regola non eseguita"
       },
       "shareLimit": {
         "global": "Globale",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "{{count}} voci di attività eliminate",
         "deleteActivityFailed": "Eliminazione dell'attività non riuscita"
       },
-      "exported": "Esportato"
+      "exported": "Esportato",
+      "skipped": "Saltata"
     },
     "runWorkflowNow": {
       "action": "Esegui ora",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Esecuzione completata per \"{{name}}\" con errori. Consulta il registro attività.",
         "dryRunCompleted": "Simulazione completata per \"{{name}}\"",
         "inProgress": "È in corso un'altra esecuzione. Riprova tra un momento.",
-        "failed": "Impossibile eseguire il workflow"
+        "failed": "Impossibile eseguire il workflow",
+        "skipped": "\"{{name}}\" non è stata eseguita. Vedi il registro attività."
       }
     },
     "workflowPreview": {
@@ -756,6 +759,8 @@
       "viewPreview": "Visualizza anteprima",
       "recentScans": "Scansioni recenti",
       "scannedPaths": "Percorsi selezionati per la scansione ({{total}})",
+      "scanPathsLoading": "Caricamento dei percorsi di scansione...",
+      "scanPathsLoadFailed": "Impossibile caricare i percorsi di scansione",
       "zeroOrphans": "0 orfani",
       "deletedStats": "{{deleted}} eliminati · {{size}}",
       "deletedFiles_one": "{{count}} file",
@@ -962,7 +967,8 @@
         "external_program": "Programma esterno",
         "auto_managed": "Gestito automaticamente",
         "dry_run_no_match": "Simulazione (nessuna corrispondenza)",
-        "exported_to_instance": "Esporta verso l'istanza"
+        "exported_to_instance": "Esporta verso l'istanza",
+        "rule_skipped": "Regola non eseguita"
       }
     },
     "reannounceOverview": {
@@ -1382,8 +1388,7 @@
       "enableDryRunPrompt": {
         "title": "Abilitare la simulazione (dry run)?",
         "description": "La simulazione (dry run) simula tutte le azioni senza modificare nulla. Puoi rivedere i torrent interessati nel registro delle attività.",
-        "enableWithout": "Abilita senza simulazione",
-        "enableWith": "Abilita con simulazione"
+        "saveAndEnable": "Salva e abilita"
       },
       "customGroup": {
         "title": "Aggiungi gruppo personalizzato",
@@ -1432,7 +1437,8 @@
           "moved": "Sposta",
           "externalProgram": "Programma esterno",
           "noMatches": "Nessuna corrispondenza",
-          "exportedToInstance": "Esporta verso istanza"
+          "exportedToInstance": "Esporta verso istanza",
+          "ruleSkipped": "Regola non eseguita"
         },
         "actionFallback": "Azione sconosciuta ({{action}})",
         "summary": {

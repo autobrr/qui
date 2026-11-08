@@ -365,6 +365,8 @@ The same steps apply to Lidarr and Readarr.
 
 :::tip
 The webhook uses query-param API key authentication (`?apikey=...`), matching the cross-seed webhook format. You can also use the `X-API-Key` header instead.
+
+The key needs **Dir Scan: run** and no Instance limit. See [API key permissions](../../api/permissions.md).
 :::
 
 #### How path matching works

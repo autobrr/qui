@@ -37,8 +37,11 @@ type linkModeResult struct {
 // linkMode lists everything that differs between hardlink and reflink mode.
 // processLinkMode is the one body behind both; see docs/adr/0006.
 type linkMode struct {
-	name    string
-	enabled func(*models.Instance) bool
+	name string
+	// addedStatus and errorStatus are the result statuses of the mode, written
+	// out so that a code search finds each status.
+	addedStatus, errorStatus string
+	enabled                  func(*models.Instance) bool
 	// materialize creates the link tree. Reflink mode probes filesystem support
 	// first and returns *linkUnsupportedError when the probe fails.
 	materialize func(ctx context.Context, backend fsops.Backend, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
@@ -78,8 +81,10 @@ func (s *Service) processHardlinkMode(
 	return s.processLinkMode(ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 		matchedTorrent, matchType, sourceFiles, candidateFiles, props, baseCategory, crossCategory,
 		linkMode{
-			name:    "hardlink",
-			enabled: func(instance *models.Instance) bool { return instance.UseHardlinks },
+			name:        "hardlink",
+			addedStatus: "added_hardlink",
+			errorStatus: "hardlink_error",
+			enabled:     func(instance *models.Instance) bool { return instance.UseHardlinks },
 			materialize: func(ctx context.Context, backend fsops.Backend, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 				return backend.HardlinkTree(ctx, plan)
 			},
@@ -110,6 +115,8 @@ func (s *Service) processReflinkMode(
 		matchedTorrent, matchType, sourceFiles, candidateFiles, props, baseCategory, crossCategory,
 		linkMode{
 			name:                          "reflink",
+			addedStatus:                   "added_reflink",
+			errorStatus:                   "reflink_error",
 			enabled:                       func(instance *models.Instance) bool { return instance.UseReflinks },
 			materialize:                   s.materializeReflink,
 			poolMode:                      models.CrossSeedPartialPoolModeReflink,
@@ -185,7 +192,7 @@ func (s *Service) processLinkMode(
 	failure := func(status, message string) linkModeResult {
 		return linkModeResult{Used: true, Result: candidate.newResult(status, message)}
 	}
-	linkError := func(message string) linkModeResult { return failure(mode.name+"_error", message) }
+	linkError := func(message string) linkModeResult { return failure(mode.errorStatus, message) }
 
 	var instance *models.Instance
 	var err error
@@ -617,7 +624,7 @@ func (s *Service) processLinkMode(
 	}
 
 	success := poolRegistrationErr == nil
-	status := "added_" + mode.name
+	status := mode.addedStatus
 	if !success {
 		status = partialPoolRegistrationErrorStatus
 	}

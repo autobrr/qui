@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // deletionSelectionInput is what the Deletion selection reads. The run, the dry run and
@@ -23,7 +24,7 @@ type deletionSelectionInput struct {
 	// torrents are sorted in place by the sort order of each rule.
 	torrents   []qbt.Torrent
 	evalCtx    *EvalContext
-	crossSeeds crossSeedGroups
+	crossSeeds *crossSeedGroups
 	// skip leaves out the torrents that a live run handled recently. The dry run and the
 	// preview pass nil.
 	skip func(hash string) bool
@@ -171,6 +172,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		claims = append(claims, ruleClaims...)
 	}
 	evalCtx.PersistFreeSpaceSourceState()
+	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
 	// The sort order is final now, so pointers into in.torrents stay valid.
 	triggerTorrents := make(map[string]*qbt.Torrent, len(sel.triggers))
@@ -196,6 +198,26 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 	return sel
 }
 
+// askDeleteGroups asks the run session in one round for the groups of the
+// claimed triggers that expand or preserve, with the hardlink copies that an
+// include rule follows, and for the other-instance Shared-file check.
+func askDeleteGroups(claims []deletionClaim, crossSeeds *crossSeedGroups, hardlinks *HardlinkIndex) {
+	var hashes, linkHashes []string
+	for _, claim := range claims {
+		switch getDeleteMode(claim.rule) {
+		case DeleteModeWithFilesIncludeCrossSeeds:
+			if claim.rule.Conditions.Delete.IncludeHardlinks && hardlinks != nil {
+				linkHashes = append(linkHashes, claim.hash)
+			} else {
+				hashes = append(hashes, claim.hash)
+			}
+		case DeleteModeWithFilesPreserveCrossSeeds:
+			hashes = append(hashes, claim.hash)
+		}
+	}
+	crossSeeds.resolveDeletes(hashes, linkHashes, hardlinks, true)
+}
+
 func deleteExpandsGroups(rule *models.Automation) bool {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return false
@@ -216,6 +238,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	projects := !in.eligibleView && ConditionUsesField(deleteAction.Condition, FieldFreeSpace)
+	readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 	stats := getOrCreateRuleStats(in.stats, rule)
 	countNotMet := func() {
 		if stats != nil {
@@ -223,25 +246,42 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 		}
 	}
 
-	var claims []deletionClaim
-	for _, torrent := range in.torrents {
+	inScope := func(torrent *qbt.Torrent) bool {
 		if sel.isClaimed(torrent.Hash) || (in.skip != nil && in.skip(torrent.Hash)) {
-			continue
+			return false
 		}
-		if !trackers.match(rule.TrackerPattern, torrent, s) {
+		// A torrent without a private value drops out of a rule that reads it. ADR 0039.
+		return trackers.match(rule.TrackerPattern, *torrent, s) && (!readsPrivate || !qbittorrent.PrivateUnknown(torrent))
+	}
+	var readAhead *freeSpaceReadAhead
+	if projects && in.evalCtx.FilesToClear != nil {
+		var hardlinks *HardlinkIndex
+		if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && deleteAction.IncludeHardlinks {
+			hardlinks = in.evalCtx.hardlinkIndex
+		}
+		readAhead = newFreeSpaceReadAhead(in.crossSeeds, hardlinks, deleteKeepsFilesForOtherInstances(deleteAction))
+	}
+
+	var claims []deletionClaim
+	for i := range in.torrents {
+		torrent := &in.torrents[i]
+		if !inScope(torrent) {
 			continue
 		}
 		// Safety: delete must always have an explicit condition.
-		if deleteAction.Condition == nil || !shouldDeleteTorrent(rule, &torrent, in.evalCtx) {
+		if deleteAction.Condition == nil || !shouldDeleteTorrent(rule, torrent, in.evalCtx) {
 			countNotMet()
 			continue
 		}
-		if projects && !updateCumulativeFreeSpaceCleared(torrent, in.evalCtx, deleteMode, in.crossSeeds, deleteAction.IncludeHardlinks) {
-			countNotMet()
-			if deleteMode == DeleteModeWithFiles {
-				return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+		if projects {
+			readAhead.ask(in.torrents, i, inScope)
+			if !updateCumulativeFreeSpaceCleared(*torrent, in.evalCtx, deleteMode, in.crossSeeds, deleteAction.IncludeHardlinks) {
+				countNotMet()
+				if deleteMode == DeleteModeWithFiles {
+					return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+				}
+				continue
 			}
-			continue
 		}
 		claims = append(claims, deletionClaim{hash: torrent.Hash, rule: rule})
 	}
@@ -333,7 +373,8 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
-		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) {
+		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
+			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return
 		}

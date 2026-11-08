@@ -36,6 +36,8 @@ interface GeneralTabHorizontalProps {
   displayComment?: string
   displayCreatedBy?: string
   queueingEnabled?: boolean
+  // The formatted time until the next announce; undefined hides the row.
+  reannounceIn?: string
 }
 
 export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
@@ -55,6 +57,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   displayComment,
   displayCreatedBy,
   queueingEnabled,
+  reannounceIn,
 }: GeneralTabHorizontalProps) {
   const { t } = useTranslation("torrents")
   const { formatTimestamp } = useDateTimeFormatters()
@@ -282,6 +285,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.time")}</h4>
             <StatRow label={t("generalTab.timeActive")} value={formatDuration(properties.time_elapsed || 0)} />
             <StatRow label={t("generalTab.seedingTime")} value={formatDuration(properties.seeding_time || 0)} />
+            {reannounceIn !== undefined && <StatRow label={t("tableColumns.reannounce")} value={reannounceIn} />}
             <StatRow label={t("generalTab.addedOn")} value={formatTimestamp(properties.addition_date, true)} />
             {properties.completion_date > 0 && (
               <StatRow label={t("generalTab.completedOn")} value={formatTimestamp(properties.completion_date, true)} />

@@ -152,11 +152,10 @@
     "dark": "Scuro",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "Passato alla modalità {{mode}}",
     "switchedToTheme": "Passato al tema {{theme}}",
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
+    "premiumThemeError": "Questo tema richiede una licenza. Apri Impostazioni → Temi per attivare una licenza."
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",
@@ -246,7 +245,7 @@
     "perkSuffix": "su Discord e la nostra eterna gratitudine.",
     "yearly": "{{price}} / anno",
     "monthly": "{{price}} / mese",
-    "notLicense": "I temi premium sono un acquisto unico separato."
+    "notLicense": "La licenza dei temi è un acquisto unico separato."
   },
   "labels": {
     "path": "Percorso"

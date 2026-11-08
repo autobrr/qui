@@ -556,7 +556,8 @@
         "move": "Přesunout",
         "externalProgram": "Externí program",
         "dryRun": "Zkušební běh",
-        "exportToInstance": "Exportovat do instance"
+        "exportToInstance": "Exportovat do instance",
+        "ruleSkipped": "Pravidlo nespuštěno"
       },
       "shareLimit": {
         "global": "Globální",
@@ -685,7 +686,8 @@
         "deletedActivityEntries": "Smazáno {{count}} aktivit",
         "deleteActivityFailed": "Nepodařilo se smazat aktivitu"
       },
-      "exported": "Exportováno"
+      "exported": "Exportováno",
+      "skipped": "Přeskočeno"
     },
     "runWorkflowNow": {
       "action": "Spustit nyní",
@@ -702,7 +704,8 @@
         "completedWithErrors": "Běh pro \"{{name}}\" skončil s chybami. Podívejte se do protokolu aktivity.",
         "dryRunCompleted": "Zkušební běh dokončen pro \"{{name}}\"",
         "inProgress": "Probíhá jiný běh. Zkuste to za chvíli znovu.",
-        "failed": "Postup automatizace se nepodařilo spustit"
+        "failed": "Postup automatizace se nepodařilo spustit",
+        "skipped": "„{{name}}“ se nespustilo. Podívejte se do protokolu aktivity."
       }
     },
     "workflowPreview": {
@@ -779,6 +782,8 @@
       "viewPreview": "Zobrazit náhled",
       "recentScans": "Nedávné vyhledávání",
       "scannedPaths": "Vybrané cesty ke skenování ({{total}})",
+      "scanPathsLoading": "Načítání cest ke skenování...",
+      "scanPathsLoadFailed": "Cesty ke skenování se nepodařilo načíst",
       "zeroOrphans": "0 sirotků",
       "deletedStats": "{{deleted}} smazáno · {{size}}",
       "deletedFiles_one": "{{count}} soubor",
@@ -996,7 +1001,8 @@
         "external_program": "Externí program",
         "auto_managed": "Automatická správa",
         "dry_run_no_match": "Zkušební běh (bez shody)",
-        "exported_to_instance": "Exportováno do instance"
+        "exported_to_instance": "Exportováno do instance",
+        "rule_skipped": "Pravidlo nespuštěno"
       }
     },
     "reannounceOverview": {
@@ -1417,8 +1423,7 @@
       "enableDryRunPrompt": {
         "title": "Povolit simulaci?",
         "description": "Simulace neprovádí žádné akce. Můžete zkontrolovat ovlivněné torrenty v logu aktivit.",
-        "enableWithout": "Povolit bez simulace",
-        "enableWith": "Povolit se simulací"
+        "saveAndEnable": "Uložit a povolit"
       },
       "customGroup": {
         "title": "Přidat vlastní skupinu",
@@ -1467,7 +1472,8 @@
           "moved": "Přesunuto",
           "externalProgram": "Externí program",
           "noMatches": "Žádné shody",
-          "exportedToInstance": "Exportováno do instance"
+          "exportedToInstance": "Exportováno do instance",
+          "ruleSkipped": "Pravidlo nespuštěno"
         },
         "actionFallback": "Neznámá akce ({{action}})",
         "summary": {

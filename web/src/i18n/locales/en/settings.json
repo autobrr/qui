@@ -12,7 +12,7 @@
     "externalPrograms": "External Programs",
     "notifications": "Notifications",
     "dateTime": "Time & Language",
-    "premiumThemes": "Premium Themes",
+    "premiumThemes": "Themes",
     "security": "Security",
     "logs": "Logs"
   },
@@ -129,16 +129,71 @@
     "apiDocs": "API Docs",
     "description": "API keys allow external applications to access your qBittorrent instances.",
     "createButton": "Create API Key",
+    "editButton": "Edit {{name}}",
+    "deleteButton": "Delete {{name}}",
     "loading": "Loading API keys...",
     "empty": "No API keys created yet",
     "createDialog": {
       "title": "Create API Key",
-      "description": "Give your API key a descriptive name to remember its purpose.",
+      "description": "Give the key a name, and pick only the access that it needs.",
       "nameLabel": "Name",
       "namePlaceholder": "e.g., Automation Script",
       "nameRequired": "Name is required",
       "submit": "Create API Key",
       "creating": "Creating..."
+    },
+    "editDialog": {
+      "title": "Edit API Key",
+      "description": "Changes apply on the next request of this key. qui never shows the key itself again.",
+      "submit": "Save changes",
+      "saving": "Saving..."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "Write includes read and run. Run does not include read, because settings hold credentials.",
+      "required": "Pick at least one permission.",
+      "access": "Access",
+      "allAreas": "All areas",
+      "allAreasExcept": "All areas except {{areas}}",
+      "refusedByLimit": "Cross-seed and Dir Scan refuse a key with an instance limit, so qui does not save those permissions.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Show access by area for {{name}}",
+      "partialArea": "{{area}} ({{levels}} only)",
+      "legend": {
+        "title": "One block per permission area:",
+        "none": "no access"
+      },
+      "levels": {
+        "read": "read",
+        "run": "run",
+        "write": "write"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-seed",
+        "dirScan": "Dir Scan",
+        "automations": "Automations",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan scan",
+        "externalPrograms": "External programs",
+        "indexers": "Indexers",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Settings",
+        "logs": "Logs",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instance limit",
+      "help": "Pick the instances that this key can reach. No pick means all instances, also the ones that you add later.",
+      "reaches": "Reaches",
+      "all": "All instances",
+      "only": "Only {{instances}}",
+      "none": "No instances. The limit holds only deleted instances.",
+      "deleted": "Deleted instance {{id}}"
     },
     "newKey": {
       "label": "Your new API key",
@@ -156,7 +211,9 @@
       "created": "API key created successfully",
       "createFailed": "Failed to create API key",
       "deleted": "API key deleted successfully",
-      "deleteFailed": "Failed to delete API key"
+      "deleteFailed": "Failed to delete API key",
+      "updated": "API key updated successfully",
+      "updateFailed": "Failed to update API key"
     }
   },
   "externalPrograms": {
@@ -420,38 +477,37 @@
     "selector": {
       "title": "Theme Selection",
       "loadingDescription": "Loading available themes...",
-      "description": "Choose from available themes. Premium themes require a valid license.",
-      "verificationUnavailable": "License verification unavailable. Premium theme switching is temporarily disabled.",
-      "notLoaded": "Premium themes not loaded",
-      "notLoadedDescription": "Configure",
-      "notLoadedAnd": "and run",
-      "premium": "Premium",
-      "pro": "Pro",
+      "description": "Choose from available themes. Some themes need a valid license.",
+      "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
+      "notLoaded": "Licensed themes not loaded",
+      "notLoadedDescription": "Run",
       "free": "Free",
       "locked": "Locked",
-      "lock": "Lock"
+      "lock": "Lock",
+      "showTheme": "Show",
+      "hideTheme": "Hide"
     },
     "toasts": {
-      "premiumRequired": "Premium license required",
-      "premiumRequiredDescription": "Unlock premium themes by adding a valid premium license."
+      "premiumRequired": "License required",
+      "premiumRequiredDescription": "Add a valid license to unlock all themes."
     },
     "license": {
       "loadingTitle": "License Management",
       "loadingDescription": "Loading theme licenses...",
       "managementTitle": "License Management",
-      "managementDescription": "Manage your theme license and premium access",
+      "managementDescription": "Manage your theme license",
       "providers": {
         "licensePortal": "license portal"
       },
       "status": {
-        "unlockTitle": "Unlock Premium Themes",
+        "unlockTitle": "Unlock all themes",
         "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
-        "activeTitle": "Premium Access Active",
-        "activeDescription": "You have access to all current and future premium themes",
+        "activeTitle": "License Active",
+        "activeDescription": "You have access to all current and future themes",
         "activationRequiredTitle": "License Activation Required",
         "activationRequiredDescription": "Your license needs to be activated on this machine",
         "offlineTitle": "License Service Unreachable",
-        "offlineDescription": "qui could not reach the license service for 7 days, so premium themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
+        "offlineDescription": "qui could not reach the license service for 7 days, so the licensed themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
       },
       "portalHelp": {
         "prefix": "Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the",
@@ -503,7 +559,7 @@
         "addLicense": "Add License",
         "remove": "Remove",
         "removing": "Removing...",
-        "getPremium": "Get Premium",
+        "getPremium": "Get a license",
         "reactivate": "Re-activate License",
         "activating": "Activating...",
         "copyLicenseKey": "Copy License Key",
@@ -519,17 +575,17 @@
         "recoverPrefix": "If needed, you can recover it later from your"
       },
       "addDialog": {
-        "title": "Add Premium License",
-        "description": "Enter your premium theme license key to unlock all premium themes.",
+        "title": "Add License",
+        "description": "Enter your license key to unlock all themes.",
         "label": "License Key",
-        "placeholder": "Enter your premium theme license key",
+        "placeholder": "Enter your license key",
         "recoverKey": "Recover key?",
         "validation": {
           "required": "License key is required"
         }
       },
       "paymentDialog": {
-        "title": "Get Premium License",
+        "title": "Get a License",
         "description": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "steps": {
           "choosePaymentMethod": {
@@ -561,10 +617,10 @@
       "copiedVerify": "Verification command copied",
       "failedCopyVerify": "Failed to copy verification command",
       "toasts": {
-        "activationSuccessPremium": "Premium access activated! Thank you!",
-        "paymentCompleted": "Payment completed. Add your premium license key to finish setup.",
+        "activationSuccessPremium": "License activated! Thank you!",
+        "paymentCompleted": "Payment completed. Add your license key to finish setup.",
         "paymentNotCompleted": "Payment did not complete successfully.",
-        "returnedFromCheckout": "Returned from checkout. Add your premium license key when ready.",
+        "returnedFromCheckout": "Returned from checkout. Add your license key when ready.",
         "keyCopied": "License key copied to clipboard",
         "copyFailed": "Failed to copy license key",
         "removedFromMachine": "License removed from this machine"
@@ -573,9 +629,9 @@
     "custom": {
       "badge": "Custom",
       "title": "Custom Themes",
-      "lockedTitle": "Custom themes are a premium feature",
-      "lockedDescription": "Unlock premium to sideload your own theme CSS files from a directory on disk.",
-      "unlockCta": "Unlock premium",
+      "lockedTitle": "Custom themes need a license",
+      "lockedDescription": "Get a license to sideload your own theme CSS files from a directory on disk.",
+      "unlockCta": "Get a license",
       "refresh": "Refresh",
       "detectedCount": "Themes found: {{total}}",
       "parseErrorsTitle": "Could not parse these files:",

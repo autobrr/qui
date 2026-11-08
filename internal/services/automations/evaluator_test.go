@@ -805,7 +805,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorEqual,
 				Value:    "true",
 			},
-			torrent:  qbt.Torrent{Private: true},
+			torrent:  qbt.Torrent{Private: true, HasMetadata: new(true)},
 			expected: true,
 		},
 		{
@@ -815,7 +815,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorEqual,
 				Value:    "false",
 			},
-			torrent:  qbt.Torrent{Private: false},
+			torrent:  qbt.Torrent{Private: false, HasMetadata: new(true)},
 			expected: true,
 		},
 		{
@@ -825,7 +825,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 				Operator: OperatorNotEqual,
 				Value:    "true",
 			},
-			torrent:  qbt.Torrent{Private: false},
+			torrent:  qbt.Torrent{Private: false, HasMetadata: new(true)},
 			expected: true,
 		},
 	}
@@ -4445,5 +4445,34 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
 		})
+	}
+}
+
+// regression: #3870
+func TestEvaluateCondition_StateCompletedReadsProgress(t *testing.T) {
+	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "completed"}
+
+	for _, state := range qbt.KnownTorrentStates() {
+		t.Run(string(state), func(t *testing.T) {
+			done := qbt.Torrent{Hash: "hash1", State: state, Progress: 1.0}
+			if !EvaluateConditionWithContext(cond, done, nil, 0) {
+				t.Fatalf("expected a torrent at 100%% progress in state %s to match completed", state)
+			}
+
+			partial := qbt.Torrent{Hash: "hash1", State: state, Progress: 0.5}
+			if EvaluateConditionWithContext(cond, partial, nil, 0) {
+				t.Fatalf("expected a torrent at 50%% progress in state %s not to match completed", state)
+			}
+		})
+	}
+}
+
+// regression: #3870
+func TestEvaluateCondition_StateDownloadingMatchesForcedMetaDL(t *testing.T) {
+	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "downloading"}
+	torrent := qbt.Torrent{Hash: "hash1", State: qbt.TorrentStateForcedMetaDl}
+
+	if !EvaluateConditionWithContext(cond, torrent, nil, 0) {
+		t.Fatalf("expected forcedMetaDL to match downloading")
 	}
 }

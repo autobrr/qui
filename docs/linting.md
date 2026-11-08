@@ -6,7 +6,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 
 - `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint` and `make lint-ratchet`.
 - `make lint`: golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`. A frontend lint error in any file fails it, not only an error in a changed file.
-- `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request.
+- `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request. The target compares with `git merge-base HEAD develop`, which uses your local `develop`. If a merge is not committed yet, or your local `develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop` and then `go run ./scripts/ratchet`, which compares with `origin/develop`.
 - `make lint-json`: write lint output to `lint-report.json`.
 - `make fmt`: gofmt + frontend eslint fix on changed files.
 - `make gofix-changed`: apply `go fix` on changed Go files only.
@@ -40,6 +40,8 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - When you fix a problem, lower the count of its file in the same change. Delete the entry at 0. The check fails until the count matches.
 - Do not hide `gocognit` with a `nolint` comment. Split the function.
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
+- To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
+- If you move code that has ratchet problems into a new file, or rename such a file, the new path needs an allowlist entry. Rule 3 in `scripts/ratchet/main.go` then fails with "the entry grew from 0 to N", also when the totals do not change. No flag skips rule 3, so a maintainer merges that pull request past the failed check.
 
 Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and opens a pull request with the `ratchet` label. ADR 0020 describes it.
 

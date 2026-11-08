@@ -274,6 +274,7 @@
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
@@ -1560,6 +1561,7 @@
         "target_not_found": "No s'ha trobat la destinació en aquesta instància.",
         "incomplete": "La baixada de la destinació és incompleta.",
         "not_settled": "Aquest torrent encara s'està movent o comprovant. Torneu-ho a provar quan acabi.",
+        "errored": "Aquest torrent té un error o li falten fitxers. Corregiu-ho i torneu-ho a provar.",
         "no_episode_identity": "No s'ha pogut interpretar el número d'episodi.",
         "file_list_unavailable": "La llista de fitxers de la destinació no està disponible.",
         "episode_file_invalid": "La destinació ha de contenir un fitxer reproduïble amb la identitat d'episodi seleccionada.",
@@ -1678,5 +1680,17 @@
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
+    "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

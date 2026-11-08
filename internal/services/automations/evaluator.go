@@ -54,6 +54,8 @@ type EvalContext struct {
 	// The deletion projection uses the same snapshot and hardlink index as execution.
 	torrentsByHash map[string]qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
+	// crossSeeds holds the groups of the run session, when the rules need one.
+	crossSeeds *crossSeedGroups
 
 	// TrackerHealth is the tracker health snapshot of the instance. It is nil
 	// when the instance has no tracker health yet.
@@ -387,7 +389,7 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
-		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) {
+		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) || (cond.Field == FieldPrivate && qbittorrent.PrivateUnknown(&torrent)) {
 			return false, false
 		}
 		result = evaluateLeaf(cond, torrent, ctx)
@@ -710,8 +712,7 @@ func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bo
 	}
 }
 
-// matchesStateValue matches against the torrent "status" buckets used by the sidebar filters
-// (e.g. "errored", "stalled_uploading") with a fallback to exact torrent.State string matching.
+// matchesStateValue reads "completed" as 100% progress, but sidebar Completed reads the state (#3870).
 func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
@@ -719,7 +720,6 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 	}
 
 	switch strings.ToLower(normalized) {
-	// Sidebar status buckets
 	case "completed":
 		return torrent.Progress >= 1.0
 	case "downloading":
@@ -727,6 +727,7 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			qbt.TorrentStateDownloading,
 			qbt.TorrentStateStalledDl,
 			qbt.TorrentStateMetaDl,
+			qbt.TorrentStateForcedMetaDl,
 			qbt.TorrentStateQueuedDl,
 			qbt.TorrentStateAllocating,
 			qbt.TorrentStateCheckingDl,

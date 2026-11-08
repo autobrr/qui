@@ -132,7 +132,7 @@ Execution requests include only torrents from the currently selected instance. T
 
 ## REST API
 
-Manage external programs through the backend API. All endpoints require authentication:
+Manage external programs through the backend API. All endpoints require authentication. Create, update, and remove need a signed-in browser, or authentication turned off, and return `403` to an API key. List and execute work with an API key:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

@@ -555,7 +555,8 @@
         "move": "Verschieben",
         "externalProgram": "Externes Programm",
         "dryRun": "Probelauf",
-        "exportToInstance": "In Instanz exportieren"
+        "exportToInstance": "In Instanz exportieren",
+        "ruleSkipped": "Regel nicht ausgeführt"
       },
       "shareLimit": {
         "global": "Global",
@@ -667,7 +668,8 @@
         "deletedActivityEntries": "{{count}} Aktivitätseinträge gelöscht",
         "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden"
       },
-      "exported": "Exportiert"
+      "exported": "Exportiert",
+      "skipped": "Übersprungen"
     },
     "runWorkflowNow": {
       "action": "Jetzt ausführen",
@@ -684,7 +686,8 @@
         "completedWithErrors": "Ausführung für \"{{name}}\" mit Fehlern abgeschlossen. Siehe Aktivitätsprotokoll.",
         "dryRunCompleted": "Probelauf für \"{{name}}\" abgeschlossen",
         "inProgress": "Eine Ausführung läuft bereits. Versuche es gleich noch einmal.",
-        "failed": "Workflow konnte nicht ausgeführt werden"
+        "failed": "Workflow konnte nicht ausgeführt werden",
+        "skipped": "\"{{name}}\" wurde nicht ausgeführt. Siehe Aktivitätsprotokoll."
       }
     },
     "workflowPreview": {
@@ -756,6 +759,8 @@
       "viewPreview": "Vorschau anzeigen",
       "recentScans": "Letzte Scans",
       "scannedPaths": "Ausgewählte Scan-Pfade ({{total}})",
+      "scanPathsLoading": "Scan-Pfade werden geladen...",
+      "scanPathsLoadFailed": "Scan-Pfade konnten nicht geladen werden",
       "zeroOrphans": "0 Orphans",
       "deletedStats": "{{deleted}} gelöscht · {{size}}",
       "deletedFiles_one": "{{count}} Datei",
@@ -962,7 +967,8 @@
         "external_program": "Externes Programm",
         "auto_managed": "Automatisch verwaltet",
         "dry_run_no_match": "Probelauf (keine Übereinstimmung)",
-        "exported_to_instance": "Export zur Instanz"
+        "exported_to_instance": "Export zur Instanz",
+        "rule_skipped": "Regel nicht ausgeführt"
       }
     },
     "reannounceOverview": {
@@ -1382,8 +1388,7 @@
       "enableDryRunPrompt": {
         "title": "Probelauf aktivieren?",
         "description": "Der Probelauf simuliert alle Aktionen, ohne etwas zu ändern. Du kannst die betroffenen Torrents im Aktivitätsprotokoll prüfen.",
-        "enableWithout": "Ohne Probelauf aktivieren",
-        "enableWith": "Mit Probelauf aktivieren"
+        "saveAndEnable": "Speichern und aktivieren"
       },
       "customGroup": {
         "title": "Benutzerdefinierte Gruppe hinzufügen",
@@ -1432,7 +1437,8 @@
           "moved": "Verschieben",
           "externalProgram": "Externes Programm",
           "noMatches": "Keine Treffer",
-          "exportedToInstance": "In Instanz exportieren"
+          "exportedToInstance": "In Instanz exportieren",
+          "ruleSkipped": "Regel nicht ausgeführt"
         },
         "actionFallback": "Unbekannte Aktion ({{action}})",
         "summary": {

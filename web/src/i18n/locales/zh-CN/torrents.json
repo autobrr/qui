@@ -1169,6 +1169,7 @@
     "status": "状态",
     "tracker": "Tracker",
     "seeds": "做种",
+    "peers": "节点",
     "leeches": "下载",
     "downloaded": "已完成",
     "message": "消息",
@@ -1587,6 +1588,7 @@
         "target_not_found": "此实例中未找到目标种子。",
         "incomplete": "目标种子尚未下载完成。",
         "not_settled": "此种子仍在移动或校验中。请在完成后重试。",
+        "errored": "此种子有错误或缺少文件。请修复后重试。",
         "no_episode_identity": "无法解析集数。",
         "file_list_unavailable": "无法获取目标种子的文件列表。",
         "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",
@@ -1601,5 +1603,13 @@
         "add_failed": "添加种子失败。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 个副本",
+    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 个副本。某个隐藏的副本有问题",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已选 {{count}} 个",
+    "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}"
   }
 }

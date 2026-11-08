@@ -1169,6 +1169,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1587,6 +1588,7 @@
         "target_not_found": "이 인스턴스에서 대상을 찾지 못했습니다.",
         "incomplete": "대상 다운로드가 완료되지 않았습니다.",
         "not_settled": "이 토렌트는 아직 이동 중이거나 확인 중입니다. 완료된 후 다시 시도하세요.",
+        "errored": "이 토렌트에 오류가 있거나 파일이 누락되었습니다. 문제를 해결한 후 다시 시도하세요.",
         "no_episode_identity": "에피소드 번호를 해석할 수 없습니다.",
         "file_list_unavailable": "대상 파일 목록을 사용할 수 없습니다.",
         "episode_file_invalid": "대상에는 선택한 에피소드 식별자와 일치하는 재생 가능한 파일이 하나 있어야 합니다.",
@@ -1601,5 +1603,13 @@
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "copiesWithProblem_other": "{{name}}의 추가 사본 {{count}}개. 숨겨진 사본에 문제가 있습니다",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}"
   }
 }

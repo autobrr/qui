@@ -40,11 +40,11 @@ func (m *StreamManager) instanceSubCount(instanceID int) int {
 // member's sync/heartbeat loop must survive until no subscription (single or multi)
 // still depends on it.
 func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	multiOpts := StreamOptions{InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}
-	conn := manager.openConnection(false)
+	conn := manager.openConnection(false, 0)
 	multi, err := manager.registerSubscription(multiOpts, "multi", conn, false)
 	require.NoError(t, err)
 
@@ -133,7 +133,7 @@ func TestMaterializeGroupResponseOmitsInstanceScopedMetaWithoutSingleConcreteIns
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager := NewStreamManager(nil, tt.provider, nil)
+			manager := NewStreamManager(nil, tt.provider, tt.provider, tt.provider, nil)
 			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 			var stampCalls int
@@ -158,7 +158,7 @@ func TestMaterializeGroupResponseOmitsInstanceScopedMetaWithoutSingleConcreteIns
 }
 
 func TestMaterializeGroupResponseOmitsRetryForMultiMemberAggregateWithDifferentBackoff(t *testing.T) {
-	manager := NewStreamManager(nil, &fakeSyncProvider{crossInstanceErr: errors.New("boom")}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{crossInstanceErr: errors.New("boom")}, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	manager.mu.Lock()
@@ -185,10 +185,10 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	provider := &fakeSyncProvider{
 		crossInstanceResponse: &qbittorrent.TorrentResponse{Total: 2, IsCrossInstance: true},
 	}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false), false)
+	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false, 0), false)
 	require.NoError(t, err)
 	builds := provider.signalBuilds()
 

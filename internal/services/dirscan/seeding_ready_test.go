@@ -4,32 +4,16 @@
 package dirscan
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"reflect"
 	"testing"
 	"time"
-	"unsafe"
 
-	"github.com/autobrr/go-cache/ttlcache"
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-func setUnexportedField(t *testing.T, target any, fieldName string, value any) {
-	t.Helper()
-	field := reflect.ValueOf(target).Elem().FieldByName(fieldName)
-	require.Truef(t, field.IsValid(), "field %s missing on %T", fieldName, target)
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
-}
 
 // An instance that has not synced since qui started is not ready, and the
 // check asks for a sync, since nothing else may start one. After a sync the
@@ -38,49 +22,34 @@ func setUnexportedField(t *testing.T, target any, fieldName string, value any) {
 // regression: #3613
 func TestSyncManagerSeedingReady(t *testing.T) {
 	ctx := t.Context()
-	requested := make(chan struct{}, 16)
-	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid", Timeout: 60}).WithHTTPClient(&http.Client{
-		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			rec := httptest.NewRecorder()
-			if r.URL.Path != "/api/v2/sync/maindata" {
-				rec.WriteHeader(http.StatusNotFound)
-				return rec.Result(), nil
-			}
-			select {
-			case requested <- struct{}{}:
-			default:
-			}
-			_, _ = rec.WriteString(`{"rid":1,"full_update":true,"torrents":{}}`)
-			return rec.Result(), nil
-		}),
-	})
-	syncOpts := qbt.DefaultSyncOptions()
-	syncOpts.DynamicSync = true
-	client := &qbittorrent.Client{Client: qbtClient}
-	setUnexportedField(t, client, "isHealthy", true)
-	setUnexportedField(t, client, "lastHealthCheck", time.Now())
-	setUnexportedField(t, client, "syncManager", qbtClient.NewSyncManager(syncOpts))
-	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New[string, *qbittorrent.OptimisticTorrentUpdate]())
+	stub := qbtstub.New(t, t.TempDir())
+	stub.FailSyncs = 1
 
 	db := testdb.NewMigratedSQLite(t, "dirscan-seeding-ready")
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "synthetic", "http://qbt.example.invalid", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "synthetic", stub.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 	pool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
-	setUnexportedField(t, pool, "clients", map[int]*qbittorrent.Client{instance.ID: client})
+	// GetClient runs the first sync, which the stub fails. It runs before
+	// NewSyncManager because the pool starts a tracker health loop for a
+	// client it creates once a sync manager is registered, and that loop could
+	// hold the pool's instance lock when the hint fires.
+	_, err = pool.GetClient(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1, stub.Syncs())
 	files := syncManagerTorrentFiles{qbittorrent.NewSyncManager(pool, nil)}
 
 	require.ErrorContains(t, files.SeedingReady(ctx, instance.ID), "waiting for first sync")
+	// Syncs never overlap, and each applies its result before the next
+	// request, so a third request means the good second sync has landed.
 	select {
-	case <-requested:
+	case <-stub.Synced(3):
 	case <-time.After(10 * time.Second):
-		t.Fatal("no sync was requested")
+		t.Fatal("the hinted sync never landed")
 	}
-
-	require.NoError(t, client.GetSyncManager().Sync(ctx))
 	require.NoError(t, files.SeedingReady(ctx, instance.ID))
 
 	require.ErrorContains(t, syncManagerTorrentFiles{}.SeedingReady(ctx, instance.ID), "client pool unavailable")

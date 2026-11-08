@@ -1169,6 +1169,7 @@
     "status": "狀態",
     "tracker": "Tracker",
     "seeds": "做種",
+    "peers": "節點",
     "leeches": "下載",
     "downloaded": "已完成",
     "message": "訊息",
@@ -1587,6 +1588,7 @@
         "target_not_found": "此實例中未找到目標種子。",
         "incomplete": "目標種子尚未下載完成。",
         "not_settled": "此種子仍在移動或檢查中。請在完成後重試。",
+        "errored": "此種子有錯誤或缺少檔案。請修復後重試。",
         "no_episode_identity": "無法解析集數。",
         "file_list_unavailable": "無法取得目標種子的檔案清單。",
         "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",
@@ -1601,5 +1603,13 @@
         "add_failed": "加入種子失敗。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 個副本",
+    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 個副本。某個隱藏的副本有問題",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}"
   }
 }

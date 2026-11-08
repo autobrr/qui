@@ -175,6 +175,8 @@ If you do not already have an API key for autobrr:
 
 - Go to **Settings > API Keys**
 - Click **Create API Key**
+- Under **Permissions**, pick **Cross-seed: run** for check and apply. To read the run list with this key, also pick **Cross-seed: read**.
+- Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).
 - Copy the generated key
 
 ### 3. Configure the autobrr external filter
