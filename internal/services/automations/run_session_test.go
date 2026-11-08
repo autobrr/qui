@@ -564,3 +564,189 @@ func TestRunSession_TagRuleWithoutCrossSeedsAsksNothing(t *testing.T) {
 	require.ElementsMatch(t, []string{sessionA, sessionC}, stub.writtenHashes()["delete"])
 	require.Empty(t, stub.writtenHashes()["tag"], "the tag rule matches no torrent, so each torrent runs the ownership check")
 }
+
+// A move asks once, before the rule loop, for the torrents whose move
+// condition matches and that are not at the target yet, and for the members
+// of their move GroupID. The plan step asks for nothing new, and the run plans
+// the moves that the groups of the whole library plan.
+func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
+	t.Parallel()
+	// m1 and m1x share files. at is at the target, with its cross-seed atx.
+	// g2 shares the save path of m1, and files with g2x. px and py share files.
+	// m1, at and px carry the tag.
+	torrents := []qbt.Torrent{
+		{Hash: "m1", SavePath: "/old", ContentPath: "/old/m1.mkv", Tags: "mv"},
+		{Hash: "m1x", SavePath: "/old", ContentPath: "/old/m1x.mkv"},
+		{Hash: "at", SavePath: "/new", ContentPath: "/new/at.mkv", Tags: "mv"},
+		{Hash: "atx", SavePath: "/new", ContentPath: "/new/atx.mkv"},
+		{Hash: "g2", SavePath: "/old", ContentPath: "/old/g2.mkv"},
+		{Hash: "g2x", SavePath: "/x", ContentPath: "/x/g2.mkv"},
+		{Hash: "px", SavePath: "/p", ContentPath: "/p/p.mkv", Tags: "mv"},
+		{Hash: "py", SavePath: "/p", ContentPath: "/p/py.mkv"},
+	}
+	links := map[string][]string{
+		"m1": {"m1x"}, "m1x": {"m1"}, "at": {"atx"}, "atx": {"at"},
+		"g2": {"g2x"}, "g2x": {"g2"}, "px": {"py"}, "py": {"px"},
+	}
+	moveTo := func(groupID string) *models.Automation {
+		rule := &models.Automation{
+			ID: 1, Name: "move", TrackerPattern: "*", Enabled: true,
+			Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/new", GroupID: groupID, Condition: tagsContain("mv")}},
+		}
+		if groupID != "" {
+			rule.Conditions.Grouping = &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: groupID, Keys: []string{"savePath"}}}}
+		}
+		return rule
+	}
+	tests := []struct {
+		name      string
+		rule      *models.Automation
+		wantAsk   []string
+		wantMoved []string
+	}{
+		{"cross-seeds move along", moveTo(""), []string{"m1", "px"}, []string{"m1", "m1x", "px", "py"}},
+		// g2x holds files of g2, so the group cannot move.
+		{"group ID members", moveTo("bysave"), []string{"m1", "m1x", "g2", "px", "py"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := func(evalCtx *EvalContext, groups *crossSeedGroups) ([]string, ruleRunStats) {
+				run := slices.Clone(torrents)
+				stats := make(map[int]*ruleRunStats)
+				states := processTorrents(run, []*models.Automation{tt.rule}, evalCtx, groups, nil, nil, stats, nil)
+				torrentByHash := make(map[string]qbt.Torrent, len(run))
+				for _, torrent := range run {
+					torrentByHash[torrent.Hash] = torrent
+				}
+				p := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
+					instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
+					ruleByID: map[int]*models.Automation{tt.rule.ID: tt.rule}, crossSeeds: groups, evalCtx: evalCtx,
+				})
+				return slices.Sorted(slices.Values(p.move.byTarget["/new"])), *stats[tt.rule.ID]
+			}
+
+			evalCtx, matcher := openTestRunSession(t, torrents, links, nil)
+			moved, stats := plan(evalCtx, evalCtx.crossSeeds)
+			asks := matcher.requests()
+			require.Len(t, asks, 1)
+			require.ElementsMatch(t, tt.wantAsk, asks[0].Hashes)
+			require.True(t, asks[0].Groups)
+			require.Equal(t, tt.wantMoved, moved)
+
+			whole := &EvalContext{SameInstanceContentByHash: links}
+			wholeMoved, wholeStats := plan(whole, buildCrossSeedGroups(torrents, whole))
+			require.Equal(t, wholeMoved, moved)
+			require.Equal(t, wholeStats, stats)
+		})
+	}
+}
+
+// A live run and a dry run move the cross-seed of a matched torrent with it,
+// and ask only for the matched torrent.
+func TestRunSession_MoveTakesTheCrossSeedsAlong(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dryRun=%t", dryRun), func(t *testing.T) {
+			svc, instanceID, stub, matcher := newRecordingStubService(t, map[string]string{sessionA: "mv"}, false)
+			rule := moveRule("")
+			rule.DryRun = dryRun
+			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, dryRun)
+			require.NoError(t, err)
+			moved := stub.writtenHashes()["move"]
+			if dryRun {
+				require.Empty(t, moved)
+				moved = dryRunActivityHashes(t, svc, instanceID, activities)["move"]
+			}
+			require.Equal(t, []string{sessionA, sessionC}, moved)
+			require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}, Groups: true}}, matcher.requests())
+		})
+	}
+}
+
+// unknownSession answers every ask with the asked torrents as Unknown.
+type unknownSession struct{}
+
+func (unknownSession) OpenCrossMatchSession(context.Context, int, CrossMatchNeeds) (CrossMatchSession, error) {
+	return unknownSession{}, nil
+}
+
+func (unknownSession) Resolve(_ context.Context, req ResolveRequest) *CrossMatchResult {
+	unknown := make(map[string]struct{}, len(req.Hashes))
+	for _, hash := range req.Hashes {
+		unknown[hash] = struct{}{}
+	}
+	return &CrossMatchResult{SameInstanceUnknown: unknown}
+}
+
+// A move of a torrent that no ask covered reads its group state first, so a
+// torrent with an Unknown state and no group stays where it is.
+func TestRunSession_MoveMissReadsTheStateFirst(t *testing.T) {
+	t.Parallel()
+	torrent := qbt.Torrent{Hash: "t", SavePath: "/old", ContentPath: "/old/t.mkv"}
+	svc := &Service{crossMatcher: unknownSession{}}
+	evalCtx := &EvalContext{}
+	require.NoError(t, svc.openRunSession(t.Context(), 1, []qbt.Torrent{torrent}, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
+	rule := &models.Automation{ID: 1, Name: "move", TrackerPattern: "*", Enabled: true,
+		Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/new"}}}
+	state := &torrentDesiredState{hash: torrent.Hash}
+	stats := &ruleRunStats{}
+	evaluateMoveAction(rule, rule.Conditions.Move, torrent, evalCtx, evalCtx.crossSeeds, stats, state)
+	require.False(t, state.shouldMove)
+	require.Equal(t, 1, stats.MoveBlockedByCrossSeed)
+}
+
+// The read-ahead asks for the members of a move GroupID once, not once for
+// each matched member.
+func TestMoveAsks_GroupMembersOnce(t *testing.T) {
+	t.Parallel()
+	torrents := make([]qbt.Torrent, 0, 20)
+	for i := range 20 {
+		torrents = append(torrents, qbt.Torrent{Hash: fmt.Sprintf("h%02d", i), SavePath: "/old", ContentPath: fmt.Sprintf("/old/%02d.mkv", i), Tags: "mv"})
+	}
+	rule := &models.Automation{
+		ID: 1, Name: "move", TrackerPattern: "*", Enabled: true,
+		Conditions: &models.ActionConditions{
+			Move:     &models.MoveAction{Enabled: true, Path: "/new", GroupID: "bysave", Condition: tagsContain("mv")},
+			Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}},
+		},
+	}
+	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
+	asked := make(map[askedMoveGroup]struct{})
+	hashes := make([]string, 0, 2*len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, moveAsks(torrent, []*models.Automation{rule}, torrents, evalCtx, nil, nil, asked)...)
+	}
+	require.Len(t, hashes, 2*len(torrents))
+}
+
+// Two rules with one GroupID each ask for their own group, also when the keys
+// of both groups are the same text.
+func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
+	t.Parallel()
+	// Under a, c1 and c2 share the content path /data/x. Under b, s1 and s2
+	// share the save path /data/x.
+	torrents := []qbt.Torrent{
+		{Hash: "c1", SavePath: "/c", ContentPath: "/data/x", Tags: "a"},
+		{Hash: "c2", SavePath: "/d", ContentPath: "/data/x"},
+		{Hash: "s1", SavePath: "/data/x", ContentPath: "/data/x/s1.mkv", Tags: "b"},
+		{Hash: "s2", SavePath: "/data/x", ContentPath: "/data/x/s2.mkv"},
+	}
+	moveBy := func(id int, tag, key string) *models.Automation {
+		return &models.Automation{
+			ID: id, Name: tag, TrackerPattern: "*", Enabled: true,
+			Conditions: &models.ActionConditions{
+				Move:     &models.MoveAction{Enabled: true, Path: "/new", GroupID: "g", Condition: tagsContain(tag)},
+				Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "g", Keys: []string{key}}}},
+			},
+		}
+	}
+	rules := []*models.Automation{moveBy(1, "a", "contentPath"), moveBy(2, "b", "savePath")}
+	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
+	asked := make(map[askedMoveGroup]struct{})
+	hashes := make([]string, 0, 2*len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, moveAsks(torrent, rules, torrents, evalCtx, nil, nil, asked)...)
+	}
+	slices.Sort(hashes)
+	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
+}

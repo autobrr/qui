@@ -217,6 +217,11 @@ func processTorrents(
 		}
 	}
 
+	askMoveGroups(torrents, rules, evalCtx, crossSeeds, sm, skipCheck, states, readsPrivate)
+	if evalCtx != nil {
+		defer func() { evalCtx.moveChecks = nil }()
+	}
+
 	for _, torrent := range torrents {
 		// Skip if recently processed
 		if skipCheck != nil && skipCheck(torrent.Hash) {
@@ -273,6 +278,88 @@ func processTorrents(
 	return states
 }
 
+// askMoveGroups asks the run session once for the groups that the moves read, before the rule
+// loop reads them one torrent at a time: the torrents whose move condition matches and that are
+// not at the target yet, and the members of their move GroupID.
+func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, sm *qbittorrent.SyncManager, skipCheck func(hash string) bool, states map[string]*torrentDesiredState, readsPrivate map[int]bool) {
+	if evalCtx == nil || !crossSeeds.scoped() {
+		return
+	}
+	var moveRules []*models.Automation
+	for _, rule := range rules {
+		if c := rule.Conditions; c != nil && c.Move != nil && c.Move.Enabled {
+			moveRules = append(moveRules, rule)
+		}
+	}
+	if len(moveRules) == 0 {
+		return
+	}
+	evalCtx.moveChecks = make(map[moveCheckKey]checkedMove)
+	asked := make(map[askedMoveGroup]struct{})
+	var hashes []string
+	for _, torrent := range torrents {
+		if skipCheck != nil && skipCheck(torrent.Hash) {
+			continue
+		}
+		if state := states[torrent.Hash]; state != nil && state.shouldMove {
+			continue
+		}
+		hashes = append(hashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, asked)...)
+	}
+	slices.Sort(hashes)
+	crossSeeds.session.resolveGroups(slices.Compact(hashes), false)
+}
+
+// askedMoveGroup is a group of a move GroupID that the read-ahead already asked for.
+type askedMoveGroup struct {
+	rule *models.Automation
+	key  string
+}
+
+// moveAsks returns the torrent when the move of a rule that matches its tracker can apply to it,
+// with the members of the move GroupID that asked does not hold yet.
+func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedMoveGroup]struct{}) []string {
+	state := &torrentDesiredState{trackerDomains: collectTrackerDomains(torrent, sm)}
+	var hashes []string
+	for _, rule := range rules {
+		if !rule.Enabled || !matchesTracker(rule.TrackerPattern, state.trackerDomains) {
+			continue
+		}
+		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
+			continue
+		}
+		prepareRuleEvalContext(rule, evalCtx, torrents, sm)
+		move := rule.Conditions.Move
+		path, check := checkMove(move, torrent, state, evalCtx)
+		evalCtx.moveChecks[moveCheckKey{rule, torrent.Hash}] = checkedMove{path, check}
+		if check != moveReady {
+			continue
+		}
+		hashes = append(hashes, torrent.Hash)
+		if groupID := strings.TrimSpace(move.GroupID); groupID != "" {
+			idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+			group := askedMoveGroup{rule, idx.KeyForHash(torrent.Hash)}
+			if _, seen := asked[group]; !seen {
+				asked[group] = struct{}{}
+				hashes = append(hashes, idx.MembersForHash(torrent.Hash)...)
+			}
+		}
+	}
+	return hashes
+}
+
+// prepareRuleEvalContext loads what the conditions of the rule read: its free space source and
+// its grouping (GROUP_SIZE / IS_GROUPED), which action expansion also reuses.
+func prepareRuleEvalContext(rule *models.Automation, evalCtx *EvalContext, allTorrents []qbt.Torrent, sm *qbittorrent.SyncManager) {
+	if evalCtx == nil {
+		return
+	}
+	if ruleUsesCondition(rule, FieldFreeSpace) {
+		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	}
+	activateRuleGrouping(evalCtx, rule, allTorrents, sm)
+}
+
 // processRuleForTorrent applies a single rule to the torrent state.
 func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds *crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
@@ -280,16 +367,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		return
 	}
 
-	// Load the rule's free space source state before evaluating any conditions.
-	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
-	if evalCtx != nil && ruleUsesCondition(rule, FieldFreeSpace) {
-		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-
-	// Activate rule-scoped grouping (GROUP_SIZE / IS_GROUPED) and allow action expansion to re-use cached indices.
-	if evalCtx != nil {
-		activateRuleGrouping(evalCtx, rule, allTorrents, sm)
-	}
+	prepareRuleEvalContext(rule, evalCtx, allTorrents, sm)
 
 	// Speed limits
 	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
@@ -525,19 +603,57 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	}
 }
 
-func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
-	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
-	if !ok {
-		if stats != nil {
-			stats.MoveConditionNotMet++
-		}
-		return
-	}
+// moveCheck is what a move finds before the cross-seed check.
+type moveCheck int
 
-	conditionMet := action.Condition == nil ||
-		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+const (
+	moveConditionNotMet moveCheck = iota // also when the path does not render
+	moveRelativePath
+	moveAtDestination
+	moveReady // the cross-seed check decides
+)
+
+type moveCheckKey struct {
+	rule *models.Automation
+	hash string
+}
+
+type checkedMove struct {
+	path  string
+	check moveCheck
+}
+
+func checkMove(action *models.MoveAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (string, moveCheck) {
+	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
+	switch {
+	case !ok:
+		return "", moveConditionNotMet
+	case action.Condition != nil && !EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0):
+		return resolvedPath, moveConditionNotMet
 	// qBittorrent never reports a relative path back as the save path, so the move would repeat every run.
-	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
+	case !pathcmp.IsAbsolute(resolvedPath):
+		return resolvedPath, moveRelativePath
+	case inSavePath(torrent, resolvedPath):
+		return resolvedPath, moveAtDestination
+	}
+	return resolvedPath, moveReady
+}
+
+func (ctx *EvalContext) checkedMove(rule *models.Automation, hash string) (checkedMove, bool) {
+	if ctx == nil {
+		return checkedMove{}, false
+	}
+	checked, ok := ctx.moveChecks[moveCheckKey{rule, hash}]
+	return checked, ok
+}
+
+func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
+	checked, ok := evalCtx.checkedMove(rule, torrent.Hash)
+	if !ok {
+		checked.path, checked.check = checkMove(action, torrent, state, evalCtx)
+	}
+	resolvedPath, check := checked.path, checked.check
+	if check == moveRelativePath {
 		// One warning per rule per run; stats is per rule per run.
 		if stats == nil || !stats.movePathWarned {
 			ruleName := ""
@@ -549,15 +665,11 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 		}
 		if stats != nil {
 			stats.movePathWarned = true
-			stats.MoveConditionNotMet++
 		}
-		return
 	}
-	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
-	blocked := conditionMet && !alreadyAtDest && shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx)
-	if conditionMet && !alreadyAtDest && !blocked {
+	if check == moveReady && !shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx) {
 		if stats != nil {
 			stats.MoveApplied++
 		}
@@ -578,12 +690,12 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 		return
 	}
 
-	switch {
-	case !conditionMet:
+	switch check {
+	case moveConditionNotMet, moveRelativePath:
 		stats.MoveConditionNotMet++
-	case alreadyAtDest:
+	case moveAtDestination:
 		stats.MoveAlreadyAtDestination++
-	default:
+	case moveReady:
 		stats.MoveBlockedByCrossSeed++
 	}
 }
@@ -608,10 +720,12 @@ func crossSeedGroupKnown(torrent qbt.Torrent, crossSeeds *crossSeedGroups, evalC
 	if evalCtx == nil {
 		return true
 	}
+	// members reads the state of a torrent that no ask covered.
+	members := crossSeeds.members(torrent.Hash)
 	if !sameInstanceCrossSeedKnown(evalCtx, torrent.Hash) {
 		return false
 	}
-	for _, member := range crossSeeds.members(torrent.Hash) {
+	for _, member := range members {
 		if !sameInstanceCrossSeedKnown(evalCtx, member.Hash) {
 			return false
 		}

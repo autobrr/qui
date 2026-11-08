@@ -79,7 +79,7 @@ func (r *runSession) ensureGroups(hash string) {
 
 // An answer holds whole components, so a member of a known group is covered.
 func (r *runSession) covered(hash string) bool {
-	if r.groupsOff || r.allGrouped {
+	if !r.scoped() {
 		return true
 	}
 	if _, done := r.grouped[hash]; done {
@@ -127,6 +127,16 @@ func memberHashes(members []qbt.Torrent) []string {
 		hashes[i] = m.Hash
 	}
 	return hashes
+}
+
+// scoped reports whether the run session reads groups only for the torrents that a reader asks
+// for, so a reader asks before its loop.
+func (g *crossSeedGroups) scoped() bool {
+	return g != nil && g.session != nil && g.session.scoped()
+}
+
+func (r *runSession) scoped() bool {
+	return !r.groupsOff && !r.allGrouped
 }
 
 func (g *crossSeedGroups) setContext(ctx context.Context) {

@@ -180,6 +180,9 @@ func (n *RuleNeeds) addCrossSeedActions(ac *models.ActionConditions) {
 	if del := ac.Delete; del != nil && del.Enabled && del.Mode == DeleteModeWithFiles && ConditionUsesField(del.Condition, FieldFreeSpace) {
 		n.CrossMatch.SameContent = true
 	}
+	if move := ac.Move; move != nil && move.Enabled {
+		n.CrossMatch.SameContent = true
+	}
 	if actionsReadAllCrossSeedGroups(ac) {
 		n.CrossMatch.SameContent = true
 		n.CrossSeedGroupsAll = true
@@ -191,9 +194,6 @@ func (n *RuleNeeds) addCrossSeedActions(ac *models.ActionConditions) {
 
 // actionsReadAllCrossSeedGroups reports whether an enabled action reads the groups of the whole library.
 func actionsReadAllCrossSeedGroups(ac *models.ActionConditions) bool {
-	if move := ac.Move; move != nil && move.Enabled {
-		return true
-	}
 	cat := ac.Category
 	return tagsIncludeCrossSeeds(ac) ||
 		cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)

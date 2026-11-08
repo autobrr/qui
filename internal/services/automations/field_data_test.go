@@ -69,7 +69,7 @@ func TestNeedsFor(t *testing.T) {
 		{name: "legacy tag", rules: enabled(&models.ActionConditions{Tag: &models.TagAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "tags", rules: enabled(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Condition: scope}}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "category", rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
-		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true}},
+		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}}},
 		{name: "external program", rules: enabled(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "auto management that turns ATM off", rules: enabled(&models.ActionConditions{AutoManagement: &models.AutoManagementAction{Enabled: false, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "export to instance", rules: enabled(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
@@ -117,7 +117,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "tracker name in a move path",
 			rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}),
-			want:  RuleNeeds{TrackerNames: true, CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true},
+			want:  RuleNeeds{TrackerNames: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "preserve cross-seeds delete",

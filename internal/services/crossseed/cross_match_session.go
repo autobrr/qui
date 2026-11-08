@@ -117,13 +117,14 @@ func (c *crossMatchSession) Resolve(ctx context.Context, req ResolveRequest) *Cr
 	c.index(ctx)
 
 	if c.needsSame() {
+		facts := asked
 		if req.Groups && c.needs.SameContent {
 			c.close(ctx, asked)
-			c.addGroups(ctx, asked, result)
+			facts = c.addGroups(ctx, asked, result)
 		} else {
 			c.readFacts(ctx, asked)
 		}
-		c.addSameFacts(ctx, asked, result)
+		c.addSameFacts(ctx, facts, result)
 	}
 
 	checkShared := req.OtherShared && instanceHas(c.instances, c.instanceID, models.CapabilityTrustedIdentity)
@@ -385,17 +386,20 @@ func (c *crossMatchSession) component(i int) []int {
 	return slices.Sorted(maps.Keys(seen))
 }
 
-// addGroups adds the file lists of the groups with two or more torrents.
-func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *CrossMatchResult) {
+// addGroups adds the file lists of the groups with two or more torrents. It returns the asked
+// torrents and the members of their groups, which the closure classified.
+func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *CrossMatchResult) []int {
 	result.SameInstanceContentByHash = make(map[string][]string)
 	result.MemberFiles = make(map[string]qbt.TorrentFiles)
 	done := make(map[int]struct{})
+	members := slices.Clone(asked)
 	for _, i := range asked {
 		if _, ok := done[i]; ok || len(c.links[i]) == 0 {
 			continue
 		}
 		for _, m := range c.component(i) {
 			done[m] = struct{}{}
+			members = append(members, m)
 			t := c.torrents[m]
 			next := make([]string, 0, len(c.links[m]))
 			for j := range c.links[m] {
@@ -408,6 +412,8 @@ func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *
 			}
 		}
 	}
+	slices.Sort(members)
+	return slices.Compact(members)
 }
 
 // readFacts reads the torrents, their path groups and their picks, but not the groups.
