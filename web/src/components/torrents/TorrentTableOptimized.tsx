@@ -606,6 +606,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   } = useTorrentSelection({
     visibleTorrents: visibleRows,
     groupExpansion,
+    groupCopies: canGroupCopies && groupCopiesSetting,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,

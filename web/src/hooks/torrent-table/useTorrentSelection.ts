@@ -27,6 +27,8 @@ export interface UseTorrentSelectionParams {
   visibleTorrents: Torrent[]
   /** The open Copy groups. A change moves the rows, so it clears the Shift-select anchor. */
   groupExpansion: CopyGroupExpansion
+  /** True when the list groups copies. A change moves the rows, so it clears the Shift-select anchor. */
+  groupCopies: boolean
   isReadOnly: boolean
   isCrossInstanceEndpoint?: boolean
   instanceId: number
@@ -66,6 +68,7 @@ export interface TorrentSelection {
 export function useTorrentSelection({
   visibleTorrents,
   groupExpansion,
+  groupCopies,
   isReadOnly,
   isCrossInstanceEndpoint,
   instanceId,
@@ -91,7 +94,7 @@ export function useTorrentSelection({
 
   useEffect(() => {
     lastSelectedIndexRef.current = null
-  }, [groupExpansion])
+  }, [groupExpansion, groupCopies])
 
   const send = useCallback((event: TorrentSelectionEvent) => {
     if (!isReadOnly) {
