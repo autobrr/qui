@@ -13,13 +13,19 @@ import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import { Folder, Tag } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { TrackerIcon } from "./TrackerIcon"
 
 // Compact row component for desktop
 interface CompactRowProps {
   torrent: Torrent
+  /** What the row shows; the checkbox still gets `torrent`. */
+  displayTorrent?: Torrent
+  /** The Copy group controls, in front of the name. */
+  groupControls?: ReactNode
+  /** A member under the top row of an open Copy group. */
+  nested?: boolean
   rowId: string
   rowIndex: number
   isSelected: boolean
@@ -41,7 +47,10 @@ interface CompactRowProps {
 // unchanged rows. A local memo would need its own comparator and could only
 // re-check props the parent has already proven changed.
 export function CompactRow({
-  torrent,
+  torrent: rowTorrent,
+  displayTorrent: torrent = rowTorrent,
+  groupControls,
+  nested = false,
   rowId,
   rowIndex,
   isSelected,
@@ -85,6 +94,7 @@ export function CompactRow({
     <div
       className={cn(
         "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
+        nested && "pl-8",
         getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
       )}
       style={style}
@@ -111,7 +121,7 @@ export function CompactRow({
           >
             <Checkbox
               checked={isRowSelected}
-              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+              onCheckedChange={(checked) => onCheckboxChange(rowTorrent, rowId, checked === true)}
               aria-label={t("tableColumns.selectAll")}
               className="h-4 w-4"
             />
@@ -130,6 +140,7 @@ export function CompactRow({
             </span>
           )}
         </div>
+        {groupControls}
         <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
           {displayName}
         </h3>

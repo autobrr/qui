@@ -871,5 +871,7 @@ export function useTorrentsList(
     streamRetrying: streamState.retrying,
     streamNextRetryAt: streamState.nextRetryAt,
     streamRetryAttempt: streamState.retryAttempt,
+    // Only when the request asked for groups: false while the server has no Copy groups yet.
+    copyGroupsReady,
   }
 }

@@ -1680,5 +1680,13 @@
         "add_failed": "Impossibile aggiungere il torrent."
       }
     }
+  },
+  "copyGroups": {
+    "expand_one": "Mostra {{count}} copia nascosta",
+    "expand_other": "Mostra {{count}} copie nascoste",
+    "collapse_one": "Nascondi {{count}} copia",
+    "collapse_other": "Nascondi {{count}} copie",
+    "badge": "+{{hidden}}",
+    "hiddenProblem": "Una copia nascosta ha un problema"
   }
 }

@@ -1603,5 +1603,11 @@
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
     }
+  },
+  "copyGroups": {
+    "expand_other": "숨겨진 사본 {{count}}개 표시",
+    "collapse_other": "사본 {{count}}개 숨기기",
+    "badge": "+{{hidden}}",
+    "hiddenProblem": "숨겨진 사본에 문제가 있습니다"
   }
 }

@@ -1603,5 +1603,11 @@
         "add_failed": "加入種子失敗。"
       }
     }
+  },
+  "copyGroups": {
+    "expand_other": "顯示 {{count}} 個隱藏的副本",
+    "collapse_other": "隱藏 {{count}} 個副本",
+    "badge": "+{{hidden}}",
+    "hiddenProblem": "某個隱藏的副本有問題"
   }
 }

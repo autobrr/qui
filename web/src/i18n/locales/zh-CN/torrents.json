@@ -1603,5 +1603,11 @@
         "add_failed": "添加种子失败。"
       }
     }
+  },
+  "copyGroups": {
+    "expand_other": "显示 {{count}} 个隐藏的副本",
+    "collapse_other": "隐藏 {{count}} 个副本",
+    "badge": "+{{hidden}}",
+    "hiddenProblem": "某个隐藏的副本有问题"
   }
 }

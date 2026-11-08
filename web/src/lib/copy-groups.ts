@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Torrent } from "@/types"
+import type { CrossInstanceTorrent, Torrent } from "@/types"
 
 // Which Copy groups are open. Expand all is one flag; toggled holds the groups
 // that differ from it. The state lives in browser memory only.
@@ -45,13 +45,7 @@ export function isCopyGroupOpen(expansion: CopyGroupExpansion, id: string): bool
   return expansion.expandAll !== expansion.toggled.has(id)
 }
 
-/**
- * The rows that the list shows. A group takes the place of the first loaded row
- * with its id, because a stream merge can place a member apart from its group.
- * The row with first_sorted is on top, and an open group shows its other
- * members under it in loaded order. A list with no group returns `rows` itself.
- */
-export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGroupExpansion): T[] {
+function groupMembers<T extends Torrent>(rows: T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>()
   for (const row of rows) {
     const id = row.copy_group?.id
@@ -63,6 +57,21 @@ export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGr
       groups.set(id, [row])
     }
   }
+  return groups
+}
+
+function topRowOf<T extends Torrent>(members: T[]): T {
+  return members.find(isTopRow) ?? members[0]
+}
+
+/**
+ * The rows that the list shows. A group takes the place of the first loaded row
+ * with its id, because a stream merge can place a member apart from its group.
+ * The row with first_sorted is on top, and an open group shows its other
+ * members under it in loaded order. A list with no group returns `rows` itself.
+ */
+export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGroupExpansion): T[] {
+  const groups = groupMembers(rows)
   if (groups.size === 0) {
     return rows
   }
@@ -77,7 +86,7 @@ export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGr
     const members = groups.get(id)
     if (!members) continue
     groups.delete(id)
-    const top = members.find(isTopRow) ?? members[0]
+    const top = topRowOf(members)
     visible.push(top)
     if (isCopyGroupOpen(expansion, id)) {
       for (const member of members) {
@@ -86,4 +95,36 @@ export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGr
     }
   }
   return visible
+}
+
+function hasCopyProblem(row: Pick<Torrent, "state" | "tracker_health">): boolean {
+  return row.state === "error" || row.state === "missingFiles" || row.tracker_health !== undefined
+}
+
+interface CopyGroupSummary<T extends Torrent> {
+  top: T
+  /** The loaded members, the top row included. */
+  size: number
+  /** A member other than the top row has a problem. */
+  hiddenProblem: boolean
+  /** The member that placed the group in the sort. */
+  firstSorted: T
+}
+
+export function summarizeCopyGroups<T extends Torrent>(rows: T[]): Map<string, CopyGroupSummary<T>> {
+  const summaries = new Map<string, CopyGroupSummary<T>>()
+  for (const [id, members] of groupMembers(rows)) {
+    const top = topRowOf(members)
+    const sorted = top.copy_group?.first_sorted
+    // A row of one instance view has no instanceId: all its members are on that instance.
+    const firstSorted = sorted && members.find(member => member.hash === sorted.hash &&
+      ((member as Partial<CrossInstanceTorrent>).instanceId ?? sorted.instance_id) === sorted.instance_id)
+    summaries.set(id, {
+      top,
+      size: members.length,
+      hiddenProblem: members.some(member => member !== top && hasCopyProblem(member)),
+      firstSorted: firstSorted || top,
+    })
+  }
+  return summaries
 }
