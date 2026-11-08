@@ -1169,6 +1169,7 @@
     "status": "状态",
     "tracker": "Tracker",
     "seeds": "做种",
+    "peers": "节点",
     "leeches": "下载",
     "downloaded": "已完成",
     "message": "消息",

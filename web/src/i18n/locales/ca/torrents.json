@@ -274,6 +274,7 @@
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
