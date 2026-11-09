@@ -26,6 +26,7 @@ func selectTestDeletions(t *testing.T, rules []*models.Automation, torrents []qb
 		torrents:   torrents,
 		evalCtx:    evalCtx,
 		crossSeeds: buildCrossSeedGroups(torrents, evalCtx),
+		scope:      noSkipWindow(rules...),
 	})
 }
 
@@ -149,8 +150,7 @@ func TestDeletePreview_KeepFilesGroupMemberGetsBadge(t *testing.T) {
 		"trigger": {hash: "trigger", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles, trigger: true},
 		"member":  {hash: "member", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles},
 	}}
-	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
-	result := svc.buildDeletePreviewResult(torrents, selection, &EvalContext{}, previewConfig{limit: 10}, &models.Automation{}, nil)
+	result := buildDeletePreviewResult(torrents, selection, &EvalContext{}, previewConfig{limit: 10}, &models.Automation{}, nil, noSkipWindow())
 	require.False(t, result.Examples[0].IsCrossSeed)
 	require.True(t, result.Examples[1].IsCrossSeed, "the group expansion took the member")
 	require.Zero(t, result.CrossSeedCount, "a keep-files group member is not a cross-seed")
@@ -227,6 +227,7 @@ func TestDeletionSelection_SharedSavePathChecksFileOverlap(t *testing.T) {
 				torrents:   slices.Clone(torrents),
 				evalCtx:    evalCtx,
 				crossSeeds: buildCrossSeedGroups(torrents, evalCtx),
+				scope:      noSkipWindow(rule),
 			})
 			require.ElementsMatch(t, tt.want, slices.Collect(maps.Keys(selection.byHash)))
 		})

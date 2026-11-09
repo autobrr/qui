@@ -399,7 +399,7 @@ func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 		evalCtx.hardlinkIndex = hardlinks
 		svc := &Service{}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups,
+			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
 		})
 		return slices.Sorted(maps.Keys(selection.byHash))
 	}
@@ -468,10 +468,16 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	run := func(evalCtx *EvalContext, groups *crossSeedGroups) outcome {
 		evalCtx.hardlinkIndex = hardlinks
 		evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, rule)
+		skipped := make(map[string]struct{})
+		for _, torrent := range torrents {
+			if torrent.Hash != "source" {
+				skipped[torrent.Hash] = struct{}{}
+			}
+		}
 		svc := &Service{}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
 			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups,
-			skip: func(hash string) bool { return hash != "source" },
+			scope: newRuleScope([]*models.Automation{rule}, skipped),
 		})
 		return outcome{slices.Sorted(maps.Keys(selection.byHash)), *evalCtx.freeSpaceLedgers[rule.ID]}
 	}
@@ -628,14 +634,14 @@ func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 			plan := func(evalCtx *EvalContext, groups *crossSeedGroups) ([]string, ruleRunStats) {
 				run := slices.Clone(torrents)
 				stats := make(map[int]*ruleRunStats)
-				states := processTorrents(run, []*models.Automation{tt.rule}, evalCtx, groups, nil, nil, stats, nil)
+				states := processTorrents(run, []*models.Automation{tt.rule}, evalCtx, groups, noSkipWindow(tt.rule), stats, nil)
 				torrentByHash := make(map[string]qbt.Torrent, len(run))
 				for _, torrent := range run {
 					torrentByHash[torrent.Hash] = torrent
 				}
 				p := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
 					instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
-					ruleByID: map[int]*models.Automation{tt.rule.ID: tt.rule}, crossSeeds: groups, evalCtx: evalCtx,
+					ruleByID: map[int]*models.Automation{tt.rule.ID: tt.rule}, crossSeeds: groups, evalCtx: evalCtx, scope: noSkipWindow(tt.rule),
 				})
 				return slices.Sorted(slices.Values(p.move.byTarget["/new"])), *stats[tt.rule.ID]
 			}
@@ -728,7 +734,7 @@ func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
-		hashes = append(hashes, moveAsks(torrent, []*models.Automation{rule}, torrents, evalCtx, nil, nil, asked)...)
+		hashes = append(hashes, moveAsks(&torrent, []*models.Automation{rule}, torrents, evalCtx, noSkipWindow(rule), asked)...)
 	}
 	require.Len(t, hashes, 2*len(torrents))
 }
@@ -759,7 +765,7 @@ func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
-		hashes = append(hashes, moveAsks(torrent, rules, torrents, evalCtx, nil, nil, asked)...)
+		hashes = append(hashes, moveAsks(&torrent, rules, torrents, evalCtx, noSkipWindow(rules...), asked)...)
 	}
 	slices.Sort(hashes)
 	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
@@ -940,7 +946,7 @@ func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation,
 	t.Helper()
 	run := slices.Clone(torrents)
 	stats := make(map[int]*ruleRunStats)
-	states := processTorrents(run, rules, evalCtx, groups, nil, nil, stats, nil)
+	states := processTorrents(run, rules, evalCtx, groups, noSkipWindow(rules...), stats, nil)
 	torrentByHash := make(map[string]qbt.Torrent, len(run))
 	for _, torrent := range run {
 		torrentByHash[torrent.Hash] = torrent
@@ -951,7 +957,7 @@ func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation,
 	}
 	plan := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
 		instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
-		ruleByID: ruleByID, crossSeeds: groups, evalCtx: evalCtx,
+		ruleByID: ruleByID, crossSeeds: groups, evalCtx: evalCtx, scope: noSkipWindow(rules...),
 	})
 	return plan, stats
 }

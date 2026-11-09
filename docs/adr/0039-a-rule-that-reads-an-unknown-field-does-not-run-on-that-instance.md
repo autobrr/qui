@@ -15,6 +15,7 @@ The skip is only correct while qui knows the current version. qui reads the vers
 
 - The run decides the skip before it evaluates a torrent, and writes the activity entry at once, so a failure for another rule does not hide the entry. ADR 0028 still holds: no Action reaches a torrent outside the plan step.
 - A grouped delete, category or move is all or none, so a group with a member whose own value is unknown skips that action. It runs after the metadata of the member arrives.
+- Every pass over the torrents of a rule asks the Rule scope module. The field table says when a torrent has no value for a field. A lint rule stops a second copy.
 - A rule without a version requirement on any field that it reads runs as before. A field with an access requirement, such as hardlink scope, keeps its own unknown value for each torrent.
 - With an unknown version, every version requirement is unmet, so the rule skips. Each run reads a missing version again, so one failed read does not stop a rule until qui restarts.
 - A scheduled run writes the activity entry once for each rule on each instance. A run that a person starts always writes it, because the person waits for the reason.

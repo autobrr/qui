@@ -75,7 +75,7 @@
     "internal/services/automations/grouping.go": 1,
     "internal/services/automations/hardlink_index.go": 1,
     "internal/services/automations/processor.go": 5,
-    "internal/services/automations/service.go": 5,
+    "internal/services/automations/service.go": 4,
     "internal/services/automations/validate.go": 1,
     "internal/services/crossseed/align.go": 3,
     "internal/services/crossseed/batch_matching.go": 2,

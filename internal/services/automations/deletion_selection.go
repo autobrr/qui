@@ -13,7 +13,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // deletionSelectionInput is what the Deletion selection reads. The run, the dry run and
@@ -25,9 +24,8 @@ type deletionSelectionInput struct {
 	torrents   []qbt.Torrent
 	evalCtx    *EvalContext
 	crossSeeds *crossSeedGroups
-	// skip leaves out the torrents that a live run handled recently. The dry run and the
-	// preview pass nil.
-	skip func(hash string) bool
+	// scope is the Rule scope of the run. The dry run and the preview open it with no Skip window.
+	scope *ruleScope
 	// stats is optional and counts the delete conditions per rule.
 	stats map[int]*ruleRunStats
 }
@@ -74,46 +72,6 @@ func (d *deletionSelection) isClaimed(hash string) bool {
 	return claimed
 }
 
-// trackerMatchCache matches each tracker pattern once per distinct set of tracker domains.
-// Most torrents share their trackers, so the cache holds few sets.
-type trackerMatchCache struct {
-	keyByHash map[string]string          // torrent hash -> domain set key
-	domains   map[string][]string        // domain set key -> domains
-	matches   map[string]map[string]bool // pattern -> domain set key -> match
-}
-
-func newTrackerMatchCache() *trackerMatchCache {
-	return &trackerMatchCache{
-		keyByHash: make(map[string]string),
-		domains:   make(map[string][]string),
-		matches:   make(map[string]map[string]bool),
-	}
-}
-
-func (c *trackerMatchCache) match(pattern string, torrent qbt.Torrent, s *Service) bool {
-	if pattern == "*" {
-		return true
-	}
-	key, ok := c.keyByHash[torrent.Hash]
-	if !ok {
-		domains := collectTrackerDomains(torrent, s.syncManager) // sorted
-		key = strings.Join(domains, ",")
-		c.keyByHash[torrent.Hash] = key
-		c.domains[key] = domains
-	}
-	byKey := c.matches[pattern]
-	if byKey == nil {
-		byKey = make(map[string]bool)
-		c.matches[pattern] = byKey
-	}
-	matched, ok := byKey[key]
-	if !ok {
-		matched = matchesTracker(pattern, c.domains[key])
-		byKey[key] = matched
-	}
-	return matched
-}
-
 type deletionClaim struct {
 	hash string
 	rule *models.Automation
@@ -146,17 +104,16 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 
 	var claims []deletionClaim
 	var sortedFor *models.Automation
-	trackers := newTrackerMatchCache()
 	for _, rule := range in.rules {
 		if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 			continue
 		}
-		enterRule(evalCtx, rule, in.torrents, s.syncManager)
+		enterRule(evalCtx, rule, in.torrents, in.scope)
 		if sortedFor == nil || !rulesCanShareSortingBatch(sortedFor, rule) {
 			SortTorrentsWithFallback(in.torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 			sortedFor = rule
 		}
-		ruleClaims, err := s.claimDeleteTriggers(rule, in, sel, trackers)
+		ruleClaims, err := claimDeleteTriggers(rule, in, sel)
 		if err != nil {
 			sel.failedRules[rule.ID] = err
 			evalCtx.activeFreeSpace.reset()
@@ -229,11 +186,10 @@ func deleteExpandsGroups(rule *models.Automation) bool {
 // claimDeleteTriggers returns the torrents whose delete condition matches the rule, in sort
 // order. A torrent that an earlier rule claimed stays with that rule. The error cancels all
 // deletes of the rule.
-func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection, trackers *trackerMatchCache) ([]deletionClaim, error) {
+func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection) ([]deletionClaim, error) {
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
 	ledger := in.evalCtx.activeFreeSpace
-	readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 	stats := getOrCreateRuleStats(in.stats, rule)
 	countNotMet := func() {
 		if stats != nil {
@@ -242,11 +198,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 	}
 
 	inScope := func(torrent *qbt.Torrent) bool {
-		if sel.isClaimed(torrent.Hash) || (in.skip != nil && in.skip(torrent.Hash)) {
-			return false
-		}
-		// A torrent without a private value drops out of a rule that reads it. ADR 0039.
-		return trackers.match(rule.TrackerPattern, *torrent, s) && (!readsPrivate || !qbittorrent.PrivateUnknown(torrent))
+		return !sel.isClaimed(torrent.Hash) && in.scope.answer(rule, torrent) == scopeIn
 	}
 	var readAhead *freeSpaceReadAhead
 	if ledger.projects() {
@@ -354,7 +306,7 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		// A group delete is all or none: every member must match the delete condition.
-		idx := getOrBuildGroupIndexForRule(in.evalCtx, rule, groupID, in.torrents, s.syncManager)
+		idx := getOrBuildGroupIndexForRule(in.evalCtx, rule, groupID, in.torrents, in.scope)
 		if idx == nil {
 			return
 		}
@@ -367,9 +319,9 @@ func (s *Service) expandDeleteTrigger(
 			!s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, trigger.Hash, in.evalCtx.torrentsByHash) {
 			return
 		}
-		enterRule(in.evalCtx, rule, in.torrents, s.syncManager)
+		enterRule(in.evalCtx, rule, in.torrents, in.scope)
 		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
-			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
+			in.scope.groupDropsMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return
 		}

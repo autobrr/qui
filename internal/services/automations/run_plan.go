@@ -122,15 +122,6 @@ func (s *Service) skipRulesWithUnknownFields(ctx context.Context, instanceID int
 	return runnable, skipped
 }
 
-// groupHasDroppedMember reports whether a member has no private value in a rule that reads it.
-// That member drops out of the rule, and a grouped action is all or none. ADR 0039.
-func groupHasDroppedMember(rule *models.Automation, members []string, torrentByHash map[string]qbt.Torrent) bool {
-	return ruleUsesCondition(rule, FieldPrivate) && slices.ContainsFunc(members, func(hash string) bool {
-		member := torrentByHash[hash]
-		return qbittorrent.PrivateUnknown(&member)
-	})
-}
-
 // recordRuleSkips writes one activity entry for each skipped rule. A scheduled run writes
 // it once for each rule on each instance, as long as the reason stays. qui keeps this state in
 // memory, so after a restart it writes the entry again. A run that a person starts always
@@ -243,6 +234,7 @@ type runPlanInput struct {
 	ruleByID      map[int]*models.Automation
 	crossSeeds    *crossSeedGroups
 	evalCtx       *EvalContext
+	scope         *ruleScope
 }
 
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
@@ -306,7 +298,10 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		}
 
 		if state.exportToInstance != nil {
-			plan.exports = append(plan.exports, s.planExport(ctx, hash, torrent, state, evalCtx))
+			export := s.planExport(ctx, hash, torrent, state, evalCtx)
+			// The export workers run in parallel, and the Rule scope serves one goroutine.
+			export.trackerDomain = in.scope.tracker(&torrent)
+			plan.exports = append(plan.exports, export)
 		}
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
@@ -552,7 +547,7 @@ func (s *Service) planCategoryTrigger(ctx context.Context, in runPlanInput, grou
 	k := groupExpandKey{ruleID: rule.ID, groupID: state.categoryGroupID}
 	idx := groups.indexes[k]
 	if idx == nil {
-		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.categoryGroupID, in.torrents, s.syncManager)
+		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.categoryGroupID, in.torrents, in.scope)
 		groups.indexes[k] = idx
 	}
 	if idx == nil {
@@ -592,10 +587,10 @@ func (s *Service) categoryGroupEligible(ctx context.Context, in runPlanInput, ru
 	}
 	// GroupId is strict all-or-none: every member must satisfy the action condition.
 	catAction := getCategoryAction(rule)
-	enterRule(in.evalCtx, rule, in.torrents, s.syncManager)
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
 	members := idx.MembersForHash(hash)
 	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds) &&
-		!groupHasDroppedMember(rule, members, in.torrentByHash)
+		!in.scope.groupDropsMember(rule, members, in.torrentByHash)
 }
 
 // addMembers adds the other members of the expanded groups to the category.
@@ -730,7 +725,7 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 	rgk := groupExpandKey{ruleID: rule.ID, groupID: state.moveGroupID}
 	idx := m.indexes[rgk]
 	if idx == nil {
-		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.moveGroupID, in.torrents, s.syncManager)
+		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.moveGroupID, in.torrents, in.scope)
 		m.indexes[rgk] = idx
 	}
 
@@ -789,9 +784,9 @@ func (s *Service) moveGroupChecks(in runPlanInput, rule *models.Automation, grou
 	if rule.Conditions != nil && rule.Conditions.Move != nil {
 		cond = rule.Conditions.Move.Condition
 	}
-	enterRule(in.evalCtx, rule, in.torrents, s.syncManager)
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
 	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
-		groupHasDroppedMember(rule, members, in.torrentByHash) {
+		in.scope.groupDropsMember(rule, members, in.torrentByHash) {
 		return false, false, 0
 	}
 	return true, verifyOverlap, minPercent
@@ -835,8 +830,8 @@ func (m *moveExpansion) legacyCrossSeeds(triggers []string, normalizedDest strin
 
 // planPreview builds the Run plan of the one rule that a preview shows, with only the actions
 // in keep. It also returns the torrents whose category or tags the rule changes on its own,
-// before the cross-seed expansion. The preview checks every torrent, also one that a run skips as recently processed.
-func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups) (runPlan, map[string]struct{}) {
+// before the cross-seed expansion. The preview checks every torrent, also one in the Skip window.
+func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope) (runPlan, map[string]struct{}) {
 	keep.SchemaVersion = rule.Conditions.SchemaVersion
 	keep.Grouping = rule.Conditions.Grouping
 	only := *rule
@@ -845,13 +840,12 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 	only.Enabled = true
 
 	states := make(map[string]*torrentDesiredState)
-	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, s.syncManager, nil, nil, states)
-	// keep can leave out the action that reads Private, but the run reads the whole rule.
-	if ruleUsesCondition(rule, FieldPrivate) {
-		for i := range torrents {
-			if qbittorrent.PrivateUnknown(&torrents[i]) {
-				delete(states, torrents[i].Hash)
-			}
+	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, scope, nil, states)
+	// A run adds the managed tags back to a torrent that dropped out of the rule. The preview
+	// shows no row for that torrent.
+	for i := range torrents {
+		if scope.answer(rule, &torrents[i]) == scopeNoValue {
+			delete(states, torrents[i].Hash)
 		}
 	}
 
@@ -873,10 +867,10 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 		deletions:     &deletionSelection{},
 		torrents:      torrents,
 		torrentByHash: torrentByHash,
-		// The whole rule: a grouped action asks if the rule reads Private in another action.
-		ruleByID:   map[int]*models.Automation{rule.ID: rule},
-		crossSeeds: crossSeeds,
-		evalCtx:    evalCtx,
+		ruleByID:      map[int]*models.Automation{rule.ID: rule},
+		crossSeeds:    crossSeeds,
+		evalCtx:       evalCtx,
+		scope:         scope,
 	})
 	return plan, own
 }
