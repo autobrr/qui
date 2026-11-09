@@ -76,9 +76,11 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	}
 
 	send(http.MethodPost, "torrents/add", "urls=magnet%3A%3Fxt%3Durn%3Abtih%3A"+proxyHashB)
+	require.Equal(t, 1, stub.Writes("torrents/add"), "the proxy forwards the add")
 	require.Equal(t, []int{instance.ID}, noter.taken(), "a forwarded POST is a write")
 
 	send(http.MethodPost, "torrents/setLocation", "hashes="+proxyHashA+"&location="+filepath.ToSlash(filepath.Join(root, "torrents", "movies")))
+	require.Equal(t, 1, stub.Writes("torrents/setLocation"), "the proxy sends the move")
 	require.Equal(t, []int{instance.ID}, noter.taken(), "an intercepted POST is a write")
 
 	send(http.MethodGet, "torrents/info", "")
