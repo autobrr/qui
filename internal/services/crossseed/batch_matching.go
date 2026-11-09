@@ -135,16 +135,6 @@ func releaseDate(r *rls.Release) int {
 	return 0
 }
 
-// BuildCrossMatchSets asks one CrossMatchSession for the whole library. A
-// snapshot that cannot be read is in Err.
-func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
-	session, err := s.OpenCrossMatchSession(ctx, currentInstanceID, needs)
-	if err != nil {
-		return &CrossMatchResult{Err: err}
-	}
-	return session.Resolve(ctx, ResolveRequest{All: true, Groups: true, OtherShared: needs.OtherShared})
-}
-
 func (s *Service) crossMatchSnapshot(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, []*models.Instance, error, error) {
 	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
