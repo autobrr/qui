@@ -170,6 +170,7 @@ describe("InstanceSSHPanel", () => {
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false)
   })
 
+  // regression: #3732
   it("the fields are off while a save runs", async () => {
     let finish: () => void = () => {}
     mocks.api.setSSHCredentials.mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))
