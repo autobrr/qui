@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // planMoveTriggers evaluates the rule and plans the moves of the triggers in the given order.
@@ -20,7 +19,7 @@ import (
 func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, order []string) (plannedAction[string], int) {
 	t.Helper()
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, crossSeeds, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, crossSeeds, noSkipWindow(rule), nil, nil)
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
 		torrentByHash[torrent.Hash] = torrent
@@ -40,6 +39,7 @@ func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *
 		ruleByID:      map[int]*models.Automation{rule.ID: rule},
 		crossSeeds:    crossSeeds,
 		evalCtx:       evalCtx,
+		scope:         noSkipWindow(rule),
 	}, triggers.rules)
 	planned := svc.expandMoves(t.Context(), m, triggers)
 	return planned, m.groupChecks

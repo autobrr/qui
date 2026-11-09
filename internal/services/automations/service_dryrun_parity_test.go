@@ -260,7 +260,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityDeleteRule(DeleteModeWithFilesIncludeCrossSeeds,
 				&models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThanOrEqual, Value: "1"}),
 			state: func(svc *Service, instanceID int) {
-				svc.lastApplied[instanceID] = map[string]time.Time{parityHash: time.Now()}
+				svc.startSkipWindow(instanceID, []string{parityHash}, time.Now())
 			},
 			want: []string{parityHash},
 		},
