@@ -975,18 +975,23 @@ describe("TorrentTableOptimized Group copies switch", () => {
     expect(container.textContent?.includes("copyGroups.grouping")).toBe(shown)
   })
 
-  it.each([
-    ["on a phone", () => {
-      window.matchMedia = ((query: string) => ({
-        matches: query === "(max-width: 767px)",
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as unknown as typeof window.matchMedia
-    }],
-    ["in the demo", () => { scenario.isDemo = true }],
-  ])("asks for no groups and shows no switch %s", async (_, setUp) => {
-    setUp()
+  // A phone reaches this table in the Unified view.
+  it("asks for groups and shows the switch on a phone", async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(max-width: 767px)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderTable()
+
+    expect(scenario.listOptions?.groupCopies).toBe(true)
+    expect((await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("asks for no groups and shows no switch in the demo", async () => {
+    scenario.isDemo = true
     localStorage.setItem(GROUP_COPIES_KEY, "true")
     const view = renderTable()
 

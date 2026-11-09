@@ -124,11 +124,11 @@ Stretch mode is the default. In stretch mode, the Name column takes the width th
 
 ## Group copies
 
-A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. In Table and Dense, it is in the **Toggle columns** menu. In Stacked, it is in the sort menu. qui saves the switch with your other settings, so it applies in each browser that you sign in to.
+A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. In Table and Dense, it is in the **Toggle columns** menu. In Stacked, it is in the sort menu. On phones, it is in the sort menu above the cards. qui saves the switch with your other settings, so it applies in each browser that you sign in to.
 
 Two torrents are copies when qui matches them as cross-seeds and their files have the same sizes. Equal sizes keep a season pack apart from its episodes. A torrent with no file list, for example a magnet without metadata, stays a row of its own.
 
-Each group starts closed. The top row is the oldest copy, and a badge such as **+2** gives the number of hidden copies. A warning icon on the badge tells you that a hidden copy has an error, missing files, or a tracker problem. Click the badge to open or close one group. **Expand all**, next to the switch, opens or closes all groups.
+Each group starts closed. The top row is the oldest copy, and a badge such as **+2** gives the number of hidden copies. A warning icon on the badge tells you that a hidden copy has an error, missing files, or a tracker problem. Click or tap the badge to open or close one group. **Expand all**, next to the switch, opens or closes all groups.
 
 Grouping changes only how the list looks:
 
@@ -136,7 +136,7 @@ Grouping changes only how the list looks:
 - A tick, a right-click, and Shift + click select only the rows that you see. To act on all copies, use Ctrl/Cmd + A, or the cross-seed option in the delete dialog.
 - The torrent count in the status bar counts torrents, not rows.
 
-When you turn on the switch for the first time, qui reads the file lists of your torrents. Until it finishes, the list stays flat, and the status bar shows **Grouping…**. Phones and **Filter Cross-Seeds** always show flat rows.
+When you turn on the switch for the first time, qui reads the file lists of your torrents. Until it finishes, the list stays flat, and the status bar shows **Grouping…**. On phones, the bar above the cards shows it. **Filter Cross-Seeds** always shows flat rows.
 
 ## Live updates paused
 

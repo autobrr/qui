@@ -5,6 +5,7 @@
 
 import type { SpeedUnit } from "@/lib/speedUnits"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { withSortedField } from "@/lib/copy-groups"
 import { getLinuxIsoName } from "@/lib/incognito"
 import { centersSelectCheckbox, getCopyGroupAccentClass, getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import type { TrackerCustomizationLookup } from "@/lib/tracker-customizations"
@@ -151,8 +152,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
 
   if (desktopViewMode === "compact") {
     // A Stacked row has no cells: it shows the sorted field of the first-sorted member.
-    const sortedField = sortedColumnId && getBackendSortField(sortedColumnId)
-    const displayTorrent = sortedTorrent && sortedField && sortedField in torrent ? { ...torrent, [sortedField]: sortedTorrent[sortedField as keyof Torrent] } : torrent
+    const displayTorrent = withSortedField(torrent, sortedTorrent, sortedColumnId && getBackendSortField(sortedColumnId))
     return (
       <TorrentContextMenu {...menu} torrent={torrent} isSelected={isRowSelected}>
         <CompactRow

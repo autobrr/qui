@@ -108,6 +108,14 @@ export function countTickedCopies<T extends Torrent>(rows: T[], isTicked: (row: 
   return counts
 }
 
+/**
+ * What a closed top row shows: the top row with the sorted field of the
+ * first-sorted member. A field that the row does not hold changes nothing.
+ */
+export function withSortedField<T extends Torrent>(top: T, firstSorted: T | undefined, sortedField: string | undefined): T {
+  return firstSorted && sortedField && sortedField in top ? { ...top, [sortedField]: firstSorted[sortedField as keyof T] } : top
+}
+
 function hasCopyProblem(row: Pick<Torrent, "state" | "tracker_health">): boolean {
   return row.state === "error" || row.state === "missingFiles" || row.tracker_health !== undefined
 }

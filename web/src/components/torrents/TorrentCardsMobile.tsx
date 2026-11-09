@@ -31,6 +31,7 @@ import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
+import { useCopyGroupRows, type CopyGroupRow } from "@/hooks/useCopyGroupRows"
 import { useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -98,14 +99,18 @@ import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities, useInstancesSupport } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
+import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
+import { withSortedField } from "@/lib/copy-groups"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
-import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { getCopyGroupAccentClass, getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
+import { CopyGroupPill } from "./table/CopyGroupPill"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 interface TorrentCardsMobileProps {
@@ -264,7 +269,10 @@ const getTrackerDisplayMeta = (tracker?: string) => {
 
 // Swipeable card component with gesture support
 function SwipeableCard({
-  torrent,
+  torrent: cardTorrent,
+  copyGroup,
+  sortedField,
+  onToggleCopyGroup,
   isSelected,
   onSelect,
   onClick,
@@ -277,7 +285,11 @@ function SwipeableCard({
   trackerIcons,
   trackerCustomizationLookup,
 }: {
+  /** The torrent that a tap, a long press, and a tick reach. */
   torrent: Torrent
+  copyGroup: CopyGroupRow<Torrent>
+  sortedField: string
+  onToggleCopyGroup: (id: string) => void
   isSelected: boolean
   onSelect: (selected: boolean) => void
   onClick: () => void
@@ -291,6 +303,11 @@ function SwipeableCard({
   trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
   const { t } = useTranslation("torrents")
+  // The card of a closed group shows the sorted field of the first-sorted member.
+  const torrent = useMemo(
+    () => withSortedField(cardTorrent, copyGroup.sortedTorrent, sortedField),
+    [cardTorrent, copyGroup.sortedTorrent, sortedField]
+  )
 
   // Use number for timeoutId in browser
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
@@ -310,7 +327,7 @@ function SwipeableCard({
         if ("vibrate" in navigator) {
           navigator.vibrate(50)
         }
-        onLongPress(torrent)
+        onLongPress(cardTorrent)
       }
     }, 600) // Increased to 600ms to be less sensitive
     setLongPressTimer(timer)
@@ -364,14 +381,28 @@ function SwipeableCard({
   const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, trackerMeta.host)
   // Display name is either custom name or hostname
   const trackerDisplayName = trackerDisplayInfo.displayName || trackerMeta.title
+  const groupPill = copyGroup.groupId !== undefined && (
+    <CopyGroupPill
+      id={copyGroup.groupId}
+      open={copyGroup.open}
+      copies={copyGroup.copies}
+      hiddenProblem={copyGroup.hiddenProblem}
+      hiddenTicks={copyGroup.hiddenTicks}
+      name={displayName}
+      size={viewMode === "ultra-compact" ? "dense" : viewMode === "compact" ? "stacked" : "normal"}
+      onToggle={onToggleCopyGroup}
+    />
+  )
 
   return (
     <div
       className={cn(
         "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
         viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",
+        (copyGroup.open || copyGroup.nestedCopy) && getCopyGroupAccentClass(copyGroup.open),
         isSelected && "bg-accent/50",
-        !selectionMode && "active:scale-[0.98]",
+        // A press on the pill does not press the card.
+        !selectionMode && "[&:not(:has(button:active))]:active:scale-[0.98]",
         selectionMode && viewMode !== "normal" && "pr-10"
       )}
       onTouchStart={!selectionMode ? handleTouchStart : undefined}
@@ -446,6 +477,8 @@ function SwipeableCard({
             </div>
           )}
 
+          {groupPill}
+
           {/* State badge - smaller */}
           <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
             {statusBadgeLabel}
@@ -477,6 +510,7 @@ function SwipeableCard({
                 </h3>
               </div>
             </div>
+            {groupPill}
             <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
               {statusBadgeLabel}
             </Badge>
@@ -502,13 +536,11 @@ function SwipeableCard({
         /* Full Layout */
         <>
           {/* Torrent name */}
-          <div className="mb-3">
-            <h3 className={cn(
-              "font-medium text-sm line-clamp-2 break-all h-10",
-              selectionMode && "pr-8"
-            )}>
+          <div className={cn("mb-3 flex items-start", selectionMode && "pr-8")}>
+            <h3 className="flex-1 min-w-0 font-medium text-sm line-clamp-2 break-all h-10">
               {displayName}
             </h3>
+            {groupPill}
           </div>
 
           {/* Progress bar */}
@@ -858,6 +890,8 @@ export function TorrentCardsMobile({
     }
   }, [effectiveSearch, dispatchSelection])
 
+  const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
+
   // Fetch data
   const {
     torrents,
@@ -877,6 +911,11 @@ export function TorrentCardsMobile({
     reportNearEnd,
     listKey,
     isCrossInstanceEndpoint,
+    visibleRows,
+    groupExpansion,
+    toggleGroup,
+    toggleExpandAll,
+    copyGroupsReady,
   } = useTorrentListController({
     instanceId,
     instanceIds,
@@ -884,6 +923,7 @@ export function TorrentCardsMobile({
     filters,
     sort: backendSortField,
     order: sortOrder,
+    groupCopies: groupCopiesSetting,
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
@@ -912,6 +952,8 @@ export function TorrentCardsMobile({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, allowSubcategories, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
+
+  const { describeRow: describeCopyGroupRow } = useCopyGroupRows({ rows: torrents, expansion: groupExpansion, selection, getSelectionIdentity })
 
   const tickedTorrentsRef = useRef(new Map<string, Torrent>())
   // Every bulk action on the cards reads this target (ADR 0034). The cards have no Column filters.
@@ -980,11 +1022,12 @@ export function TorrentCardsMobile({
     getScrollElement: () => parentRef.current,
     estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
     overscan: 5,
-    // Provide a key to help with item tracking - use hash with index for uniqueness
+    // The list hook keeps one row per identity. A key without the index lets a card
+    // keep its place in the DOM when a group above it opens or closes.
     getItemKey: useCallback((index: number) => {
-      const torrent = torrents[index]
-      return torrent?.hash ? `${torrent.hash}-${index}` : `loading-${index}`
-    }, [torrents]),
+      const torrent = visibleRows[index]
+      return torrent ? getSelectionIdentity(torrent) : `loading-${index}`
+    }, [visibleRows, getSelectionIdentity]),
     // Optimized onChange handler following TanStack Virtual best practices
     onChange: (instance, sync) => {
       const vRows = instance.getVirtualItems();
@@ -1128,6 +1171,11 @@ export function TorrentCardsMobile({
                 t("statusBar.loadingTorrents")
               ) : totalCount === 0 ? (
                 t("mobileCards.noTorrentsFound")
+              ) : copyGroupsReady === false ? (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("copyGroups.grouping")}
+                </span>
               ) : (
                 <>
                   {hasLoadedAll ? (
@@ -1135,7 +1183,7 @@ export function TorrentCardsMobile({
                   ) : isLoadingMore ? (
                     t("statusBar.loadingMore")
                   ) : (
-                    t("statusBar.torrentsLoaded", { loaded: loadedRows, total: totalCount })
+                    t("statusBar.torrentsLoaded", { loaded: torrents.length, total: totalCount })
                   )}
                 </>
               )}
@@ -1152,6 +1200,12 @@ export function TorrentCardsMobile({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                  <CopyGroupMenuItems
+                    groupCopies={groupCopiesSetting}
+                    expandAll={groupExpansion.expandAll}
+                    onToggleGroupCopies={toggleGroupCopies}
+                    onToggleExpandAll={toggleExpandAll}
+                  />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={sortField}
@@ -1239,7 +1293,7 @@ export function TorrentCardsMobile({
           }}
         >
           {virtualItems.map(virtualItem => {
-            const torrent = torrents[virtualItem.index]
+            const torrent = visibleRows[virtualItem.index]
             const selectionIdentity = getSelectionIdentity(torrent)
             const isSelected = isAllSelected ? !excludedFromSelectAll.has(selectionIdentity) : selectedHashes.has(selectionIdentity)
 
@@ -1259,6 +1313,9 @@ export function TorrentCardsMobile({
               >
                 <SwipeableCard
                   torrent={torrent}
+                  copyGroup={describeCopyGroupRow(torrent)}
+                  sortedField={backendSortField}
+                  onToggleCopyGroup={toggleGroup}
                   isSelected={isSelected}
                   onSelect={(selected) => handleSelect(selectionIdentity, selected)}
                   onClick={() => onTorrentSelect?.(torrent)}

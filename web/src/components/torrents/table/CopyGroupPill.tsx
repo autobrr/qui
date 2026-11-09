@@ -43,11 +43,15 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, na
         event.stopPropagation()
         onToggle(id)
       }}
+      // A press on the pill must not start the long press of its card.
+      onTouchStart={(event) => event.stopPropagation()}
       className={cn(
         "relative flex cursor-pointer items-center gap-0.5 rounded-md border pl-1.5 pr-1 text-xs font-medium tabular-nums transition-colors",
         HEIGHT[size],
-        // An invisible hit area 5px past the border on each side.
-        "before:absolute before:-inset-[5px] before:content-['']",
+        // An invisible hit area 5px past the border on each side. A touch screen
+        // gets the full height: the zone is taller than any row, and the row or the card clips it.
+        "before:absolute before:-inset-x-[5px] before:content-['']",
+        canHover ? "before:-inset-y-[5px]" : "before:-inset-y-48",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         open? "border-foreground/70 bg-transparent text-foreground hover:bg-muted": hiddenProblem? "border-destructive/50 bg-destructive/10 text-foreground hover:border-destructive hover:bg-destructive/20": "border-border bg-secondary text-secondary-foreground hover:border-foreground/30 hover:bg-muted"
       )}
@@ -60,7 +64,8 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, na
   // A tap on a touch screen would open the tooltip together with the group, so
   // only a device that can hover gets the tooltip.
   return (
-    <span className={cn("ml-auto flex shrink-0 pl-2", size === "stacked" && "mr-2")}>
+    // The 18px pill takes 16px of its line, so it does not make the smallest card taller.
+    <span className={cn("ml-auto flex shrink-0 pl-2", size === "stacked" && "mr-2", size === "dense" && "-my-px")}>
       {canHover ? (
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
