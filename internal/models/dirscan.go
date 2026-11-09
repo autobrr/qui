@@ -1386,7 +1386,6 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 
 	searchedIndexerIDs := marshalSearchedIndexerIDs(file.SearchedIndexerIDs)
 
-	// UTC because pgx stores a non-UTC time in a TIMESTAMP column as its wall clock and drops the offset.
 	fileModTime := file.FileModTime.UTC()
 
 	// Handle renames via FileID where possible: if we have a platform-neutral FileID

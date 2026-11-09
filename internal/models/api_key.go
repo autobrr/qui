@@ -319,7 +319,6 @@ func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
 		WHERE id = ?
 	`
 
-	// Bind UTC: CURRENT_TIMESTAMP would be the Postgres session's local time, and the column has no zone.
 	result, err := tx.ExecContext(ctx, query, time.Now().UTC(), id)
 	if err != nil {
 		return err

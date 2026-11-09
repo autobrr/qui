@@ -509,6 +509,10 @@ const (
 	connectionSetupTimeout   = 5 * time.Second
 )
 
+// sqliteTimeZoneParam makes the driver convert each time to UTC when it binds
+// it and when it reads it back.
+const sqliteTimeZoneParam = "_timezone=UTC"
+
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
 // init registers the pragma hook while this package is still initializing, so
@@ -635,7 +639,7 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open writer connection (single connection for all writes)
-	writerConn, err := sql.Open("sqlite", databasePath)
+	writerConn, err := sql.Open("sqlite", databasePath+"?"+sqliteTimeZoneParam)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open writer connection at %s: %w", databasePath, err)
 	}
@@ -662,7 +666,7 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open reader pool (read-only connection pool for concurrent reads)
-	readerDSN := fmt.Sprintf("file:%s?mode=ro", databasePath)
+	readerDSN := fmt.Sprintf("file:%s?mode=ro&%s", databasePath, sqliteTimeZoneParam)
 	readerPool, err := sql.Open("sqlite", readerDSN)
 	if err != nil {
 		writerConn.Close()
