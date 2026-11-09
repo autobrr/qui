@@ -1760,7 +1760,8 @@
       "test": {
         "title": "连接",
         "pinnedAtRest": "主机密钥已固定。测试连接以查看主机允许的功能。",
-        "unpinnedAtRest": "尚未固定主机密钥。测试连接以确认主机的指纹。"
+        "unpinnedAtRest": "尚未固定主机密钥。测试连接以确认主机的指纹。",
+        "saveFirst": "请先保存更改。测试使用已保存的凭据。"
       },
       "status": {
         "unpinned": {

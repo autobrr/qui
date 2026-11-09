@@ -1789,7 +1789,8 @@
       "test": {
         "title": "Conexão",
         "pinnedAtRest": "Chave do host fixada. Teste a conexão para ver o que o host permite.",
-        "unpinnedAtRest": "Nenhuma chave do host fixada ainda. Teste a conexão para confirmar a impressão digital do host."
+        "unpinnedAtRest": "Nenhuma chave do host fixada ainda. Teste a conexão para confirmar a impressão digital do host.",
+        "saveFirst": "Salve as alterações primeiro. O teste usa as credenciais salvas."
       },
       "status": {
         "unpinned": {

@@ -1824,7 +1824,8 @@
       "test": {
         "title": "Připojení",
         "pinnedAtRest": "Klíč hostitele je připnutý. Otestujte připojení a zjistěte, co hostitel umožňuje.",
-        "unpinnedAtRest": "Zatím není připnutý žádný klíč hostitele. Otestujte připojení a potvrďte otisk hostitele."
+        "unpinnedAtRest": "Zatím není připnutý žádný klíč hostitele. Otestujte připojení a potvrďte otisk hostitele.",
+        "saveFirst": "Nejdříve uložte změny. Test používá uložené přihlašovací údaje."
       },
       "status": {
         "unpinned": {

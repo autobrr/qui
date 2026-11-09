@@ -1789,7 +1789,8 @@
       "test": {
         "title": "Connessione",
         "pinnedAtRest": "Chiave host fissata. Prova la connessione per vedere cosa consente l'host.",
-        "unpinnedAtRest": "Nessuna chiave host fissata. Prova la connessione per confermare l'impronta dell'host."
+        "unpinnedAtRest": "Nessuna chiave host fissata. Prova la connessione per confermare l'impronta dell'host.",
+        "saveFirst": "Salva prima le modifiche. Il test usa le credenziali salvate."
       },
       "status": {
         "unpinned": {
