@@ -359,3 +359,24 @@ func TestGetTorrentFilesBatch_NoMaindataEntryFetchesWithoutCaching(t *testing.T)
 	require.Equal(t, 1, rig.client.requests())
 	require.Empty(t, rig.fm.cacheCalls)
 }
+
+func TestGetTorrentFilesBatch_RenameDuringFetchDropsOldList(t *testing.T) {
+	t.Parallel()
+
+	rig := newFilesModeRig(longHash)
+	renamed := qbt.TorrentFiles{{Name: "Show.S01/e01.renamed.mkv", Size: 2048}}
+	rig.client.onFetch = sync.OnceFunc(func() {
+		rig.client.mu.Lock()
+		rig.client.files[longHash] = renamed
+		rig.client.mu.Unlock()
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+	})
+
+	first := rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
+	second := rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
+
+	require.Equal(t, seededFiles(), first[longHash], "the fetch began before the rename")
+	require.Equal(t, renamed, second[longHash], "a list fetched before the rename must not stay in the file cache")
+	require.Equal(t, 2, rig.client.requests())
+	require.Equal(t, renamed, rig.fm.cached[longHash], "a fetch that began after the rename saves its list")
+}

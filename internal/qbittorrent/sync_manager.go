@@ -515,6 +515,7 @@ type SyncManager struct {
 	// filesChangedHandler runs after qui renames the files of a torrent or
 	// drops its file list from the file cache.
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
+	filesInvalidations  filesInvalidations
 	copyGroups          atomic.Pointer[CopyGroups]
 	copyGroupsDemand    atomic.Pointer[func()]
 
@@ -1353,11 +1354,64 @@ func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, 
 	// Notify after the cached list is gone, so a read that starts on the
 	// notify cannot load the old list.
 	defer sm.notifyFilesChanged(instanceID, hash)
+	return sm.dropCachedFiles(ctx, instanceID, hash)
+}
+
+// dropCachedFiles drops the cached file list of hash. A fetch that began
+// before the drop then does not save the list it got.
+func (sm *SyncManager) dropCachedFiles(ctx context.Context, instanceID int, hash string) error {
 	fm := sm.getFilesManager()
 	if fm == nil {
-		return nil // No files manager configured, nothing to do
+		return nil
 	}
-	return fm.InvalidateCache(ctx, instanceID, hash)
+	return sm.filesInvalidations.invalidate(instanceID, hash, func() error {
+		return fm.InvalidateCache(ctx, instanceID, hash)
+	})
+}
+
+// filesInvalidations orders the saves of fetched file lists against the drops
+// of cached ones.
+type filesInvalidations struct {
+	mu  sync.RWMutex
+	seq uint64
+	// dropped holds the seq of the last drop of each hash.
+	dropped map[filesInvalidationKey]uint64
+}
+
+type filesInvalidationKey struct {
+	instanceID int
+	hash       string
+}
+
+// mark returns the value that a fetch passes to save.
+func (f *filesInvalidations) mark() uint64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.seq
+}
+
+func (f *filesInvalidations) invalidate(instanceID int, hash string, drop func() error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seq++
+	if f.dropped == nil {
+		f.dropped = make(map[filesInvalidationKey]uint64)
+	}
+	f.dropped[filesInvalidationKey{instanceID, canonicalizeHash(hash)}] = f.seq
+	return drop()
+}
+
+// save stores the writes whose hash was not dropped after mark.
+func (f *filesInvalidations) save(instanceID int, mark uint64, writes map[string]CachedFilesWrite, store func(map[string]CachedFilesWrite) error) error {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	maps.DeleteFunc(writes, func(hash string, _ CachedFilesWrite) bool {
+		return f.dropped[filesInvalidationKey{instanceID, hash}] > mark
+	})
+	if len(writes) == 0 {
+		return nil
+	}
+	return store(writes)
 }
 
 // GetErrorStore returns the error store for recording errors
@@ -2757,6 +2811,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		prints = readFilesPrints(client, hashesToFetch)
 	}
 
+	fetchMark := sm.filesInvalidations.mark()
 	g, gctx := errgroup.WithContext(ctx)
 	limit := fileFetchConcurrency(len(hashesToFetch))
 	if ctxLimit := fileFetchLimit(ctx); ctxLimit > 0 {
@@ -2834,7 +2889,10 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 		}
 		if len(fetchedFiles) > 0 {
-			if err := fm.CacheFilesBatch(context.WithoutCancel(ctx), instanceID, fetchedFiles); err != nil {
+			store := func(writes map[string]CachedFilesWrite) error {
+				return fm.CacheFilesBatch(context.WithoutCancel(ctx), instanceID, writes)
+			}
+			if err := sm.filesInvalidations.save(instanceID, fetchMark, fetchedFiles, store); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", instanceID).
@@ -5214,12 +5272,10 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		}
 
 		// Invalidate file cache for all affected torrents since paths may change
-		if fm := sm.getFilesManager(); fm != nil {
-			for _, hash := range hashes {
-				if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-					log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-						Msg("Failed to invalidate file cache after location change")
-				}
+		for _, hash := range hashes {
+			if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after location change")
 			}
 		}
 		return nil
@@ -5268,11 +5324,9 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		}
 
 		// Invalidate file cache since priorities changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after priority change")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after priority change")
 		}
 		return nil
 	})
@@ -5327,11 +5381,9 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 		}
 
 		// Invalidate file cache since file paths changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after file rename")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after file rename")
 		}
 
 		sm.notifyFilesChanged(instanceID, hash)
@@ -5364,11 +5416,9 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 		}
 
 		// Invalidate file cache since folder paths changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after folder rename")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after folder rename")
 		}
 
 		sm.notifyFilesChanged(instanceID, hash)
