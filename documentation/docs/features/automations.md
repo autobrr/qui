@@ -380,6 +380,7 @@ To apply the actions of one saved workflow without a wait for its interval, use 
 qui then shows a confirmation dialog with the name and the actions of the workflow. Nothing changes until you click **Run now** in that dialog.
 
 - The run applies the actions to the torrents that match at that moment. It writes the same activity rows as a scheduled run.
+- If you close the page or lose the connection during a live run, the run continues until it ends. A dry run stops.
 - A disabled workflow also runs. It stays disabled after the run.
 - If the workflow is set to dry-run, the run is a simulation and writes dry-run activity rows.
 - After a delete rule with a Free Space condition deletes files, the same kind of rule waits 5 minutes before it deletes again. A manual run obeys this wait too.

@@ -102,10 +102,13 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	// The switch skips the map lookup for the common field that reads only the
 	// torrent; this runs for every leaf on every torrent.
 	switch field {
-	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
-		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance,
-		FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
+	case FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
 		FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance:
+		if ctx != nil {
+			ctx.crossSeeds.askFacts(hash)
+		}
+	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
+		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance:
 	default:
 		return true
 	}

@@ -349,6 +349,26 @@ func TestCrossMatchSession_ReadsOnlyTheClosure(t *testing.T) {
 	require.Empty(t, counter.take())
 }
 
+// An ask without Groups reads only the torrent, the members of its path
+// groups and its candidates. It does not read the torrents that pick it.
+func TestCrossMatchSession_FactAskReadsNoClosure(t *testing.T) {
+	t.Parallel()
+	svc, counter, _ := sessionFixtures(t, false)
+	for hash, want := range map[string][]string{
+		"gg01": nil,
+		"bb01": {"1:bb01", "1:bb02"},
+		"aa03": {"1:aa01", "1:aa02", "1:aa03"},
+		// cc00 twice: the batch misses it and get reads it again alone.
+		"cc01": {"1:cc00", "1:cc01", "1:cc02", "1:cc00"},
+		"ff01": {"1:ff01", "2:ff02"},
+		"hh00": nil, // hh01 and hh02 pick it, and it picks neither
+	} {
+		sess := openTestSession(t, svc)
+		sess.Resolve(t.Context(), ResolveRequest{Hashes: []string{hash}})
+		require.ElementsMatch(t, want, counter.take(), hash)
+	}
+}
+
 // The first Resolve fills the local reads of every name that needs files, as
 // BuildCrossMatchSets does, also for a scoped ask.
 func TestCrossMatchSession_LocalReadsFillTheLibrary(t *testing.T) {

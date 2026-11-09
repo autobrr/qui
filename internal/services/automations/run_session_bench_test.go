@@ -24,23 +24,24 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// benchRunService serves pairs cross-seed pairs that share their file and as
-// many torrents without a cross-seed from a stub qBittorrent, and runs the
-// real cross-seed service. fileReads counts the torrents/files requests.
+// benchRunService serves pairs cross-seed pairs that share their file on the
+// tracker main.test and as many torrents without a cross-seed on side.test
+// from a stub qBittorrent, and runs the real cross-seed service. fileReads
+// counts the torrents/files requests.
 func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atomic.Int64) {
 	b.Helper()
 	var entries []string
 	files := make(map[string]string)
-	add := func(hash, name, file string, size int) {
-		entries = append(entries, fmt.Sprintf(`"%s":{"name":"%s","ratio":2,"progress":1,"size":%d,"state":"stalledUP","save_path":"/data","content_path":"/data/%s","tags":""}`, hash, name, size, file))
+	add := func(hash, name, file string, size int, tracker string) {
+		entries = append(entries, fmt.Sprintf(`"%s":{"name":"%s","ratio":2,"progress":1,"size":%d,"state":"stalledUP","save_path":"/data","content_path":"/data/%s","tags":"","tracker":"%s"}`, hash, name, size, file, tracker))
 		files[hash] = fmt.Sprintf(`[{"index":0,"name":"%s","size":%d,"progress":1,"priority":1}]`, file, size)
 	}
 	for i := range pairs {
 		name := fmt.Sprintf("Harbor.Watch.S01E%03d.1080p.WEB.h264-GRP", i)
-		add(fmt.Sprintf("a%039d", i), name, name+".mkv", 1000+i)
-		add(fmt.Sprintf("b%039d", i), name, name+".mkv", 1000+i)
+		add(fmt.Sprintf("a%039d", i), name, name+".mkv", 1000+i, "https://main.test/announce")
+		add(fmt.Sprintf("b%039d", i), name, name+".mkv", 1000+i, "https://main.test/announce")
 		lone := fmt.Sprintf("Quiet.Coast.%04d.1080p.BluRay.x264-GRP", i)
-		add(fmt.Sprintf("c%039d", i), lone, lone+".mkv", 5000+i)
+		add(fmt.Sprintf("c%039d", i), lone, lone+".mkv", 5000+i, "https://side.test/announce")
 	}
 	maindata := `{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":{` + strings.Join(entries, ",") + `}}`
 	fileReads := &atomic.Int64{}
@@ -195,6 +196,39 @@ func benchmarkMoveRun(b *testing.B, move *models.Automation, wantMoves int) {
 		})
 		if got := len(plan.move.byTarget[path]); got != wantMoves {
 			b.Fatalf("planned %d moves, want %d", got, wantMoves)
+		}
+	}
+	b.ReportMetric(float64(fileReads.Load())/float64(b.N), "fileReads/op")
+}
+
+// BenchmarkRunSessionCrossSeedFacts measures a run with one delete rule whose
+// condition reads Exists on the same instance, from buildEvalContext to the
+// Deletion selection. The tracker scope main.test holds the 2000 cross-seeds,
+// two thirds of the library. The keep-files mode reads no group.
+func BenchmarkRunSessionCrossSeedFacts(b *testing.B) {
+	quietBenchLogs(b)
+	rule := deleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: FieldExistsOnSameInstance, Operator: models.OperatorEqual, Value: "true"})
+	rule.TrackerPattern = "main.test"
+	rules := []*models.Automation{rule}
+	svc, instance, fileReads := benchRunService(b, 1000)
+	ctx := b.Context()
+	needs := NeedsFor(rules)
+	fileReads.Store(0)
+	b.ReportAllocs()
+	for b.Loop() {
+		torrents, err := svc.syncManager.GetAllTorrents(ctx, instance.ID)
+		if err != nil || len(torrents) != 3000 {
+			b.Fatalf("got %d torrents: %v", len(torrents), err)
+		}
+		evalCtx, _, err := svc.buildEvalContext(ctx, instance.ID, instance, torrents, needs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		svc.askRuleFacts(rules, torrents, evalCtx, nil)
+		groups := buildCrossSeedGroups(torrents, evalCtx)
+		selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups})
+		if got := len(selection.byHash); got != 2000 {
+			b.Fatalf("selected %d torrents, want 2000", got)
 		}
 	}
 	b.ReportMetric(float64(fileReads.Load())/float64(b.N), "fileReads/op")

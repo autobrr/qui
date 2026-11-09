@@ -7,9 +7,13 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // runSession owns the Shared-file groups and the facts of one run, dry run, or preview (ADR 0042).
@@ -29,6 +33,10 @@ type runSession struct {
 	groupsOff  bool
 	allGrouped bool
 	grouped    map[string]struct{} // torrents asked with Groups
+	allFacts   bool
+	// factsAsked holds the asked torrents. A member that only a group ask reached has no
+	// other-instance facts.
+	factsAsked map[string]struct{}
 	sharedRead bool
 	// files is made once, because cachedTorrentFilesFetcher keeps the map.
 	files       map[string]qbt.TorrentFiles
@@ -37,7 +45,7 @@ type runSession struct {
 	tagGroups bool
 }
 
-// openRunSession asks for the whole library when a reader other than the deletes reads groups or facts.
+// openRunSession asks for the whole library when a tag or category reader reads groups.
 func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
 	session, err := s.crossMatcher.OpenCrossMatchSession(ctx, instanceID, needs.CrossMatch)
 	if err != nil {
@@ -54,6 +62,7 @@ func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents [
 		links:      make(map[string][]string),
 		groupsOff:  !needs.CrossMatch.SameContent,
 		grouped:    make(map[string]struct{}),
+		factsAsked: make(map[string]struct{}),
 		files:      make(map[string]qbt.TorrentFiles),
 		tagGroups:  needs.TagCrossSeeds,
 	}
@@ -63,12 +72,112 @@ func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents [
 	r.groups = &crossSeedGroups{byHash: make(map[string][]qbt.Torrent), session: r}
 	evalCtx.crossSeeds = r.groups
 
-	cm := needs.CrossMatch
-	facts := cm.SameExists || cm.SameSeeding || cm.SameTags || cm.OtherExists || cm.OtherSeeding
-	if facts || needs.CrossSeedGroupsAll {
-		r.resolve(ResolveRequest{All: true, Groups: needs.CrossSeedGroupsAll})
+	if needs.CrossSeedGroupsAll {
+		r.resolve(ResolveRequest{All: true, Groups: true})
 	}
 	return nil
+}
+
+var crossSeedFactFields = []ConditionField{
+	FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
+	FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance,
+}
+
+func conditionReadsCrossSeedFacts(cond *RuleCondition) bool {
+	return slices.ContainsFunc(crossSeedFactFields, func(f ConditionField) bool { return conditionTreeUsesField(cond, f) })
+}
+
+// askRuleFacts asks the run session once, before the rules sort and evaluate, for the facts of
+// the torrents that the rules evaluate: each torrent in the tracker scope of a rule that reads a
+// cross-seed field and that the run does not skip, with the members of the GroupID groups that
+// the rule checks. A sort on such a field scores every torrent, so it asks for the whole list.
+func (s *Service) askRuleFacts(rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, skip func(hash string) bool) {
+	groups := evalCtx.crossSeeds
+	if groups == nil || groups.session == nil {
+		return
+	}
+	trackers := newTrackerMatchCache()
+	var hashes []string
+	for _, rule := range rules {
+		if !slices.ContainsFunc(crossSeedFactFields, func(f ConditionField) bool { return ruleUsesCondition(rule, f) }) {
+			continue
+		}
+		if slices.ContainsFunc(crossSeedFactFields, func(f ConditionField) bool { return sortingConfigUsesField(rule.SortingConfig, f) }) {
+			if !groups.session.allFacts {
+				groups.session.resolve(ResolveRequest{All: true})
+			}
+			return
+		}
+		readsPrivate := ruleUsesCondition(rule, FieldPrivate)
+		groupIDs := factGroupIDs(rule.Conditions)
+		askedGroups := make(map[askedFactGroup]struct{})
+		for i := range torrents {
+			t := &torrents[i]
+			if skip != nil && skip(t.Hash) || !trackers.match(rule.TrackerPattern, *t, s) || readsPrivate && qbittorrent.PrivateUnknown(t) {
+				continue
+			}
+			hashes = append(hashes, t.Hash)
+			for _, groupID := range groupIDs {
+				idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
+				key := askedFactGroup{groupID, idx.KeyForHash(t.Hash)}
+				if _, done := askedGroups[key]; !done {
+					askedGroups[key] = struct{}{}
+					hashes = append(hashes, idx.MembersForHash(t.Hash)...)
+				}
+			}
+		}
+	}
+	slices.Sort(hashes)
+	groups.session.resolveFacts(slices.Compact(hashes))
+}
+
+// askedFactGroup is a group of a GroupID that askRuleFacts already asked for.
+type askedFactGroup struct{ groupID, key string }
+
+// factGroupIDs returns the GroupIDs whose members must all meet an action condition that reads a
+// cross-seed field.
+func factGroupIDs(ac *models.ActionConditions) []string {
+	if ac == nil {
+		return nil
+	}
+	var ids []string
+	add := func(enabled bool, groupID string, cond *RuleCondition) {
+		if id := strings.TrimSpace(groupID); enabled && id != "" && conditionReadsCrossSeedFacts(cond) && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if del := ac.Delete; del != nil {
+		add(del.Enabled, del.GroupID, del.Condition)
+	}
+	if cat := ac.Category; cat != nil {
+		add(cat.Enabled, cat.GroupID, cat.Condition)
+	}
+	if move := ac.Move; move != nil {
+		add(move.Enabled, move.GroupID, move.Condition)
+	}
+	return ids
+}
+
+// askFacts reads the cross-seed facts of a torrent that no ask covered.
+func (g *crossSeedGroups) askFacts(hash string) {
+	if g != nil && g.session != nil {
+		g.session.resolveFacts([]string{hash})
+	}
+}
+
+func (r *runSession) resolveFacts(hashes []string) {
+	if r.allFacts {
+		return
+	}
+	var ask []string
+	for _, hash := range hashes {
+		if _, done := r.factsAsked[hash]; !done {
+			ask = append(ask, hash)
+		}
+	}
+	if len(ask) > 0 {
+		r.resolve(ResolveRequest{Hashes: ask})
+	}
 }
 
 func (r *runSession) ensureGroups(hash string) {
@@ -170,6 +279,12 @@ func (r *runSession) resolve(req ResolveRequest) {
 	result := r.session.Resolve(r.ctx, req)
 	if req.OtherShared {
 		r.sharedRead = true
+	}
+	if req.All {
+		r.allFacts = true
+	}
+	for _, hash := range req.Hashes {
+		r.factsAsked[hash] = struct{}{}
 	}
 	if req.Groups {
 		if req.All {
