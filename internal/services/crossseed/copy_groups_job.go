@@ -29,7 +29,7 @@ const (
 
 // copyGroupsSync is what the Copy groups job reads and writes (ADR 0005).
 type copyGroupsSync interface {
-	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	ReadInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	LastSuccessfulSync(ctx context.Context, instanceID int) time.Time
 	SetCopyGroups(groups *qbittorrent.CopyGroups)
@@ -239,7 +239,7 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 		j.listing[id] = true
 		waiting++
 		go func() {
-			torrents, err := j.sync.GetCachedInstanceTorrents(ctx, id)
+			torrents, err := j.sync.ReadInstanceTorrents(ctx, id)
 			j.mu.Lock()
 			delete(j.listing, id)
 			j.mu.Unlock()
