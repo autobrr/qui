@@ -1761,7 +1761,8 @@
       "test": {
         "title": "連線",
         "pinnedAtRest": "主機金鑰已釘選。測試連線以查看主機允許的功能。",
-        "unpinnedAtRest": "尚未釘選主機金鑰。測試連線以確認主機的指紋。"
+        "unpinnedAtRest": "尚未釘選主機金鑰。測試連線以確認主機的指紋。",
+        "saveFirst": "請先儲存變更。測試會使用已儲存的憑證。"
       },
       "status": {
         "unpinned": {

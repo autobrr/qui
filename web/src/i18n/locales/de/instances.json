@@ -1790,7 +1790,8 @@
       "test": {
         "title": "Verbindung",
         "pinnedAtRest": "Host-Key gepinnt. Teste die Verbindung, um zu sehen, was der Host erlaubt.",
-        "unpinnedAtRest": "Noch kein Host-Key gepinnt. Teste die Verbindung, um den Fingerabdruck des Hosts zu bestätigen."
+        "unpinnedAtRest": "Noch kein Host-Key gepinnt. Teste die Verbindung, um den Fingerabdruck des Hosts zu bestätigen.",
+        "saveFirst": "Speichere die Änderungen zuerst. Ein Test läuft gegen die gespeicherten Zugangsdaten."
       },
       "status": {
         "unpinned": {

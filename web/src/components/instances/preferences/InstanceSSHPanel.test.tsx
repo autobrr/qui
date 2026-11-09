@@ -170,6 +170,15 @@ describe("InstanceSSHPanel", () => {
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it("unsaved edits hide the test result and disable Test", async () => {
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    await runTest({ status: "unpinned", hostKey: "AAAA", fingerprint: "SHA256:abc" })
+    setValue("ssh-host", "other.example")
+    await waitFor(() => expect(document.querySelector("[data-ssh-status]")).toBeNull())
+    expect(screen.getByText("preferences.ssh.test.saveFirst")).not.toBeNull()
+    expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(true)
+  })
+
   // regression: #3732
   it("the fields are off while a save runs", async () => {
     let finish: () => void = () => {}
