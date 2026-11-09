@@ -139,15 +139,39 @@ func TestLocalReadsKeepTheirFilesAge(t *testing.T) {
 	rig.rename(t, folder, "Season 02")
 	rig.age(t, cacheModeHashA, 20*time.Hour, false)
 
-	svc := &Service{
-		syncManager:      rig.sm,
+	svc := rig.localReadService()
+	before := rig.stub.Calls("torrents/files")
+	svc.fillLocalReads(t.Context(), rig.instanceID, []localTorrent{{hash: cacheModeHashA, name: "Season 2"}}, make(chan struct{}), true)
+	require.Equal(t, before, rig.stub.Calls("torrents/files"), "the first fill reads the 20 h old list")
+}
+
+func TestLocalReadRefreshKeepsAListWithAMatchingPrintUnderADay(t *testing.T) {
+	t.Parallel()
+
+	folder := qbtstub.Torrent{Hash: cacheModeHashA, Name: "Season 2", Layout: qbtstub.RootFolder, Files: []string{"e01.mkv"}}
+	rig := newFilesCacheRig(t, folder)
+	require.Equal(t, 1, rig.fileRequests(t.Context(), t, cacheModeHashA))
+	svc := rig.localReadService()
+	refresh := func() int {
+		before := rig.stub.Calls("torrents/files")
+		svc.fillLocalReads(t.Context(), rig.instanceID, []localTorrent{{hash: cacheModeHashA, name: "Season 2"}}, make(chan struct{}), false)
+		return rig.stub.Calls("torrents/files") - before
+	}
+
+	rig.age(t, cacheModeHashA, 2*time.Hour, false)
+	require.Zero(t, refresh(), "a 2 h old list with a matching print is kept")
+
+	rig.age(t, cacheModeHashA, 24*time.Hour, false)
+	require.Equal(t, 1, refresh(), "a list past its backstop is fetched")
+}
+
+func (r *filesCacheRig) localReadService() *Service {
+	return &Service{
+		syncManager:      r.sm,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{}, nil
 		},
 	}
-	before := rig.stub.Calls("torrents/files")
-	svc.fillLocalReads(t.Context(), rig.instanceID, []localTorrent{{hash: cacheModeHashA, name: "Season 2"}}, make(chan struct{}), true)
-	require.Equal(t, before, rig.stub.Calls("torrents/files"), "the first fill reads the 20 h old list")
 }
