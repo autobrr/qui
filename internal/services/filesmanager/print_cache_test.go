@@ -16,6 +16,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -246,10 +248,10 @@ func testReaderSeesOnePair(t *testing.T, open testDBOpener) {
 		errs := releaseTogether(readers+writers, func(i int) error {
 			for r := range rounds {
 				if i >= readers {
-					if err := svc.CacheFilesBatch(ctx, 1, pairWrite(printB)); err != nil {
+					if err := cacheRetryingBusy(ctx, svc, pairWrite(printB)); err != nil {
 						return err
 					}
-					if err := svc.CacheFilesBatch(ctx, 1, pairWrite(printA)); err != nil {
+					if err := cacheRetryingBusy(ctx, svc, pairWrite(printA)); err != nil {
 						return err
 					}
 					continue
@@ -271,6 +273,22 @@ func testReaderSeesOnePair(t *testing.T, open testDBOpener) {
 			requireOnePair(t, entry)
 		}
 	})
+}
+
+// cacheRetryingBusy writes again when SQLite fails the write with
+// SQLITE_BUSY. On the Windows CI runner, some writes in testReaderSeesOnePair
+// failed so at once, while readers ran. qui logs such a failed write and
+// fetches the list again, so the test checks only what readers see.
+func cacheRetryingBusy(ctx context.Context, svc *Service, writes map[string]qbittorrent.CachedFilesWrite) error {
+	var err error
+	for range 20 {
+		err = svc.CacheFilesBatch(ctx, 1, writes)
+		sqliteErr, ok := errors.AsType[*sqlite.Error](err)
+		if !ok || sqliteErr.Code()&0xff != sqlite3.SQLITE_BUSY {
+			return err
+		}
+	}
+	return err
 }
 
 // previousReleaseSyncUpsert is the sync row write of the release before the
