@@ -36,7 +36,7 @@ type cgSync struct {
 	published []*qbittorrent.CopyGroups
 }
 
-func (f *cgSync) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+func (f *cgSync) ReadInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	f.mu.Lock()
 	f.lists[instanceID]++
 	hang := f.listHang[instanceID]

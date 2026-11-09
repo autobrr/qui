@@ -472,6 +472,8 @@ type SyncManager struct {
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
 	copyGroups          atomic.Pointer[CopyGroups]
 	copyGroupsDemand    atomic.Pointer[func()]
+	// instanceName is nil outside tests; then the name comes from the instance store.
+	instanceName func(ctx context.Context, instanceID int) (string, error)
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -483,6 +485,9 @@ type SyncManager struct {
 	syncDebounceSince     map[int]time.Time
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
+
+	writeTimesMu sync.Mutex
+	writeTimes   map[int]time.Time
 
 	// categoryVersions holds each instance's version answer for
 	// InstanceFolders.
@@ -1718,9 +1723,9 @@ type TorrentFieldResponse struct {
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
 func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]CrossInstanceTorrentView, error) {
-	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	name, err := sm.lookupInstanceName(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get instance %d: %w", instanceID, err)
+		return nil, err
 	}
 
 	// Check for cancellation before touching the sync manager.
@@ -1733,9 +1738,24 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	return sm.instanceTorrentViews(client, instanceID, name, syncManager.GetTorrents(qbt.TorrentFilterOptions{})), nil
+}
+
+func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (string, error) {
+	if sm.instanceName != nil {
+		return sm.instanceName(ctx, instanceID)
+	}
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance %d: %w", instanceID, err)
+	}
+	return instance.Name, nil
+}
+
+// instanceTorrentViews sorts the views by name, then hash. It returns nil for no torrents.
+func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []qbt.Torrent) []CrossInstanceTorrentView {
 	if len(torrents) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var cachedHealth *TrackerHealthSnapshot
@@ -1748,8 +1768,8 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
 			TorrentView:  new(rows.view(i, &torrents[i], cachedHealth.Health(torrents[i].Hash))),
-			InstanceID:   instance.ID,
-			InstanceName: instance.Name,
+			InstanceID:   instanceID,
+			InstanceName: instanceName,
 		}
 	}
 
@@ -1760,7 +1780,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return strings.Compare(a.Hash, b.Hash)
 	})
 
-	return views, nil
+	return views
 }
 
 // GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
@@ -3521,13 +3541,34 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 // syncDebounceMaxWait bounds how long hints can keep postponing a sync.
 const syncDebounceMaxWait = time.Second
 
-// syncAfterModification performs a background sync after a modification operation.
-// Calls are debounced per instance to avoid excessive syncs during bursts of mutations.
 func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, operation string) {
 	if sm == nil {
 		return
 	}
+	sm.NoteWrite(instanceID)
+	sm.scheduleSync(instanceID, client, operation)
+}
 
+// NoteWrite records that a write reached the instance. For 60 seconds after
+// it, each [SyncManager.ReadInstanceTorrents] also starts a sync.
+func (sm *SyncManager) NoteWrite(instanceID int) {
+	sm.writeTimesMu.Lock()
+	defer sm.writeTimesMu.Unlock()
+	if sm.writeTimes == nil {
+		sm.writeTimes = make(map[int]time.Time)
+	}
+	sm.writeTimes[instanceID] = time.Now()
+}
+
+func (sm *SyncManager) lastWriteAt(instanceID int) time.Time {
+	sm.writeTimesMu.Lock()
+	defer sm.writeTimesMu.Unlock()
+	return sm.writeTimes[instanceID]
+}
+
+// scheduleSync starts a background sync. Calls are debounced per instance to
+// avoid excessive syncs during bursts of mutations.
+func (sm *SyncManager) scheduleSync(instanceID int, client *Client, operation string) {
 	delay := sm.syncDebounceDelay
 	if delay <= 0 {
 		delay = 200 * time.Millisecond

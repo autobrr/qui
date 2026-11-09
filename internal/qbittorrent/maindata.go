@@ -97,7 +97,7 @@ func (sm *SyncManager) HintMainDataRefresh(instanceID int, reason string) {
 		return
 	}
 
-	sm.syncAfterModification(instanceID, nil, reason)
+	sm.scheduleSync(instanceID, nil, reason)
 }
 
 func mainDataServerState(data *qbt.MainData) *qbt.ServerState {
