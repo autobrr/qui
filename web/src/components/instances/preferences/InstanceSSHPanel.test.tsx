@@ -238,6 +238,7 @@ describe("InstanceSSHPanel", () => {
     expect(document.querySelector("[data-ssh-status]")).toBeNull()
   })
 
+  // regression: #3732
   it("a failed test shows the error with no result panel", async () => {
     render(<InstanceSSHPanel instance={storedInstance} />)
     await runTest({ status: "pinned", fingerprint: "SHA256:abc" })
