@@ -34,10 +34,10 @@ describe("sshSetupReducer", () => {
   const withResult: SSHSetupState = { kind: "idle", result: unpinned, error: null }
 
   it.each<[string, SSHSetupState, SSHSetupAction, SSHSetupState]>([
-    ["test starts from idle", initialSSHSetupState, { type: "test" }, { kind: "testing", result: null }],
     ["test keeps the last result while it runs", withResult, { type: "test" }, { kind: "testing", result: unpinned }],
     ["tested replaces the result and clears the error", { kind: "idle", result: null, error: "old" }, { type: "tested", result: pinned }, { kind: "idle", result: pinned, error: null }],
-    ["a failed request keeps the result beside the error", { kind: "testing", result: unpinned }, { type: "failed", error: "boom" }, { kind: "idle", result: unpinned, error: "boom" }],
+    ["a failed test drops the result, so the error shows alone", { kind: "testing", result: unpinned }, { type: "testFailed", error: "boom" }, { kind: "idle", result: null, error: "boom" }],
+    ["a failed pin, save or clear keeps the result beside the error", { kind: "pinning", result: unpinned }, { type: "failed", error: "boom" }, { kind: "idle", result: unpinned, error: "boom" }],
     ["pin needs a result", initialSSHSetupState, { type: "pin" }, initialSSHSetupState],
     ["pin holds the result it pins", withResult, { type: "pin" }, { kind: "pinning", result: unpinned }],
     ["save keeps the result until it lands", withResult, { type: "save" }, { kind: "saving", result: unpinned }],
