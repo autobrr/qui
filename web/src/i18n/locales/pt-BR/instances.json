@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desativado",
-      "enabled": "Ativado",
       "connected": "Conectado",
       "disconnected": "Desconectado"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificação TLS:",
       "tlsSkipped": "Ignorada",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Acesso a Arquivo Local:",
-      "testingConnection": "Testando conexão..."
+      "testingConnection": "Testando conexão...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "Excluir Instância",
@@ -2088,6 +2087,18 @@
       "failedToDeleteBackup": "Falha ao excluir execução de backup",
       "allBackupsDeleted": "Todos os backups excluídos",
       "failedToDeleteBackups": "Falha ao excluir backups"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fall back to regular mode\" is on."
     }
   }
 }

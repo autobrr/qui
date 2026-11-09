@@ -88,6 +88,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, MoreVertical, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -912,15 +913,8 @@ function InstanceCard({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {instance.hasLocalFilesystemAccess && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HardDrive className="h-4 w-4 text-primary" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t("instanceCard.localFileAccess")}
-                  </TooltipContent>
-                </Tooltip>
+              {instance.filesystemMode !== "none" && (
+                <RemoteAccessIndicator instance={instance} variant="icon" />
               )}
               <InstanceSettingsButton
                 instanceId={instance.id}

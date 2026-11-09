@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "已停用",
-      "enabled": "已啟用",
       "connected": "已連線",
       "disconnected": "已斷開"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 驗證：",
       "tlsSkipped": "已跳過",
       "tlsStrict": "嚴格",
-      "localFileAccess": "本機檔案系統存取：",
-      "testingConnection": "正在測試連線..."
+      "testingConnection": "正在測試連線...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "刪除實例",
@@ -2058,6 +2057,18 @@
       "failedToDeleteBackup": "刪除備份失敗",
       "allBackupsDeleted": "所有備份已刪除",
       "failedToDeleteBackups": "刪除備份失敗"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fall back to regular mode\" is on."
     }
   }
 }

@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Вимкнено",
-      "enabled": "Увімкнено",
       "connected": "Підключено",
       "disconnected": "Від'єднано"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Перевірка TLS:",
       "tlsSkipped": "Пропущено",
       "tlsStrict": "Суворий",
-      "localFileAccess": "Доступ до локальних файлів:",
-      "testingConnection": "Перевірка підключення..."
+      "testingConnection": "Перевірка підключення...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "Видалити екземпляр",
@@ -2148,6 +2147,18 @@
       "success": "Успішно",
       "failed": "Не вдалося",
       "canceled": "Скасовано"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fall back to regular mode\" is on."
     }
   }
 }

@@ -19,6 +19,7 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { useSSHSetup } from "@/hooks/useSSHSetup"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
@@ -272,7 +273,7 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
               {result && (
                 <SSHTestResult
                   result={result}
-                  tier={instance.sshTier}
+                  instance={instance}
                   busy={busy}
                   onConfirm={() => pin(false)}
                   onReplace={() => setReplaceOpen(true)}
@@ -311,7 +312,7 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
 
 interface SSHTestResultProps {
   result: SSHTestResponse
-  tier: Instance["sshTier"]
+  instance: Instance
   busy: boolean
   onConfirm: () => void
   onReplace: () => void
@@ -319,8 +320,9 @@ interface SSHTestResultProps {
 
 // One panel per ssh-test status. The host key the server echoes back is held
 // in the result until the user confirms or tests again.
-function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResultProps) {
+function SSHTestResult({ result, instance, busy, onConfirm, onReplace }: SSHTestResultProps) {
   const { t } = useTranslation("instances")
+  const tier = instance.sshTier
 
   switch (result.status) {
     case "unpinned":
@@ -343,6 +345,7 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
+          <RemoteAccessIndicator instance={instance} variant="inline" />
         </div>
       )
     case "mismatch":
