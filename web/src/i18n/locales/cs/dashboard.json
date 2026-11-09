@@ -137,7 +137,7 @@
       "size": "Velikost",
       "seeded": "Sdíleno X krát"
     },
-    "seededTooltip": "Nahráno ÷ Velikost obsahu — kolikrát jste sdíleli svůj obsah",
+    "seededTooltip": "Nahráno \u00f7 Velikost obsahu \u2014 kolikrát jste sdíleli svůj obsah",
     "mergedFrom": "Spojeno s: {{domains}}",
     "original": "Původní: {{domain}}",
     "mergeTooltip": "Spojit vybrané trackery do této skupiny",
@@ -215,7 +215,7 @@
     "noInstances": "Žádné instance jsou nastaveny",
     "getStarted": "Začněte přidáním své první instance qBittorrent",
     "allDisabled": "Všechny instance jsou zakázány",
-    "enableInstance": "Povolit instanci z Nastavení → Instance pro zobrazení statistik dashboardu.",
+    "enableInstance": "Povolit instanci z Nastavení \u2192 Instance pro zobrazení statistik dashboardu.",
     "manageInstances": "Spravovat instance"
   }
 }

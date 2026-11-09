@@ -32,6 +32,10 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   }
 
   const mode = instance.filesystemMode
+  // The dashboard shows nothing for an instance without file access.
+  if (mode === "none" && variant === "icon") {
+    return null
+  }
   const Icon = mode === "remote" ? KeyRound : HardDrive
   const label = mode === "local" ? t("access.local") : mode === "remote" ? t("access.remote") : t("access.none")
   const content = (
