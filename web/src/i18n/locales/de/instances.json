@@ -24,7 +24,7 @@
       "tlsSkipped": "Übersprungen",
       "tlsStrict": "Strikt",
       "testingConnection": "Verbindung wird getestet...",
-      "fileAccess": "File access:"
+      "fileAccess": "Dateizugriff:"
     },
     "deleteDialog": {
       "title": "Instanz löschen",
@@ -2092,15 +2092,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "Lokal",
+    "remote": "Über SSH",
+    "none": "Keiner",
+    "localFull": "qui liest und schreibt die Dateien dieser Instanz auf diesem Rechner.",
+    "remoteFull": "qui liest und schreibt die Dateien dieser Instanz über SSH, mit Dateiidentität.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Keine Dateiidentität: qui erkennt nicht, wenn zwei Pfade dieselbe Datei sind. Der Orphan-Scan kann hier nicht löschen, und ein vorhandenes Hardlink-Ziel stoppt ein Hinzufügen per Hardlink.",
+      "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",
+      "noHardlinkExtension": "Keine Hardlinks: Der Server bietet hardlink@openssh.com nicht an. Ein Cross-Seed-Hinzufügen per Hardlink schlägt hier fehl oder fügt im regulären Modus hinzu, wenn „Bei Fehler auf regulären Modus zurückfallen“ aktiv ist."
     }
   }
 }

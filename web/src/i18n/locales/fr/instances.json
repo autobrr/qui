@@ -24,7 +24,7 @@
       "tlsSkipped": "Ignorée",
       "tlsStrict": "Stricte",
       "testingConnection": "Test de connexion...",
-      "fileAccess": "File access:"
+      "fileAccess": "Accès aux fichiers :"
     },
     "deleteDialog": {
       "title": "Supprimer l'instance",
@@ -2093,14 +2093,14 @@
   },
   "access": {
     "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "remote": "Via SSH",
+    "none": "Aucun",
+    "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
+    "remoteFull": "L'application lit et écrit les fichiers de cette instance via SSH, avec l'identité des fichiers.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
+      "noReflinks": "Pas de reflinks sur une instance distante.",
+      "noHardlinkExtension": "Pas de liens physiques : le serveur n'annonce pas hardlink@openssh.com. Un ajout de cross-seed par lien physique échoue ici, ou se fait en mode normal si « Repli sur le mode normal en cas d'erreur » est activé."
     }
   }
 }

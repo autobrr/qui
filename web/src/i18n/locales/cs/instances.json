@@ -24,7 +24,7 @@
       "tlsSkipped": "Přeskočit",
       "tlsStrict": "Striktní",
       "testingConnection": "Testuji připojení...",
-      "fileAccess": "File access:"
+      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -2128,15 +2128,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "Lokální",
+    "remote": "Přes SSH",
+    "none": "Žádný",
+    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "remoteFull": "qui čte a zapisuje soubory této instance přes SSH, s identitou souborů.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
+      "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
+      "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
   }
 }

@@ -24,7 +24,7 @@
       "tlsSkipped": "Omesa",
       "tlsStrict": "Estricta",
       "testingConnection": "S'està provant la connexió...",
-      "fileAccess": "File access:"
+      "fileAccess": "Accés als fitxers:"
     },
     "deleteDialog": {
       "title": "Elimina la instància",
@@ -2093,14 +2093,14 @@
   },
   "access": {
     "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "remote": "Per SSH",
+    "none": "Cap",
+    "localFull": "qui llegeix i escriu els fitxers d'aquesta instància en aquesta màquina.",
+    "remoteFull": "qui llegeix i escriu els fitxers d'aquesta instància per SSH, amb identitat dels fitxers.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Sense identitat dels fitxers: qui no pot saber quan dos camins són el mateix fitxer. L'exploració d'orfes no pot suprimir aquí, i una destinació de hardlink existent atura una addició per hardlink.",
+      "noReflinks": "Sense reflinks en una instància remota.",
+      "noHardlinkExtension": "Sense hardlinks: el servidor no anuncia hardlink@openssh.com. Una addició de cross-seed per hardlink falla aquí, o s'afegeix en mode normal quan «Recorre al mode normal si hi ha un error» està activat."
     }
   }
 }

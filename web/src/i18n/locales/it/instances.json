@@ -24,7 +24,7 @@
       "tlsSkipped": "Ignorata",
       "tlsStrict": "Rigorosa",
       "testingConnection": "Prova della connessione in corso...",
-      "fileAccess": "File access:"
+      "fileAccess": "Accesso ai file:"
     },
     "deleteDialog": {
       "title": "Elimina istanza",
@@ -2092,15 +2092,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "Locale",
+    "remote": "Via SSH",
+    "none": "Nessuno",
+    "localFull": "qui legge e scrive i file di questa istanza su questa macchina.",
+    "remoteFull": "qui legge e scrive i file di questa istanza via SSH, con identità dei file.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Nessuna identità dei file: qui non riconosce quando due percorsi sono lo stesso file. La scansione orfani non può eliminare qui e una destinazione hardlink esistente blocca un'aggiunta con hardlink.",
+      "noReflinks": "Nessun reflink su un'istanza remota.",
+      "noHardlinkExtension": "Nessun hardlink: il server non annuncia hardlink@openssh.com. Un'aggiunta cross-seed con hardlink qui fallisce, oppure aggiunge in modalità normale se «Ripiega sulla modalità normale in caso di errore» è attivo."
     }
   }
 }
