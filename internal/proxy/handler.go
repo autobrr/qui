@@ -41,6 +41,7 @@ type Handler struct {
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
 	syncManager       *qbittorrent.SyncManager
+	writeNoter        writeNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -61,6 +62,11 @@ var missingProxyContextSampler = &zerolog.BasicSampler{N: 100}
 type basicAuthCredentials struct {
 	username string
 	password string
+}
+
+// writeNoter learns of each proxied request that can change the torrent list.
+type writeNoter interface {
+	NoteWrite(instanceID int)
 }
 
 type sessionRefresher interface {
@@ -116,6 +122,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
 		syncManager:       syncManager,
+		writeNoter:        syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
@@ -402,6 +409,16 @@ func (h *Handler) prepareProxyContextMiddleware(next http.Handler) http.Handler 
 	})
 }
 
+func (h *Handler) noteTorrentWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		path := h.stripProxyPrefix(r.URL.Path, chi.URLParam(r, "api-key"))
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/api/v2/torrents/") {
+			h.writeNoter.NoteWrite(GetInstanceIDFromContext(r.Context()))
+		}
+	})
+}
+
 // Routes sets up the proxy routes
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
@@ -411,7 +428,7 @@ func (h *Handler) Routes(r chi.Router) {
 	// Scoped proxy routes retain API key middleware and prepare proxy context
 	proxyRouter.Route(proxyRoute, func(pr chi.Router) {
 		// Apply proxy context middleware (adds instance info to context)
-		pr.Use(h.prepareProxyContextMiddleware)
+		pr.Use(h.prepareProxyContextMiddleware, h.noteTorrentWrites)
 
 		pr.Post("/api/v2/torrents/reannounce", h.handleReannounce)
 
