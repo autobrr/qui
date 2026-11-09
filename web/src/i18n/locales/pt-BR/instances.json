@@ -112,7 +112,7 @@
       "usernamePassword": "Usuário e Senha",
       "apiKey": "Chave de API"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "O acesso SSH aos arquivos da instância é configurado nas configurações da instância depois de salvar."
   },
   "settingsButton": {
     "tooltip": "Configurações da Instância"
@@ -166,8 +166,8 @@
           "title": "Limites de Seeding"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "Acesso SSH",
+          "description": "Acesse os arquivos desta instância por SSH quando o qui e o qBittorrent rodam em máquinas diferentes"
         }
       }
     },
@@ -1759,88 +1759,88 @@
       "testEmailFailed": "Falha ao enviar o e-mail de teste"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "O Acesso ao Sistema de Arquivos Local está ativado, então o qui lê os arquivos desta instância localmente e não usa estas configurações SSH.",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
-        "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "host": "Host SSH",
+        "hostDescription": "Nome do host ou endereço IP da máquina que guarda os arquivos desta instância, sem esquema nem porta. Alterar o host ou a porta descarta a chave do host fixada, e o próximo teste volta a ser um primeiro contato.",
+        "port": "Porta",
+        "username": "Usuário",
+        "privateKey": "Chave privada",
+        "privateKeyDescription": "Uma chave privada OpenSSH sem senha. O qui a armazena criptografada e nunca a mostra de novo. Ela é necessária novamente quando o host, a porta ou o usuário mudam."
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "Uma chave está armazenada. Cole uma nova para substituí-la."
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "O host SSH é obrigatório",
+        "portRange": "A porta deve estar entre 1 e 65535",
+        "usernameRequired": "O usuário é obrigatório",
+        "keyRequired": "A chave privada é necessária quando o host, a porta ou o usuário mudam"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "Salvar configurações SSH",
+        "clear": "Remover acesso SSH",
+        "test": "Testar conexão",
+        "testing": "Testando...",
+        "confirm": "Confirmar chave do host",
+        "replace": "Substituir chave do host"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "Conexão",
+        "pinnedAtRest": "Chave do host fixada. Teste a conexão para ver o que o host permite.",
+        "unpinnedAtRest": "Nenhuma chave do host fixada ainda. Teste a conexão para confirmar a impressão digital do host."
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "Primeiro contato",
+          "text": "Compare esta impressão digital com a do host antes de confirmar. As próximas conexões recusarão qualquer outra chave."
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "Chave do host fixada"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "Chave do host alterada",
+          "text": "O host apresentou uma chave diferente da fixada. Substitua a chave fixada apenas se você espera a mudança, por exemplo depois de reinstalar o servidor."
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "Chave fixada ilegível",
+          "text": "A chave fixada não pode ser descriptografada, geralmente porque a chave de criptografia do qui mudou. Substitua-a para continuar.",
+          "noKey": "O host não respondeu, então não há chave para substituí-la."
         },
         "error": {
-          "title": "Connection failed"
+          "title": "Falha na conexão"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "Impressão digital",
+        "pinned": "Fixada",
+        "presented": "Apresentada"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "Nível: {{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + comandos",
+        "tierHint": "Os comandos precisam de um shell POSIX com GNU find e stat no host. Sem eles, o qui usa apenas SFTP e não consegue ler a identidade dos arquivos.",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
+        "statvfs": "Espaço livre (statvfs)",
         "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "limits": "Extensão limits",
+        "exec": "Comandos",
+        "gnuUserland": "GNU find e stat",
+        "yes": "Disponível",
+        "no": "Indisponível"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "Substituir a chave do host fixada?",
+        "description": "A partir de agora o qui confiará na chave apresentada para este host e recusará a chave fixada.",
+        "cancel": "Cancelar",
+        "confirm": "Substituir"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "Configurações SSH salvas",
+        "cleared": "Acesso SSH removido"
       }
     }
   },
