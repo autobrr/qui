@@ -174,43 +174,6 @@ func componentOf(links map[string][]string, hash string) []string {
 	return slices.Sorted(maps.Keys(seen))
 }
 
-// oracleGroups builds groups as automations.buildCrossSeedGroups does: it
-// follows the links outward only, in list order, and the last group wins.
-func oracleGroups(order []string, sharing map[string][]string) map[string][]string {
-	groups := make(map[string][]string)
-	for _, t := range order {
-		if _, grouped := groups[t]; grouped || len(sharing[t]) == 0 {
-			continue
-		}
-		var members []string
-		seen := map[string]struct{}{t: {}}
-		queue := []string{t}
-		for len(queue) > 0 {
-			h := queue[0]
-			queue = queue[1:]
-			members = append(members, h)
-			for _, next := range sharing[h] {
-				if _, ok := seen[next]; !ok {
-					seen[next] = struct{}{}
-					queue = append(queue, next)
-				}
-			}
-		}
-		slices.Sort(members)
-		for _, m := range members {
-			groups[m] = members
-		}
-	}
-	return groups
-}
-
-func oracleComponent(groups map[string][]string, hash string) []string {
-	if g := groups[hash]; len(g) > 0 {
-		return g
-	}
-	return []string{hash}
-}
-
 func setHas(m map[string]struct{}, h string) bool { _, ok := m[h]; return ok }
 
 func openTestSession(t *testing.T, svc *Service) CrossMatchSession {
@@ -226,21 +189,16 @@ func TestCrossMatchSession_ScopedAskEqualsWholeLibrary(t *testing.T) {
 	chain := []string{"aa01", "aa02", "aa03"}
 	unread := []string{"cc00", "cc01", "cc02"}
 	release := []string{"dd00", "dd01"}
+	// A one-way link gives the whole component (ADR 0042).
 	oneWay := []string{"hh00", "hh01", "hh02"}
-	// The groups of buildCrossSeedGroups. For the one-way link, its group of
-	// each of hh00, hh01 and hh02 depends on the list order.
-	wantOracle := map[string][]string{
+	want := map[string][]string{
 		"aa01": chain, "aa02": chain, "aa03": chain,
 		"bb01": {"bb01"}, "bb02": {"bb02"},
 		"cc00": unread, "cc01": unread, "cc02": unread,
 		"dd00": release, "dd01": release,
 		"ee00": {"ee00"}, "ee01": {"ee01"},
 		"ff01": {"ff01"}, "gg01": {"gg01"},
-		"hh00": {"hh00", "hh02"}, "hh01": {"hh00", "hh01"}, "hh02": {"hh00", "hh02"},
-	}
-	wantSession := maps.Clone(wantOracle)
-	for _, h := range oneWay {
-		wantSession[h] = oneWay
+		"hh00": oneWay, "hh01": oneWay, "hh02": oneWay,
 	}
 
 	for _, offline := range []bool{false, true} {
@@ -249,24 +207,18 @@ func TestCrossMatchSession_ScopedAskEqualsWholeLibrary(t *testing.T) {
 			svc, _, library := sessionFixtures(t, offline)
 			ctx := t.Context()
 
-			full := svc.BuildCrossMatchSets(ctx, 1, CrossMatchNeeds{
-				SameExists: true, SameSeeding: true, SameTags: true, SameContent: true,
-				OtherExists: true, OtherSeeding: true, OtherShared: true,
-			})
-			require.NoError(t, full.Err)
-			groups := oracleGroups(library, full.SameInstanceContentByHash)
+			whole := openTestSession(t, svc).Resolve(ctx, ResolveRequest{All: true, Groups: true, OtherShared: true})
 			for _, h := range library {
-				require.Equal(t, wantOracle[h], oracleComponent(groups, h), "oracle group of %s", h)
+				require.Equal(t, want[h], componentOf(whole.SameInstanceContentByHash, h), "whole-library group of %s", h)
 			}
-			require.Equal(t, map[string]struct{}{"ff01": {}}, full.OtherInstanceShared)
+			require.Equal(t, map[string]struct{}{"ff01": {}}, whole.OtherInstanceShared)
 			if offline {
-				require.Equal(t, []string{"third"}, full.OfflineLocalInstances)
-				require.Len(t, full.OtherInstanceSharedUnknown, len(library))
+				require.Equal(t, []string{"third"}, whole.OfflineLocalInstances)
+				require.Len(t, whole.OtherInstanceSharedUnknown, len(library))
 			} else {
-				require.Empty(t, full.OtherInstanceSharedUnknown)
+				require.Empty(t, whole.OtherInstanceSharedUnknown)
 			}
 
-			whole := openTestSession(t, svc).Resolve(ctx, ResolveRequest{All: true, Groups: true, OtherShared: true})
 			for _, ask := range [][]string{
 				{"aa03"}, {"bb01"}, {"cc00"}, {"cc01"}, {"dd00"}, {"dd01"}, {"ee00"}, {"ee01"},
 				{"ff01"}, {"gg01"}, {"hh00"}, {"hh01"}, {"hh02"},
@@ -276,16 +228,15 @@ func TestCrossMatchSession_ScopedAskEqualsWholeLibrary(t *testing.T) {
 				scoped := openTestSession(t, svc).Resolve(ctx, ResolveRequest{Hashes: ask, Groups: true, OtherShared: true})
 				facts := openTestSession(t, svc).Resolve(ctx, ResolveRequest{Hashes: ask})
 				for _, h := range ask {
-					require.Equal(t, wantSession[h], componentOf(scoped.SameInstanceContentByHash, h), "scoped group of %s", h)
-					require.Equal(t, wantSession[h], componentOf(whole.SameInstanceContentByHash, h), "whole-library group of %s", h)
-					compareFacts(t, "no groups", h, facts, full)
-					for _, member := range wantSession[h] {
-						compareFacts(t, "groups", member, scoped, full)
+					require.Equal(t, want[h], componentOf(scoped.SameInstanceContentByHash, h), "scoped group of %s", h)
+					compareFacts(t, "no groups", h, facts, whole)
+					for _, member := range want[h] {
+						compareFacts(t, "groups", member, scoped, whole)
 					}
 				}
-				require.Equal(t, full.OtherInstanceShared, scoped.OtherInstanceShared, "the library-wide shared check")
-				require.Equal(t, full.OtherInstanceSharedUnknown, scoped.OtherInstanceSharedUnknown)
-				require.Equal(t, full.OfflineLocalInstances, scoped.OfflineLocalInstances)
+				require.Equal(t, whole.OtherInstanceShared, scoped.OtherInstanceShared, "the library-wide shared check")
+				require.Equal(t, whole.OtherInstanceSharedUnknown, scoped.OtherInstanceSharedUnknown)
+				require.Equal(t, whole.OfflineLocalInstances, scoped.OfflineLocalInstances)
 			}
 		})
 	}
@@ -336,12 +287,12 @@ func TestCrossMatchSession_ReadsOnlyTheClosure(t *testing.T) {
 	sess.Resolve(ctx, ResolveRequest{OtherShared: true})
 	require.Empty(t, counter.take(), "the shared check runs once")
 
-	fresh := openTestSession(t, svc)
-	fresh.Resolve(ctx, ResolveRequest{All: true, Groups: true})
-	all := counter.take()
-	full := svc.BuildCrossMatchSets(ctx, 1, sessionNeeds)
-	require.NoError(t, full.Err)
-	require.ElementsMatch(t, counter.take(), all, "a whole-library ask reads what BuildCrossMatchSets reads")
+	openTestSession(t, svc).Resolve(ctx, ResolveRequest{All: true, Groups: true})
+	// cc00, dd00 and hh00 twice: the batch misses each one, and batchFiles.get reads it again alone.
+	require.ElementsMatch(t, []string{
+		"1:aa01", "1:aa02", "1:aa03", "1:bb01", "1:bb02", "1:cc00", "1:cc00", "1:cc01", "1:cc02",
+		"1:dd00", "1:dd00", "1:dd01", "1:ff01", "1:hh00", "1:hh00", "1:hh01", "1:hh02", "2:ff02",
+	}, counter.take(), "a whole-library ask reads the lists of every group and pick")
 
 	// The fixture names need no files, so the local reads fetch nothing.
 	reads := svc.readLocalTorrents(ctx, 1, viewTorrents(must(svc.syncManager.GetCachedInstanceTorrents(ctx, 1))))
@@ -369,8 +320,8 @@ func TestCrossMatchSession_FactAskReadsNoClosure(t *testing.T) {
 	}
 }
 
-// The first Resolve fills the local reads of every name that needs files, as
-// BuildCrossMatchSets does, also for a scoped ask.
+// The first Resolve fills the local reads of every name that needs files, also
+// for a scoped ask.
 func TestCrossMatchSession_LocalReadsFillTheLibrary(t *testing.T) {
 	t.Parallel()
 	svc, sm := deleteMatchService(

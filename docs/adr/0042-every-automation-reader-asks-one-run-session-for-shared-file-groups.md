@@ -19,3 +19,4 @@ Each automation run, dry run, and preview opens one session for the Shared-file 
 - A group is the whole component, with links followed in both directions. When a file list cannot be read, a group can be larger than before, and the run blocks or keeps more.
 - When a run deletes in "include" or "preserve" mode on an instance with trusted identity, the check for files shared with another instance covers the whole library. A scoped check can miss a Shared file.
 - A score sort on a cross-seed field, and a broad tag action that includes cross-seeds, still read the whole library through the session.
+- A `forbidigo` rule in `.golangci.yml` reports a call to `CrossMatcher.OpenCrossMatchSession` or `CrossMatchSession.Resolve` in the production code outside `internal/services/automations/run_session.go` and the crossseed package. Thus automations has one way to read Shared-file groups.
