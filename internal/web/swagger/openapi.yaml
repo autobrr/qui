@@ -6656,7 +6656,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan run
-      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access.
+      description: Get details of a specific scan run including the list of orphan files found. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6696,7 +6696,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Cancel orphan scan run
-      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access.
+      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6731,7 +6731,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Confirm orphan file deletion
-      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access.
+      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID

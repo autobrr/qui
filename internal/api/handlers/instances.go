@@ -950,7 +950,7 @@ func linkModeError(effective *models.Instance) string {
 
 	if effective.UseHardlinks {
 		if !canWrite {
-			return "Cannot enable hardlink mode without local filesystem access"
+			return "Cannot enable hardlink mode without filesystem write access. Enable Local Filesystem Access, or set up SSH access, in instance settings first."
 		}
 		if effective.HardlinkBaseDir == "" {
 			return "Cannot enable hardlink mode without a base directory"

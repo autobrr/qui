@@ -291,8 +291,8 @@ func (s *Service) processLinkMode(
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
-			Msg(logPrefix + "enabled but instance lacks local filesystem access")
-		return handleError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
+			Msg(logPrefix + "enabled but instance lacks filesystem write access")
+		return handleError(fmt.Sprintf("Instance '%s' does not have filesystem write access", candidate.InstanceName))
 	}
 
 	// Need a valid file path from matched torrent to check filesystem
