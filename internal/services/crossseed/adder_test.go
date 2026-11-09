@@ -533,6 +533,63 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	require.Empty(t, rig.programs)
 }
 
+// Dir Scan reads the Result class of each refusal and each add.
+func TestAdderResultClass(t *testing.T) {
+	t.Parallel()
+
+	existing := &qbt.Torrent{Hash: adderV1, Name: "Existing"}
+	tests := []struct {
+		name string
+		sync *adderFake
+		// blocked puts adderV1 on the blocklist.
+		blocked bool
+		// add runs the add with these facts after a clear Pre-add check.
+		add           *AddFacts
+		afterAddFails bool
+		want          ResultClass
+	}{
+		{name: "exists refusal", sync: &adderFake{existing: existing}, want: ClassExists},
+		{name: "blocked refusal", sync: &adderFake{}, blocked: true, want: ClassSkipped},
+		{name: "error refusal", sync: &adderFake{findErr: errors.New("boom")}, want: ClassFailed},
+		{name: "refusal of the Add verdict", sync: &adderFake{}, add: &AddFacts{SkipRecheck: true, Align: true}, want: ClassSkipped},
+		{name: "add that qBittorrent refuses", sync: &adderFake{addErr: errors.New("boom")}, add: &AddFacts{}, want: ClassFailed},
+		{name: "add that starts at once", sync: &adderFake{}, add: &AddFacts{}, want: ClassAdded},
+		{name: "add that stays paused", sync: &adderFake{}, add: &AddFacts{Align: true}, afterAddFails: true, want: ClassStranded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var blocklist *models.CrossSeedBlocklistStore
+			if tt.blocked {
+				blocklist, _ = adderBlocklist(t, adderV1)
+			}
+			rig := newAdderRig(t, tt.sync, blocklist)
+			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1)
+			if tt.add == nil {
+				require.NotNil(t, refusal)
+				require.Equal(t, tt.want, refusal.Class())
+				return
+			}
+			require.Nil(t, refusal)
+
+			result := rig.adder.Add(t.Context(), AddRequest{
+				Check:     check,
+				Torrent:   []byte("torrent"),
+				Facts:     *tt.add,
+				Placement: AddPlacement{SavePath: "/data"},
+				AfterAdd: func(context.Context, []string) (string, bool) {
+					return "", !tt.afterAddFails
+				},
+			})
+			require.Equal(t, tt.want, result.Class())
+		})
+	}
+
+	// A refusal status with no entry in the table is failed.
+	require.Equal(t, ClassFailed, AddResult{Status: "unknown_status"}.Class())
+}
+
 func TestAdderCheck(t *testing.T) {
 	t.Parallel()
 

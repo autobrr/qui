@@ -57,11 +57,11 @@ func intervalTestService(parser *Parser, searcher *timedSearcher) *Service {
 	return &Service{parser: parser, searcher: NewSearcher(searcher, parser)}
 }
 
-func runIntervalSearchee(ctx context.Context, svc *Service, name string, enabled map[int]struct{}) searcheeOutcome {
+func runIntervalSearchee(ctx context.Context, svc *Service, name string, enabled map[int]struct{}) workItemReport {
 	return runIntervalSearcheeIfPending(ctx, svc, name, enabled, nil)
 }
 
-func runIntervalSearcheeIfPending(ctx context.Context, svc *Service, name string, enabled map[int]struct{}, stillPending func() bool) searcheeOutcome {
+func runIntervalSearcheeIfPending(ctx context.Context, svc *Service, name string, enabled map[int]struct{}, stillPending func() bool) workItemReport {
 	l := zerolog.New(io.Discard)
 	searchee := &Searchee{
 		Name:  name,
@@ -69,8 +69,7 @@ func runIntervalSearcheeIfPending(ctx context.Context, svc *Service, name string
 		Files: []*ScannedFile{{Path: "/data/" + name + "/video.mkv", RelPath: "video.mkv", Size: 1000}},
 	}
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
-	_, outcome := svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, stillPending, &l)
-	return outcome
+	return svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, stillPending, &l)
 }
 
 func TestProcessSearchee_SearchInterval(t *testing.T) {
@@ -206,12 +205,12 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			before := time.Now()
-			outcome := runIntervalSearchee(ctx, svc, "Other.Movie.2023.1080p.WEB-DL", enabled)
+			report := runIntervalSearchee(ctx, svc, "Other.Movie.2023.1080p.WEB-DL", enabled)
 			stopOther()
 			<-done
 
 			require.Equal(t, 10*time.Second, time.Since(before))
-			require.Equal(t, searcheeOutcome{}, outcome)
+			require.Equal(t, itemSearchCanceled, report.search)
 			require.Len(t, searcher.starts, 1, "only the other run searched")
 			time.Sleep(searcher.delay) // let the abandoned search answer before the bubble ends
 		})
@@ -229,10 +228,10 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			before := time.Now()
-			outcome := runIntervalSearchee(ctx, svc, "Other.Movie.2023.1080p.WEB-DL", enabled)
+			report := runIntervalSearchee(ctx, svc, "Other.Movie.2023.1080p.WEB-DL", enabled)
 
 			require.Equal(t, 10*time.Second, time.Since(before))
-			require.Equal(t, searcheeOutcome{}, outcome)
+			require.Equal(t, itemSearchCanceled, report.search)
 			require.Len(t, searcher.starts, first)
 		})
 	})
@@ -299,11 +298,11 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 			lastEnd := time.Now()
 
 			var checkedAt time.Time
-			outcome := runIntervalSearcheeIfPending(t.Context(), svc, "Finished.Item.1080p.WEB-DL", enabled, func() bool {
+			report := runIntervalSearcheeIfPending(t.Context(), svc, "Finished.Item.1080p.WEB-DL", enabled, func() bool {
 				checkedAt = time.Now()
 				return false
 			})
-			require.Equal(t, searcheeOutcome{}, outcome)
+			require.Equal(t, itemSearchCanceled, report.search)
 			require.Equal(t, 60*time.Second, checkedAt.Sub(lastEnd), "the item checks its state after its turn comes, not before the wait")
 
 			runIntervalSearchee(t.Context(), svc, "Next.Item.1080p.WEB-DL", enabled)

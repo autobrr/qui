@@ -111,7 +111,7 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 	for _, result := range response.Results {
 		// qBittorrent holds a stranded torrent, so a later source would only
 		// report "exists" and hide the failure.
-		if class := result.class(); class == classAdded || class == classExists || class == classStranded {
+		if class := result.class(); class == ClassAdded || class == ClassExists || class == ClassStranded {
 			return true
 		}
 	}
