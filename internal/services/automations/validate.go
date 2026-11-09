@@ -118,6 +118,10 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 			if isRemote {
 				return ruleError("This file condition is not available on remote instances.")
 			}
+			if data.trustedIdentity {
+				// Only local access grants trusted identity; SSH access would not unlock this field.
+				return ruleError("This file condition requires Local Filesystem Access. Enable it in instance settings first.")
+			}
 			return ruleError("File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 		}
 	}

@@ -965,7 +965,7 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first."},
 		{name: "missing files with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: local},
 		{name: "hardlink scope without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}),
-			wantMsg: "File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first."},
+			wantMsg: "This file condition requires Local Filesystem Access. Enable it in instance settings first."},
 		{name: "hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: remoteExec,
 			wantMsg: "This file condition is not available on remote instances."},
 		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,
