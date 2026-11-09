@@ -729,7 +729,7 @@
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
       "noInstancesDescription": "Aucune instance configurée. Ajoutez-en une dans les paramètres.",
-      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
+      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès aux fichiers de chaque instance. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance.",
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
       "remoteLimits": "La suppression et le nettoyage automatique sur une instance distante nécessitent l'identité des fichiers, que l'application ne peut lire que si le serveur lui permet d'exécuter GNU find et stat.",
       "remoteNoIdentity": "Cette instance distante ne le permet pas : l'application ne sait donc pas reconnaître deux chemins menant au même fichier, et un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise. Les analyses ici peuvent être consultées et exportées, mais pas supprimées.",
@@ -789,8 +789,8 @@
       },
       "errorMessage": "Message d'erreur",
       "scanPaths": "Chemins d’analyse",
-      "noFilesystemAccess": "No filesystem access",
-      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
+      "noFilesystemAccess": "Pas d'accès au système de fichiers",
+      "noFilesystemAccessTooltip": "L'analyse d'orphelins nécessite l'accès aux fichiers de cette instance. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance."
     },
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
@@ -1290,9 +1290,9 @@
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
           "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'.",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH."
         },
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
+        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)"
       },
       "grouping": {
         "title": "Groupes de conditions",
@@ -1500,7 +1500,7 @@
         "selectGroupKey": "Sélectionnez au moins une clé",
         "groupExists": "Un groupe avec cet ID existe déjà",
         "customGroupAdded": "Groupe personnalisé ajouté",
-        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
+        "setUpFilesystemAccessOrDefault": "Configurez un accès au système de fichiers local ou via SSH dans les paramètres de l'instance, ou utilisez Par défaut (qBittorrent)"
       },
       "trackerMatchInclude": "Inclure",
       "trackerMatchExclude": "Exclure"

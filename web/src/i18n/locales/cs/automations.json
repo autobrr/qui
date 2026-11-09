@@ -221,7 +221,7 @@
       "qbittorrent52": "Vyžaduje qBittorrent 5.2+",
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému",
       "remoteInstance": "Není dostupné pro vzdálené instance",
-      "filesystemAccess": "Requires filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings."
+      "filesystemAccess": "Vyžaduje přístup k souborovému systému. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance."
     },
     "selectTrackerStatus": "Vybrat stav",
     "selectContentType": "Vybrat typ obsahu",

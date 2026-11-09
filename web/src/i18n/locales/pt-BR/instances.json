@@ -735,7 +735,7 @@
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",
-      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
+      "tooltip": "Busca arquivos no disco que não estão associados a nenhum torrent no qBittorrent.\nPrecisa de acesso aos arquivos de cada instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
       "remoteLimits": "A exclusão e a auto-limpeza em uma instância remota precisam da identidade dos arquivos, que o qui só consegue ler quando o servidor permite executar GNU find e stat.",
       "remoteNoIdentity": "Esta instância remota não permite isso, então o qui não consegue saber quando dois caminhos são o mesmo arquivo, e um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize. As varreduras aqui podem ser visualizadas e exportadas, mas não excluídas.",
@@ -795,8 +795,8 @@
       },
       "errorMessage": "Mensagem de erro",
       "scanPaths": "Caminhos de verificação",
-      "noFilesystemAccess": "No filesystem access",
-      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
+      "noFilesystemAccess": "Sem acesso ao sistema de arquivos",
+      "noFilesystemAccessTooltip": "A varredura de órfãos precisa de acesso aos arquivos desta instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância."
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -1296,9 +1296,9 @@
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH."
         },
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
+        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",
@@ -1506,7 +1506,7 @@
         "selectGroupKey": "Requer chaves.",
         "groupExists": "O nome já está sendo usado por outro grupamento.",
         "customGroupAdded": "Grupo personalizado adicionado",
-        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
+        "setUpFilesystemAccessOrDefault": "Configure o acesso ao sistema de arquivos local ou via SSH nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\""
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"

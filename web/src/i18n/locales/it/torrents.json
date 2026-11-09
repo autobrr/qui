@@ -1657,7 +1657,7 @@
       "dropped": "Pacchetto aggiunto. Destinazioni escluse: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack.",
+        "no_filesystem_access": "Questa istanza richiede l'accesso in scrittura al filesystem per assemblare un pacchetto.",
         "no_link_mode": "Abilita hardlink o reflink su questa istanza per selezionare più destinazioni.",
         "no_base_directory": "Configura una directory di base per i collegamenti di questa istanza.",
         "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",

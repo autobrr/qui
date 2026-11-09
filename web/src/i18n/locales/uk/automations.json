@@ -221,7 +221,7 @@
       "qbittorrent52": "Потребує qBittorrent 5.2+",
       "localFilesystemAccess": "Потребує локального доступу до файлової системи",
       "remoteInstance": "Недоступно на віддалених екземплярах",
-      "filesystemAccess": "Requires filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings."
+      "filesystemAccess": "Потребує доступу до файлової системи. Увімкніть «Доступ до локальної файлової системи» або налаштуйте доступ через SSH у налаштуваннях екземпляра."
     },
     "selectTrackerStatus": "Вибрати статус",
     "selectContentType": "Вибрати тип вмісту",

@@ -959,9 +959,9 @@
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor».",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH."
         },
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
+        "pathSourceFilesystemAccessRequired": "Camí al servidor (necessita accés local o SSH)"
       },
       "grouping": {
         "title": "Grups de condicions agrupades",
@@ -1158,7 +1158,7 @@
         "selectGroupKey": "Selecciona com a mínim una clau",
         "groupExists": "Ja hi ha un grup amb aquest ID",
         "customGroupAdded": "S'ha afegit el grup personalitzat",
-        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
+        "setUpFilesystemAccessOrDefault": "Configura l'accés al sistema de fitxers local o per SSH a la configuració de la instància, o fes servir Predeterminat (qBittorrent)"
       },
       "trackerMatchInclude": "Inclou",
       "trackerMatchExclude": "Exclou"
@@ -1360,7 +1360,7 @@
     "orphanScanOverview": {
       "title": "Exploració d'orfes",
       "noInstancesDescription": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
+      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nNecessita accés als fitxers de cada instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
       "remoteLimits": "La supressió i la neteja automàtica en una instància remota necessiten la identitat dels fitxers, que qui només pot llegir si el servidor li permet executar GNU find i stat.",
       "remoteNoIdentity": "Aquesta instància remota no li permet executar-los, de manera que qui no pot saber quan dos camins són el mateix fitxer, i un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi. Les exploracions d'aquí es poden previsualitzar i exportar, però no suprimir.",
@@ -1420,8 +1420,8 @@
       "deletedSeparator": ", ",
       "errorMessage": "Missatge d'error",
       "scanPaths": "Camins d'exploració",
-      "noFilesystemAccess": "No filesystem access",
-      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
+      "noFilesystemAccess": "Sense accés al sistema de fitxers",
+      "noFilesystemAccessTooltip": "L'exploració d'orfes necessita accés als fitxers d'aquesta instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància."
     },
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",
