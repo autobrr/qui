@@ -417,6 +417,7 @@ func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 
 // A retry that reads a torrent rebuilds in the same run, and the rebuild must
 // not fetch the retried torrents again.
+// regression: #3930
 func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -439,6 +440,7 @@ func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	})
 }
 
+// regression: #3930
 func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
