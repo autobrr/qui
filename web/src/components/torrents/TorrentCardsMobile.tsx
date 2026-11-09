@@ -103,6 +103,7 @@ import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { withSortedField } from "@/lib/copy-groups"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
@@ -389,10 +390,13 @@ function SwipeableCard({
       hiddenProblem={copyGroup.hiddenProblem}
       hiddenTicks={copyGroup.hiddenTicks}
       name={displayName}
-      size={viewMode === "ultra-compact" ? "dense" : viewMode === "compact" ? "stacked" : "normal"}
+      size={viewMode === "normal" ? "normal" : "dense"}
       onToggle={onToggleCopyGroup}
     />
   )
+  const isComplete = torrent.progress === 1
+  const hasSpeeds = torrent.dlspeed > 0 || torrent.upspeed > 0
+  const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName
 
   return (
     <div
@@ -498,8 +502,8 @@ function SwipeableCard({
       ) : viewMode === "compact" ? (
         /* Compact Layout */
         <>
-          {/* Name with progress inline */}
-          <div className="flex items-center gap-2 mb-1">
+          {/* Name and Copy group pill */}
+          <div className="flex h-5 items-center mb-1.5">
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="w-full overflow-x-auto scrollbar-thin">
                 <h3 className={cn(
@@ -511,25 +515,39 @@ function SwipeableCard({
               </div>
             </div>
             {groupPill}
-            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
-              {statusBadgeLabel}
-            </Badge>
           </div>
 
-          {/* Downloaded/Size and Ratio */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
-            </span>
-            <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
-              <span
-                className="font-medium"
-                style={{ color: getRatioColor(displayRatio) }}
-              >
-                {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+          {/* Tracker, Size and Ratio on the left, state badge on the right */}
+          <div className="flex h-[22px] items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+              {trackerDisplayName && (
+                <span className="flex items-center gap-1 min-w-0" title={trackerTitle}>
+                  <TrackerIcon
+                    title={trackerTitle}
+                    fallback={trackerMeta.fallback}
+                    src={trackerIconSrc}
+                    size="xs"
+                    className="flex-shrink-0"
+                  />
+                  <span className="truncate">{trackerDisplayName}</span>
+                </span>
+              )}
+              <span className="flex-shrink-0">
+                {isComplete ? formatBytes(torrent.size) : `${formatBytes(torrent.downloaded)} / ${formatBytes(torrent.size)}`}
+              </span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <span>{t("mobileCards.ratio")}</span>
+                <span
+                  className="font-medium"
+                  style={{ color: getRatioColor(displayRatio) }}
+                >
+                  {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+                </span>
               </span>
             </div>
+            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0 ml-auto", statusBadgeClass)}>
+              {statusBadgeLabel}
+            </Badge>
           </div>
         </>
       ) : (
@@ -610,21 +628,10 @@ function SwipeableCard({
 
       {/* Bottom row: Tracker/Category/Tags and Status/Speeds - only for compact and full views */}
       {viewMode === "compact" ? (
-        /* Compact version: Tracker/Category/tags on left, percentage/speeds on right */
-        <div className="flex items-center justify-between gap-2 text-xs mt-1">
-          {/* Left side: Tracker, Category and Tags */}
+        /* Compact version: Category/tags on left, percentage/speeds or added time on right */
+        <div className="flex h-4 items-center justify-between gap-2 text-xs mt-1">
+          {/* Left side: Category and Tags */}
           <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
-            {trackerDisplayName && (
-              <span className="flex items-center gap-1 flex-shrink-0" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
-                <TrackerIcon
-                  title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
-                  fallback={trackerMeta.fallback}
-                  src={trackerIconSrc}
-                  size="xs"
-                />
-                {trackerDisplayName}
-              </span>
-            )}
             {displayCategory && (
               <span className="flex items-center gap-1 flex-shrink-0">
                 <Folder className="h-3 w-3" />
@@ -641,31 +648,39 @@ function SwipeableCard({
             )}
           </div>
 
-          {/* Right side: Percentage and Speeds */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-muted-foreground">
-              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
-                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
-              ) : (
-                Math.round(torrent.progress * 100)
-              )}%
+          {/* Right side: Percentage and Speeds, or the added time of an idle complete torrent */}
+          {isComplete && !hasSpeeds ? (
+            <span className="text-muted-foreground flex-shrink-0">
+              {t("mobileCards.added", { time: formatRelativeTime(torrent.added_on) })}
             </span>
-            {/* Speeds */}
-            {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-              <div className="flex items-center gap-1">
-                {torrent.dlspeed > 0 && (
-                  <span className="text-chart-2 font-medium">
-                    ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
-                  </span>
-                )}
-                {torrent.upspeed > 0 && (
-                  <span className="text-chart-3 font-medium">
-                    ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {!isComplete && (
+                <span className="text-muted-foreground">
+                  {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                    (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+                  ) : (
+                    Math.round(torrent.progress * 100)
+                  )}%
+                </span>
+              )}
+              {/* Speeds */}
+              {hasSpeeds && (
+                <div className="flex items-center gap-1">
+                  {torrent.dlspeed > 0 && (
+                    <span className="text-chart-2 font-medium">
+                      ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                    </span>
+                  )}
+                  {torrent.upspeed > 0 && (
+                    <span className="text-chart-3 font-medium">
+                      ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : viewMode === "normal" ? (
         /* Full version: Original layout with tracker, category, tags */
@@ -1020,7 +1035,7 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: loadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
+    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 90 : 180,
     overscan: 5,
     // The list hook keeps one row per identity. A key without the index lets a card
     // keep its place in the DOM when a group above it opens or closes.

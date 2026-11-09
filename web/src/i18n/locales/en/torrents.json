@@ -1503,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Added {{time}}"
   },
   "tableView": {
     "ascending": "ascending",

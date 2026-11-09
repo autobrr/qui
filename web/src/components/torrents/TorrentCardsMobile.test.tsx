@@ -20,6 +20,7 @@ import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import "@/i18n"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
+import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, within } from "@testing-library/react"
@@ -41,9 +42,9 @@ const controller = vi.hoisted(() => ({ current: undefined as undefined | { loade
 
 vi.mock("react-i18next", async (importOriginal) => {
   const translation = {
-    // Copy group and status bar keys echo their values, so a test can assert a count.
+    // Copy group, status bar, and added time keys echo their values, so a test can assert a count or a time.
     t: (key: string | string[], options?: Record<string, unknown>) =>
-      typeof key === "string" && /^(copyGroups|statusBar)\./.test(key) && options ? `${key} ${JSON.stringify(options)}` : key,
+      typeof key === "string" && /^(copyGroups\.|statusBar\.|mobileCards\.added$)/.test(key) && options ? `${key} ${JSON.stringify(options)}` : key,
     i18n: { resolvedLanguage: "en", language: "en" },
   }
   return {
@@ -185,6 +186,7 @@ afterEach(() => {
 const GROUP_COPIES_KEY = "qui-group-copies"
 const VIEW_MODE_KEY = "qui-torrent-mobile-view-mode"
 const SORT_KEY = "qui:torrent-mobile-sort:1"
+const DATE_TIME_KEY = "qui-datetime-preferences"
 const CARD_SIZES = ["normal", "compact", "ultra-compact"] as const
 
 // The rows of one page in the order that the server sends them: the Group
@@ -440,6 +442,70 @@ describe("TorrentCardsMobile Copy groups", () => {
 
     await pressExpandAll(view)
     expect(cardNames(view.container)).toEqual(["Delta Release", "Echo Release"])
+  })
+})
+
+describe("TorrentCardsMobile Compact card", () => {
+  // 2026-01-01 12:30 UTC and 2026-01-02 08:15 UTC. Now is 2026-01-02 10:15 UTC.
+  const ADDED_ON = 1767270600
+  const LATER_ADDED_ON = 1767341700
+  const NOW = 1767348900
+  const GIB = 1024 ** 3
+
+  beforeEach(() => {
+    localStorage.setItem(VIEW_MODE_KEY, "compact")
+    // The card shows a relative time with every date setting.
+    localStorage.setItem(DATE_TIME_KEY, JSON.stringify({ timezone: "UTC", timeFormat: "24h", dateFormat: "iso" }))
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW * 1000)
+  })
+
+  const cardText = (container: HTMLElement, name: string) => cardOf(container, name).closest(".cursor-pointer")?.textContent ?? ""
+
+  it("shows the size and how long ago the torrent was added on a complete idle torrent, and no percent", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Foxtrot Release", progress: 1, size: 2 * GIB, downloaded: 2 * GIB, state: "stalledUP", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Foxtrot Release")
+    expect(text).toContain("mobileCards.added {\"time\":\"21 hours ago\"}")
+    expect(text).toContain(formatBytes(2 * GIB))
+    expect(text).not.toContain(" / ")
+    expect(text).not.toContain("%")
+  })
+
+  it("shows the upload speed on a complete seeding torrent, and no percent and no added time", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Hotel Release", progress: 1, size: 2 * GIB, downloaded: 2 * GIB, upspeed: 1024, state: "uploading", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Hotel Release")
+    expect(text).toContain("↑")
+    expect(text).not.toContain("%")
+    expect(text).not.toContain("mobileCards.added")
+  })
+
+  it("shows the downloaded size, the size, and the percent on an incomplete torrent, and no added time", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Golf Release", progress: 0.5, size: 2 * GIB, downloaded: GIB, state: "pausedDL", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Golf Release")
+    expect(text).toContain(`${formatBytes(GIB)} / ${formatBytes(2 * GIB)}`)
+    expect(text).toContain("50%")
+    expect(text).not.toContain("mobileCards.added")
+  })
+
+  it("shows the added time of the first-sorted member on the card of a closed group sorted by added time", () => {
+    localStorage.setItem(SORT_KEY, JSON.stringify({ field: "added_on", order: "desc" }))
+    const complete = { progress: 1, state: "stalledUP" as const }
+    const { container } = renderGroups(copyGroupRows({
+      top: { ...complete, added_on: ADDED_ON },
+      sorted: { ...complete, added_on: LATER_ADDED_ON },
+      third: { ...complete, added_on: ADDED_ON },
+    }))
+
+    expect(cardText(container, "Delta Release")).toContain("mobileCards.added {\"time\":\"2 hours ago\"}")
   })
 })
 

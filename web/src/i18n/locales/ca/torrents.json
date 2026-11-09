@@ -692,7 +692,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
