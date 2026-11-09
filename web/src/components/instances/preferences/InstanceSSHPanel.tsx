@@ -357,7 +357,8 @@ function SSHTestResult({ result, instance, onConfirm, onReplace }: SSHTestResult
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
-          <RemoteAccessIndicator instance={instance} variant="inline" />
+          {/* The hardlink flag comes from this test, not the row: a failed probe write would otherwise leave the limits contradicting the table above. */}
+          <RemoteAccessIndicator instance={result.capabilities ? { ...instance, sshHardlink: result.capabilities.hardlink } : instance} variant="inline" />
         </div>
       )
     case "mismatch":
