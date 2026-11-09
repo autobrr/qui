@@ -13,7 +13,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // runSession owns the Shared-file groups and the facts of one run, dry run, or preview (ADR 0042).
@@ -84,15 +83,14 @@ func conditionReadsCrossSeedFacts(cond *RuleCondition) bool {
 }
 
 // askRuleFacts asks the run session once, before the rules sort and evaluate, for the facts of
-// the torrents that the rules evaluate: each torrent in the tracker scope of a rule that reads a
-// cross-seed field and that the run does not skip, with the members of the GroupID groups that
-// the rule checks. A sort on such a field scores every torrent, so it asks for the whole list.
-func (s *Service) askRuleFacts(rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, skip func(hash string) bool) {
+// the torrents that the rules evaluate: each torrent in the Rule scope of a rule that reads a
+// cross-seed field, with the members of the GroupID groups that the rule checks. A sort on such a
+// field scores every torrent, so it asks for the whole list.
+func askRuleFacts(rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope) {
 	groups := evalCtx.crossSeeds
 	if groups == nil || groups.session == nil {
 		return
 	}
-	trackers := newTrackerMatchCache()
 	var hashes []string
 	for _, rule := range rules {
 		if !slices.ContainsFunc(crossSeedFactFields, func(f ConditionField) bool { return ruleUsesCondition(rule, f) }) {
@@ -104,17 +102,16 @@ func (s *Service) askRuleFacts(rules []*models.Automation, torrents []qbt.Torren
 			}
 			return
 		}
-		readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 		groupIDs := factGroupIDs(rule.Conditions)
 		askedGroups := make(map[askedFactGroup]struct{})
 		for i := range torrents {
 			t := &torrents[i]
-			if skip != nil && skip(t.Hash) || !trackers.match(rule.TrackerPattern, *t, s) || readsPrivate && qbittorrent.PrivateUnknown(t) {
+			if scope.answer(rule, t) != scopeIn {
 				continue
 			}
 			hashes = append(hashes, t.Hash)
 			for _, groupID := range groupIDs {
-				idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
+				idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, scope)
 				key := askedFactGroup{groupID, idx.KeyForHash(t.Hash)}
 				if _, done := askedGroups[key]; !done {
 					askedGroups[key] = struct{}{}

@@ -114,7 +114,7 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 				}}
 				groups := buildCrossSeedGroups(torrents, evalCtx)
 				svc.loadCrossSeedFiles(ctx, instance.ID, groups, evalCtx, nil)
-				selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: tc.rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups})
+				selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: tc.rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(tc.rules...)})
 				if got := len(selection.byHash); got < tc.minDelete || tc.minDelete == 0 && got != 0 {
 					b.Fatalf("selected %d torrents, want %d or more (0 means none)", got, tc.minDelete)
 				}
@@ -209,14 +209,15 @@ func benchmarkPlanRun(b *testing.B, rule *models.Automation, want int, planned f
 		}
 		groups := buildCrossSeedGroups(torrents, evalCtx)
 		states := make(map[string]*torrentDesiredState)
-		svc.buildAndExecuteBatches(instance.ID, rules, torrents, evalCtx, groups, nil, make(map[int]*ruleRunStats), states)
+		scope := noSkipWindow(rules...)
+		buildAndExecuteBatches(instance.ID, rules, torrents, evalCtx, groups, scope, make(map[int]*ruleRunStats), states)
 		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 		for _, t := range torrents {
 			torrentByHash[t.Hash] = t
 		}
 		plan := svc.buildRunPlan(ctx, runPlanInput{
 			instanceID: instance.ID, states: states, deletions: &deletionSelection{}, torrents: torrents, torrentByHash: torrentByHash,
-			ruleByID: map[int]*models.Automation{rule.ID: rule}, crossSeeds: groups, evalCtx: evalCtx,
+			ruleByID: map[int]*models.Automation{rule.ID: rule}, crossSeeds: groups, evalCtx: evalCtx, scope: scope,
 		})
 		if got := planned(plan); got != want {
 			b.Fatalf("planned %d changes, want %d", got, want)
@@ -248,9 +249,10 @@ func BenchmarkRunSessionCrossSeedFacts(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		svc.askRuleFacts(rules, torrents, evalCtx, nil)
+		scope := noSkipWindow(rules...)
+		askRuleFacts(rules, torrents, evalCtx, scope)
 		groups := buildCrossSeedGroups(torrents, evalCtx)
-		selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups})
+		selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, scope: scope})
 		if got := len(selection.byHash); got != 2000 {
 			b.Fatalf("selected %d torrents, want 2000", got)
 		}

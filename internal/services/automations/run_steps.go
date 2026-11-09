@@ -25,7 +25,9 @@ type stepRun struct {
 	s             *Service
 	instanceID    int
 	torrentByHash map[string]qbt.Torrent
-	dryRun        bool
+	// scope gives the tracker that an activity row shows.
+	scope  *ruleScope
+	dryRun bool
 	// summary feeds the notification of a live run. A dry run has none.
 	summary *automationSummary
 	// resetTags are the managed tags that a live run deletes from qBittorrent before the tags step (ADR 0028).
@@ -157,7 +159,7 @@ func (r *stepRun) recordCount(ctx context.Context, action string, hashes []strin
 		count:   len(hashes),
 		rules:   buildRuleCountsFromHashes(hashes, rules),
 		hashes:  hashes,
-		items:   func() []ActivityRunTorrent { return buildRunItemsFromHashes(hashes, r.torrentByHash, r.s.syncManager) },
+		items:   func() []ActivityRunTorrent { return buildRunItemsFromHashes(hashes, r.torrentByHash, r.scope) },
 	})
 }
 
@@ -193,7 +195,7 @@ func (r *stepRun) speedLimits(ctx context.Context, plan *runPlan) {
 		rules:   rules,
 		hashes:  slices.Concat(uploadHashes, downloadHashes),
 		items: func() []ActivityRunTorrent {
-			return buildSpeedLimitRunItems(upload, download, r.torrentByHash, r.s.syncManager)
+			return buildSpeedLimitRunItems(upload, download, r.torrentByHash, r.scope)
 		},
 	})
 }
@@ -274,7 +276,7 @@ func (r *stepRun) shareLimits(ctx context.Context, plan *runPlan) {
 		rules:   buildRuleCountsFromHashMaps(hashes, ruleMaps...),
 		hashes:  hashes,
 		items: func() []ActivityRunTorrent {
-			return buildShareLimitRunItems(accepted, r.torrentByHash, r.s.syncManager)
+			return buildShareLimitRunItems(accepted, r.torrentByHash, r.scope)
 		},
 	})
 }
@@ -355,7 +357,7 @@ func (r *stepRun) tags(ctx context.Context, plan *runPlan) {
 		count:   len(accepted),
 		rules:   rules,
 		hashes:  hashes,
-		items:   func() []ActivityRunTorrent { return buildTagRunItems(accepted, r.torrentByHash, r.s.syncManager) },
+		items:   func() []ActivityRunTorrent { return buildTagRunItems(accepted, r.torrentByHash, r.scope) },
 	})
 	if !r.dryRun {
 		r.summary.addTagCounts(added, removed)
@@ -390,7 +392,7 @@ func (r *stepRun) category(ctx context.Context, plan *runPlan) {
 		count:   writes,
 		rules:   buildRuleCountsFromHashes(hashes, plan.category.rules),
 		hashes:  hashes,
-		items:   func() []ActivityRunTorrent { return buildCategoryRunItems(accepted, r.torrentByHash, r.s.syncManager) },
+		items:   func() []ActivityRunTorrent { return buildCategoryRunItems(accepted, r.torrentByHash, r.scope) },
 	})
 }
 
@@ -421,7 +423,7 @@ func (r *stepRun) move(ctx context.Context, plan *runPlan) {
 			count:   writes,
 			rules:   buildRuleCountsFromHashes(hashes, plan.move.rules),
 			hashes:  hashes,
-			items:   func() []ActivityRunTorrent { return buildMoveRunItems(accepted, r.torrentByHash, r.s.syncManager) },
+			items:   func() []ActivityRunTorrent { return buildMoveRunItems(accepted, r.torrentByHash, r.scope) },
 		})
 	}
 	if len(refused) > 0 {

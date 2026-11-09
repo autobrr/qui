@@ -171,33 +171,13 @@ func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *rul
 	return s
 }
 
-// selectMatchingRules returns all enabled rules that match the torrent, in sort order.
-func selectMatchingRules(torrent qbt.Torrent, rules []*models.Automation, sm *qbittorrent.SyncManager) []*models.Automation {
-	trackerDomains := collectTrackerDomains(torrent, sm)
-	var matching []*models.Automation
-
-	for _, rule := range rules {
-		if !rule.Enabled {
-			continue
-		}
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		matching = append(matching, rule)
-	}
-
-	return matching
-}
-
 // processTorrents processes all torrents against all rules, returning desired states.
 func processTorrents(
 	torrents []qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
 	crossSeeds *crossSeedGroups,
-	sm *qbittorrent.SyncManager,
-	skipCheck func(hash string) bool,
+	scope *ruleScope,
 	stats map[int]*ruleRunStats,
 	existingStates map[string]*torrentDesiredState,
 ) map[string]*torrentDesiredState {
@@ -208,64 +188,16 @@ func processTorrents(
 		states = make(map[string]*torrentDesiredState)
 	}
 
-	// Only the rules that read Private, so the map stays empty before qBittorrent 5.0, where
-	// each torrent reaches the lookup and such a rule does not get here.
-	readsPrivate := make(map[int]bool)
-	for _, rule := range rules {
-		if ruleUsesCondition(rule, FieldPrivate) {
-			readsPrivate[rule.ID] = true
-		}
-	}
-
-	askActionGroups(torrents, rules, evalCtx, crossSeeds, sm, skipCheck, states, readsPrivate)
+	askActionGroups(torrents, rules, evalCtx, crossSeeds, scope, states)
 	if evalCtx != nil {
 		defer func() { evalCtx.moveChecks = nil }()
 	}
 
-	for _, torrent := range torrents {
-		// Skip if recently processed
-		if skipCheck != nil && skipCheck(torrent.Hash) {
-			continue
-		}
-
-		matchingRules := selectMatchingRules(torrent, rules, sm)
-		if len(matchingRules) == 0 {
-			continue
-		}
-
-		// Initialize or retrieve existing state for this torrent
-		var state *torrentDesiredState
-		if existing, ok := states[torrent.Hash]; ok {
-			state = existing
-		} else {
-			state = &torrentDesiredState{
-				hash:         torrent.Hash,
-				name:         torrent.Name,
-				currentTags:  parseTorrentTags(torrent.Tags),
-				tagActions:   make(map[string]string),
-				tagRuleByTag: make(map[string]ruleRef),
-			}
-		}
-
-		// Get all tracker domains for this torrent
-		state.trackerDomains = collectTrackerDomains(torrent, sm)
-
-		// Process each matching rule in order
-		for _, rule := range matchingRules {
-			// A torrent without a private value drops out of a rule that reads it. ADR 0039.
-			if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
-				keepResetTagsOfRule(rule, state)
-				continue
-			}
-			ruleStats := getOrCreateRuleStats(stats, rule)
-			if ruleStats != nil {
-				ruleStats.MatchedTrackers++
-			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents)
-		}
-
+	for i := range torrents {
+		torrent := &torrents[i]
+		state := applyRulesToTorrent(torrent, rules, states[torrent.Hash], evalCtx, crossSeeds, scope, stats, torrents)
 		// Only store if there are actions to take
-		if hasActions(state) {
+		if state != nil && hasActions(state) {
 			states[torrent.Hash] = state
 		}
 	}
@@ -278,9 +210,49 @@ func processTorrents(
 	return states
 }
 
+// applyRulesToTorrent applies each enabled rule that holds the torrent in its Rule scope to the
+// state of the torrent, in rule order. existing is the state from an earlier batch, or nil. It
+// returns nil when no rule handles the torrent.
+func applyRulesToTorrent(torrent *qbt.Torrent, rules []*models.Automation, existing *torrentDesiredState, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, stats map[int]*ruleRunStats, allTorrents []qbt.Torrent) *torrentDesiredState {
+	var state *torrentDesiredState
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+		answer := scope.answer(rule, torrent)
+		if answer == scopeSkipWindow || answer == scopeOtherTracker {
+			continue
+		}
+		if state == nil {
+			state = existing
+			if state == nil {
+				state = &torrentDesiredState{
+					hash:         torrent.Hash,
+					name:         torrent.Name,
+					currentTags:  parseTorrentTags(torrent.Tags),
+					tagActions:   make(map[string]string),
+					tagRuleByTag: make(map[string]ruleRef),
+				}
+			}
+			state.trackerDomains = scope.trackerDomains(torrent)
+		}
+		// The torrent drops out of the rule and keeps its managed tags. ADR 0039.
+		if answer == scopeNoValue {
+			keepResetTagsOfRule(rule, state)
+			continue
+		}
+		ruleStats := getOrCreateRuleStats(stats, rule)
+		if ruleStats != nil {
+			ruleStats.MatchedTrackers++
+		}
+		processRuleForTorrent(rule, *torrent, state, evalCtx, scope, crossSeeds, ruleStats, allTorrents)
+	}
+	return state
+}
+
 // askActionGroups asks the run session once for the groups that the moves, tags and categories
 // read, before the rule loop reads them one torrent at a time.
-func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, sm *qbittorrent.SyncManager, skipCheck func(hash string) bool, states map[string]*torrentDesiredState, readsPrivate map[int]bool) {
+func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, states map[string]*torrentDesiredState) {
 	if evalCtx == nil || !crossSeeds.readsGroups() {
 		return
 	}
@@ -311,15 +283,13 @@ func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx
 	movedGroups := make(map[askedGroup]struct{})
 	categoryGroups := make(map[askedGroup]struct{})
 	var moveHashes, groupHashes []string
-	for _, torrent := range torrents {
-		if skipCheck != nil && skipCheck(torrent.Hash) {
-			continue
-		}
+	for i := range torrents {
+		torrent := &torrents[i]
 		if state := states[torrent.Hash]; len(moveRules) > 0 && (state == nil || !state.shouldMove) {
-			moveHashes = append(moveHashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, movedGroups)...)
+			moveHashes = append(moveHashes, moveAsks(torrent, moveRules, torrents, evalCtx, scope, movedGroups)...)
 		}
 		if len(groupRules) > 0 {
-			groupHashes = append(groupHashes, groupReadAsks(torrent, groupRules, asksTagScope, torrents, evalCtx, sm, readsPrivate, categoryGroups)...)
+			groupHashes = append(groupHashes, groupReadAsks(torrent, groupRules, asksTagScope, torrents, evalCtx, scope, categoryGroups)...)
 		}
 	}
 	slices.Sort(moveHashes)
@@ -338,18 +308,14 @@ func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx
 	}
 }
 
-// groupReadAsks returns the torrent when a tag or category action of a rule that matches its
-// tracker reads its group, with the members of the category GroupID that asked does not hold yet.
+// groupReadAsks returns the torrent when a tag or category action of a rule that holds it in its
+// Rule scope reads its group, with the members of the category GroupID that asked does not hold yet.
 // A tag rule in asksTagScope reads the group of each torrent in its scope. A category reads the
 // group only when its condition matches.
-func groupReadAsks(torrent qbt.Torrent, rules []*models.Automation, asksTagScope map[*models.Automation]bool, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedGroup]struct{}) []string {
-	domains := collectTrackerDomains(torrent, sm)
+func groupReadAsks(torrent *qbt.Torrent, rules []*models.Automation, asksTagScope map[*models.Automation]bool, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
 	var hashes []string
 	for _, rule := range rules {
-		if !rule.Enabled || !matchesTracker(rule.TrackerPattern, domains) {
-			continue
-		}
-		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
+		if !rule.Enabled || scope.answer(rule, torrent) != scopeIn {
 			continue
 		}
 		if asksTagScope[rule] {
@@ -359,13 +325,13 @@ func groupReadAsks(torrent qbt.Torrent, rules []*models.Automation, asksTagScope
 		if !cat.readsCrossSeedGroups() {
 			continue
 		}
-		prepareRuleEvalContext(rule, evalCtx, torrents, sm)
-		if cat.condition != nil && !EvaluateConditionWithContext(cat.condition, torrent, evalCtx, 0) {
+		prepareRuleEvalContext(rule, evalCtx, torrents, scope)
+		if cat.condition != nil && !EvaluateConditionWithContext(cat.condition, *torrent, evalCtx, 0) {
 			continue
 		}
 		hashes = append(hashes, torrent.Hash)
 		if groupID := strings.TrimSpace(rule.Conditions.Category.GroupID); groupID != "" {
-			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, sm, asked)...)
+			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, scope, asked)...)
 		}
 	}
 	return hashes
@@ -384,8 +350,8 @@ type askedGroup struct {
 
 // groupIDMembers returns the members of the GroupID group of the torrent, or nil when asked
 // already holds the group.
-func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, asked map[askedGroup]struct{}) []string {
-	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
+	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, scope)
 	group := askedGroup{rule, idx.KeyForHash(hash)}
 	if _, seen := asked[group]; seen {
 		return nil
@@ -394,28 +360,25 @@ func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qb
 	return idx.MembersForHash(hash)
 }
 
-// moveAsks returns the torrent when the move of a rule that matches its tracker can apply to it,
-// with the members of the move GroupID that asked does not hold yet.
-func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedGroup]struct{}) []string {
-	state := &torrentDesiredState{trackerDomains: collectTrackerDomains(torrent, sm)}
+// moveAsks returns the torrent when the move of a rule that holds it in its Rule scope can apply
+// to it, with the members of the move GroupID that asked does not hold yet.
+func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
+	state := &torrentDesiredState{trackerDomains: scope.trackerDomains(torrent)}
 	var hashes []string
 	for _, rule := range rules {
-		if !rule.Enabled || !matchesTracker(rule.TrackerPattern, state.trackerDomains) {
+		if !rule.Enabled || scope.answer(rule, torrent) != scopeIn {
 			continue
 		}
-		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
-			continue
-		}
-		prepareRuleEvalContext(rule, evalCtx, torrents, sm)
+		prepareRuleEvalContext(rule, evalCtx, torrents, scope)
 		move := rule.Conditions.Move
-		path, check := checkMove(move, torrent, state, evalCtx)
+		path, check := checkMove(move, *torrent, state, evalCtx)
 		evalCtx.moveChecks[moveCheckKey{rule, torrent.Hash}] = checkedMove{path, check}
 		if check != moveReady {
 			continue
 		}
 		hashes = append(hashes, torrent.Hash)
 		if groupID := strings.TrimSpace(move.GroupID); groupID != "" {
-			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, sm, asked)...)
+			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, scope, asked)...)
 		}
 	}
 	return hashes
@@ -423,24 +386,24 @@ func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.To
 
 // prepareRuleEvalContext loads what the conditions of the rule read: its free space source and
 // its grouping (GROUP_SIZE / IS_GROUPED), which action expansion also reuses.
-func prepareRuleEvalContext(rule *models.Automation, evalCtx *EvalContext, allTorrents []qbt.Torrent, sm *qbittorrent.SyncManager) {
+func prepareRuleEvalContext(rule *models.Automation, evalCtx *EvalContext, allTorrents []qbt.Torrent, scope *ruleScope) {
 	if evalCtx == nil {
 		return
 	}
 	if ruleUsesCondition(rule, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
-	activateRuleGrouping(evalCtx, rule, allTorrents, sm)
+	activateRuleGrouping(evalCtx, rule, allTorrents, scope)
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds *crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, scope *ruleScope, crossSeeds *crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
 	}
 
-	prepareRuleEvalContext(rule, evalCtx, allTorrents, sm)
+	prepareRuleEvalContext(rule, evalCtx, allTorrents, scope)
 
 	// Speed limits
 	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
