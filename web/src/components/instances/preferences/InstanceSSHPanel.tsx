@@ -263,30 +263,38 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
           )}
 
           {stored && (
-            <div className="space-y-4 rounded-lg border bg-muted/40 p-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm font-medium">{t("preferences.ssh.test.title")}</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => test()}>
-                  {state.kind === "testing" ? t("preferences.ssh.buttons.testing") : t("preferences.ssh.buttons.test")}
-                </Button>
-              </div>
-              {result ? (
-                <SSHTestResult
-                  result={result}
-                  instance={instance}
-                  onConfirm={() => pin(false)}
-                  onReplace={() => setReplaceOpen(true)}
-                />
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
-                  </p>
-                  {/* The limits come from the stored probe, so a pinned host shows them before any new test. */}
-                  {instance.sshHostKeyPinned && <RemoteAccessIndicator instance={instance} variant="inline" />}
-                </>
+            <form.Subscribe selector={(s) => s.isDirty}>
+              {(isDirty) => (
+                // A test runs against the stored credentials, so unsaved edits
+                // hide its result: a fingerprint under a host the row does not hold yet would mislead.
+                <div className="space-y-4 rounded-lg border bg-muted/40 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium">{t("preferences.ssh.test.title")}</span>
+                    <Button type="button" variant="outline" size="sm" disabled={isDirty} onClick={() => test()}>
+                      {state.kind === "testing" ? t("preferences.ssh.buttons.testing") : t("preferences.ssh.buttons.test")}
+                    </Button>
+                  </div>
+                  {isDirty ? (
+                    <p className="text-sm text-muted-foreground">{t("preferences.ssh.test.saveFirst")}</p>
+                  ) : result ? (
+                    <SSHTestResult
+                      result={result}
+                      instance={instance}
+                      onConfirm={() => pin(false)}
+                      onReplace={() => setReplaceOpen(true)}
+                    />
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
+                      </p>
+                      {/* The limits come from the stored probe, so a pinned host shows them before any new test. */}
+                      {instance.sshHostKeyPinned && <RemoteAccessIndicator instance={instance} variant="inline" />}
+                    </>
+                  )}
+                </div>
               )}
-            </div>
+            </form.Subscribe>
           )}
         </fieldset>
       </PreferencesFormShell>

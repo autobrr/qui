@@ -130,7 +130,7 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {instance ? (
-            <InstanceSSHPanel instance={instance} />
+            <InstanceSSHPanel key={instance.id} instance={instance} />
           ) : (
             <p className="text-sm text-muted-foreground py-8 text-center">
               {t("preferences.dialog.instanceNotAvailable")}
