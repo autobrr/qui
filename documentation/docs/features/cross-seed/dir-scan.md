@@ -131,7 +131,9 @@ A full scan is a manual or scheduled scan of the whole directory. Full scans run
 
 Dir Scan waits between searches. See [Search pacing](#search-pacing).
 
-Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Library Scan uses the same rule for downloads.
+Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Only Dir Scan pauses between torrent-file downloads. Library Scan does not pause between them.
+
+A Dir Scan download from a native indexer waits while a search to that indexer is open. It goes 60 seconds after the indexer answers that search. If a download fails, each retry also waits 60 seconds, so a download that fails can take about 3 minutes before Dir Scan goes to the next item.
 :::
 
 ### Search pacing

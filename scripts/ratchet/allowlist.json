@@ -32,7 +32,6 @@
     "internal/services/dirscan/service.go": 22,
     "internal/services/externalprograms/service.go": 2,
     "internal/services/jackett/client.go": 5,
-    "internal/services/jackett/scheduler.go": 1,
     "internal/services/jackett/service.go": 8,
     "internal/services/notifications/notifiarr_api.go": 2,
     "internal/services/notifications/service.go": 1,
