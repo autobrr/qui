@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
@@ -48,7 +49,7 @@ func TestProxyClearsCachedFilesForUppercaseHash(t *testing.T) {
 			r := newProxyRigWorker(t, false)
 			files := filesmanager.NewService(r.db)
 			r.handler.syncManager.SetFilesManager(files)
-			require.NoError(t, files.CacheFiles(t.Context(), r.instanceID, proxyHashA, qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1}}))
+			require.NoError(t, files.CacheFiles(t.Context(), r.instanceID, proxyHashA, qbittorrent.CachedFilesWrite{Files: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1}}}))
 			cached, err := files.GetCachedFiles(t.Context(), r.instanceID, proxyHashA)
 			require.NoError(t, err)
 			require.NotNil(t, cached, "the file list must be cached before the proxied call")
