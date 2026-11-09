@@ -1379,7 +1379,9 @@ func (sm *SyncManager) dropCachedFiles(ctx context.Context, instanceID int, hash
 type filesInvalidations struct {
 	mu  sync.RWMutex
 	seq uint64
-	// dropped holds the seq of the last drop of each hash.
+	// fetches counts the fetches between mark and release.
+	fetches int
+	// dropped holds the seq of the last drop of each hash while a fetch runs.
 	dropped map[filesInvalidationKey]uint64
 }
 
@@ -1388,21 +1390,36 @@ type filesInvalidationKey struct {
 	hash       string
 }
 
-// mark returns the value that a fetch passes to save.
+// mark returns the value that a fetch passes to save. The fetch calls
+// release after its save.
 func (f *filesInvalidations) mark() uint64 {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fetches++
 	return f.seq
+}
+
+// release forgets the drops once no fetch runs, because a later mark is
+// never older than them.
+func (f *filesInvalidations) release() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fetches--
+	if f.fetches == 0 {
+		clear(f.dropped)
+	}
 }
 
 func (f *filesInvalidations) invalidate(instanceID int, hash string, drop func() error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.seq++
-	if f.dropped == nil {
-		f.dropped = make(map[filesInvalidationKey]uint64)
+	if f.fetches > 0 {
+		if f.dropped == nil {
+			f.dropped = make(map[filesInvalidationKey]uint64)
+		}
+		f.dropped[filesInvalidationKey{instanceID, canonicalizeHash(hash)}] = f.seq
 	}
-	f.dropped[filesInvalidationKey{instanceID, canonicalizeHash(hash)}] = f.seq
 	return drop()
 }
 
@@ -2832,6 +2849,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	}
 
 	fetchMark := sm.filesInvalidations.mark()
+	defer sm.filesInvalidations.release()
 	g, gctx := errgroup.WithContext(ctx)
 	limit := fileFetchConcurrency(len(hashesToFetch))
 	if ctxLimit := fileFetchLimit(ctx); ctxLimit > 0 {

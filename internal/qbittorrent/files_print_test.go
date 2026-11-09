@@ -380,3 +380,15 @@ func TestGetTorrentFilesBatch_RenameDuringFetchDropsOldList(t *testing.T) {
 	require.Equal(t, 2, rig.client.requests())
 	require.Equal(t, renamed, rig.fm.cached[longHash], "a fetch that began after the rename saves its list")
 }
+
+func TestFileCacheDropsKeepNoHashOnceNoFetchRuns(t *testing.T) {
+	t.Parallel()
+	rig := newFilesModeRig(longHash)
+	rig.client.onFetch = sync.OnceFunc(func() {
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+	})
+	rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
+	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+
+	require.Empty(t, rig.sm.filesInvalidations.dropped, "a deleted torrent must not stay in memory")
+}
