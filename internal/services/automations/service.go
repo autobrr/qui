@@ -1498,10 +1498,16 @@ type categoryActionConfig struct {
 
 // getCategoryAction extracts category action configuration from rule.
 func getCategoryAction(rule *models.Automation) categoryActionConfig {
-	if rule.Conditions == nil || rule.Conditions.Category == nil {
+	if rule.Conditions == nil {
 		return categoryActionConfig{}
 	}
-	cat := rule.Conditions.Category
+	return categoryActionOf(rule.Conditions.Category)
+}
+
+func categoryActionOf(cat *models.CategoryAction) categoryActionConfig {
+	if cat == nil {
+		return categoryActionConfig{}
+	}
 	groupID := strings.TrimSpace(cat.GroupID)
 	return categoryActionConfig{
 		includeCrossSeeds: groupID == "" && cat.IncludeCrossSeeds,
@@ -1509,6 +1515,12 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
 	}
+}
+
+// readsCrossSeedGroups reports whether the category action reads the cross-seed group of a torrent
+// whose condition matches.
+func (c categoryActionConfig) readsCrossSeedGroups() bool {
+	return c.enabled && (c.includeCrossSeeds || len(c.blockCategories) > 0)
 }
 
 // shouldApplyCategoryAction checks if category action should apply to torrent.

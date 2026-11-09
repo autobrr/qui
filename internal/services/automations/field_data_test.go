@@ -137,12 +137,12 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "tag that includes cross-seeds",
 			rules: enabled(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, IncludeCrossSeeds: true, Tags: []string{"x"}}}}),
-			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true, TagCrossSeeds: true},
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}, TagCrossSeeds: true},
 		},
 		{
 			name:  "category that blocks on cross-seeds",
 			rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, BlockIfCrossSeedInCategories: []string{"keep"}}}),
-			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true},
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "needs of several rules add up",
