@@ -6,8 +6,10 @@ package qbittorrent
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"maps"
 	"net"
 	"net/url"
@@ -40,19 +42,38 @@ import (
 // IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
 // to preserve cache integrity. Do not append, modify, or re-slice.
 type FilesManager interface {
-	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
 	// A row older than maxAge is stale; zero maxAge means the implementation's default freshness.
 	// Callers must pass hashes already trimmed/normalized (e.g. uppercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
 	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error)
-	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
-	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
+	// GetCachedFilesBatchWithMeta returns each cached list with its stored print
+	// and write time, at any age. A hash with no cached list is left out.
+	GetCachedFilesBatchWithMeta(ctx context.Context, instanceID int, hashes []string) (map[string]CachedFilesEntry, error)
+	CacheFilesBatch(ctx context.Context, instanceID int, writes map[string]CachedFilesWrite) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
+}
+
+// CachedFilesWrite is one torrent's file list and the print of its maindata
+// entry at the time of the read. A nil Print stores no print.
+type CachedFilesWrite struct {
+	Files qbt.TorrentFiles
+	Print *int64
+}
+
+// CachedFilesEntry is a cached file list, the print stored with it, and the
+// time of its write. Print is nil when the row has no valid print.
+type CachedFilesEntry struct {
+	Files    qbt.TorrentFiles
+	Print    *int64
+	SyncedAt time.Time
 }
 
 type torrentFilesClient interface {
 	getTorrentsByHashes(hashes []string) []qbt.Torrent
+	// getTorrentsByHashesUnchecked reads the maindata entries of the hashes and
+	// never starts a sync.
+	getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent
 	GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error)
 }
 
@@ -71,6 +92,7 @@ var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minu
 
 type filesCacheContextKey struct{}
 type filesCacheMaxAgeContextKey struct{}
+type filesCacheModeContextKey struct{}
 type fileFetchLimitContextKey struct{}
 type postAddBulkActionRetryContextKey struct{}
 type postAddFileFetchRetryContextKey struct{}
@@ -103,6 +125,9 @@ type bulkActionTorrentSyncer interface {
 }
 
 // WithForceFilesRefresh returns a context that bypasses the cached torrent files snapshot.
+// It wins over [WithFilesUntilChanged] and [WithFilesUntilChangedOrStale], and
+// those win over [WithFilesCacheMaxAge]. A context holds at most one of the two
+// UntilChanged modes: a later call replaces an earlier one.
 func WithForceFilesRefresh(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheContextKey{}, true)
 }
@@ -115,6 +140,21 @@ func WithForceFilesRefresh(ctx context.Context) context.Context {
 // are set.
 func WithFilesCacheMaxAge(ctx context.Context, maxAge time.Duration) context.Context {
 	return context.WithValue(ctx, filesCacheMaxAgeContextKey{}, maxAge)
+}
+
+// WithFilesUntilChanged returns a context under which [SyncManager.GetTorrentFilesBatch]
+// serves a cached file list at any age while the print of the torrent's
+// maindata entry matches the stored one. A list with no print is served at any
+// age. A list whose print moved is fetched again.
+func WithFilesUntilChanged(ctx context.Context) context.Context {
+	return context.WithValue(ctx, filesCacheModeContextKey{}, filesCacheUntilChanged)
+}
+
+// WithFilesUntilChangedOrStale is [WithFilesUntilChanged], but a list with a
+// matching print is served for at most 23 h (11.5 h to 23 h, spread by hash),
+// and a list with no print for at most 1 h.
+func WithFilesUntilChangedOrStale(ctx context.Context) context.Context {
+	return context.WithValue(ctx, filesCacheModeContextKey{}, filesCacheUntilChangedOrStale)
 }
 
 // WithFileFetchLimit returns a context under which [SyncManager.GetTorrentFilesBatch]
@@ -145,6 +185,11 @@ func forceFilesRefresh(ctx context.Context) bool {
 
 func filesCacheMaxAge(ctx context.Context) time.Duration {
 	value, _ := ctx.Value(filesCacheMaxAgeContextKey{}).(time.Duration)
+	return value
+}
+
+func filesCacheModeOf(ctx context.Context) filesCacheMode {
+	value, _ := ctx.Value(filesCacheModeContextKey{}).(filesCacheMode)
 	return value
 }
 
@@ -2665,10 +2710,24 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	hashesToFetch := normalized.canonical
 	cacheHits := 0
 
-	forceRefresh := forceFilesRefresh(ctx)
+	fm := sm.getFilesManager()
+	// prints holds the print of each hash's maindata entry, read before any
+	// fetch. A fetched list is cached only with a print.
+	var prints map[string]int64
 
-	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx)); cacheErr != nil {
+	if fm != nil && !forceFilesRefresh(ctx) {
+		var (
+			cached   map[string]qbt.TorrentFiles
+			missing  []string
+			cacheErr error
+		)
+		if mode := filesCacheModeOf(ctx); mode != filesCacheByAge {
+			prints = readFilesPrints(client, normalized.canonical)
+			cached, missing, cacheErr = sm.cachedFilesUntilChanged(ctx, fm, instanceID, normalized.canonical, prints, mode)
+		} else {
+			cached, missing, cacheErr = fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx))
+		}
+		if cacheErr != nil {
 			// A failed cache read must not turn into one qBittorrent request per
 			// torrent. A single torrent still costs one request, so it falls back.
 			if len(normalized.canonical) > 1 {
@@ -2693,6 +2752,9 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 
 	if len(hashesToFetch) == 0 {
 		return filesByHash, nil
+	}
+	if fm != nil && prints == nil {
+		prints = readFilesPrints(client, hashesToFetch)
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -2762,11 +2824,13 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	// Fresh fetches share the cloned slice between caller and cache (one clone total).
 	// Cache hits (handled earlier) return isolated clones.
 	// IMPORTANT: Callers must treat qbt.TorrentFiles as read-only to avoid cache corruption.
-	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
-		fetchedFiles := make(map[string]qbt.TorrentFiles)
+	if fm != nil {
+		fetchedFiles := make(map[string]CachedFilesWrite)
 		for _, canonicalHash := range hashesToFetch {
-			if files, ok := filesByHash[canonicalHash]; ok {
-				fetchedFiles[canonicalHash] = files
+			files, fetched := filesByHash[canonicalHash]
+			filesPrint, printed := prints[canonicalHash]
+			if fetched && printed {
+				fetchedFiles[canonicalHash] = CachedFilesWrite{Files: files, Print: new(filesPrint)}
 			}
 		}
 		if len(fetchedFiles) > 0 {
@@ -2810,6 +2874,95 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	}
 
 	return filesByHash, nil
+}
+
+const (
+	// filesNoPrintMaxAge bounds how long [WithFilesUntilChangedOrStale] serves a
+	// cached list with no print.
+	filesNoPrintMaxAge = time.Hour
+	// filesBackstop bounds how long [WithFilesUntilChangedOrStale] serves a list
+	// with a matching print. A change that maindata does not show, such as a
+	// rename inside a folder made outside qui, waits for it.
+	filesBackstop = 23 * time.Hour
+)
+
+type filesCacheMode int
+
+const (
+	filesCacheByAge filesCacheMode = iota
+	filesCacheUntilChanged
+	filesCacheUntilChangedOrStale
+)
+
+// FilesPrint is a fingerprint of the maindata fields that move when a torrent's
+// file list changes: total_size, size and the root of content_path. It leaves
+// out name, which a display-name rename changes with no file change, and the
+// rest of content_path, which is the temp download folder until completion.
+// The print is stored, so it is the same after a restart and on every OS and CPU.
+func FilesPrint(t qbt.Torrent) int64 {
+	buf := make([]byte, 0, 16+len(t.ContentPath))
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.TotalSize)) //nolint:gosec // The bytes, not the value, feed the hash.
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.Size))      //nolint:gosec // The bytes, not the value, feed the hash.
+	buf = append(buf, t.ContentPath[strings.LastIndexAny(t.ContentPath, `/\`)+1:]...)
+	h := fnv.New64a()
+	_, _ = h.Write(buf)
+	return int64(h.Sum64()) //nolint:gosec // database/sql rejects a uint64 with the high bit set.
+}
+
+// filesBackstopFor spreads the backstop over [filesBackstop/2, filesBackstop)
+// by hash, so the lists of one batch do not expire together.
+func filesBackstopFor(hash string) time.Duration {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(hash))
+	half := filesBackstop / 2
+	return half + time.Duration(h.Sum64()%uint64(half/time.Second))*time.Second //nolint:gosec // The modulus keeps the value under 11.5 h.
+}
+
+// current reports whether mode serves the cached entry of hash at now. live is
+// the print of the torrent's maindata entry, nil when it has none.
+func (mode filesCacheMode) current(hash string, entry CachedFilesEntry, live *int64, now time.Time) bool {
+	age := now.Sub(entry.SyncedAt)
+	if entry.Print != nil && live != nil {
+		if *entry.Print != *live {
+			return false
+		}
+		return mode == filesCacheUntilChanged || age < filesBackstopFor(hash)
+	}
+	return mode == filesCacheUntilChanged || age < filesNoPrintMaxAge
+}
+
+func readFilesPrints(client torrentFilesClient, hashes []string) map[string]int64 {
+	torrents := client.getTorrentsByHashesUnchecked(hashes)
+	prints := make(map[string]int64, len(torrents))
+	for i := range torrents {
+		prints[canonicalizeHash(torrents[i].Hash)] = FilesPrint(torrents[i])
+	}
+	return prints
+}
+
+// cachedFilesUntilChanged returns the cached lists that mode serves and the
+// hashes it does not.
+func (sm *SyncManager) cachedFilesUntilChanged(ctx context.Context, fm FilesManager, instanceID int, hashes []string, prints map[string]int64, mode filesCacheMode) (map[string]qbt.TorrentFiles, []string, error) {
+	entries, err := fm.GetCachedFilesBatchWithMeta(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now()
+	cached := make(map[string]qbt.TorrentFiles, len(entries))
+	var missing []string
+	for _, hash := range hashes {
+		entry, ok := entries[hash]
+		var live *int64
+		if p, printed := prints[hash]; printed {
+			live = new(p)
+		}
+		if ok && mode.current(hash, entry, live, now) {
+			cached[hash] = entry.Files
+			continue
+		}
+		missing = append(missing, hash)
+	}
+	return cached, missing, nil
 }
 
 // fetchTorrentFilesWithRetry returns the first usable file response within the

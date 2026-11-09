@@ -296,6 +296,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "last_synced_at", Type: "TIMESTAMP"},
 		{Name: "torrent_progress", Type: "REAL"},
 		{Name: "file_count", Type: "INTEGER"},
+		{Name: "maindata_print", Type: "BIGINT"},
+		{Name: "print_synced_at", Type: "TIMESTAMP"},
 	},
 	"automations": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},

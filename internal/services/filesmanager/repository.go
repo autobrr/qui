@@ -62,6 +62,27 @@ const syncInfoBatchQuery = `
 	WHERE tfs.instance_id = ? AND sp_hash.value IN (%s) AND tfs.torrent_hash_id = sp_hash.id
 `
 
+// A print counts only when print_synced_at equals last_synced_at: a write by an
+// image that does not know the print moves last_synced_at alone.
+const entriesBatchQuery = `
+	SELECT sp_hash.value, tfs.last_synced_at,
+	       CASE WHEN tfs.print_synced_at = tfs.last_synced_at THEN tfs.maindata_print END,
+	       tfc.file_index, sp_name.value, tfc.size, tfc.progress, tfc.priority, tfc.is_seed,
+	       tfc.piece_range_start, tfc.piece_range_end, tfc.availability
+	FROM string_pool sp_hash
+	CROSS JOIN torrent_files_sync tfs
+	JOIN torrent_files_cache tfc ON tfc.instance_id = tfs.instance_id AND tfc.torrent_hash_id = tfs.torrent_hash_id
+	LEFT JOIN string_pool sp_name ON tfc.name_id = sp_name.id
+	WHERE tfs.instance_id = ? AND sp_hash.value IN (%s) AND tfs.torrent_hash_id = sp_hash.id
+	ORDER BY sp_hash.value, tfc.file_index ASC
+`
+
+type cacheEntryRows struct {
+	files    []CachedFile
+	print    *int64
+	syncedAt time.Time
+}
+
 // NewRepository creates a new files repository
 func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
@@ -129,49 +150,85 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 	return results, nil
 }
 
-// UpsertFiles inserts or updates cached file information.
+// getEntriesBatch reads the sync row and the file rows of each hash in one
+// statement, so on Postgres both come from one snapshot. A hash with no sync
+// row or no file rows is left out.
+func (r *Repository) getEntriesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*cacheEntryRows, error) {
+	cleaned := dedupeHashes(hashes)
+	results := make(map[string]*cacheEntryRows, len(cleaned))
+	for batch := range slices.Chunk(cleaned, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, h := range batch {
+			args = append(args, h)
+		}
+
+		rows, err := r.db.QueryContext(ctx, fmt.Sprintf(entriesBatchQuery, buildPlaceholders(len(batch))), args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var (
+				f        = CachedFile{InstanceID: instanceID}
+				syncedAt time.Time
+				stored   sql.NullInt64
+				isSeed   sql.NullInt64
+			)
+			if err := rows.Scan(
+				&f.TorrentHash,
+				&syncedAt,
+				&stored,
+				&f.FileIndex,
+				&f.Name,
+				&f.Size,
+				&f.Progress,
+				&f.Priority,
+				&isSeed,
+				&f.PieceRangeStart,
+				&f.PieceRangeEnd,
+				&f.Availability,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			f.IsSeed = decodeNullableBoolFromInt(isSeed)
+
+			entry := results[f.TorrentHash]
+			if entry == nil {
+				entry = &cacheEntryRows{syncedAt: syncedAt}
+				if stored.Valid {
+					entry.print = &stored.Int64
+				}
+				results[f.TorrentHash] = entry
+			}
+			entry.files = append(entry.files, f)
+		}
+
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
+// UpsertCache writes file rows and sync rows in one transaction, so a reader
+// never sees a print with a list from another write.
 //
-// CONCURRENCY MODEL: This function uses eventual consistency.
-// If two goroutines cache the same torrent concurrently:
-// - SQLite serializes the two transactions, so the last write wins for each file
-// - On Postgres, a row read as unchanged is skipped, so another writer's later commit to it stands
-// - Progress/availability values may briefly be inconsistent across files
-// - This is acceptable because:
-//  1. Cache freshness checks (5min TTL for active torrents) limit staleness
-//  2. Complete torrents (100% progress) have stable values
-//  3. UI shows slightly stale data briefly, then refreshes naturally
-//  4. Strict consistency would require distributed locks with significant overhead
-//
-// Alternative approaches considered but rejected:
-// - Optimistic locking with version numbers: adds complexity, breaks on every concurrent write
-// - Exclusive locks during cache write: defeats purpose of caching, creates bottleneck
-//
-// ATOMICITY: All files are upserted within a single transaction to ensure all-or-nothing semantics.
-// If any file insert fails, the entire operation is rolled back to prevent partial cache states.
-func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error {
-	if len(files) == 0 {
+// On Postgres every cache writer locks in one order: the instance row, the sync
+// rows in hash order, then the file rows. A write, an invalidation, the orphan
+// cleanup and an instance delete then cannot deadlock (SQLSTATE 40P01). The
+// sync rows come first so that a second writer of a hash waits for the first
+// one to commit before it compares its files with the stored ones.
+func (r *Repository) UpsertCache(ctx context.Context, files []CachedFile, infos []SyncInfo) error {
+	if len(files) == 0 && len(infos) == 0 {
 		return nil
 	}
 
-	// Group files by torrent hash
-	filesByHash := make(map[string][]CachedFile)
-	for _, f := range files {
-		filesByHash[f.TorrentHash] = append(filesByHash[f.TorrentHash], f)
-	}
-
-	// Collect all unique strings to intern (all hashes + all file names).
-	// Preserve hash insertion order explicitly so we can map IDs back correctly.
-	hashOrder := make([]string, 0, len(filesByHash))
-	for hash := range filesByHash {
-		hashOrder = append(hashOrder, hash)
-	}
-	allStrings := make([]string, 0, len(hashOrder)+len(files))
-	allStrings = append(allStrings, hashOrder...)
-	for _, f := range files {
-		allStrings = append(allStrings, f.Name)
-	}
-
-	// Begin transaction for atomic upsert of all files
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -182,49 +239,80 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
-	// Batch intern all strings
+	instanceIDs := make([]int, 0, len(infos)+len(files))
+	allStrings := make([]string, 0, len(infos)+2*len(files))
+	for _, info := range infos {
+		instanceIDs = append(instanceIDs, info.InstanceID)
+		allStrings = append(allStrings, info.TorrentHash)
+	}
+	for _, f := range files {
+		instanceIDs = append(instanceIDs, f.InstanceID)
+		allStrings = append(allStrings, f.TorrentHash, f.Name)
+	}
+
+	if err := r.lockInstances(ctx, tx, instanceIDs); err != nil {
+		return err
+	}
+
 	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
 	if err != nil {
 		return fmt.Errorf("failed to intern strings: %w", err)
 	}
-
 	valueToID := make(map[string]int64, len(allStrings))
 	for i, value := range allStrings {
 		valueToID[value] = allIDs[i]
 	}
 
-	hashIDMap := make(map[string]int64, len(hashOrder))
-	for _, hash := range hashOrder {
-		hashIDMap[hash] = valueToID[hash]
+	if err := upsertSyncRows(ctx, tx, infos, valueToID); err != nil {
+		return err
+	}
+	if err := upsertFiles(ctx, tx, files, valueToID); err != nil {
+		return err
 	}
 
-	// Collect all file rows to batch insert
-	allRows := make([]fileRow, 0, len(files))
-	for hash, fileGroup := range filesByHash {
-		hashID, ok := hashIDMap[hash]
-		if !ok {
-			return fmt.Errorf("missing interned ID for hash %s", hash)
-		}
-		for _, f := range fileGroup {
-			nameID, ok := valueToID[f.Name]
-			if !ok {
-				return fmt.Errorf("missing interned ID for file %s", f.Name)
-			}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
 
-			allRows = append(allRows, fileRow{
-				instanceID:      f.InstanceID,
-				hashID:          hashID,
-				fileIndex:       f.FileIndex,
-				nameID:          nameID,
-				size:            f.Size,
-				progress:        f.Progress,
-				priority:        f.Priority,
-				isSeed:          encodeNullableBoolAsInt(f.IsSeed),
-				pieceRangeStart: f.PieceRangeStart,
-				pieceRangeEnd:   f.PieceRangeEnd,
-				availability:    f.Availability,
-			})
+// lockInstances takes the first lock of a cache writer on Postgres. SQLite has
+// one writer and needs none. The lock conflicts with the one that
+// InstanceStore.Delete takes before its cascade reaches the cache tables.
+func (r *Repository) lockInstances(ctx context.Context, tx dbinterface.TxQuerier, instanceIDs []int) error {
+	if dbinterface.DialectOf(r.db) != "postgres" {
+		return nil
+	}
+	ids := slices.Clone(instanceIDs)
+	slices.Sort(ids)
+	for _, id := range slices.Compact(ids) {
+		if _, err := tx.ExecContext(ctx, `SELECT 1 FROM instances WHERE id = ? FOR KEY SHARE`, id); err != nil {
+			return fmt.Errorf("failed to lock instance %d: %w", id, err)
 		}
+	}
+	return nil
+}
+
+func upsertFiles(ctx context.Context, tx dbinterface.TxQuerier, files []CachedFile, valueToID map[string]int64) error {
+	if len(files) == 0 {
+		return nil
+	}
+
+	allRows := make([]fileRow, 0, len(files))
+	for _, f := range files {
+		allRows = append(allRows, fileRow{
+			instanceID:      f.InstanceID,
+			hashID:          valueToID[f.TorrentHash],
+			fileIndex:       f.FileIndex,
+			nameID:          valueToID[f.Name],
+			size:            f.Size,
+			progress:        f.Progress,
+			priority:        f.Priority,
+			isSeed:          encodeNullableBoolAsInt(f.IsSeed),
+			pieceRangeStart: f.PieceRangeStart,
+			pieceRangeEnd:   f.PieceRangeEnd,
+			availability:    f.Availability,
+		})
 	}
 
 	// Postgres row-locks each conflicting row; concurrent callers must lock in one order or they deadlock.
@@ -236,21 +324,12 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	// #2374). The upsert guard alone would skip them too, but Postgres still locks every
 	// conflicting row, and each lock writes WAL plus a hint-bit full-page image.
 	// The filter keeps the sorted lock order.
-	allRows, err = dropUnchangedRows(ctx, tx, allRows)
+	allRows, err := dropUnchangedRows(ctx, tx, allRows)
 	if err != nil {
 		return fmt.Errorf("failed to read cached files: %w", err)
 	}
 
-	if err := upsertFileRows(ctx, tx, allRows); err != nil {
-		return err
-	}
-
-	// Commit transaction to make all changes atomic
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+	return upsertFileRows(ctx, tx, allRows)
 }
 
 // upsertFileRows writes rows to torrent_files_cache in batches.
@@ -508,90 +587,61 @@ func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashe
 	return results, nil
 }
 
-// UpsertSyncInfoBatch inserts or updates sync metadata for multiple torrents
-func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) error {
+// upsertSyncRows writes sync rows in hash order. print_synced_at takes the
+// value of last_synced_at, so a later write that sets only last_synced_at marks
+// the print as unset.
+func upsertSyncRows(ctx context.Context, tx dbinterface.TxQuerier, infos []SyncInfo, valueToID map[string]int64) error {
 	if len(infos) == 0 {
 		return nil
 	}
 
-	// Start a transaction
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("UpsertSyncInfoBatch: failed to begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Collect all hashes to intern
-	hashes := make([]string, len(infos))
-	for i, info := range infos {
-		hashes[i] = info.TorrentHash
-	}
-
-	// Batch intern all hashes
-	hashIDs, err := dbinterface.InternStrings(ctx, tx, hashes...)
-	if err != nil {
-		return fmt.Errorf("UpsertSyncInfoBatch: failed to intern torrent_hashes: %w", err)
-	}
-
-	// Lock rows in one order across concurrent callers, as in UpsertFiles.
-	order := make([]int, len(infos))
-	for i := range order {
-		order[i] = i
-	}
-	slices.SortFunc(order, func(a, b int) int {
-		return cmp.Or(cmp.Compare(infos[a].InstanceID, infos[b].InstanceID), cmp.Compare(hashIDs[a], hashIDs[b]))
+	// Lock rows in one order across concurrent callers, as for the file rows.
+	sorted := slices.Clone(infos)
+	slices.SortFunc(sorted, func(a, b SyncInfo) int {
+		return cmp.Or(cmp.Compare(a.InstanceID, b.InstanceID), cmp.Compare(valueToID[a.TorrentHash], valueToID[b.TorrentHash]))
 	})
 
-	// Batch size for sync info inserts (5 placeholders per row, keep under SQLite's 999 limit)
-	const syncBatchSize = 150
+	// 7 placeholders per row, kept under SQLite's 999 limit.
+	const syncBatchSize = 128
 
-	// Build bulk upsert query template
 	queryTemplate := `
 		INSERT INTO torrent_files_sync
-		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
+		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count, maindata_print, print_synced_at)
 		VALUES %s
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
 			last_synced_at = excluded.last_synced_at,
 			torrent_progress = excluded.torrent_progress,
-			file_count = excluded.file_count
+			file_count = excluded.file_count,
+			maindata_print = excluded.maindata_print,
+			print_synced_at = excluded.last_synced_at
 	`
+	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 7, syncBatchSize)
+	args := make([]any, 0, syncBatchSize*7)
 
-	// Pre-build the full query for full batches
-	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, syncBatchSize)
-
-	// Pre-allocate args slice to reuse across batches
-	args := make([]any, 0, syncBatchSize*5)
-
-	// Batch insert sync infos
-	for batch := range slices.Chunk(order, syncBatchSize) {
-		// Reset args for this batch
+	for batch := range slices.Chunk(sorted, syncBatchSize) {
 		args = args[:0]
-		var query string
-		if len(batch) == syncBatchSize {
-			query = fullBatchQuery
-		} else {
-			// Build query for partial final batch
-			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, len(batch))
+		query := fullBatchQuery
+		if len(batch) < syncBatchSize {
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 7, len(batch))
 		}
 
-		for _, idx := range batch {
-			info := infos[idx]
+		for _, info := range batch {
 			args = append(args,
 				info.InstanceID,
-				hashIDs[idx],
+				valueToID[info.TorrentHash],
 				info.LastSyncedAt,
 				info.TorrentProgress,
 				info.FileCount,
+				info.MaindataPrint,
+				info.LastSyncedAt,
 			)
 		}
 
-		_, err = tx.ExecContext(ctx, query, args...)
-		if err != nil {
-			return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info batch: %w", err)
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("failed to upsert sync info batch: %w", err)
 		}
 	}
-
-	return tx.Commit()
+	return nil
 }
 
 // DeleteTorrentCache removes all cache data for multiple torrents (both files and sync info)
@@ -616,6 +666,10 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		}
 	}()
 
+	if err = r.lockInstances(ctx, tx, []int{instanceID}); err != nil {
+		return fmt.Errorf("DeleteTorrentCache: %w", err)
+	}
+
 	// Get hash IDs for all hashes
 	hashIDs, err := dbinterface.GetStringID(ctx, tx, hashes...)
 	if err != nil {
@@ -638,6 +692,20 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return nil
 	}
 
+	// Sync rows before file rows: the lock order of UpsertCache.
+	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, id := range batch {
+			args = append(args, id)
+		}
+
+		query := fmt.Sprintf(`DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id IN (%s)`, buildPlaceholders(len(batch)))
+		if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("DeleteTorrentCache: failed to delete sync info: %w", err)
+		}
+	}
+
 	// Delete files for all valid hashes
 	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
@@ -649,20 +717,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		query := fmt.Sprintf(`DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id IN (%s)`, buildPlaceholders(len(batch)))
 		if _, err = tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("DeleteTorrentCache: failed to delete cached files: %w", err)
-		}
-	}
-
-	// Delete sync info for all valid hashes
-	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
-		args := make([]any, 0, len(batch)+1)
-		args = append(args, instanceID)
-		for _, id := range batch {
-			args = append(args, id)
-		}
-
-		query := fmt.Sprintf(`DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id IN (%s)`, buildPlaceholders(len(batch)))
-		if _, err = tx.ExecContext(ctx, query, args...); err != nil {
-			return fmt.Errorf("DeleteTorrentCache: failed to delete sync info: %w", err)
 		}
 	}
 
@@ -691,6 +745,10 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if err := r.lockInstances(ctx, tx, []int{instanceID}); err != nil {
+		return 0, err
+	}
 
 	// Create a temporary table for current hashes
 	_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)`)
@@ -729,18 +787,22 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		}
 	}
 
-	// Delete files for torrents not in current hashes
-	result, err := tx.ExecContext(ctx, `
-		DELETE FROM torrent_files_cache
-		WHERE instance_id = ? AND torrent_hash_id NOT IN (
-			SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
-		)
-	`, instanceID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to delete files for removed torrents: %w", err)
+	// Lock the sync rows in hash order, then delete them before the file rows:
+	// the lock order of UpsertCache.
+	if dbinterface.DialectOf(r.db) == "postgres" {
+		_, err = tx.ExecContext(ctx, `
+			SELECT torrent_hash_id FROM torrent_files_sync
+			WHERE instance_id = ? AND torrent_hash_id NOT IN (
+				SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+			)
+			ORDER BY torrent_hash_id
+			FOR UPDATE
+		`, instanceID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to lock sync info for removed torrents: %w", err)
+		}
 	}
 
-	// Delete sync info for torrents not in current hashes
 	_, err = tx.ExecContext(ctx, `
 		DELETE FROM torrent_files_sync
 		WHERE instance_id = ? AND torrent_hash_id NOT IN (
@@ -749,6 +811,16 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	`, instanceID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete sync info for removed torrents: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM torrent_files_cache
+		WHERE instance_id = ? AND torrent_hash_id NOT IN (
+			SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+		)
+	`, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete files for removed torrents: %w", err)
 	}
 
 	// Drop the temporary table
