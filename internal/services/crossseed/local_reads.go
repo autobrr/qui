@@ -177,8 +177,6 @@ func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrent
 		go s.fillLocalReads(ctx, instanceID, missing, fillDone, true)
 	}
 	if len(stale) > 0 {
-		// The hourly refresh reads with the normal freshness of the file
-		// cache, so a rename made in qBittorrent shows within the hour.
 		go s.fillLocalReads(ctx, instanceID, stale, refreshDone, false)
 	}
 	return pending
@@ -234,14 +232,17 @@ wait:
 
 // fillLocalReads reads the files of torrents and remembers the reads. It runs
 // under its own context, so a caller that gives up does not stop it, and it
-// stores what it read when it stops. acceptOldFiles lets it read SQLite file
-// lists up to localReadFilesMaxAge old.
-func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents []localTorrent, done chan struct{}, acceptOldFiles bool) {
+// stores what it read when it stops. A first fill reads SQLite file lists up to
+// localReadFilesMaxAge old; a refresh reads them under
+// [qbittorrent.WithFilesUntilChangedOrStale].
+func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents []localTorrent, done chan struct{}, firstFill bool) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), localReadFillTimeout)
 	defer cancel()
 	ctx = qbittorrent.WithFileFetchLimit(ctx, localReadFetchSlots)
-	if acceptOldFiles {
+	if firstFill {
 		ctx = qbittorrent.WithFilesCacheMaxAge(ctx, localReadFilesMaxAge)
+	} else {
+		ctx = qbittorrent.WithFilesUntilChangedOrStale(ctx)
 	}
 
 	reads := make(map[string]namedRelease, len(torrents))
