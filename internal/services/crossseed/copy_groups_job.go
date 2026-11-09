@@ -351,8 +351,12 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	ctx, cancel := context.WithTimeout(ctx, localReadFillTimeout)
 	defer cancel()
 
-	if run.retry && !j.retryReads(ctx, run) {
-		return
+	var retried map[int]copyGroupsRead
+	if run.retry {
+		var rebuild bool
+		if retried, rebuild = j.retryReads(ctx, run); !rebuild {
+			return
+		}
 	}
 	settings, err := j.svc.GetAutomationSettings(ctx)
 	if err != nil {
@@ -362,7 +366,17 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	files := make(map[int]map[string]qbt.TorrentFiles, len(run.torrents))
 	failed := make(map[int]map[string]time.Time, len(run.torrents))
 	for id, torrents := range run.torrents {
+		done := retried[id]
+		if len(done.hashes) > 0 {
+			torrents = slices.DeleteFunc(slices.Clone(torrents), func(t qbittorrent.CrossInstanceTorrentView) bool {
+				return done.hashes[normalizeHash(t.Hash)]
+			})
+		}
 		files[id], failed[id], err = j.readFiles(ctx, id, torrents, run.failed[id])
+		if err == nil && len(done.hashes) > 0 {
+			maps.Copy(files[id], done.files)
+			maps.Copy(failed[id], done.failed)
+		}
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
 			return
@@ -400,16 +414,28 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
 }
 
-// retryReads reports whether a due failed torrent read.
-func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) bool {
+// copyGroupsRead holds what a retry read for one instance, so the rebuild of
+// the same run does not fetch those torrents again.
+type copyGroupsRead struct {
+	hashes map[string]bool
+	files  map[string]qbt.TorrentFiles
+	failed map[string]time.Time
+}
+
+// retryReads reports whether the run must rebuild: a due failed torrent read,
+// or a file batch failed. It returns the reads of the instances it finished.
+func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[int]copyGroupsRead, bool) {
 	now := time.Now()
 	read := false
-	retried := map[int]map[string]time.Time{}
-	for id, torrents := range run.torrents {
+	retried := map[int]copyGroupsRead{}
+	for _, id := range slices.Sorted(maps.Keys(run.torrents)) {
 		var due []qbittorrent.CrossInstanceTorrentView
-		for _, t := range torrents {
-			if retryAt, ok := run.failed[id][normalizeHash(t.Hash)]; ok && !now.Before(retryAt) {
+		hashes := map[string]bool{}
+		for _, t := range run.torrents[id] {
+			hash := normalizeHash(t.Hash)
+			if retryAt, ok := run.failed[id][hash]; ok && !now.Before(retryAt) {
 				due = append(due, t)
+				hashes[hash] = true
 			}
 		}
 		if len(due) == 0 {
@@ -418,26 +444,26 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) bool 
 		files, failed, err := j.readFiles(ctx, id, due, nil)
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups retry stopped")
-			return false
+			return nil, false
 		}
 		if err != nil {
-			// The rebuild reads the batch again and keeps the entries of the instance.
-			return true
+			// The rebuild reads the batch of this instance again and keeps its entries.
+			return retried, true
 		}
-		for _, t := range due {
-			read = read || len(files[normalizeHash(t.Hash)]) > 0
+		for hash := range hashes {
+			read = read || len(files[hash]) > 0
 		}
-		retried[id] = failed
+		retried[id] = copyGroupsRead{hashes: hashes, files: files, failed: failed}
 	}
 	if read {
-		return true
+		return retried, true
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	for id, failed := range retried {
-		maps.Copy(j.failed[id], failed)
+	for id, r := range retried {
+		maps.Copy(j.failed[id], r.failed)
 	}
-	return false
+	return nil, false
 }
 
 // oldGroupIDs links the torrents that shared an old group with an offline
