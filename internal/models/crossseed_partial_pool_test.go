@@ -787,3 +787,51 @@ func TestCrossSeedPartialPoolInstanceCascadePreservesOtherMembers(t *testing.T) 
 	_, err = store.GetPartialPool(ctx, pool.ID)
 	require.Error(t, err)
 }
+
+// regression: #3946
+func TestCrossSeedPartialPoolClaimHoldsInEachProcessZone(t *testing.T) {
+	checkPartialPoolClaimHoldsInEachProcessZone(t, func(t *testing.T) *database.DB {
+		return testdb.NewMigratedSQLite(t, "partial-pool-claim-zone")
+	})
+}
+
+// regression: #3946
+func TestCrossSeedPartialPoolClaimHoldsInEachProcessZonePostgresIntegration(t *testing.T) {
+	checkPartialPoolClaimHoldsInEachProcessZone(t, func(t *testing.T) *database.DB {
+		return testdb.NewMigratedPostgres(t, "partial-pool-claim-zone")
+	})
+}
+
+// checkPartialPoolClaimHoldsInEachProcessZone replaces time.Local, so its
+// callers must not call t.Parallel.
+func checkPartialPoolClaimHoldsInEachProcessZone(t *testing.T, openDB func(*testing.T) *database.DB) {
+	t.Helper()
+	const admissionHold = 2 * time.Second
+	for _, zone := range []string{"America/New_York", "Asia/Tokyo"} {
+		t.Run(zone, func(t *testing.T) {
+			loc, err := time.LoadLocation(zone)
+			require.NoError(t, err)
+			original := time.Local
+			time.Local = loc
+			t.Cleanup(func() { time.Local = original })
+
+			store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, openDB(t))
+			ctx := t.Context()
+			_, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member", "", "source"))
+			require.NoError(t, err)
+			changed, err := store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+			require.NoError(t, err)
+			require.True(t, changed)
+
+			now := member.CreatedAt.Local().Add(admissionHold / 2)
+			claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, now, now.Add(-admissionHold))
+			require.NoError(t, err)
+			require.False(t, claimed, "a claim inside the admission hold fails")
+
+			now = member.CreatedAt.Local().Add(admissionHold + time.Second)
+			claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, now, now.Add(-admissionHold))
+			require.NoError(t, err)
+			require.True(t, claimed, "a claim after the admission hold succeeds")
+		})
+	}
+}

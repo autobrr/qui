@@ -8,14 +8,17 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
-	// Register pgx as database/sql driver.
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 //go:embed postgres_migrations/*.sql
@@ -30,10 +33,12 @@ const (
 func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	log.Info().Msg("Initializing postgres database")
 
-	writerConn, err := sql.Open("pgx", dsn)
+	connConfig, err := postgresConnConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres connection: %w", err)
+		return nil, err
 	}
+
+	writerConn := openPostgresDB(connConfig)
 
 	maxOpenConns := opts.MaxOpenConns
 	if maxOpenConns <= 0 {
@@ -60,11 +65,7 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	}
 
 	// Separate pool for readers to preserve existing architecture.
-	readerPool, err := sql.Open("pgx", dsn)
-	if err != nil {
-		_ = writerConn.Close()
-		return nil, fmt.Errorf("open postgres reader pool: %w", err)
-	}
+	readerPool := openPostgresDB(connConfig)
 	readerPool.SetMaxOpenConns(maxOpenConns)
 	readerPool.SetMaxIdleConns(maxIdleConns)
 	readerPool.SetConnMaxLifetime(connMaxLifetime)
@@ -96,6 +97,64 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	go db.stringPoolCleanupLoop(cleanupCtx)
 
 	return db, nil
+}
+
+// postgresConnConfig parses dsn and sets the session time zone to UTC, also
+// when dsn or PGTZ asks for another zone, so that the database clock writes UTC.
+func postgresConnConfig(dsn string) (*pgx.ConnConfig, error) {
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres dsn: %w", err)
+	}
+	maps.DeleteFunc(config.RuntimeParams, func(name, _ string) bool {
+		return strings.EqualFold(name, "timezone")
+	})
+	config.RuntimeParams["timezone"] = "UTC"
+	return config, nil
+}
+
+func openPostgresDB(config *pgx.ConnConfig) *sql.DB {
+	return stdlib.OpenDB(*config, stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
+		registerUTCTimestampCodec(conn.TypeMap())
+		return nil
+	}))
+}
+
+// registerUTCTimestampCodec makes pgx bind each time as its UTC wall clock.
+// The default codec writes the wall clock of the time's own zone into a
+// TIMESTAMP value and drops the zone.
+func registerUTCTimestampCodec(m *pgtype.Map) {
+	timestamp := &pgtype.Type{Name: "timestamp", OID: pgtype.TimestampOID, Codec: &utcTimestampCodec{}}
+	m.RegisterType(timestamp)
+	m.RegisterType(&pgtype.Type{Name: "_timestamp", OID: pgtype.TimestampArrayOID, Codec: &pgtype.ArrayCodec{ElementType: timestamp}})
+}
+
+type utcTimestampCodec struct {
+	pgtype.TimestampCodec
+}
+
+func (c *utcTimestampCodec) PlanEncode(m *pgtype.Map, oid uint32, format int16, value any) pgtype.EncodePlan {
+	if _, ok := value.(pgtype.TimestampValuer); !ok {
+		return nil
+	}
+	next := c.TimestampCodec.PlanEncode(m, oid, format, pgtype.Timestamp{})
+	if next == nil {
+		return nil
+	}
+	return utcTimestampEncodePlan{next: next}
+}
+
+type utcTimestampEncodePlan struct {
+	next pgtype.EncodePlan
+}
+
+func (p utcTimestampEncodePlan) Encode(value any, buf []byte) ([]byte, error) {
+	ts, err := value.(pgtype.TimestampValuer).TimestampValue()
+	if err != nil {
+		return nil, err
+	}
+	ts.Time = ts.Time.UTC()
+	return p.next.Encode(ts, buf)
 }
 
 func (db *DB) migratePostgres() error {
