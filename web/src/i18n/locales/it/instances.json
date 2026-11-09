@@ -2098,7 +2098,7 @@
     "limits": {
       "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
       "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com, so cross-seed link mode falls back to regular mode here."
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fall back to regular mode\" is on."
     }
   }
 }

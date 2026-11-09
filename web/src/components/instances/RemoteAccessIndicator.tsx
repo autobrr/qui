@@ -34,18 +34,22 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   const mode = instance.filesystemMode
   const Icon = mode === "remote" ? KeyRound : HardDrive
   const label = mode === "local" ? t("access.local") : mode === "remote" ? t("access.remote") : t("access.none")
-  const body = (
-    <span className={cn("flex items-center gap-1", mode === "none" ? "text-muted-foreground" : "text-primary", className)}>
+  const content = (
+    <>
       <Icon className={variant === "icon" ? "h-4 w-4" : "h-3 w-3"} aria-label={variant === "icon" ? label : undefined} />
       {variant === "value" && label}
-    </span>
+    </>
   )
+  const classes = cn("flex items-center gap-1", mode === "none" ? "text-muted-foreground" : "text-primary", className)
   if (mode === "none") {
-    return body
+    return <span className={classes}>{content}</span>
   }
+  // A button, so the keyboard reaches the tooltip with the limits.
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{body}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        <button type="button" className={cn(classes, "cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring")}>{content}</button>
+      </TooltipTrigger>
       <TooltipContent className="max-w-xs">
         {variant === "icon" && <p className="font-medium">{label}</p>}
         {mode === "remote" && limits.length === 0 && <p>{t("access.remoteFull")}</p>}

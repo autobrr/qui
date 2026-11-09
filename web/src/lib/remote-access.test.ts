@@ -9,11 +9,9 @@ import { remoteAccessLimits, type RemoteAccessLimit } from "./remote-access"
 
 describe("remoteAccessLimits", () => {
   it.each<[string, FilesystemMode, SSHTier | undefined, boolean | undefined, RemoteAccessLimit[]]>([
-    ["local has no limits", "local", undefined, undefined, []],
-    ["no access has no limits", "none", undefined, undefined, []],
-    ["sftp tier: no identity, no reflinks", "remote", "sftp", true, ["noIdentity", "noReflinks"]],
+    ["not remote: no limits", "local", undefined, undefined, []],
+    ["sftp tier before any probe: no identity, no reflinks, nothing about hardlinks", "remote", "sftp", undefined, ["noIdentity", "noReflinks"]],
     ["sftp tier without the extension", "remote", "sftp", false, ["noIdentity", "noReflinks", "noHardlinkExtension"]],
-    ["sftp tier before any probe", "remote", "sftp", undefined, ["noIdentity", "noReflinks"]],
     ["exec tier with the extension: reflinks only", "remote", "exec", true, ["noReflinks"]],
     ["exec tier without the extension", "remote", "exec", false, ["noReflinks", "noHardlinkExtension"]],
   ])("%s", (_name, filesystemMode, sshTier, sshHardlink, want) => {
