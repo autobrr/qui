@@ -115,7 +115,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Indexers
 
 - **Native indexer**: An indexer that qui reaches at the tracker's own Torznab endpoint, with no Prowlarr or Jackett between them. _Avoid_: Direct indexer.
-- **Rate-limit cooldown**: The time qui blocks an indexer after it answers 429, for as long as its `Retry-After` header says. _Avoid_: Cooldown (alone), rate limit.
+- **Request slot**: The right to send one request to one indexer now. Each indexer has one. qui refuses it during a Rate-limit cooldown. On a Native indexer, a search and a Dir Scan download wait for it. _Avoid_: rate limiter, pacing.
+- **Request gap**: The 60 seconds that qui waits after a Native indexer answers a search or a Dir Scan download. Then qui sends the next search or Dir Scan download to that indexer. An indexer behind Prowlarr or Jackett has no Request gap. It is not the interval between two items of a Library Scan or a Dir Scan. _Avoid_: minimum interval, pacing.
+- **Rate-limit cooldown**: The time qui blocks an indexer after it answers 429. It lasts as long as the `Retry-After` header says, or 1 minute when the answer has none. Searches and capabilities requests share one cooldown. Torrent downloads have their own, so a 429 on a search does not block a download. _Avoid_: Cooldown (alone), rate limit.
 
 ## Cross-seed scans
 
