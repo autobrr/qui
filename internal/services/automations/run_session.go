@@ -30,10 +30,9 @@ type runSession struct {
 	position map[string]int
 	links    map[string][]string
 	// groupsOff is set when no reader needs groups, so an ask reads nothing.
-	groupsOff  bool
-	allGrouped bool
-	grouped    map[string]struct{} // torrents asked with Groups
-	allFacts   bool
+	groupsOff bool
+	grouped   map[string]struct{} // torrents asked with Groups
+	allFacts  bool
 	// factsAsked holds the asked torrents. A member that only a group ask reached has no
 	// other-instance facts.
 	factsAsked map[string]struct{}
@@ -45,7 +44,8 @@ type runSession struct {
 	tagGroups bool
 }
 
-// openRunSession asks for the whole library when a tag or category reader reads groups.
+// openRunSession opens the run session of evalCtx. It asks for nothing: each reader asks for the
+// torrents that it reads.
 func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
 	session, err := s.crossMatcher.OpenCrossMatchSession(ctx, instanceID, needs.CrossMatch)
 	if err != nil {
@@ -71,10 +71,6 @@ func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents [
 	}
 	r.groups = &crossSeedGroups{byHash: make(map[string][]qbt.Torrent), session: r}
 	evalCtx.crossSeeds = r.groups
-
-	if needs.CrossSeedGroupsAll {
-		r.resolve(ResolveRequest{All: true, Groups: true})
-	}
 	return nil
 }
 
@@ -188,7 +184,7 @@ func (r *runSession) ensureGroups(hash string) {
 
 // An answer holds whole components, so a member of a known group is covered.
 func (r *runSession) covered(hash string) bool {
-	if !r.scoped() {
+	if r.groupsOff {
 		return true
 	}
 	if _, done := r.grouped[hash]; done {
@@ -238,14 +234,9 @@ func memberHashes(members []qbt.Torrent) []string {
 	return hashes
 }
 
-// scoped reports whether the run session reads groups only for the torrents that a reader asks
-// for, so a reader asks before its loop.
-func (g *crossSeedGroups) scoped() bool {
-	return g != nil && g.session != nil && g.session.scoped()
-}
-
-func (r *runSession) scoped() bool {
-	return !r.groupsOff && !r.allGrouped
+// readsGroups reports whether the run session reads groups, so a reader asks before its loop.
+func (g *crossSeedGroups) readsGroups() bool {
+	return g != nil && g.session != nil && !g.session.groupsOff
 }
 
 func (g *crossSeedGroups) setContext(ctx context.Context) {
@@ -287,9 +278,6 @@ func (r *runSession) resolve(req ResolveRequest) {
 		r.factsAsked[hash] = struct{}{}
 	}
 	if req.Groups {
-		if req.All {
-			r.allGrouped = true
-		}
 		for _, hash := range req.Hashes {
 			r.grouped[hash] = struct{}{}
 		}

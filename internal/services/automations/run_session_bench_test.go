@@ -78,17 +78,12 @@ func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atom
 
 // BenchmarkRunSessionDeletionSelection measures what a run reads before its
 // actions: buildEvalContext, the load step and the Deletion selection. The
-// include rule matches no torrent. With a category rule that includes
-// cross-seeds, the run reads the groups of the whole library. The FREE_SPACE
-// rule claims most of the library.
+// include rule matches no torrent. The FREE_SPACE rule claims most of the
+// library.
 func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 	quietBenchLogs(b)
 
 	include := deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del"))
-	category := &models.Automation{
-		ID: 2, Name: "category", TrackerPattern: "*", Enabled: true, SortOrder: 2,
-		Conditions: &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: "new", IncludeCrossSeeds: true, Condition: tagsContain("cat")}},
-	}
 	freeSpace := deleteRule(DeleteModeWithFilesIncludeCrossSeeds, &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "6500000"})
 	for _, tc := range []struct {
 		name      string
@@ -96,7 +91,6 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 		minDelete int
 	}{
 		{"include rule matches nothing", []*models.Automation{include}, 0},
-		{"whole library with a category rule", []*models.Automation{include, category}, 0},
 		{"free-space rule claims most of the library", []*models.Automation{freeSpace}, 2000},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
@@ -158,17 +152,47 @@ func BenchmarkRunSessionMove(b *testing.B) {
 		{"group that cannot move", &models.MoveAction{Enabled: true, Path: "/data/new", GroupID: "save_path", Condition: harbor}, savePathGroup, 0},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			benchmarkMoveRun(b, &models.Automation{
+			benchmarkPlanRun(b, &models.Automation{
 				ID: 2, Name: "move", TrackerPattern: "*", Enabled: true,
 				Conditions: &models.ActionConditions{Grouping: tc.grouping, Move: tc.move},
-			}, tc.wantMoves)
+			}, tc.wantMoves, func(plan runPlan) int { return len(plan.move.byTarget[tc.move.Path]) })
 		})
 	}
 }
 
-func benchmarkMoveRun(b *testing.B, move *models.Automation, wantMoves int) {
-	path := move.Conditions.Move.Path
-	rules := []*models.Automation{move}
+// BenchmarkRunSessionCategoryAndTag measures a run with one category or tag
+// rule that reads groups, from buildEvalContext to the Run plan. The
+// condition matches the 2000 Harbor.Watch cross-seeds, two thirds of the
+// library. The tag rule checks the group of every torrent in its scope.
+func BenchmarkRunSessionCategoryAndTag(b *testing.B) {
+	quietBenchLogs(b)
+	harbor := &models.RuleCondition{Field: FieldName, Operator: models.OperatorContains, Value: "Harbor"}
+	for _, tc := range []struct {
+		name       string
+		conditions *models.ActionConditions
+		planned    func(runPlan) int
+	}{
+		{
+			"category block list",
+			&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: "new", BlockIfCrossSeedInCategories: []string{"keep"}, Condition: harbor}},
+			func(plan runPlan) int { return len(plan.category.byTarget["new"]) },
+		},
+		{
+			"tag that includes cross-seeds",
+			&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, IncludeCrossSeeds: true, Mode: models.TagModeAdd, Tags: []string{"seen"}, Condition: harbor}}},
+			func(plan runPlan) int { return len(plan.tags) },
+		},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			benchmarkPlanRun(b, &models.Automation{ID: 2, Name: tc.name, TrackerPattern: "*", Enabled: true, Conditions: tc.conditions}, 2000, tc.planned)
+		})
+	}
+}
+
+// benchmarkPlanRun runs rule from buildEvalContext to the Run plan, and checks
+// that the plan holds want changes.
+func benchmarkPlanRun(b *testing.B, rule *models.Automation, want int, planned func(runPlan) int) {
+	rules := []*models.Automation{rule}
 	svc, instance, fileReads := benchRunService(b, 1000)
 	ctx := b.Context()
 	needs := NeedsFor(rules)
@@ -192,10 +216,10 @@ func benchmarkMoveRun(b *testing.B, move *models.Automation, wantMoves int) {
 		}
 		plan := svc.buildRunPlan(ctx, runPlanInput{
 			instanceID: instance.ID, states: states, deletions: &deletionSelection{}, torrents: torrents, torrentByHash: torrentByHash,
-			ruleByID: map[int]*models.Automation{move.ID: move}, crossSeeds: groups, evalCtx: evalCtx,
+			ruleByID: map[int]*models.Automation{rule.ID: rule}, crossSeeds: groups, evalCtx: evalCtx,
 		})
-		if got := len(plan.move.byTarget[path]); got != wantMoves {
-			b.Fatalf("planned %d moves, want %d", got, wantMoves)
+		if got := planned(plan); got != want {
+			b.Fatalf("planned %d changes, want %d", got, want)
 		}
 	}
 	b.ReportMetric(float64(fileReads.Load())/float64(b.N), "fileReads/op")

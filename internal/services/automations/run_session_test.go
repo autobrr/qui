@@ -512,7 +512,7 @@ func TestRunSession_OneWayLinkJoinsTheWholeComponent(t *testing.T) {
 	matcher := &recordingMatcher{links: oneWay}
 	evalCtx := &EvalContext{}
 	svc := &Service{crossMatcher: matcher}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}, CrossSeedGroupsAll: true}, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
 	for _, hash := range []string{"x", "a", "b"} {
 		require.ElementsMatch(t, []string{"x", "a", "b"}, memberHashes(evalCtx.crossSeeds.members(hash)), hash)
 	}
@@ -727,7 +727,7 @@ func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 		},
 	}
 	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
-	asked := make(map[askedMoveGroup]struct{})
+	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
 		hashes = append(hashes, moveAsks(torrent, []*models.Automation{rule}, torrents, evalCtx, nil, nil, asked)...)
@@ -758,7 +758,7 @@ func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	}
 	rules := []*models.Automation{moveBy(1, "a", "contentPath"), moveBy(2, "b", "savePath")}
 	evalCtx := &EvalContext{moveChecks: make(map[moveCheckKey]checkedMove)}
-	asked := make(map[askedMoveGroup]struct{})
+	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
 		hashes = append(hashes, moveAsks(torrent, rules, torrents, evalCtx, nil, nil, asked)...)
@@ -934,4 +934,221 @@ func TestRunSession_FactMissReadsTheTorrentFirst(t *testing.T) {
 	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
 	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
 	require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}}}, matcher.requests())
+}
+
+// planRules runs rules through the rule loop and the Run plan, as a run with no
+// delete does.
+func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, groups *crossSeedGroups) (runPlan, map[int]*ruleRunStats) {
+	t.Helper()
+	run := slices.Clone(torrents)
+	stats := make(map[int]*ruleRunStats)
+	states := processTorrents(run, rules, evalCtx, groups, nil, nil, stats, nil)
+	torrentByHash := make(map[string]qbt.Torrent, len(run))
+	for _, torrent := range run {
+		torrentByHash[torrent.Hash] = torrent
+	}
+	ruleByID := make(map[int]*models.Automation, len(rules))
+	for _, rule := range rules {
+		ruleByID[rule.ID] = rule
+	}
+	plan := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
+		instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
+		ruleByID: ruleByID, crossSeeds: groups, evalCtx: evalCtx,
+	})
+	return plan, stats
+}
+
+// openRulesRunSession opens a run session over torrents with the needs of
+// rules, answering from links.
+func openRulesRunSession(t *testing.T, torrents []qbt.Torrent, links map[string][]string, rules []*models.Automation) (*EvalContext, *recordingMatcher) {
+	t.Helper()
+	matcher := &recordingMatcher{links: links}
+	svc := &Service{crossMatcher: matcher}
+	evalCtx := &EvalContext{}
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, NeedsFor(rules), evalCtx))
+	return evalCtx, matcher
+}
+
+// A category action that includes cross-seeds or has a block list asks once,
+// before the rule loop, for the torrents whose condition matches, and for the
+// members of their category GroupID. The plan step asks for nothing new, and
+// the run plans the changes that the groups of the whole library plan.
+func TestRunSession_CategoryAsksOnlyTheMatchedTorrents(t *testing.T) {
+	t.Parallel()
+	// c1 to c5 carry the tag. c1 shares files with c1x in the protected
+	// category, and c2 with c2x. o1 and o1x share files. o2 carries the tag
+	// and shares the save path of c3, outside the tracker scope.
+	const scope = "https://scope.test/announce"
+	torrents := []qbt.Torrent{
+		{Hash: "c1", SavePath: "/1", Tracker: scope, Tags: "cat"},
+		{Hash: "c1x", SavePath: "/1x", Tracker: scope, Category: "keep"},
+		{Hash: "c2", SavePath: "/2", Tracker: scope, Tags: "cat"},
+		{Hash: "c2x", SavePath: "/2x", Tracker: scope},
+		{Hash: "c3", SavePath: "/3", Tracker: scope, Tags: "cat"},
+		{Hash: "c4", SavePath: "/4", Tracker: scope, Tags: "cat"},
+		{Hash: "c5", SavePath: "/5", Tracker: scope, Tags: "cat"},
+		{Hash: "o1", SavePath: "/o1", Tracker: scope},
+		{Hash: "o1x", SavePath: "/o1x", Tracker: scope, Category: "keep"},
+		{Hash: "o2", SavePath: "/3", Tracker: "https://other.test/announce", Tags: "cat"},
+	}
+	links := map[string][]string{"c1": {"c1x"}, "c1x": {"c1"}, "c2": {"c2x"}, "c2x": {"c2"}, "o1": {"o1x"}, "o1x": {"o1"}}
+	categoryTo := func(include bool, block []string, groupID string) *models.Automation {
+		rule := &models.Automation{
+			ID: 1, Name: "category", TrackerPattern: "scope.test", Enabled: true,
+			Conditions: &models.ActionConditions{Category: &models.CategoryAction{
+				Enabled: true, Category: "new", IncludeCrossSeeds: include, BlockIfCrossSeedInCategories: block, GroupID: groupID, Condition: tagsContain("cat"),
+			}},
+		}
+		if groupID != "" {
+			rule.Conditions.Grouping = &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: groupID, Keys: []string{"savePath"}}}}
+		}
+		return rule
+	}
+	matched := []string{"c1", "c2", "c3", "c4", "c5"}
+	tests := []struct {
+		name        string
+		rule        *models.Automation
+		wantAsk     []string
+		wantChanged []string
+	}{
+		{"block list", categoryTo(false, []string{"keep"}, ""), matched, []string{"c2", "c3", "c4", "c5"}},
+		{"include cross-seeds", categoryTo(true, nil, ""), matched, []string{"c1", "c1x", "c2", "c2x", "c3", "c4", "c5"}},
+		// The plan step checks the block list of o2 before the group of c3 changes.
+		{"block list with group ID members", categoryTo(false, []string{"keep"}, "bysave"), append(slices.Clone(matched), "o2"), []string{"c2", "c3", "c4", "c5", "o2"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rules := []*models.Automation{tt.rule}
+			evalCtx, matcher := openRulesRunSession(t, torrents, links, rules)
+			plan, stats := planRules(t, torrents, rules, evalCtx, evalCtx.crossSeeds)
+			asks := matcher.requests()
+			require.Len(t, asks, 1)
+			require.ElementsMatch(t, tt.wantAsk, asks[0].Hashes)
+			require.True(t, asks[0].Groups)
+			require.False(t, asks[0].All)
+			changed := slices.Sorted(slices.Values(plan.category.byTarget["new"]))
+			require.Equal(t, tt.wantChanged, changed)
+
+			whole := &EvalContext{SameInstanceContentByHash: links}
+			wholePlan, wholeStats := planRules(t, torrents, rules, whole, buildCrossSeedGroups(torrents, whole))
+			require.Equal(t, slices.Sorted(slices.Values(wholePlan.category.byTarget["new"])), changed)
+			require.Equal(t, *wholeStats[tt.rule.ID], *stats[tt.rule.ID])
+		})
+	}
+}
+
+// When a due tag rule includes cross-seeds, the tag step asks once for the
+// tracker scope of each tag rule, because the ownership check of every tag
+// rule reads the group. The run plans the tags that the groups of the whole
+// library plan.
+func TestRunSession_TagAsksTheTrackerScopes(t *testing.T) {
+	t.Parallel()
+	const scope, other, none = "https://scope.test/announce", "https://other.test/announce", "https://none.test/announce"
+	// s1 shares files with s1x, s2 with n2, and o1 with o1x.
+	torrents := []qbt.Torrent{
+		{Hash: "s1", Tracker: scope, Tags: "t"},
+		{Hash: "s1x", Tracker: other},
+		{Hash: "s2", Tracker: scope},
+		{Hash: "s3", Tracker: scope, Tags: "t"},
+		{Hash: "o1", Tracker: other, Tags: "t"},
+		{Hash: "o1x", Tracker: other, Tags: "seen"},
+		{Hash: "n1", Tracker: none},
+		{Hash: "n2", Tracker: none, Tags: "seen"},
+	}
+	links := map[string][]string{"s1": {"s1x"}, "s1x": {"s1"}, "s2": {"n2"}, "n2": {"s2"}, "o1": {"o1x"}, "o1x": {"o1"}}
+	include := &models.Automation{
+		ID: 1, Name: "include", TrackerPattern: "scope.test", Enabled: true, SortOrder: 1,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, IncludeCrossSeeds: true, Tags: []string{"seen"}, Condition: tagsContain("t")}}},
+	}
+	plain := &models.Automation{
+		ID: 2, Name: "plain", TrackerPattern: "other.test", Enabled: true, SortOrder: 2,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Condition: tagsContain("t")}}},
+	}
+	tests := []struct {
+		name    string
+		rules   []*models.Automation
+		wantAsk []string
+	}{
+		{"include rule", []*models.Automation{include}, []string{"s1", "s2", "s3"}},
+		{"include and plain rules", []*models.Automation{include, plain}, []string{"s1", "s1x", "s2", "s3", "o1", "o1x"}},
+		{"plain rule", []*models.Automation{plain}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			evalCtx, matcher := openRulesRunSession(t, torrents, links, tt.rules)
+			plan, stats := planRules(t, torrents, tt.rules, evalCtx, evalCtx.crossSeeds)
+			asks := matcher.requests()
+			if tt.wantAsk == nil {
+				require.Empty(t, asks)
+			} else {
+				require.Len(t, asks, 1)
+				require.ElementsMatch(t, tt.wantAsk, asks[0].Hashes)
+				require.True(t, asks[0].Groups)
+			}
+			require.NotEmpty(t, plan.tags)
+
+			whole := &EvalContext{SameInstanceContentByHash: links}
+			wholePlan, wholeStats := planRules(t, torrents, tt.rules, whole, buildCrossSeedGroups(torrents, whole))
+			require.Equal(t, wholePlan.tags, plan.tags)
+			for _, rule := range tt.rules {
+				require.Equal(t, *wholeStats[rule.ID], *stats[rule.ID])
+			}
+		})
+	}
+}
+
+// A live run, a dry run, and a preview of a category or tag action that
+// includes cross-seeds take the cross-seed of a matched torrent along. The
+// category asks only for the matched torrent, and the tag for its tracker
+// scope.
+func TestRunSession_CategoryAndTagTakeTheCrossSeedsAlong(t *testing.T) {
+	tagRule := &models.Automation{
+		ID: 3, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 3,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, IncludeCrossSeeds: true, Mode: models.TagModeAdd, Tags: []string{"seen"}, Condition: tagsContain("mv")}}},
+	}
+	tests := []struct {
+		action  string
+		rule    *models.Automation
+		wantAsk []string
+	}{
+		{"category", categoryRule(true, ""), []string{sessionA}},
+		{"tag", tagRule, []string{sessionA, sessionB, sessionC}},
+	}
+	for _, tt := range tests {
+		for _, form := range []string{"live", "dry run", "preview"} {
+			t.Run(tt.action+"/"+form, func(t *testing.T) {
+				svc, instanceID, stub, matcher := newRecordingStubService(t, map[string]string{sessionA: "mv"}, false)
+				var changed []string
+				switch form {
+				case "live", "dry run":
+					rule := *tt.rule
+					rule.DryRun = form == "dry run"
+					activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&rule}, rule.DryRun)
+					require.NoError(t, err)
+					changed = stub.writtenHashes()[tt.action]
+					if rule.DryRun {
+						require.Empty(t, changed)
+						changed = dryRunActivityHashes(t, svc, instanceID, activities)[tt.action]
+					}
+				case "preview":
+					preview := svc.PreviewCategoryRule
+					if tt.action == "tag" {
+						preview = svc.PreviewTagRule
+					}
+					result, err := preview(t.Context(), instanceID, tt.rule, 100, 0)
+					require.NoError(t, err)
+					for _, example := range result.Examples {
+						changed = append(changed, example.Hash)
+					}
+				}
+				require.ElementsMatch(t, []string{sessionA, sessionC}, changed)
+				asks := matcher.requests()
+				require.Len(t, asks, 1)
+				require.ElementsMatch(t, tt.wantAsk, asks[0].Hashes)
+				require.True(t, asks[0].Groups)
+			})
+		}
+	}
 }

@@ -217,7 +217,7 @@ func processTorrents(
 		}
 	}
 
-	askMoveGroups(torrents, rules, evalCtx, crossSeeds, sm, skipCheck, states, readsPrivate)
+	askActionGroups(torrents, rules, evalCtx, crossSeeds, sm, skipCheck, states, readsPrivate)
 	if evalCtx != nil {
 		defer func() { evalCtx.moveChecks = nil }()
 	}
@@ -278,41 +278,59 @@ func processTorrents(
 	return states
 }
 
-// askMoveGroups asks the run session once for the groups that the moves read, before the rule
-// loop reads them one torrent at a time: the torrents whose move condition matches and that are
-// not at the target yet, and the members of their move GroupID.
-func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, sm *qbittorrent.SyncManager, skipCheck func(hash string) bool, states map[string]*torrentDesiredState, readsPrivate map[int]bool) {
-	if evalCtx == nil || !crossSeeds.scoped() {
+// askActionGroups asks the run session once for the groups that the moves, tags and categories
+// read, before the rule loop reads them one torrent at a time.
+func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, sm *qbittorrent.SyncManager, skipCheck func(hash string) bool, states map[string]*torrentDesiredState, readsPrivate map[int]bool) {
+	if evalCtx == nil || !crossSeeds.readsGroups() {
 		return
 	}
-	var moveRules []*models.Automation
+	var moveRules, groupRules []*models.Automation
+	asksTagScope := make(map[*models.Automation]bool)
 	for _, rule := range rules {
-		if c := rule.Conditions; c != nil && c.Move != nil && c.Move.Enabled {
+		c := rule.Conditions
+		if c == nil {
+			continue
+		}
+		if c.Move != nil && c.Move.Enabled {
 			moveRules = append(moveRules, rule)
 		}
+		// The tag ownership check reads the group of each torrent in the scope of every tag rule.
+		asksTagScope[rule] = crossSeeds.session.tagGroups && slices.ContainsFunc(c.TagActions(), func(a *models.TagAction) bool {
+			return tagActionHasTags(a) && !tagActionMissesTrackerHealth(a, evalCtx)
+		})
+		if asksTagScope[rule] || getCategoryAction(rule).readsCrossSeedGroups() {
+			groupRules = append(groupRules, rule)
+		}
 	}
-	if len(moveRules) == 0 {
+	if len(moveRules)+len(groupRules) == 0 {
 		return
 	}
-	evalCtx.moveChecks = make(map[moveCheckKey]checkedMove)
-	asked := make(map[askedMoveGroup]struct{})
-	var hashes []string
+	if len(moveRules) > 0 {
+		evalCtx.moveChecks = make(map[moveCheckKey]checkedMove)
+	}
+	movedGroups := make(map[askedGroup]struct{})
+	categoryGroups := make(map[askedGroup]struct{})
+	var moveHashes, groupHashes []string
 	for _, torrent := range torrents {
 		if skipCheck != nil && skipCheck(torrent.Hash) {
 			continue
 		}
-		if state := states[torrent.Hash]; state != nil && state.shouldMove {
-			continue
+		if state := states[torrent.Hash]; len(moveRules) > 0 && (state == nil || !state.shouldMove) {
+			moveHashes = append(moveHashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, movedGroups)...)
 		}
-		hashes = append(hashes, moveAsks(torrent, moveRules, torrents, evalCtx, sm, readsPrivate, asked)...)
+		if len(groupRules) > 0 {
+			groupHashes = append(groupHashes, groupReadAsks(torrent, groupRules, asksTagScope, torrents, evalCtx, sm, readsPrivate, categoryGroups)...)
+		}
 	}
-	slices.Sort(hashes)
-	hashes = slices.Compact(hashes)
-	crossSeeds.session.resolveGroups(hashes, false)
+	slices.Sort(moveHashes)
+	moveHashes = slices.Compact(moveHashes)
+	asks := slices.Concat(groupHashes, moveHashes)
+	slices.Sort(asks)
+	crossSeeds.session.resolveGroups(slices.Compact(asks), false)
 	// A move that blocks on a cross-seed checks its condition on each member.
 	if slices.ContainsFunc(moveRules, moveBlockReadsCrossSeedFacts) {
 		var members []string
-		for _, hash := range hashes {
+		for _, hash := range moveHashes {
 			members = append(members, memberHashes(crossSeeds.members(hash))...)
 		}
 		slices.Sort(members)
@@ -320,20 +338,65 @@ func askMoveGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *
 	}
 }
 
+// groupReadAsks returns the torrent when a tag or category action of a rule that matches its
+// tracker reads its group, with the members of the category GroupID that asked does not hold yet.
+// A tag rule in asksTagScope reads the group of each torrent in its scope. A category reads the
+// group only when its condition matches.
+func groupReadAsks(torrent qbt.Torrent, rules []*models.Automation, asksTagScope map[*models.Automation]bool, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedGroup]struct{}) []string {
+	domains := collectTrackerDomains(torrent, sm)
+	var hashes []string
+	for _, rule := range rules {
+		if !rule.Enabled || !matchesTracker(rule.TrackerPattern, domains) {
+			continue
+		}
+		if qbittorrent.PrivateUnknown(&torrent) && readsPrivate[rule.ID] {
+			continue
+		}
+		if asksTagScope[rule] {
+			hashes = append(hashes, torrent.Hash)
+		}
+		cat := getCategoryAction(rule)
+		if !cat.readsCrossSeedGroups() {
+			continue
+		}
+		prepareRuleEvalContext(rule, evalCtx, torrents, sm)
+		if cat.condition != nil && !EvaluateConditionWithContext(cat.condition, torrent, evalCtx, 0) {
+			continue
+		}
+		hashes = append(hashes, torrent.Hash)
+		if groupID := strings.TrimSpace(rule.Conditions.Category.GroupID); groupID != "" {
+			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, sm, asked)...)
+		}
+	}
+	return hashes
+}
+
 func moveBlockReadsCrossSeedFacts(rule *models.Automation) bool {
 	move := rule.Conditions.Move
 	return move.BlockIfCrossSeed && strings.TrimSpace(move.GroupID) == "" && conditionReadsCrossSeedFacts(move.Condition)
 }
 
-// askedMoveGroup is a group of a move GroupID that the read-ahead already asked for.
-type askedMoveGroup struct {
+// askedGroup is a GroupID group of one rule that the read-ahead already asked for.
+type askedGroup struct {
 	rule *models.Automation
 	key  string
 }
 
+// groupIDMembers returns the members of the GroupID group of the torrent, or nil when asked
+// already holds the group.
+func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, asked map[askedGroup]struct{}) []string {
+	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+	group := askedGroup{rule, idx.KeyForHash(hash)}
+	if _, seen := asked[group]; seen {
+		return nil
+	}
+	asked[group] = struct{}{}
+	return idx.MembersForHash(hash)
+}
+
 // moveAsks returns the torrent when the move of a rule that matches its tracker can apply to it,
 // with the members of the move GroupID that asked does not hold yet.
-func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedMoveGroup]struct{}) []string {
+func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager, readsPrivate map[int]bool, asked map[askedGroup]struct{}) []string {
 	state := &torrentDesiredState{trackerDomains: collectTrackerDomains(torrent, sm)}
 	var hashes []string
 	for _, rule := range rules {
@@ -352,12 +415,7 @@ func moveAsks(torrent qbt.Torrent, rules []*models.Automation, torrents []qbt.To
 		}
 		hashes = append(hashes, torrent.Hash)
 		if groupID := strings.TrimSpace(move.GroupID); groupID != "" {
-			idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
-			group := askedMoveGroup{rule, idx.KeyForHash(torrent.Hash)}
-			if _, seen := asked[group]; !seen {
-				asked[group] = struct{}{}
-				hashes = append(hashes, idx.MembersForHash(torrent.Hash)...)
-			}
+			hashes = append(hashes, groupIDMembers(rule, groupID, torrent.Hash, torrents, evalCtx, sm, asked)...)
 		}
 	}
 	return hashes
@@ -540,12 +598,10 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Tags
 	for _, tagAction := range conditions.TagActions() {
-		if tagAction == nil || !tagAction.Enabled || (len(tagAction.Tags) == 0 && !tagAction.UseTrackerAsTag) {
+		if !tagActionHasTags(tagAction) {
 			continue
 		}
-		// Skip if condition uses IS_UNREGISTERED but health data isn't available
-		if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) &&
-			(evalCtx == nil || evalCtx.TrackerHealth == nil) {
+		if tagActionMissesTrackerHealth(tagAction, evalCtx) {
 			// Skip tag processing for this rule
 			if stats != nil {
 				stats.TagSkippedMissingTrackerHealth++
@@ -853,6 +909,16 @@ func containsStringFold(list []string, candidate string) bool {
 		}
 	}
 	return false
+}
+
+func tagActionHasTags(tagAction *models.TagAction) bool {
+	return tagAction != nil && tagAction.Enabled && (len(tagAction.Tags) > 0 || tagAction.UseTrackerAsTag)
+}
+
+// tagActionMissesTrackerHealth reports whether the tag action reads IS_UNREGISTERED without the
+// tracker health, so the rule loop skips it.
+func tagActionMissesTrackerHealth(tagAction *models.TagAction, evalCtx *EvalContext) bool {
+	return ConditionUsesField(tagAction.Condition, FieldIsUnregistered) && (evalCtx == nil || evalCtx.TrackerHealth == nil)
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
