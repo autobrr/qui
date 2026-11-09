@@ -278,9 +278,13 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
                   onReplace={() => setReplaceOpen(true)}
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
-                </p>
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
+                  </p>
+                  {/* The limits come from the stored probe, so a pinned host shows them before any new test. */}
+                  {instance.sshHostKeyPinned && <RemoteAccessIndicator instance={instance} variant="inline" />}
+                </>
               )}
             </div>
           )}
