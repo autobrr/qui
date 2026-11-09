@@ -53,7 +53,8 @@ export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
 
   // The form starts over from the row whenever the stored endpoint or user
   // changes: a save that the server normalized, a clear, or another instance.
-  // The test result and the replace dialog live outside it and survive.
+  // The test result lives in the hook outside it and survives; the replace
+  // dialog belongs to the form and closes with it.
   return (
     <SSHCredentialsForm
       key={`${instance.id}:${instance.sshHost ?? ""}:${instance.sshPort ?? ""}:${instance.sshUsername ?? ""}`}
