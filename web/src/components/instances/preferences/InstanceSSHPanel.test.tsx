@@ -178,6 +178,12 @@ describe("InstanceSSHPanel", () => {
     expect(document.querySelector("[data-ssh-status]")).toBeNull()
   })
 
+  it("the limits under a pinned result follow the test, not the stored flag", async () => {
+    render(<InstanceSSHPanel instance={{ ...storedInstance, filesystemMode: "remote", sshHostKeyPinned: true, sshTier: "exec", sshHardlink: true }} />)
+    await runTest({ status: "pinned", fingerprint: "SHA256:abc", capabilities: { sftp: true, statvfs: true, hardlink: false, limits: true, exec: true, gnuUserland: true } })
+    expect(screen.getByText("access.limits.noHardlinkExtension")).not.toBeNull()
+  })
+
   it("unsaved edits hide the test result and disable Test", async () => {
     render(<InstanceSSHPanel instance={storedInstance} />)
     await runTest({ status: "unpinned", hostKey: "AAAA", fingerprint: "SHA256:abc" })
@@ -185,6 +191,10 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect(document.querySelector("[data-ssh-status]")).toBeNull())
     expect(screen.getByText("preferences.ssh.test.saveFirst")).not.toBeNull()
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(true)
+    // typed back to the stored value: nothing unsaved, Test is back
+    setValue("ssh-host", "box.example")
+    await waitFor(() => expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.queryByText("preferences.ssh.test.saveFirst")).toBeNull()
   })
 
   // regression: #3732

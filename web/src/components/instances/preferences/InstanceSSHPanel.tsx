@@ -83,6 +83,10 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
   // with the three unchanged and no key pasted, there is nothing to send.
   const endpointChanged = (value: { host: string; port: number; username: string }) =>
     !stored || value.host.trim() !== instance.sshHost || value.port !== instance.sshPort || value.username.trim() !== instance.sshUsername
+  // Compared against the row, not the form's dirty flag: an edit typed back
+  // to the stored value is no unsaved change.
+  const hasUnsavedEdits = (value: { host: string; port: number; username: string; privateKey: string }) =>
+    value.privateKey !== "" || (stored && endpointChanged(value))
 
   const form = useForm({
     defaultValues: sshDefaults(instance),
@@ -263,7 +267,7 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
           )}
 
           {stored && (
-            <form.Subscribe selector={(s) => s.isDirty}>
+            <form.Subscribe selector={(s) => hasUnsavedEdits(s.values)}>
               {(isDirty) => (
                 // A test runs against the stored credentials, so unsaved edits
                 // hide its result: a fingerprint under a host the row does not hold yet would mislead.
@@ -357,7 +361,8 @@ function SSHTestResult({ result, instance, onConfirm, onReplace }: SSHTestResult
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
-          <RemoteAccessIndicator instance={instance} variant="inline" />
+          {/* The hardlink flag comes from this test, not the row: a failed probe write would otherwise leave the limits contradicting the table above. */}
+          <RemoteAccessIndicator instance={result.capabilities ? { ...instance, sshHardlink: result.capabilities.hardlink } : instance} variant="inline" />
         </div>
       )
     case "mismatch":
