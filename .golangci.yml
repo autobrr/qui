@@ -124,6 +124,9 @@ linters:
         - pattern: ^(sql\.(Open|OpenDB)|pgxpool\.(New|NewWithConfig)|(pgx|pgconn)\.(Connect|ConnectConfig|ConnectWithOptions)|stdlib\.(OpenDB|OpenDBFromPool|GetConnector|GetPoolConnector)|sqlite\.NewConnector)$
           pkg: ^(database/sql|github\.com/jackc/pgx/v5(/pgconn|/pgxpool|/stdlib)?|modernc\.org/sqlite)$
           msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
+        - pattern: ^(driver\.(Driver\.Open|DriverContext\.OpenConnector|Connector\.Connect)|(sqlite|stdlib)\.Driver\.Open|stdlib\.Driver\.OpenConnector|pq\.(Open|DialOpen|NewConnector|NewConnectorConfig|Driver\.Open|NewListener|NewDialListener))$
+          pkg: ^(database/sql/driver|github\.com/jackc/pgx/v5/stdlib|github\.com/lib/pq|modernc\.org/sqlite)$
+          msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
