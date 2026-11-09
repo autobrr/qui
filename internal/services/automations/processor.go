@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -202,11 +201,6 @@ func processTorrents(
 		}
 	}
 
-	// Persist any active free space source state before returning
-	if evalCtx != nil {
-		evalCtx.PersistFreeSpaceSourceState()
-	}
-
 	return states
 }
 
@@ -325,7 +319,7 @@ func groupReadAsks(torrent *qbt.Torrent, rules []*models.Automation, asksTagScop
 		if !cat.readsCrossSeedGroups() {
 			continue
 		}
-		prepareRuleEvalContext(rule, evalCtx, torrents, scope)
+		enterRule(evalCtx, rule, torrents, scope)
 		if cat.condition != nil && !EvaluateConditionWithContext(cat.condition, *torrent, evalCtx, 0) {
 			continue
 		}
@@ -369,7 +363,7 @@ func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []qbt.T
 		if !rule.Enabled || scope.answer(rule, torrent) != scopeIn {
 			continue
 		}
-		prepareRuleEvalContext(rule, evalCtx, torrents, scope)
+		enterRule(evalCtx, rule, torrents, scope)
 		move := rule.Conditions.Move
 		path, check := checkMove(move, *torrent, state, evalCtx)
 		evalCtx.moveChecks[moveCheckKey{rule, torrent.Hash}] = checkedMove{path, check}
@@ -384,14 +378,15 @@ func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []qbt.T
 	return hashes
 }
 
-// prepareRuleEvalContext loads what the conditions of the rule read: its free space source and
-// its grouping (GROUP_SIZE / IS_GROUPED), which action expansion also reuses.
-func prepareRuleEvalContext(rule *models.Automation, evalCtx *EvalContext, allTorrents []qbt.Torrent, scope *ruleScope) {
+// enterRule makes the free space ledger and the grouping (GROUP_SIZE / IS_GROUPED) of the rule
+// active. Each pass calls it before it evaluates the rule.
+func enterRule(evalCtx *EvalContext, rule *models.Automation, allTorrents []qbt.Torrent, scope *ruleScope) {
 	if evalCtx == nil {
 		return
 	}
-	if ruleUsesCondition(rule, FieldFreeSpace) {
-		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	evalCtx.activeFreeSpace = nil
+	if rule != nil {
+		evalCtx.activeFreeSpace = evalCtx.freeSpaceLedgers[rule.ID]
 	}
 	activateRuleGrouping(evalCtx, rule, allTorrents, scope)
 }
@@ -403,7 +398,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		return
 	}
 
-	prepareRuleEvalContext(rule, evalCtx, allTorrents, scope)
+	enterRule(evalCtx, rule, allTorrents, scope)
 
 	// Speed limits
 	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
@@ -1102,94 +1097,6 @@ func parseTorrentTags(tags string) map[string]struct{} {
 		}
 	}
 	return result
-}
-
-// updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
-// Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
-// This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
-// A file shared inside a group, through a path or a hardlink, counts once.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds *crossSeedGroups, includeHardlinks bool) bool {
-	if evalCtx == nil || evalCtx.FilesToClear == nil {
-		return true
-	}
-
-	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
-		return true
-	}
-	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
-		if _, keep := otherInstanceKeepsFiles(evalCtx, torrent.Hash); keep {
-			return true
-		}
-	}
-
-	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
-		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
-	}
-	if deleteMode == DeleteModeWithFiles && len(crossSeeds.members(torrent.Hash)) > 0 {
-		files := evalCtx.CrossSeedFilesByHash[torrent.Hash]
-		if len(files) == 0 {
-			return false
-		}
-		if evalCtx.FileBytesToClear == nil {
-			evalCtx.FileBytesToClear = make(map[string]int64)
-		}
-		for _, file := range files {
-			path := resolvedTorrentFilePath(torrent, file.Name)
-			if counted := evalCtx.FileBytesToClear[path]; file.Size > counted {
-				evalCtx.SpaceToClear += file.Size - counted
-				evalCtx.FileBytesToClear[path] = file.Size
-			}
-		}
-		return true
-	}
-
-	// The torrent shares no file: preserve mode verified that above, and a
-	// file delete outside a group has nothing to share.
-	evalCtx.SpaceToClear += torrent.Size
-	return true
-}
-
-func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups, includeHardlinks bool) bool {
-	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
-		return true
-	}
-
-	torrents := evalCtx.torrentsByHash
-	if torrents == nil {
-		torrents = make(map[string]qbt.Torrent, len(crossSeeds.members(torrent.Hash))+1)
-		torrents[torrent.Hash] = torrent
-		for _, member := range crossSeeds.members(torrent.Hash) {
-			torrents[member.Hash] = member
-		}
-	}
-	var hardlinks *HardlinkIndex
-	if includeHardlinks {
-		hardlinks = evalCtx.hardlinkIndex
-	}
-	expanded, ok := deleteCrossSeedGroup(torrent, torrents, crossSeeds, hardlinks,
-		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
-	if !ok {
-		return false
-	}
-	// The selection keeps the files of the whole group, so the group frees nothing.
-	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
-		maps.Copy(evalCtx.CrossSeedHashesToClear, expanded.expandedSet)
-		return true
-	}
-	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
-}
-
-func projectCrossSeedDeletionGroup(torrents map[string]qbt.Torrent, hashes map[string]struct{}, evalCtx *EvalContext, hardlinks *HardlinkIndex) bool {
-	bytes, ok := verifiedCrossSeedFileBytes(torrents, hashes, evalCtx.CrossSeedFilesByHash, hardlinks)
-	if !ok {
-		return false
-	}
-	for hash := range hashes {
-		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
-	}
-	evalCtx.SpaceToClear += bytes
-	return true
 }
 
 func verifiedCrossSeedFileBytes(

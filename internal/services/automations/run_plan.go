@@ -587,10 +587,7 @@ func (s *Service) categoryGroupEligible(ctx context.Context, in runPlanInput, ru
 	}
 	// GroupId is strict all-or-none: every member must satisfy the action condition.
 	catAction := getCategoryAction(rule)
-	if in.evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(in.evalCtx, rule, in.torrents, in.scope)
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
 	members := idx.MembersForHash(hash)
 	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds) &&
 		!in.scope.groupDropsMember(rule, members, in.torrentByHash)
@@ -787,10 +784,7 @@ func (s *Service) moveGroupChecks(in runPlanInput, rule *models.Automation, grou
 	if rule.Conditions != nil && rule.Conditions.Move != nil {
 		cond = rule.Conditions.Move.Condition
 	}
-	if in.evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(in.evalCtx, rule, in.torrents, in.scope)
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
 	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
 		in.scope.groupDropsMember(rule, members, in.torrentByHash) {
 		return false, false, 0
