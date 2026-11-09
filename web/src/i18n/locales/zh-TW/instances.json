@@ -1733,7 +1733,7 @@
       "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
       "labels": {
         "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port.",
+        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
         "port": "Port",
         "username": "Username",
         "privateKey": "Private key",
@@ -1759,7 +1759,9 @@
         "replace": "Replace host key"
       },
       "test": {
-        "title": "Connection"
+        "title": "Connection",
+        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
+        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
       },
       "status": {
         "unpinned": {

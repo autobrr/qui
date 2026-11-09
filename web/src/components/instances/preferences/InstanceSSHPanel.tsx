@@ -81,7 +81,7 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
   // A key is needed on the first save and when the endpoint or user changes;
   // with the three unchanged and no key pasted, there is nothing to send.
   const endpointChanged = (value: { host: string; port: number; username: string }) =>
-    !stored || value.host !== instance.sshHost || value.port !== instance.sshPort || value.username !== instance.sshUsername
+    !stored || value.host.trim() !== instance.sshHost || value.port !== instance.sshPort || value.username.trim() !== instance.sshUsername
 
   const form = useForm({
     defaultValues: sshDefaults(instance),
@@ -265,18 +265,21 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
             <div className="space-y-4 rounded-lg border bg-muted/40 p-4">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-sm font-medium">{t("preferences.ssh.test.title")}</span>
-                <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => test()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => test()}>
                   {state.kind === "testing" ? t("preferences.ssh.buttons.testing") : t("preferences.ssh.buttons.test")}
                 </Button>
               </div>
-              {result && (
+              {result ? (
                 <SSHTestResult
                   result={result}
                   tier={instance.sshTier}
-                  busy={busy}
                   onConfirm={() => pin(false)}
                   onReplace={() => setReplaceOpen(true)}
                 />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
+                </p>
               )}
             </div>
           )}
@@ -312,14 +315,11 @@ function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
 interface SSHTestResultProps {
   result: SSHTestResponse
   tier: Instance["sshTier"]
-  busy: boolean
   onConfirm: () => void
   onReplace: () => void
 }
 
-// One panel per ssh-test status. The host key the server echoes back is held
-// in the result until the user confirms or tests again.
-function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResultProps) {
+function SSHTestResult({ result, tier, onConfirm, onReplace }: SSHTestResultProps) {
   const { t } = useTranslation("instances")
 
   switch (result.status) {
@@ -330,7 +330,7 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
           <p className="text-sm text-muted-foreground">{t("preferences.ssh.status.unpinned.text")}</p>
           <Fingerprints result={result} />
           <ProbeTable probe={result.capabilities} tier={tier} />
-          <Button type="button" size="sm" disabled={busy || !result.hostKey} onClick={onConfirm}>
+          <Button type="button" size="sm" disabled={!result.hostKey} onClick={onConfirm}>
             {t("preferences.ssh.buttons.confirm")}
           </Button>
         </div>
@@ -351,7 +351,7 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
           <p className="text-sm font-medium text-destructive">{t("preferences.ssh.status.mismatch.title")}</p>
           <p className="text-sm">{t("preferences.ssh.status.mismatch.text")}</p>
           <Fingerprints result={result} />
-          <Button type="button" size="sm" variant="destructive" disabled={busy || !result.hostKey} onClick={onReplace}>
+          <Button type="button" size="sm" variant="destructive" disabled={!result.hostKey} onClick={onReplace}>
             {t("preferences.ssh.buttons.replace")}
           </Button>
         </div>
@@ -366,7 +366,7 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
           ) : (
             <p className="text-sm text-muted-foreground">{t("preferences.ssh.status.pinUnreadable.noKey")}</p>
           )}
-          <Button type="button" size="sm" variant="destructive" disabled={busy || !result.hostKey} onClick={onReplace}>
+          <Button type="button" size="sm" variant="destructive" disabled={!result.hostKey} onClick={onReplace}>
             {t("preferences.ssh.buttons.replace")}
           </Button>
         </div>
@@ -375,7 +375,7 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
       return (
         <div className="space-y-2" data-ssh-status="error">
           <p className="text-sm font-medium text-destructive">{t("preferences.ssh.status.error.title")}</p>
-          <p className="text-sm break-all" role="alert">{result.error ? formatErrorMessage(result.error) : ""}</p>
+          <p className="text-sm break-all" role="alert">{formatErrorMessage(result.error)}</p>
         </div>
       )
   }
@@ -383,28 +383,31 @@ function SSHTestResult({ result, tier, busy, onConfirm, onReplace }: SSHTestResu
 
 function Fingerprints({ result }: { result: SSHTestResponse }) {
   const { t } = useTranslation("instances")
+  const [incognitoMode] = useIncognitoMode()
+  const blur = incognitoMode ? "blur-sm select-none" : ""
   return (
     <div className="space-y-2">
       {result.pinnedFingerprint && (
-        <FingerprintRow label={t("preferences.ssh.fingerprint.pinned")} keyType={result.pinnedKeyType} value={result.pinnedFingerprint} />
+        <FingerprintRow label={t("preferences.ssh.fingerprint.pinned")} keyType={result.pinnedKeyType} value={result.pinnedFingerprint} className={blur} />
       )}
       {result.fingerprint && (
         <FingerprintRow
           label={result.pinnedFingerprint ? t("preferences.ssh.fingerprint.presented") : t("preferences.ssh.fingerprint.label")}
           keyType={result.keyType}
           value={result.fingerprint}
+          className={blur}
         />
       )}
     </div>
   )
 }
 
-function FingerprintRow({ label, keyType, value }: { label: string; keyType?: string; value: string }) {
+function FingerprintRow({ label, keyType, value, className }: { label: string; keyType?: string; value: string; className: string }) {
   return (
     <div>
       <span className="text-xs uppercase text-muted-foreground">{label}{keyType ? ` · ${keyType}` : ""}</span>
       <div className="mt-1 flex items-center gap-2">
-        <code className="w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">{value}</code>
+        <code className={`w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all ${className}`}>{value}</code>
         <CopyButton value={value} label={label} className="h-7 w-7" />
       </div>
     </div>
