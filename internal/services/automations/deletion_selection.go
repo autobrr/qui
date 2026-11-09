@@ -202,11 +202,7 @@ func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel
 	}
 	var readAhead *freeSpaceReadAhead
 	if ledger.projects() {
-		var hardlinks *HardlinkIndex
-		if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && deleteAction.IncludeHardlinks {
-			hardlinks = in.evalCtx.hardlinkIndex
-		}
-		readAhead = newFreeSpaceReadAhead(in.crossSeeds, hardlinks, deleteKeepsFilesForOtherInstances(deleteAction))
+		readAhead = newFreeSpaceReadAhead(in.crossSeeds, ledger.hardlinks(in.evalCtx), deleteKeepsFilesForOtherInstances(deleteAction))
 	}
 
 	var claims []deletionClaim

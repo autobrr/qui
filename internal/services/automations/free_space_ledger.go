@@ -101,6 +101,15 @@ func (l *freeSpaceLedger) projects() bool {
 	return l != nil && l.projectsDeletes
 }
 
+// hardlinks returns the hardlink index that the ledger follows when it counts a cross-seed
+// group, or nil when it follows none.
+func (l *freeSpaceLedger) hardlinks(evalCtx *EvalContext) *HardlinkIndex {
+	if !l.projects() || l.deleteMode != DeleteModeWithFilesIncludeCrossSeeds || !l.includeHardlinks {
+		return nil
+	}
+	return evalCtx.hardlinkIndex
+}
+
 func (l *freeSpaceLedger) reset() {
 	if l == nil {
 		return
@@ -169,10 +178,7 @@ func (l *freeSpaceLedger) countCrossSeedGroup(torrent qbt.Torrent, crossSeeds *c
 			torrents[member.Hash] = member
 		}
 	}
-	var hardlinks *HardlinkIndex
-	if l.includeHardlinks {
-		hardlinks = evalCtx.hardlinkIndex
-	}
+	hardlinks := l.hardlinks(evalCtx)
 	expanded, ok := deleteCrossSeedGroup(torrent, torrents, crossSeeds, hardlinks,
 		l.countedMembers, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
 	if !ok {
