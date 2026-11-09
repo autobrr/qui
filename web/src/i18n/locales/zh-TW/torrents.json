@@ -1610,6 +1610,10 @@
     "badge": "+{{hidden}}",
     "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
     "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
-    "labelWithTicks": "{{label}}。{{ticks}}"
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合併副本",
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合",
+    "grouping": "正在分組…"
   }
 }

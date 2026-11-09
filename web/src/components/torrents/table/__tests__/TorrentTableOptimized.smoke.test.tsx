@@ -49,9 +49,12 @@ const scenario = vi.hoisted(() => ({
   deleteDialogOpen: false,
   totalSize: 0,
   copyGroupsReady: undefined as boolean | undefined,
+  // The options that the table last gave the list hook.
+  listOptions: undefined as { groupCopies?: boolean } | undefined,
+  isDemo: false,
 }))
-// The real list controller, so a test can press Expand all before its button exists (#3884).
-const controller = vi.hoisted(() => ({ current: undefined as undefined | { toggleExpandAll: () => void } }))
+// The real list controller, so a test can read its load-more window.
+const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -136,6 +139,11 @@ vi.mock("@/hooks/useTorrentListController", async (importOriginal) => {
   }
 })
 
+vi.mock("@/lib/demo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/demo")>()),
+  get isDemo() { return scenario.isDemo },
+}))
+
 // The grid measures its width through ResizeObserver, which jsdom lacks.
 vi.stubGlobal("ResizeObserver", class {
   observe() {}
@@ -169,7 +177,8 @@ vi.mock("@/hooks/useTorrentsList", () => {
   let result: Record<string, unknown> | undefined
   return {
     TORRENT_STREAM_POLL_INTERVAL_SECONDS: 2,
-    useTorrentsList: () => {
+    useTorrentsList: (_instanceId: number, options: { groupCopies?: boolean }) => {
+      scenario.listOptions = options
       result ??= {
         get torrents() { return scenario.rows ?? torrents },
         get totalCount() { return scenario.totalCount },
@@ -482,7 +491,26 @@ const warnings = (container: HTMLElement) => container.querySelectorAll("button[
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
 const cellOf = (row: HTMLElement, columnId: string) => row.querySelector(`[data-torrent-column-measure="${columnId}"]`) as HTMLElement
 
+const GROUP_COPIES_KEY = "qui-group-copies"
+
+// The columns menu in Table and Dense, the sort menu in Stacked. The menu stays open after a press of its items.
+async function listMenuItem(view: ReturnType<typeof render>, role: "menuitem" | "menuitemcheckbox", name: string | RegExp) {
+  if (!view.queryByRole("menu")) {
+    const trigger = localStorage.getItem("qui-torrent-desktop-view-mode") === "compact"
+      ? view.container.querySelector<HTMLElement>("[aria-haspopup='menu']")
+      : view.getByRole("button", { name: "tableView.toggleColumns" })
+    if (!trigger) throw new Error("no list menu")
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+  }
+  return view.findByRole(role, { name })
+}
+
+async function pressExpandAll(view: ReturnType<typeof render>) {
+  fireEvent.click(await listMenuItem(view, "menuitem", /^copyGroups\.(expandAll|collapseAll)$/))
+}
+
 function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
+  localStorage.setItem(GROUP_COPIES_KEY, "true")
   scenario.rows = rows
   scenario.totalCount = rows.length
   scenario.copyGroupsReady = true
@@ -568,13 +596,16 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(onTorrentSelect).not.toHaveBeenCalled()
     })
 
-    it("shows one pill while Expand all is on", () => {
-      const { container } = renderGroups(copyGroupRows())
+    it("opens and closes all groups from Expand all in the menu, with one pill while they are open", async () => {
+      const view = renderGroups(copyGroupRows())
 
-      act(() => controller.current?.toggleExpandAll())
+      await pressExpandAll(view)
+      expect(view.container.textContent).toContain("Delta Release copy C")
+      expect(pills(view.container).length).toBe(1)
+      expect((await listMenuItem(view, "menuitem", "copyGroups.collapseAll"))).toBeTruthy()
 
-      expect(container.textContent).toContain("Delta Release copy C")
-      expect(pills(container).length).toBe(1)
+      await pressExpandAll(view)
+      expect(view.container.textContent).not.toContain("Delta Release copy C")
     })
 
     it("shows the warning pill when a hidden copy changes to an error, and a plain pill when the group is open", () => {
@@ -756,13 +787,14 @@ describe("TorrentTableOptimized Copy groups", () => {
     })
 
     it.each([
-      ["a group opens", (container: HTMLElement) => fireEvent.click(pills(container)[0])],
-      ["Expand all runs", () => act(() => controller.current?.toggleExpandAll())],
-    ])("starts a Shift-select at the clicked row after %s", (_, expand) => {
-      const { container } = renderGroups(copyGroupRows())
+      ["a group opens", async (view: ReturnType<typeof render>) => fireEvent.click(pills(view.container)[0])],
+      ["a press of the Expand all button", pressExpandAll],
+    ])("starts a Shift-select at the clicked row after %s", async (_, expand) => {
+      const view = renderGroups(copyGroupRows())
+      const { container } = view
       fireEvent.click(within(container).getByText("Echo Release"))
 
-      expand(container)
+      await expand(view)
       fireEvent.click(within(container).getByText("Delta Release"), { shiftKey: true })
 
       expect(isRowChecked(container, "Delta Release copy B")).toBe(false)
@@ -876,5 +908,92 @@ describe("TorrentTableOptimized Copy groups", () => {
   ] as const)("shows the warning pill for a hidden copy with %o: %s", (hidden, expected) => {
     const { container } = renderGroups(copyGroupRows({ third: hidden }))
     expect(warnings(container).length).toBe(expected ? 1 : 0)
+  })
+})
+
+describe("TorrentTableOptimized Group copies switch", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    scenario.routeSearch = ""
+    scenario.isCrossSeedFiltering = false
+    scenario.totalCount = torrents.length
+    scenario.rows = undefined
+    scenario.copyGroupsReady = undefined
+    scenario.isDemo = false
+  })
+
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  // Table and Dense share the columns menu; Stacked has the sort menu.
+  describe.each(["normal", "compact"] as const)("in the %s row style", (viewMode) => {
+    beforeEach(() => {
+      localStorage.setItem("qui-torrent-desktop-view-mode", viewMode)
+    })
+
+    it("asks for groups while the switch is on, with Expand all beside it", async () => {
+      const view = renderTable()
+      expect(scenario.listOptions?.groupCopies).toBe(false)
+      const groupSwitch = await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
+      expect(groupSwitch.getAttribute("aria-checked")).toBe("false")
+      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+
+      fireEvent.click(groupSwitch)
+
+      expect(scenario.listOptions?.groupCopies).toBe(true)
+      expect(localStorage.getItem(GROUP_COPIES_KEY)).toBe("true")
+      expect(groupSwitch.getAttribute("aria-checked")).toBe("true")
+      expect(view.getByRole("menuitem", { name: "copyGroups.expandAll" })).toBeTruthy()
+
+      fireEvent.click(groupSwitch)
+
+      expect(scenario.listOptions?.groupCopies).toBe(false)
+      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+    })
+  })
+
+  it("starts the loaded rows again at the first rows on a press of the switch", async () => {
+    scenario.rows = Array.from({ length: 300 }, (_, i) => makeTorrent({ hash: `hash-${i}`, name: `Release ${i}` }))
+    scenario.totalCount = 300
+    const view = renderTable()
+    act(() => controller.current?.reportNearEnd())
+    expect(controller.current?.loadedRows).toBe(200)
+
+    fireEvent.click(await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies"))
+
+    expect(controller.current?.loadedRows).toBe(100)
+  })
+
+  it.each([
+    [false, true],
+    [undefined, false],
+  ] as const)("with a ready field of %s, shows the Grouping hint: %s", (ready, shown) => {
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    scenario.copyGroupsReady = ready
+    const { container } = renderTable()
+    expect(container.textContent?.includes("copyGroups.grouping")).toBe(shown)
+  })
+
+  it.each([
+    ["on a phone", () => {
+      window.matchMedia = ((query: string) => ({
+        matches: query === "(max-width: 767px)",
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }],
+    ["in the demo", () => { scenario.isDemo = true }],
+  ])("asks for no groups and shows no switch %s", async (_, setUp) => {
+    setUp()
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderTable()
+
+    fireEvent.pointerDown(view.getByRole("button", { name: "tableView.toggleColumns" }), { button: 0, ctrlKey: false })
+    await view.findByRole("menu")
+
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+    expect(view.queryByRole("menuitemcheckbox", { name: "copyGroups.groupCopies" })).toBeNull()
   })
 })

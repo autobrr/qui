@@ -415,6 +415,55 @@ func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 	})
 }
 
+// A retry that reads a torrent rebuilds in the same run, and the rebuild must
+// not fetch the retried torrents again.
+// regression: #3930
+func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.addUnreadable(1, cgC, "/data/c", time.Now())
+		h.addUnreadable(1, cgD, "/data/d", cgOld)
+		h.demandAndWait()
+		h.wait(copyGroupsTick)
+		require.Equal(t, 2, h.requested(1, cgC))
+		require.Equal(t, 1, h.requested(1, cgD))
+
+		h.setFiles(1, cgC, cgPackFiles())
+		h.wait(copyGroupsTick)
+		require.Equal(t, 3, h.requested(1, cgC))
+		require.Equal(t, 2, h.requested(1, cgD))
+		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(1, cgC)}), h.last())
+
+		h.wait(copyGroupsTick)
+		require.Equal(t, 2, h.requested(1, cgD), "the torrent that stayed unreadable waits a minute")
+		h.wait(copyGroupsTick)
+		require.Equal(t, 3, h.requested(1, cgD), "the torrent that stayed unreadable is read again")
+	})
+}
+
+// regression: #3930
+func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
+	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
+		h.addUnreadable(1, cgC, "/data/c", time.Now())
+		h.addUnreadable(1, cgD, "/data/d", time.Now())
+		h.add(2, cgB, "/data/b", cgOld, cgPackFiles())
+		h.addUnreadable(2, cgC, "/data/c", time.Now())
+		h.demandAndWait()
+		h.wait(copyGroupsTick)
+		publishes := h.publishes()
+		require.Positive(t, publishes)
+
+		h.sync.mu.Lock()
+		h.sync.batchErr[2] = errors.New("qBittorrent did not answer")
+		h.sync.mu.Unlock()
+		c, d, batches := h.requested(1, cgC), h.requested(1, cgD), len(h.batches(2))
+		h.wait(copyGroupsTick)
+		require.Equal(t, c+1, h.requested(1, cgC))
+		require.Equal(t, d+1, h.requested(1, cgD))
+		require.Len(t, h.batches(2), batches+2, "the rebuild reads the instance whose retry failed again")
+		require.Greater(t, h.publishes(), publishes)
+	})
+}
+
 func TestCopyGroupsJob_NoRequestForAMagnet(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.add(1, cgC, "/data/c", time.Now(), nil)

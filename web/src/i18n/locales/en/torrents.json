@@ -1691,6 +1691,10 @@
     "badgeTicked_other": "+{{hidden}} · {{count}} ticked",
     "hiddenTicked_one": "{{count}} hidden copy is ticked",
     "hiddenTicked_other": "{{count}} hidden copies are ticked",
-    "labelWithTicks": "{{label}}. {{ticks}}"
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Group copies",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "grouping": "Grouping…"
   }
 }

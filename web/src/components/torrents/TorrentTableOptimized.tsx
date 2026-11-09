@@ -114,6 +114,10 @@ import { TorrentDropZone } from "./TorrentDropZone"
 import { TableColumnHeader } from "./table/TableColumnHeader"
 import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
+import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
+import { useIsMobile } from "@/hooks/useMediaQuery"
+import { isDemo } from "@/lib/demo"
+import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
@@ -350,6 +354,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
 
+  // A phone reaches this table in the Unified view.
+  const isMobile = useIsMobile()
+  const canGroupCopies = !isDemo && !isMobile
+  const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -383,6 +392,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     visibleRows,
     groupExpansion,
     toggleGroup,
+    toggleExpandAll,
     copyGroupsReady,
   } = useTorrentListController({
     instanceId,
@@ -392,6 +402,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     search: effectiveSearch,
     sort: activeSortField,
     order: activeSortOrder,
+    groupCopies: canGroupCopies && groupCopiesSetting,
   })
 
   // When the stream drops but rows are already on screen, the data is stale but
@@ -595,6 +606,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   } = useTorrentSelection({
     visibleTorrents: visibleRows,
     groupExpansion,
+    groupedRows: copyGroupsReady === true,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,
@@ -1137,6 +1149,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.changeSortField")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                            {canGroupCopies && (
+                              <>
+                                <CopyGroupMenuItems
+                                  groupCopies={groupCopiesSetting}
+                                  expandAll={groupExpansion.expandAll}
+                                  onToggleGroupCopies={toggleGroupCopies}
+                                  onToggleExpandAll={toggleExpandAll}
+                                />
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
@@ -1247,6 +1270,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-52">
+                            {canGroupCopies && (
+                              <>
+                                <CopyGroupMenuItems
+                                  groupCopies={groupCopiesSetting}
+                                  expandAll={groupExpansion.expandAll}
+                                  onToggleGroupCopies={toggleGroupCopies}
+                                  onToggleExpandAll={toggleExpandAll}
+                                />
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
@@ -1491,6 +1525,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       </>
                     )}
                   </div>
+                  {copyGroupsReady === false && (
+                    <span className="flex items-center gap-1 opacity-70">
+                      <Loader2 className="h-3 w-3 animate-spin"/>
+                      {t("copyGroups.grouping")}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs">

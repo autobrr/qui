@@ -1853,6 +1853,10 @@
     "hiddenTicked_few": "Вибрано {{count}} приховані копії",
     "hiddenTicked_many": "Вибрано {{count}} прихованих копій",
     "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
-    "labelWithTicks": "{{label}}. {{ticks}}"
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Групувати копії",
+    "expandAll": "Розгорнути все",
+    "collapseAll": "Згорнути все",
+    "grouping": "Групування…"
   }
 }
