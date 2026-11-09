@@ -452,7 +452,6 @@ func TestExpandTagStatesForCrossSeeds_InjectedConflictsResolveByRuleOrder(t *tes
 }
 
 func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
-
 	// Trigger matches the condition; the sibling carries the tag but does not
 	// match. Full mode alone would strip the sibling; any-match-wins expansion
 	// must converge both copies on the tag instead.
@@ -490,7 +489,6 @@ func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
 }
 
 func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) {
-
 	// Run 2 of the any-match-wins scenario: the trigger matches and already
 	// carries the tag (no local change), the sibling carries the tag but does
 	// not match. The trigger's assert intent must cancel the sibling's
@@ -526,7 +524,6 @@ func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) 
 }
 
 func TestProcessAndExpand_Tag_DeleteFromClient_ReaddsSiblings(t *testing.T) {
-
 	// DeleteFromClient wholesale-deletes the managed tag before re-adding
 	// matches; expanded siblings must land in tagChanges so they are re-added.
 	torrents := []qbt.Torrent{

@@ -124,7 +124,6 @@ func previewRows(result *PreviewResult) map[string]bool {
 }
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -164,7 +163,6 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -208,7 +206,6 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -247,7 +244,6 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 }
 
 func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -314,7 +310,6 @@ func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T)
 }
 
 func TestProcessTorrents_GroupConditionWithoutGroupID_UsesDefaultFallback(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -575,7 +570,6 @@ func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
 }
 
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -616,7 +610,6 @@ func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 }
 
 func TestMoveBlockedByCrossSeed(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -661,7 +654,6 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 }
 
 func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
-
 	// Test with a single torrent that has no cross-seed partner,
 	// so it won't be blocked even with BlockIfCrossSeed=true
 	torrents := []qbt.Torrent{
@@ -695,7 +687,6 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 }
 
 func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -740,7 +731,6 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 }
 
 func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -785,7 +775,6 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 }
 
 func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -1923,7 +1912,6 @@ func TestSortValues_DifferFromCondition(t *testing.T) {
 }
 
 func TestProcessTorrents_PauseResume(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:  "a",
@@ -1964,7 +1952,6 @@ func TestProcessTorrents_PauseResume(t *testing.T) {
 }
 
 func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndependently(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:    "a",
@@ -2020,7 +2007,6 @@ func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndepende
 }
 
 func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependently(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:             "a",
@@ -2076,7 +2062,6 @@ func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependent
 }
 
 func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
-
 	// Torrent is currently paused
 	torrents := []qbt.Torrent{
 		{
@@ -2120,7 +2105,6 @@ func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 }
 
 func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
-
 	// Torrent is currently running (downloading)
 	torrents := []qbt.Torrent{
 		{
@@ -2164,7 +2148,6 @@ func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_ConditionMet(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2204,7 +2187,6 @@ func TestProcessTorrents_ExternalProgram_ConditionMet(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_ConditionNotMet(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2239,7 +2221,6 @@ func TestProcessTorrents_ExternalProgram_ConditionNotMet(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2272,7 +2253,6 @@ func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_Disabled(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2301,7 +2281,6 @@ func TestProcessTorrents_ExternalProgram_Disabled(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2349,7 +2328,6 @@ func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
 }
 
 func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "abc123",
@@ -2395,7 +2373,6 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 }
 
 func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash: "abc123",
@@ -2435,7 +2412,6 @@ func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testi
 }
 
 func TestProcessTorrents_Tag_FullMode_NoOpForAlreadyMatchingTag(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash: "abc123",
@@ -2512,7 +2488,6 @@ func TestProcessTorrents_Tag_IncludeCrossSeeds_RecordsExpansionIntent(t *testing
 
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-
 			torrents := []qbt.Torrent{
 				{
 					Hash: "abc123",
@@ -2610,7 +2585,6 @@ func TestProcessTorrents_Tag_SteadyStateRecordsAssertIntent(t *testing.T) {
 }
 
 func TestProcessTorrents_Tag_IncludeCrossSeeds_TrackerAsTagNeverRecordsIntent(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:    "abc123",
@@ -2643,7 +2617,6 @@ func TestProcessTorrents_Tag_IncludeCrossSeeds_TrackerAsTagNeverRecordsIntent(t 
 }
 
 func TestProcessTorrents_Tag_LaterRuleWithoutExpansionClearsIntent(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash: "abc123",
@@ -2750,7 +2723,6 @@ func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
