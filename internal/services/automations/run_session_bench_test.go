@@ -109,9 +109,7 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 					b.Fatal(err)
 				}
 				// As applyRulesForInstance does, with the free space of the stub.
-				evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{GetFreeSpaceRuleKey(freeSpace): {
-					FreeSpace: 1000, FilesToClear: make(map[string]int64), CrossSeedHashesToClear: make(map[string]struct{}),
-				}}
+				evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(1000, freeSpace)
 				groups := buildCrossSeedGroups(torrents, evalCtx)
 				svc.loadCrossSeedFiles(ctx, instance.ID, groups, evalCtx, nil)
 				selection := svc.selectDeletions(ctx, instance.ID, deletionSelectionInput{rules: tc.rules, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups})

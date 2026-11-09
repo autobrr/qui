@@ -463,19 +463,17 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	}
 	type outcome struct {
 		selected []string
-		state    FreeSpaceSourceState
+		ledger   freeSpaceLedger
 	}
 	run := func(evalCtx *EvalContext, groups *crossSeedGroups) outcome {
 		evalCtx.hardlinkIndex = hardlinks
-		evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{GetFreeSpaceRuleKey(rule): {
-			FilesToClear: make(map[string]int64), CrossSeedHashesToClear: make(map[string]struct{}),
-		}}
+		evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, rule)
 		svc := &Service{}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
 			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups,
 			skip: func(hash string) bool { return hash != "source" },
 		})
-		return outcome{slices.Sorted(maps.Keys(selection.byHash)), *evalCtx.FreeSpaceStates[GetFreeSpaceRuleKey(rule)]}
+		return outcome{slices.Sorted(maps.Keys(selection.byHash)), *evalCtx.freeSpaceLedgers[rule.ID]}
 	}
 
 	evalCtx, matcher := openTestRunSession(t, torrents, links, files)
@@ -491,7 +489,7 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	require.Equal(t, run(whole, buildCrossSeedGroups(torrents, whole)), scoped)
 	require.Equal(t, []string{"copyA", "copyB", "packA", "packB", "source"}, scoped.selected)
 	// The shared inode counts once, plus 02.mkv of each pack.
-	require.Equal(t, int64(3000), scoped.state.SpaceToClear)
+	require.Equal(t, int64(3000), scoped.ledger.projectedFreedBytes())
 }
 
 // A and B pick X, X picks neither, and qBittorrent does not return the file

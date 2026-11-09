@@ -28,8 +28,6 @@ type deletionSelectionInput struct {
 	// skip leaves out the torrents that a live run handled recently. The dry run and the
 	// preview pass nil.
 	skip func(hash string) bool
-	// eligibleView ignores the FREE_SPACE stop, for the "eligible" preview view.
-	eligibleView bool
 	// stats is optional and counts the delete conditions per rule.
 	stats map[int]*ruleRunStats
 }
@@ -153,7 +151,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 			continue
 		}
-		loadRuleScopedEvalContext(rule, in.torrents, evalCtx, s.syncManager)
+		enterRule(evalCtx, rule, in.torrents, s.syncManager)
 		if sortedFor == nil || !rulesCanShareSortingBatch(sortedFor, rule) {
 			SortTorrentsWithFallback(in.torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 			sortedFor = rule
@@ -161,9 +159,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		ruleClaims, err := s.claimDeleteTriggers(rule, in, sel, trackers)
 		if err != nil {
 			sel.failedRules[rule.ID] = err
-			evalCtx.SpaceToClear = 0
-			clear(evalCtx.FilesToClear)
-			clear(evalCtx.FileBytesToClear)
+			evalCtx.activeFreeSpace.reset()
 			continue
 		}
 		for _, claim := range ruleClaims {
@@ -171,7 +167,6 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		}
 		claims = append(claims, ruleClaims...)
 	}
-	evalCtx.PersistFreeSpaceSourceState()
 	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
 	// The sort order is final now, so pointers into in.torrents stay valid.
@@ -237,7 +232,7 @@ func deleteExpandsGroups(rule *models.Automation) bool {
 func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection, trackers *trackerMatchCache) ([]deletionClaim, error) {
 	deleteAction := rule.Conditions.Delete
 	deleteMode := getDeleteMode(rule)
-	projects := !in.eligibleView && ConditionUsesField(deleteAction.Condition, FieldFreeSpace)
+	ledger := in.evalCtx.activeFreeSpace
 	readsPrivate := ruleUsesCondition(rule, FieldPrivate)
 	stats := getOrCreateRuleStats(in.stats, rule)
 	countNotMet := func() {
@@ -254,7 +249,7 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 		return trackers.match(rule.TrackerPattern, *torrent, s) && (!readsPrivate || !qbittorrent.PrivateUnknown(torrent))
 	}
 	var readAhead *freeSpaceReadAhead
-	if projects && in.evalCtx.FilesToClear != nil {
+	if ledger.projects() {
 		var hardlinks *HardlinkIndex
 		if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && deleteAction.IncludeHardlinks {
 			hardlinks = in.evalCtx.hardlinkIndex
@@ -273,9 +268,9 @@ func (s *Service) claimDeleteTriggers(rule *models.Automation, in deletionSelect
 			countNotMet()
 			continue
 		}
-		if projects {
+		if ledger.projects() {
 			readAhead.ask(in.torrents, i, inScope)
-			if !updateCumulativeFreeSpaceCleared(*torrent, in.evalCtx, deleteMode, in.crossSeeds, deleteAction.IncludeHardlinks) {
+			if !ledger.count(*torrent, in.crossSeeds, in.evalCtx) {
 				countNotMet()
 				if deleteMode == DeleteModeWithFiles {
 					return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
@@ -372,7 +367,7 @@ func (s *Service) expandDeleteTrigger(
 			!s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, trigger.Hash, in.evalCtx.torrentsByHash) {
 			return
 		}
-		loadRuleScopedEvalContext(rule, in.torrents, in.evalCtx, s.syncManager)
+		enterRule(in.evalCtx, rule, in.torrents, s.syncManager)
 		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
 			groupHasDroppedMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}

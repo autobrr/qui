@@ -486,10 +486,10 @@ func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
 		},
 	}
 	torrents := []qbt.Torrent{{Hash: "a"}}
-	evalCtx := &EvalContext{FreeSpace: 100}
+	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(100, 0)}
 
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
-	evalCtx.FreeSpace = 25
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(25, 0)
 
 	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
 	require.NotNil(t, score)
@@ -1263,7 +1263,7 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 	}
 
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
-	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, true)
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
 	result := s.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
@@ -1309,7 +1309,7 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 				evalCtx.CrossSeedFilesByHash = nil
 			}
 			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, eligibleView: true,
+				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups,
 			})
 			result := svc.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
 			if unread {
@@ -1862,36 +1862,6 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// updateCumulativeFreeSpaceCleared tests for preview view behavior
-// -----------------------------------------------------------------------------
-
-func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
-	// Test that "needed" mode updates cumulative space tracking
-	// so FREE_SPACE condition stops matching after target is satisfied
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1", SavePath: "/data"}, // 100 GB
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2", SavePath: "/data"},  // 50 GB
-		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/movie3", SavePath: "/data"},  // 30 GB
-	}
-
-	evalCtx := &EvalContext{
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
-	}
-
-	// Simulate "needed" mode processing: each deletion updates SpaceToClear
-	crossSeeds := testCrossSeedGroups(allTorrents)
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
-
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
-
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
-}
-
 func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	// Test that cross-seed expansion works the same way in both views
 	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
@@ -1916,14 +1886,11 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 }
 
 func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
-	// Test that FREE_SPACE condition logic respects SpaceToClear projection
-	// When SpaceToClear + FreeSpace >= target, condition should stop matching
+	// The FREE_SPACE condition reads the Projected free space: it stops matching
+	// once the free space at the start plus the Projected freed bytes reaches the target.
 
 	// Simulate 400GB free, target 500GB => need to clear 100GB
-	evalCtx := &EvalContext{
-		FreeSpace:    400000000000, // 400 GB
-		SpaceToClear: 0,
-	}
+	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(400000000000, 0)} // 400 GB
 
 	// Create a FREE_SPACE < 500GB condition (value in bytes)
 	condition := &RuleCondition{
@@ -1938,7 +1905,7 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	assert.True(t, match1, "Should match when effective free space is below target")
 
 	// Simulate clearing 50GB
-	evalCtx.SpaceToClear = 50000000000 // 50GB
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 50000000000) // 50GB freed
 
 	// Now: 400GB free + 50GB to be cleared = 450GB effective
 	// 450GB < 500GB => should still match
@@ -1946,7 +1913,7 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	assert.True(t, match2, "Should match when effective free space is still below target")
 
 	// Simulate clearing another 60GB (total 110GB)
-	evalCtx.SpaceToClear = 110000000000 // 110GB
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 110000000000) // 110GB freed
 
 	// Now: 400GB free + 110GB to be cleared = 510GB effective
 	// 510GB < 500GB => false, should NOT match

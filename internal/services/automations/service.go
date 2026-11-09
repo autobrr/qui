@@ -1136,7 +1136,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 }
 
 // previewEvalContext builds the evaluation context for a preview of one rule. A preview goes
-// on without the instance when it cannot load it.
+// on without the instance when it cannot load it, unless the rule reads FREE_SPACE.
 func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent) (*EvalContext, *HardlinkIndex, *models.Instance, error) {
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
@@ -1148,27 +1148,6 @@ func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *
 	}
 	s.askRuleFacts([]*models.Automation{rule}, torrents, evalCtx, nil)
 	return evalCtx, hardlinkIndex, instance, nil
-}
-
-// setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
-func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rule *models.Automation, evalCtx *EvalContext, instance *models.Instance) error {
-	if instance == nil || !ruleUsesCondition(rule, FieldFreeSpace) {
-		return nil
-	}
-
-	// The rule needs FREE_SPACE; evaluating without it would silently
-	// treat the disk as having no data. Fail the setup instead.
-	freeSpace, err := s.freeSpaceBytes(ctx, instance, rule.FreeSpaceSource)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
-		return fmt.Errorf("failed to get free space: %w", err)
-	}
-	evalCtx.FreeSpace = freeSpace
-	evalCtx.FilesToClear = make(map[string]int64)
-	if ruleUsesIncludeCrossSeedsFreeSpace(rule) {
-		evalCtx.CrossSeedHashesToClear = make(map[string]struct{})
-	}
-	return nil
 }
 
 // getTrackerForTorrent returns the first tracker domain for a torrent.
@@ -1213,11 +1192,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, err
 	}
-	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-
-	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible")
+	if err != nil {
 		return nil, err
 	}
+	enterRule(evalCtx, rule, torrents, s.syncManager)
 
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
@@ -1231,11 +1210,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 
 	selection := s.selectDeletions(ctx, instanceID, deletionSelectionInput{
-		rules:        []*models.Automation{rule},
-		torrents:     torrents,
-		evalCtx:      evalCtx,
-		crossSeeds:   crossSeeds,
-		eligibleView: previewView == "eligible",
+		rules:      []*models.Automation{rule},
+		torrents:   torrents,
+		evalCtx:    evalCtx,
+		crossSeeds: crossSeeds,
 	})
 	if err := selection.failedRules[rule.ID]; err != nil {
 		return nil, err
@@ -1467,11 +1445,13 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
-	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false)
+	if err != nil {
 		return nil, err
 	}
 
-	// The plan step activates the grouping of the rule and sorts torrents in the sort order of the rule.
+	// The plan step enters the rule, which activates its grouping and its free space ledger for the
+	// score map, and sorts torrents in the sort order of the rule.
 	plan, own := s.planPreview(ctx, instanceID, rule, keep, torrents, evalCtx, crossSeeds)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
@@ -1809,51 +1789,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	// Get free space on instance (only if rules use FREE_SPACE field)
-	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if needs.FreeSpace {
-		// Initialize per-rule free space states.
-		// Each rule gets its own projection state (keyed by source + rule ID),
-		// ensuring rules with different thresholds on the same disk don't interfere.
-		evalCtx.FreeSpaceStates = make(map[string]*FreeSpaceSourceState)
-
-		// First, cache free space by source key to avoid redundant disk reads
-		freeSpaceBySourceKey := make(map[string]int64)
-		for _, r := range eligibleRules {
-			if !ruleUsesCondition(r, FieldFreeSpace) {
-				continue
-			}
-			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			if _, cached := freeSpaceBySourceKey[sourceKey]; cached {
-				continue
-			}
-
-			freeSpace, err := s.freeSpaceBytes(ctx, instance, r.FreeSpaceSource)
-			if err != nil {
-				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
-				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
-				s.notifyAutomationFailure(ctx, instanceID, wrapped)
-				return nil, wrapped
-			}
-			freeSpaceBySourceKey[sourceKey] = freeSpace
-		}
-
-		// Now create per-rule states using cached free space values
-		for _, r := range eligibleRules {
-			if !ruleUsesCondition(r, FieldFreeSpace) {
-				continue
-			}
-			ruleKey := GetFreeSpaceRuleKey(r)
-			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			state := &FreeSpaceSourceState{
-				FreeSpace:    freeSpaceBySourceKey[sourceKey],
-				SpaceToClear: 0,
-				FilesToClear: make(map[string]int64),
-			}
-			if ruleUsesIncludeCrossSeedsFreeSpace(r) {
-				state.CrossSeedHashesToClear = make(map[string]struct{})
-			}
-			evalCtx.FreeSpaceStates[ruleKey] = state
+		evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, eligibleRules, false)
+		if err != nil {
+			s.notifyAutomationFailure(ctx, instanceID, err)
+			return nil, err
 		}
 	}
 
@@ -4456,16 +4396,6 @@ func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConf
 	}
 }
 
-func loadRuleScopedEvalContext(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager) {
-	if evalCtx == nil {
-		return
-	}
-	if ruleUsesCondition(rule, FieldFreeSpace) {
-		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(evalCtx, rule, torrents, sm)
-}
-
 func executeBatch(
 	instanceID int,
 	currentBatch []*models.Automation,
@@ -4483,7 +4413,7 @@ func executeBatch(
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
-	loadRuleScopedEvalContext(currentBatch[0], torrents, evalCtx, sm)
+	enterRule(evalCtx, currentBatch[0], torrents, sm)
 	SortTorrentsWithFallback(torrents, currentBatch[0].SortingConfig, evalCtx, instanceID, currentBatch[0].Name)
 
 	// 2. Process rules

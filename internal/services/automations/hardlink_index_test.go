@@ -960,13 +960,13 @@ func TestDeletionSelection_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 		}},
 	}
 	evalCtx := &EvalContext{InstanceHasTrustedIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
-	require.Empty(t, selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false).triggers)
+	require.Empty(t, selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers)
 
 	// Known unlinked torrents still match the same delete rule.
 	for _, torrent := range torrents {
 		index.ScopeByHash[torrent.Hash] = HardlinkScopeNone
 	}
-	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false)
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
 	require.Len(t, selection.triggers, len(torrents))
 	for _, torrent := range torrents {
 		require.Contains(t, selection.byHash, torrent.Hash)

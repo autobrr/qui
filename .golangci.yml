@@ -107,6 +107,9 @@ linters:
         - pattern: ^automations\.CrossMatcher\.OpenCrossMatchSession$
           pkg: ^github\.com/autobrr/qui/internal/services/automations$
           msg: ask the run session in internal/services/automations/run_session.go for Shared-file groups (ADR 0042)
+        - pattern: ^automations\.(Service\.freeSpaceBytes|freeSpaceLedger\.(startBytes|projectsDeletes|deleteMode|includeHardlinks|freedBytes|countedPaths|countedMembers))$
+          pkg: ^github\.com/autobrr/qui/internal/services/automations$
+          msg: ask the free space ledger in internal/services/automations/free_space_ledger.go
         - pattern: ^crossseed\.CrossMatchSession\.Resolve$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the run session in internal/services/automations/run_session.go for Shared-file groups (ADR 0042)
@@ -218,6 +221,12 @@ linters:
         linters:
           - forbidigo
         text: protected path module
+
+      # Only the free space ledger reads the free space of a source and keeps its count.
+      - path: internal/services/automations/(free_space_ledger(_test)?|free_space(_backend)?_test)\.go$
+        linters:
+          - forbidigo
+        text: free space ledger
 
       # Only the Search scope module decides what a search asks (ADR 0029).
       - path: internal/services/crossseed/search_scope\.go$|_test\.go$
