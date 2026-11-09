@@ -3659,19 +3659,33 @@ func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
 	require.Equal(t, files, fm.cached["done"], "the list that came back before the cancel is in the file cache")
 }
 
-// regression: #3739
+// regression: #3739, #3934
 func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
 	t.Parallel()
 
-	sm := &SyncManager{}
-	var got []string
-	sm.SetFilesChangedHandler(func(instanceID int, hash string) {
-		got = append(got, fmt.Sprintf("%d|%s", instanceID, hash))
-	})
+	tests := []struct {
+		name string
+		hash string
+		want string
+	}{
+		{name: "a proxy rename drops the remembered cross-seed read", hash: "abc", want: "3|abc"},
+		{name: "subscribers key on the lowercase hash, like the file cache", hash: "ABC", want: "3|abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+			sm := &SyncManager{}
+			var got []string
+			sm.SetFilesChangedHandler(func(instanceID int, hash string) {
+				got = append(got, fmt.Sprintf("%d|%s", instanceID, hash))
+			})
 
-	require.Equal(t, []string{"3|abc"}, got, "a proxy rename drops the remembered cross-seed read")
+			require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, tt.hash))
+
+			require.Equal(t, []string{tt.want}, got)
+		})
+	}
 }
 
 func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {

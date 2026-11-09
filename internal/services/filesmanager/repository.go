@@ -839,7 +839,7 @@ func dedupeHashes(hashes []string) []string {
 	seen := make(map[string]struct{}, len(hashes))
 	unique := make([]string, 0, len(hashes))
 	for _, h := range hashes {
-		h = strings.TrimSpace(h)
+		h = strings.ToLower(strings.TrimSpace(h))
 		if h == "" {
 			continue
 		}

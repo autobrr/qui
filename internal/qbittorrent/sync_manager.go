@@ -621,7 +621,7 @@ func (sm *SyncManager) SetFilesChangedHandler(handler func(instanceID int, hash 
 
 func (sm *SyncManager) notifyFilesChanged(instanceID int, hash string) {
 	if handler := sm.filesChangedHandler.Load(); handler != nil {
-		(*handler)(instanceID, hash)
+		(*handler)(instanceID, canonicalizeHash(hash))
 	}
 }
 
