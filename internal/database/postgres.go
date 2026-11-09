@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -106,27 +107,51 @@ func postgresConnConfig(dsn string) (*pgx.ConnConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres dsn: %w", err)
 	}
+	useUTCSessionZone(config)
+	return config, nil
+}
+
+func useUTCSessionZone(config *pgx.ConnConfig) {
 	maps.DeleteFunc(config.RuntimeParams, func(name, _ string) bool {
 		return strings.EqualFold(name, "timezone")
 	})
 	config.RuntimeParams["timezone"] = "UTC"
-	return config, nil
 }
 
 func openPostgresDB(config *pgx.ConnConfig) *sql.DB {
-	return stdlib.OpenDB(*config, stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
-		registerUTCTimestampCodec(conn.TypeMap())
-		return nil
-	}))
+	return stdlib.OpenDB(*config, stdlib.OptionAfterConnect(registerUTCTimestampCodec))
+}
+
+// openPostgresPool opens a pgx pool with the same session zone and timestamp
+// codec as the pools of the app.
+func openPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres dsn: %w", err)
+	}
+	useUTCSessionZone(config.ConnConfig)
+	config.AfterConnect = registerUTCTimestampCodec
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres pool: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+	return pool, nil
 }
 
 // registerUTCTimestampCodec makes pgx bind each time as its UTC wall clock.
 // The default codec writes the wall clock of the time's own zone into a
 // TIMESTAMP value and drops the zone.
-func registerUTCTimestampCodec(m *pgtype.Map) {
+func registerUTCTimestampCodec(_ context.Context, conn *pgx.Conn) error {
+	m := conn.TypeMap()
 	timestamp := &pgtype.Type{Name: "timestamp", OID: pgtype.TimestampOID, Codec: &utcTimestampCodec{}}
 	m.RegisterType(timestamp)
 	m.RegisterType(&pgtype.Type{Name: "_timestamp", OID: pgtype.TimestampArrayOID, Codec: &pgtype.ArrayCodec{ElementType: timestamp}})
+	return nil
 }
 
 type utcTimestampCodec struct {
