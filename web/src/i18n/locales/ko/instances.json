@@ -24,7 +24,7 @@
       "tlsSkipped": "건너뜀",
       "tlsStrict": "엄격",
       "testingConnection": "연결 테스트 중...",
-      "fileAccess": "File access:"
+      "fileAccess": "파일 접근:"
     },
     "deleteDialog": {
       "title": "인스턴스 삭제",
@@ -111,7 +111,7 @@
       "usernamePassword": "사용자 이름 및 비밀번호",
       "apiKey": "API 키"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "인스턴스 파일에 대한 SSH 접근은 저장 후 인스턴스 설정에서 구성합니다."
   },
   "settingsButton": {
     "tooltip": "인스턴스 설정"
@@ -165,8 +165,8 @@
           "title": "시딩 제한"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "SSH 접근",
+          "description": "qui와 qBittorrent가 서로 다른 머신에서 실행될 때 SSH로 이 인스턴스의 파일에 접근합니다"
         }
       }
     },
@@ -1729,88 +1729,88 @@
       "testEmailFailed": "테스트 이메일을 보내지 못했습니다"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "로컬 파일시스템 접근이 켜져 있어 qui는 이 인스턴스의 파일을 로컬에서 읽으며 이 SSH 설정을 사용하지 않습니다.",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
-        "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "host": "SSH 호스트",
+        "hostDescription": "이 인스턴스의 파일이 있는 머신의 호스트 이름 또는 IP 주소입니다. 스킴과 포트는 제외합니다. 호스트나 포트를 변경하면 고정된 호스트 키가 삭제되어 다음 테스트는 다시 첫 연결이 됩니다.",
+        "port": "포트",
+        "username": "사용자 이름",
+        "privateKey": "개인 키",
+        "privateKeyDescription": "암호 구문이 없는 OpenSSH 개인 키입니다. qui는 이를 암호화해 저장하며 다시 표시하지 않습니다. 호스트, 포트 또는 사용자 이름이 바뀌면 다시 입력해야 합니다."
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "키가 저장되어 있습니다. 교체하려면 새 키를 붙여넣으세요."
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "SSH 호스트는 필수입니다",
+        "portRange": "포트는 1에서 65535 사이여야 합니다",
+        "usernameRequired": "사용자 이름은 필수입니다",
+        "keyRequired": "호스트, 포트 또는 사용자 이름이 바뀌면 개인 키가 필요합니다"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "SSH 설정 저장",
+        "clear": "SSH 접근 제거",
+        "test": "연결 테스트",
+        "testing": "테스트 중...",
+        "confirm": "호스트 키 확인",
+        "replace": "호스트 키 교체"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "연결",
+        "pinnedAtRest": "호스트 키가 고정되었습니다. 호스트가 허용하는 기능을 보려면 연결을 테스트하세요.",
+        "unpinnedAtRest": "아직 고정된 호스트 키가 없습니다. 호스트의 지문을 확인하려면 연결을 테스트하세요."
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "첫 연결",
+          "text": "확인하기 전에 이 지문을 호스트의 지문과 비교하세요. 이후 연결에서는 다른 키를 모두 거부합니다."
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "호스트 키 고정됨"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "호스트 키 변경됨",
+          "text": "호스트가 고정된 키와 다른 키를 제시했습니다. 서버를 재설치한 경우처럼 변경이 예상될 때만 고정 키를 교체하세요."
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "고정된 키를 읽을 수 없음",
+          "text": "저장된 고정 키를 복호화할 수 없습니다. 보통 qui의 암호화 키가 바뀌었기 때문입니다. 계속하려면 교체하세요.",
+          "noKey": "호스트가 응답하지 않아 교체할 키가 없습니다."
         },
         "error": {
-          "title": "Connection failed"
+          "title": "연결 실패"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "지문",
+        "pinned": "고정됨",
+        "presented": "제시됨"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "등급: {{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + 명령 실행",
+        "tierHint": "명령 실행에는 호스트에 GNU find와 stat이 있는 POSIX 셸이 필요합니다. 없으면 qui는 SFTP만 사용하며 파일 식별 정보를 읽을 수 없습니다.",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
-        "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "statvfs": "여유 공간 (statvfs)",
+        "hardlink": "하드링크 (hardlink@openssh.com)",
+        "limits": "limits 확장",
+        "exec": "명령 실행",
+        "gnuUserland": "GNU find 및 stat",
+        "yes": "사용 가능",
+        "no": "사용 불가"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "고정된 호스트 키를 교체할까요?",
+        "description": "qui는 이제부터 이 호스트에 대해 제시된 키를 신뢰하고 고정된 키를 거부합니다.",
+        "cancel": "취소",
+        "confirm": "교체"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "SSH 설정이 저장되었습니다",
+        "cleared": "SSH 접근이 제거되었습니다"
       }
     }
   },
@@ -2062,15 +2062,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "로컬",
+    "remote": "SSH 경유",
+    "none": "없음",
+    "localFull": "qui가 이 인스턴스의 파일을 이 컴퓨터에서 읽고 씁니다.",
+    "remoteFull": "qui가 이 인스턴스의 파일을 SSH를 통해 읽고 쓰며, 파일 식별 정보를 사용합니다.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "파일 식별 정보 없음: qui는 두 경로가 같은 파일인지 구분할 수 없습니다. 여기서는 고아 항목 스캔이 삭제할 수 없고, 이미 존재하는 하드링크 대상이 있으면 하드링크 추가가 중단됩니다.",
+      "noReflinks": "원격 인스턴스에서는 리플링크를 사용할 수 없습니다.",
+      "noHardlinkExtension": "하드링크 없음: 서버가 hardlink@openssh.com을 지원한다고 알리지 않습니다. 여기서는 크로스시드 하드링크 추가가 실패하거나, \"오류 시 일반 모드로 대체\"가 켜져 있으면 일반 모드로 추가됩니다."
     }
   }
 }

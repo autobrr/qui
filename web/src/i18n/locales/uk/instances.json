@@ -24,7 +24,7 @@
       "tlsSkipped": "Пропущено",
       "tlsStrict": "Суворий",
       "testingConnection": "Перевірка підключення...",
-      "fileAccess": "File access:"
+      "fileAccess": "Доступ до файлів:"
     },
     "deleteDialog": {
       "title": "Видалити екземпляр",
@@ -111,7 +111,7 @@
       "usernamePassword": "Ім'я користувача та пароль",
       "apiKey": "Ключ API"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "Доступ через SSH до файлів екземпляра налаштовується в налаштуваннях екземпляра після збереження."
   },
   "settingsButton": {
     "tooltip": "Налаштування екземпляра"
@@ -165,8 +165,8 @@
           "title": "Обмеження роздавання"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "Доступ через SSH",
+          "description": "Отримуйте доступ до файлів цього екземпляра через SSH, коли qui та qBittorrent працюють на різних машинах"
         }
       }
     },
@@ -1816,88 +1816,88 @@
       "testEmailFailed": "Не вдалося надіслати тестовий лист"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "Доступ до локальної файлової системи ввімкнено, тому qui читає файли цього екземпляра локально й не використовує ці налаштування SSH.",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
-        "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "host": "Хост SSH",
+        "hostDescription": "Ім'я хоста або IP-адреса машини, на якій зберігаються файли цього екземпляра, без схеми та порту. Зміна хоста або порту скидає закріплений ключ хоста, тому наступна перевірка знову буде першим контактом.",
+        "port": "Порт",
+        "username": "Ім'я користувача",
+        "privateKey": "Приватний ключ",
+        "privateKeyDescription": "Приватний ключ OpenSSH без пароля. qui зберігає його в зашифрованому вигляді й більше ніколи не показує. Він знову знадобиться, коли зміниться хост, порт або ім'я користувача."
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "Ключ збережено. Вставте новий, щоб замінити його."
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "Потрібен хост SSH",
+        "portRange": "Порт має бути в діапазоні від 1 до 65535",
+        "usernameRequired": "Потрібне ім'я користувача",
+        "keyRequired": "Приватний ключ потрібен, коли змінюється хост, порт або ім'я користувача"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "Зберегти налаштування SSH",
+        "clear": "Вилучити доступ через SSH",
+        "test": "Перевірити підключення",
+        "testing": "Перевірка...",
+        "confirm": "Підтвердити ключ хоста",
+        "replace": "Замінити ключ хоста"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "Підключення",
+        "pinnedAtRest": "Ключ хоста закріплено. Перевірте підключення, щоб побачити, що дозволяє хост.",
+        "unpinnedAtRest": "Ключ хоста ще не закріплено. Перевірте підключення, щоб підтвердити відбиток хоста."
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "Перший контакт",
+          "text": "Порівняйте цей відбиток із відбитком хоста, перш ніж підтвердити його. Наступні підключення відхилятимуть будь-який інший ключ."
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "Ключ хоста закріплено"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "Ключ хоста змінився",
+          "text": "Хост надав інший ключ, ніж закріплений. Замінюйте закріплений ключ лише тоді, коли очікуєте зміни, наприклад після перевстановлення сервера."
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "Закріплений ключ нечитабельний",
+          "text": "Збережений закріплений ключ не вдається розшифрувати, зазвичай тому, що змінився ключ шифрування qui. Замініть його, щоб продовжити.",
+          "noKey": "Хост не відповів, тому немає ключа, яким можна його замінити."
         },
         "error": {
-          "title": "Connection failed"
+          "title": "Помилка підключення"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "Відбиток",
+        "pinned": "Закріплений",
+        "presented": "Наданий"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "Рівень: {{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + команди",
+        "tierHint": "Для команд на хості потрібна оболонка POSIX із GNU find і stat. Без них qui використовує лише SFTP і не може читати ідентичність файлів.",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
-        "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "statvfs": "Вільне місце (statvfs)",
+        "hardlink": "Жорсткі посилання (hardlink@openssh.com)",
+        "limits": "Розширення limits",
+        "exec": "Команди",
+        "gnuUserland": "GNU find і stat",
+        "yes": "Доступно",
+        "no": "Недоступно"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "Замінити закріплений ключ хоста?",
+        "description": "Відтепер qui довірятиме наданому ключу для цього хоста й відхилятиме закріплений.",
+        "cancel": "Скасувати",
+        "confirm": "Замінити"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "Налаштування SSH збережено",
+        "cleared": "Доступ через SSH вилучено"
       }
     }
   },
@@ -2152,15 +2152,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "Локальний",
+    "remote": "Через SSH",
+    "none": "Немає",
+    "localFull": "qui читає та записує файли цього екземпляра на цьому комп'ютері.",
+    "remoteFull": "qui читає та записує файли цього екземпляра через SSH, з ідентичністю файлів.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Немає ідентичності файлів: qui не може визначити, що два шляхи ведуть до одного файлу. Орфанне сканування тут не може видаляти, а наявна ціль жорсткого посилання зупиняє додавання через жорстке посилання.",
+      "noReflinks": "Рефлінки на віддаленому екземплярі недоступні.",
+      "noHardlinkExtension": "Немає жорстких посилань: сервер не оголошує hardlink@openssh.com. Додавання крос-сіду через жорстке посилання тут не вдається або виконується у звичайному режимі, якщо ввімкнено «Перехід до звичайного режиму при помилці»."
     }
   }
 }

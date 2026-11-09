@@ -24,7 +24,7 @@
       "tlsSkipped": "已跳过",
       "tlsStrict": "严格",
       "testingConnection": "正在测试连接...",
-      "fileAccess": "File access:"
+      "fileAccess": "文件访问："
     },
     "deleteDialog": {
       "title": "删除实例",
@@ -111,7 +111,7 @@
       "usernamePassword": "用户名和密码",
       "apiKey": "API 密钥"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "保存后，可在实例设置中配置通过 SSH 访问该实例的文件。"
   },
   "settingsButton": {
     "tooltip": "实例设置"
@@ -165,8 +165,8 @@
           "title": "做种限制"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "SSH 访问",
+          "description": "当 qui 与 qBittorrent 运行在不同机器上时，通过 SSH 访问此实例的文件"
         }
       }
     },
@@ -1729,88 +1729,88 @@
       "testEmailFailed": "发送测试邮件失败"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "本地文件系统访问已开启，qui 会在本地读取此实例的文件，不使用这些 SSH 设置。",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
-        "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "host": "SSH 主机",
+        "hostDescription": "存放此实例文件的机器的主机名或 IP 地址，不含协议和端口。更改主机或端口会丢弃已固定的主机密钥，下次测试将再次视为首次连接。",
+        "port": "端口",
+        "username": "用户名",
+        "privateKey": "私钥",
+        "privateKeyDescription": "不带密码短语的 OpenSSH 私钥。qui 会加密存储且不再显示。主机、端口或用户名更改后需要重新提供。"
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "已存储一个密钥。粘贴新密钥即可替换。"
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "SSH 主机为必填项",
+        "portRange": "端口必须在 1 到 65535 之间",
+        "usernameRequired": "用户名为必填项",
+        "keyRequired": "主机、端口或用户名更改后需要提供私钥"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "保存 SSH 设置",
+        "clear": "移除 SSH 访问",
+        "test": "测试连接",
+        "testing": "测试中...",
+        "confirm": "确认主机密钥",
+        "replace": "替换主机密钥"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "连接",
+        "pinnedAtRest": "主机密钥已固定。测试连接以查看主机允许的功能。",
+        "unpinnedAtRest": "尚未固定主机密钥。测试连接以确认主机的指纹。"
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "首次连接",
+          "text": "确认前请将此指纹与主机的指纹进行比对。之后的连接将拒绝任何其他密钥。"
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "主机密钥已固定"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "主机密钥已更改",
+          "text": "主机提供的密钥与已固定的不同。仅在预期发生变化时（例如服务器重装后）才替换固定的密钥。"
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "固定的密钥无法读取",
+          "text": "无法解密已存储的固定密钥，通常是因为 qui 的加密密钥已更改。请替换后继续。",
+          "noKey": "主机未响应，因此没有可用于替换的密钥。"
         },
         "error": {
-          "title": "Connection failed"
+          "title": "连接失败"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "指纹",
+        "pinned": "已固定",
+        "presented": "本次提供"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "级别：{{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + 命令执行",
+        "tierHint": "命令执行需要主机上有带 GNU find 和 stat 的 POSIX shell。否则 qui 仅使用 SFTP，无法读取文件标识。",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
-        "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "statvfs": "可用空间（statvfs）",
+        "hardlink": "硬链接（hardlink@openssh.com）",
+        "limits": "limits 扩展",
+        "exec": "命令执行",
+        "gnuUserland": "GNU find 和 stat",
+        "yes": "可用",
+        "no": "不可用"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "替换已固定的主机密钥？",
+        "description": "qui 今后将信任此主机本次提供的密钥，并拒绝已固定的密钥。",
+        "cancel": "取消",
+        "confirm": "替换"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "SSH 设置已保存",
+        "cleared": "已移除 SSH 访问"
       }
     }
   },
@@ -2062,15 +2062,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "本地",
+    "remote": "通过 SSH",
+    "none": "无",
+    "localFull": "qui 在本机读写此实例的文件。",
+    "remoteFull": "qui 通过 SSH 读写此实例的文件，并具备文件标识。",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "无文件标识：qui 无法判断两个路径是否指向同一文件。孤立项目扫描在此无法删除，且已存在的硬链接目标会阻止硬链接添加。",
+      "noReflinks": "远程实例不支持引用链接。",
+      "noHardlinkExtension": "无硬链接：服务器未声明支持 hardlink@openssh.com。交叉做种的硬链接添加在此会失败；若已开启“出错时回退到常规模式”，则以常规模式添加。"
     }
   }
 }

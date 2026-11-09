@@ -24,7 +24,7 @@
       "tlsSkipped": "Přeskočit",
       "tlsStrict": "Striktní",
       "testingConnection": "Testuji připojení...",
-      "fileAccess": "File access:"
+      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -111,7 +111,7 @@
       "usernamePassword": "Uživatelské jméno a heslo",
       "apiKey": "API klíč"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení."
   },
   "settingsButton": {
     "tooltip": "Nastavení instance"
@@ -165,8 +165,8 @@
           "title": "Limity sdílení"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "Přístup přes SSH",
+          "description": "Přistupujte k souborům této instance přes SSH, když qui a qBittorrent běží na různých strojích"
         }
       }
     },
@@ -1793,88 +1793,88 @@
       "testEmailFailed": "Testovací e-mail se nepodařilo odeslat"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "Lokální přístup k souborům je zapnutý, takže qui čte soubory této instance lokálně a tato nastavení SSH nepoužívá.",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
+        "host": "Hostitel SSH",
+        "hostDescription": "Název hostitele nebo IP adresa stroje, na kterém jsou soubory této instance, bez schématu a portu. Změna hostitele nebo portu zahodí připnutý klíč hostitele, takže další test je znovu prvním kontaktem.",
         "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "username": "Uživatelské jméno",
+        "privateKey": "Soukromý klíč",
+        "privateKeyDescription": "Soukromý klíč OpenSSH bez hesla. qui ho ukládá šifrovaný a už ho nikdy nezobrazí. Je znovu potřeba, když se změní hostitel, port nebo uživatelské jméno."
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "Klíč je uložen. Vložte nový, pokud ho chcete nahradit."
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "Hostitel SSH je povinný",
+        "portRange": "Port musí být mezi 1 a 65535",
+        "usernameRequired": "Uživatelské jméno je povinné",
+        "keyRequired": "Soukromý klíč je potřeba, když se změní hostitel, port nebo uživatelské jméno"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "Uložit nastavení SSH",
+        "clear": "Odebrat přístup přes SSH",
+        "test": "Testovat připojení",
+        "testing": "Testuje se...",
+        "confirm": "Potvrdit klíč hostitele",
+        "replace": "Nahradit klíč hostitele"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "Připojení",
+        "pinnedAtRest": "Klíč hostitele je připnutý. Otestujte připojení a zjistěte, co hostitel umožňuje.",
+        "unpinnedAtRest": "Zatím není připnutý žádný klíč hostitele. Otestujte připojení a potvrďte otisk hostitele."
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "První kontakt",
+          "text": "Před potvrzením porovnejte tento otisk s otiskem hostitele. Pozdější připojení odmítnou jakýkoli jiný klíč."
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "Klíč hostitele připnut"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "Klíč hostitele se změnil",
+          "text": "Hostitel předložil jiný klíč než připnutý. Připnutý klíč nahraďte jen tehdy, když změnu očekáváte, například po přeinstalaci serveru."
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "Připnutý klíč je nečitelný",
+          "text": "Uložený připnutý klíč nelze dešifrovat, obvykle proto, že se změnil šifrovací klíč qui. Pro pokračování ho nahraďte.",
+          "noKey": "Hostitel neodpověděl, takže není žádný klíč, kterým by se dal nahradit."
         },
         "error": {
-          "title": "Connection failed"
+          "title": "Připojení selhalo"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "Otisk",
+        "pinned": "Připnutý",
+        "presented": "Předložený"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "Úroveň: {{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + příkazy",
+        "tierHint": "Příkazy potřebují na hostiteli POSIX shell s GNU find a stat. Bez nich qui používá jen SFTP a nemůže číst identitu souborů.",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
-        "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "statvfs": "Volné místo (statvfs)",
+        "hardlink": "Pevné odkazy (hardlink@openssh.com)",
+        "limits": "Rozšíření limits",
+        "exec": "Příkazy",
+        "gnuUserland": "GNU find a stat",
+        "yes": "K dispozici",
+        "no": "Není k dispozici"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "Nahradit připnutý klíč hostitele?",
+        "description": "qui bude od teď pro tohoto hostitele důvěřovat předloženému klíči a připnutý odmítne.",
+        "cancel": "Zrušit",
+        "confirm": "Nahradit"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "Nastavení SSH uloženo",
+        "cleared": "Přístup přes SSH odebrán"
       }
     }
   },
@@ -2128,15 +2128,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "Lokální",
+    "remote": "Přes SSH",
+    "none": "Žádný",
+    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "remoteFull": "qui čte a zapisuje soubory této instance přes SSH, s identitou souborů.",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
+      "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
+      "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
   }
 }

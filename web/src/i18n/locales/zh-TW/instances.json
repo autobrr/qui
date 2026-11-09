@@ -24,7 +24,7 @@
       "tlsSkipped": "已跳過",
       "tlsStrict": "嚴格",
       "testingConnection": "正在測試連線...",
-      "fileAccess": "File access:"
+      "fileAccess": "檔案存取："
     },
     "deleteDialog": {
       "title": "刪除實例",
@@ -111,7 +111,7 @@
       "usernamePassword": "使用者名稱和密碼",
       "apiKey": "API 金鑰"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "儲存後，可在實例設定中設定透過 SSH 存取該實例的檔案。"
   },
   "settingsButton": {
     "tooltip": "實例設定"
@@ -165,8 +165,8 @@
           "title": "做種限制"
         },
         "ssh": {
-          "title": "SSH Access",
-          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
+          "title": "SSH 存取",
+          "description": "當 qui 與 qBittorrent 在不同機器上執行時，透過 SSH 存取此實例的檔案"
         }
       }
     },
@@ -1729,88 +1729,88 @@
       "testEmailFailed": "傳送測試郵件失敗"
     },
     "ssh": {
-      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "localWins": "本機檔案系統存取已開啟，qui 會在本機讀取此實例的檔案，不使用這些 SSH 設定。",
       "labels": {
-        "host": "SSH host",
-        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
-        "port": "Port",
-        "username": "Username",
-        "privateKey": "Private key",
-        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+        "host": "SSH 主機",
+        "hostDescription": "存放此實例檔案的機器的主機名稱或 IP 位址，不含協定和連接埠。變更主機或連接埠會捨棄已釘選的主機金鑰，下次測試將再次視為首次連線。",
+        "port": "連接埠",
+        "username": "使用者名稱",
+        "privateKey": "私密金鑰",
+        "privateKeyDescription": "不含密碼片語的 OpenSSH 私密金鑰。qui 會加密儲存且不再顯示。主機、連接埠或使用者名稱變更後需要重新提供。"
       },
       "placeholders": {
         "host": "seedbox.example.com",
         "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
-        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+        "privateKeyStored": "已儲存一把金鑰。貼上新金鑰即可取代。"
       },
       "validation": {
-        "hostRequired": "SSH host is required",
-        "portRange": "Port must be between 1 and 65535",
-        "usernameRequired": "Username is required",
-        "keyRequired": "The private key is needed when the host, port or username changes"
+        "hostRequired": "SSH 主機為必填項",
+        "portRange": "連接埠必須介於 1 到 65535 之間",
+        "usernameRequired": "使用者名稱為必填項",
+        "keyRequired": "主機、連接埠或使用者名稱變更後需要提供私密金鑰"
       },
       "buttons": {
-        "save": "Save SSH settings",
-        "clear": "Remove SSH access",
-        "test": "Test connection",
-        "testing": "Testing...",
-        "confirm": "Confirm host key",
-        "replace": "Replace host key"
+        "save": "儲存 SSH 設定",
+        "clear": "移除 SSH 存取",
+        "test": "測試連線",
+        "testing": "測試中...",
+        "confirm": "確認主機金鑰",
+        "replace": "取代主機金鑰"
       },
       "test": {
-        "title": "Connection",
-        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "title": "連線",
+        "pinnedAtRest": "主機金鑰已釘選。測試連線以查看主機允許的功能。",
+        "unpinnedAtRest": "尚未釘選主機金鑰。測試連線以確認主機的指紋。"
       },
       "status": {
         "unpinned": {
-          "title": "First contact",
-          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+          "title": "首次連線",
+          "text": "確認前請將此指紋與主機的指紋比對。之後的連線將拒絕任何其他金鑰。"
         },
         "pinned": {
-          "title": "Host key pinned"
+          "title": "主機金鑰已釘選"
         },
         "mismatch": {
-          "title": "Host key changed",
-          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+          "title": "主機金鑰已變更",
+          "text": "主機提供的金鑰與已釘選的不同。僅在預期會變更時（例如伺服器重新安裝後）才取代釘選的金鑰。"
         },
         "pinUnreadable": {
-          "title": "Pinned key unreadable",
-          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
-          "noKey": "The host did not answer, so there is no key to replace it with."
+          "title": "釘選的金鑰無法讀取",
+          "text": "無法解密已儲存的釘選金鑰，通常是因為 qui 的加密金鑰已變更。請取代後繼續。",
+          "noKey": "主機未回應，因此沒有可用來取代的金鑰。"
         },
         "error": {
-          "title": "Connection failed"
+          "title": "連線失敗"
         }
       },
       "fingerprint": {
-        "label": "Fingerprint",
-        "pinned": "Pinned",
-        "presented": "Presented"
+        "label": "指紋",
+        "pinned": "已釘選",
+        "presented": "本次提供"
       },
       "probes": {
-        "tier": "Tier: {{tier}}",
+        "tier": "等級：{{tier}}",
         "tierSftp": "SFTP",
-        "tierExec": "SFTP + commands",
-        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "tierExec": "SFTP + 命令執行",
+        "tierHint": "命令執行需要主機上有含 GNU find 和 stat 的 POSIX shell。否則 qui 僅使用 SFTP，無法讀取檔案識別資訊。",
         "sftp": "SFTP",
-        "statvfs": "Free space (statvfs)",
-        "hardlink": "Hardlinks (hardlink@openssh.com)",
-        "limits": "Limits extension",
-        "exec": "Commands",
-        "gnuUserland": "GNU find and stat",
-        "yes": "Available",
-        "no": "Not available"
+        "statvfs": "可用空間（statvfs）",
+        "hardlink": "硬連結（hardlink@openssh.com）",
+        "limits": "limits 擴充",
+        "exec": "命令執行",
+        "gnuUserland": "GNU find 和 stat",
+        "yes": "可使用",
+        "no": "無法使用"
       },
       "replaceDialog": {
-        "title": "Replace the pinned host key?",
-        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
-        "cancel": "Cancel",
-        "confirm": "Replace"
+        "title": "取代已釘選的主機金鑰？",
+        "description": "qui 今後將信任此主機本次提供的金鑰，並拒絕已釘選的金鑰。",
+        "cancel": "取消",
+        "confirm": "取代"
       },
       "toast": {
-        "saved": "SSH settings saved",
-        "cleared": "SSH access removed"
+        "saved": "SSH 設定已儲存",
+        "cleared": "已移除 SSH 存取"
       }
     }
   },
@@ -2062,15 +2062,15 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
-    "remoteFull": "qui reads and writes this instance's files over SSH, with file identity.",
+    "local": "本機",
+    "remote": "透過 SSH",
+    "none": "無",
+    "localFull": "qui 在本機讀寫此實例的檔案。",
+    "remoteFull": "qui 透過 SSH 讀寫此實例的檔案，並具備檔案識別資訊。",
     "limits": {
-      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
-      "noReflinks": "No reflinks on a remote instance.",
-      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
+      "noIdentity": "無檔案識別資訊：qui 無法判斷兩個路徑是否指向同一檔案。孤立項目掃描在此無法刪除，且已存在的硬連結目標會阻止硬連結新增。",
+      "noReflinks": "遠端實例不支援引用連結。",
+      "noHardlinkExtension": "無硬連結：伺服器未宣告支援 hardlink@openssh.com。交叉做種的硬連結新增在此會失敗；若已開啟「出錯時回退到一般模式」，則以一般模式新增。"
     }
   }
 }

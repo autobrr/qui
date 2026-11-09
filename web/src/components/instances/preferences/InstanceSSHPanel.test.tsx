@@ -170,6 +170,14 @@ describe("InstanceSSHPanel", () => {
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it("a pinned remote instance lists its limits before any test", () => {
+    render(<InstanceSSHPanel instance={{ ...storedInstance, filesystemMode: "remote", sshHostKeyPinned: true, sshTier: "sftp", sshHardlink: true }} />)
+    expect(screen.getByText("preferences.ssh.test.pinnedAtRest")).not.toBeNull()
+    expect(screen.getByText("access.limits.noIdentity")).not.toBeNull()
+    expect(screen.getByText("access.limits.noReflinks")).not.toBeNull()
+    expect(document.querySelector("[data-ssh-status]")).toBeNull()
+  })
+
   // regression: #3732
   it("the fields are off while a save runs", async () => {
     let finish: () => void = () => {}
