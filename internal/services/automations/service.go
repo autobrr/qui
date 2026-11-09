@@ -828,9 +828,9 @@ func (s *Service) applyAll(ctx context.Context) {
 }
 
 // ApplyOnceForInstance allows manual triggering (API hook).
-// It bypasses per-rule interval checks (force=true).
+// It bypasses per-rule interval checks (force=true). Cancelling ctx does not stop the run.
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
-	return s.applyForInstance(ctx, instanceID, true)
+	return s.applyForInstance(context.WithoutCancel(ctx), instanceID, true)
 }
 
 // ErrRunInProgress means that another run applies actions on the instance.
@@ -859,6 +859,7 @@ func (s *Service) unlockRun(instanceID int) {
 // ApplyRuleNow runs a single saved rule immediately and applies its actions, unless the rule itself is a dry run.
 // The rule is forced enabled for this execution only, and its interval is ignored.
 // Returns the activity rows written for this run, or ErrRunInProgress when another run acts on the instance.
+// Cancelling ctx does not stop a live run.
 func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
 	if s.syncManager == nil || s.instanceStore == nil {
 		return nil, nil
@@ -876,7 +877,7 @@ func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models
 
 	liveRule := *rule
 	liveRule.Enabled = true
-	activities, err := s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{&liveRule}, false)
+	activities, err := s.applyRulesForInstance(context.WithoutCancel(ctx), instanceID, true, []*models.Automation{&liveRule}, false)
 	if err != nil {
 		return nil, err
 	}
