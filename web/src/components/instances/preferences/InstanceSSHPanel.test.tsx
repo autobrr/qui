@@ -177,6 +177,10 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect(document.querySelector("[data-ssh-status]")).toBeNull())
     expect(screen.getByText("preferences.ssh.test.saveFirst")).not.toBeNull()
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(true)
+    // typed back to the stored value: nothing unsaved, Test is back
+    setValue("ssh-host", "box.example")
+    await waitFor(() => expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.queryByText("preferences.ssh.test.saveFirst")).toBeNull()
   })
 
   // regression: #3732
