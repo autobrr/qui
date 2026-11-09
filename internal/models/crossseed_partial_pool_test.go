@@ -788,6 +788,54 @@ func TestCrossSeedPartialPoolInstanceCascadePreservesOtherMembers(t *testing.T) 
 	require.Error(t, err)
 }
 
+// regression: #3945
+func TestCrossSeedPartialPoolMemberAdmittedBeforeTimeFormMigrationStillMatches(t *testing.T) {
+	t.Parallel()
+
+	const admissionHold = 2 * time.Second
+	db := testdb.NewMigratedSQLite(t, "partial-pool-time-form")
+	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
+	ctx := t.Context()
+	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
+	require.NoError(t, err)
+
+	// An older qui on a host one hour east of UTC stored the admission stamp in this form.
+	goForm := member.CreatedAt.In(time.FixedZone("CET", 3600)).String()
+	for _, table := range []string{"cross_seed_partial_pools", "cross_seed_partial_pool_members", "cross_seed_partial_pool_member_files"} {
+		_, err = db.ExecContext(ctx, `UPDATE `+table+` SET created_at = ?, updated_at = ?`, goForm, goForm)
+		require.NoError(t, err)
+	}
+	testdb.RunSQLiteMigration(t, db, "113_store_times_in_sqlite_form.sql")
+
+	file := member.Files[1]
+	changed, err := store.TransitionPartialPoolFile(ctx, file.ID, file.CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed, "a file moves to propagating")
+	changed, err = store.TransitionPartialPoolFile(ctx, file.ID, file.CreatedAt, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed, "a file moves to verifying")
+	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, file.ID, member.CreatedAt, file.CreatedAt, models.CrossSeedPartialPoolMemberStatusVerifying)
+	require.NoError(t, err)
+	require.True(t, changed, "a hardlink rollback matches the member and the file")
+
+	changed, err = store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	require.NoError(t, err)
+	require.True(t, changed, "the member moves from verifying to waiting")
+
+	now := member.CreatedAt.Add(admissionHold / 2)
+	claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, now, now.Add(-admissionHold))
+	require.NoError(t, err)
+	require.False(t, claimed, "a claim inside the admission hold fails")
+	now = member.CreatedAt.Add(admissionHold + time.Second)
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, now, now.Add(-admissionHold))
+	require.NoError(t, err)
+	require.True(t, claimed, "a claim after the admission hold succeeds")
+
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, pool.ID, member.ID, member.CreatedAt, "removed"))
+	_, err = store.GetPartialPool(ctx, pool.ID)
+	require.Error(t, err, "the removal of the last member deletes the pool")
+}
+
 // regression: #3946
 func TestCrossSeedPartialPoolClaimHoldsInEachProcessZone(t *testing.T) {
 	checkPartialPoolClaimHoldsInEachProcessZone(t, func(t *testing.T) *database.DB {

@@ -36,6 +36,28 @@ func TestFilesPrintCachePostgresIntegration(t *testing.T) {
 	runFilesPrintCacheTests(t, testdb.NewMigratedPostgres)
 }
 
+// regression: #3945
+func TestFilesPrintStaysValidAfterTimeFormMigration(t *testing.T) {
+	t.Parallel()
+
+	withTestDB(t, testdb.NewMigratedSQLite, func(ctx context.Context, t *testing.T, db *database.DB) {
+		svc := NewService(db)
+		require.NoError(t, svc.CacheFilesBatch(ctx, 1, pairWrite(printA)))
+
+		// An older qui on a host one hour east of UTC stored both sync times in this form.
+		const goForm = "2026-11-09 12:41:31.947225 +0100 CET"
+		_, err := db.ExecContext(ctx, `UPDATE torrent_files_sync SET last_synced_at = ?, print_synced_at = ?`, goForm, goForm)
+		require.NoError(t, err)
+		testdb.RunSQLiteMigration(t, db, "113_store_times_in_sqlite_form.sql")
+
+		entry, ok := readEntry(ctx, t, svc, pairHash)
+		require.True(t, ok)
+		require.NotNil(t, entry.Print, "the cached file list is still valid")
+		require.Equal(t, printA, *entry.Print)
+		require.True(t, entry.SyncedAt.Equal(time.Date(2026, 11, 9, 11, 41, 31, 947225000, time.UTC)), "synced at %s", entry.SyncedAt)
+	})
+}
+
 func runFilesPrintCacheTests(t *testing.T, open testDBOpener) {
 	t.Helper()
 
