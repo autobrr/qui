@@ -1790,7 +1790,8 @@
       "test": {
         "title": "Connection",
         "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
-        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint."
+        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint.",
+        "saveFirst": "Save the changes first. A test runs against the stored credentials."
       },
       "status": {
         "unpinned": {

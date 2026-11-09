@@ -1790,7 +1790,8 @@
       "test": {
         "title": "Connexion",
         "pinnedAtRest": "Clé d'hôte épinglée. Testez la connexion pour voir ce que l'hôte autorise.",
-        "unpinnedAtRest": "Aucune clé d'hôte épinglée pour l'instant. Testez la connexion pour confirmer l'empreinte de l'hôte."
+        "unpinnedAtRest": "Aucune clé d'hôte épinglée pour l'instant. Testez la connexion pour confirmer l'empreinte de l'hôte.",
+        "saveFirst": "Enregistrez d'abord les modifications. Un test utilise les identifiants enregistrés."
       },
       "status": {
         "unpinned": {

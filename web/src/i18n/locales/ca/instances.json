@@ -1790,7 +1790,8 @@
       "test": {
         "title": "Connexió",
         "pinnedAtRest": "Clau d'amfitrió fixada. Prova la connexió per veure què permet l'amfitrió.",
-        "unpinnedAtRest": "Encara no hi ha cap clau d'amfitrió fixada. Prova la connexió per confirmar l'empremta de l'amfitrió."
+        "unpinnedAtRest": "Encara no hi ha cap clau d'amfitrió fixada. Prova la connexió per confirmar l'empremta de l'amfitrió.",
+        "saveFirst": "Desa primer els canvis. La prova utilitza les credencials desades."
       },
       "status": {
         "unpinned": {
