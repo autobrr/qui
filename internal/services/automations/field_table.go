@@ -214,12 +214,12 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldUploaded:          numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.Uploaded) }),
 	models.FieldUploadedSession:   numberField(ValueInteger, UnitBytes),
 	models.FieldAmountLeft:        numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.AmountLeft) }),
-	// The sort reads the current free space. A Condition also adds the space that earlier deletes in the run free.
+	// The sort reads the free space at the start of the run. A Condition reads the Projected free space.
 	models.FieldFreeSpace: numberField(ValueInteger, UnitBytes).sortNumber(func(_ qbt.Torrent, ctx *EvalContext) float64 {
-		if ctx == nil {
+		if ctx == nil || ctx.activeFreeSpace == nil {
 			return 0
 		}
-		return positive(ctx.FreeSpace)
+		return positive(ctx.activeFreeSpace.startFreeSpace())
 	}),
 
 	// The sort reads the timestamp. A Condition compares the age.
