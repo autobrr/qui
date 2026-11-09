@@ -67,7 +67,7 @@ func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 
 	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelSetup()
-	adminPool, err := pgxpool.New(setupCtx, baseDSN)
+	adminPool, err := pgxpool.New(setupCtx, baseDSN) //nolint:forbidigo // the admin pool only creates and drops the test schema and stores no times
 	if err != nil {
 		t.Fatalf("open PostgreSQL test administrator: %v", err)
 	}
