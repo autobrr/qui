@@ -31,6 +31,7 @@ type wrappedTime struct{ at time.Time }
 
 func (w wrappedTime) Value() (driver.Value, error) { return w.at, nil }
 
+// regression: #3942
 func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -40,6 +41,7 @@ func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	}
 }
 
+// regression: #3942
 func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -49,6 +51,7 @@ func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	}
 }
 
+// regression: #3942
 func TestOffsetTextRowReadsBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -142,13 +145,18 @@ func setProcessZone(t *testing.T, name string) {
 // string asks for postgresSessionZone.
 func newPostgresInSessionZone(t *testing.T, name string) *database.DB {
 	t.Helper()
-	if baseDSN := strings.TrimSpace(os.Getenv("QUI_TEST_POSTGRES_DSN")); baseDSN != "" {
+	baseDSN := strings.TrimSpace(os.Getenv("QUI_TEST_POSTGRES_DSN"))
+	switch {
+	case baseDSN == "":
+	case strings.HasPrefix(baseDSN, "postgres://"), strings.HasPrefix(baseDSN, "postgresql://"):
 		parsed, err := url.Parse(baseDSN)
 		require.NoError(t, err)
 		query := parsed.Query()
 		query.Set("timezone", postgresSessionZone)
 		parsed.RawQuery = query.Encode()
 		t.Setenv("QUI_TEST_POSTGRES_DSN", parsed.String())
+	default:
+		t.Setenv("QUI_TEST_POSTGRES_DSN", baseDSN+" timezone="+postgresSessionZone)
 	}
 	return testdb.NewMigratedPostgres(t, name)
 }
