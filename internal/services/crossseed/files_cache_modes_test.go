@@ -109,9 +109,23 @@ func TestCopyGroupsFilesContextFetchesOnlyAMovedPrint(t *testing.T) {
 	require.Equal(t, 2, rig.fileRequests(ctx, t, cacheModeHashA, cacheModeHashB))
 
 	rig.rename(t, moved, "Show.S01.REPACK")
-	rig.age(t, cacheModeHashB, 100*time.Hour, true)
+	rig.age(t, cacheModeHashB, 100*time.Hour, false)
 
 	require.Equal(t, 1, rig.fileRequests(ctx, t, cacheModeHashA, cacheModeHashB), "only the moved print is fetched")
+}
+
+func TestCopyGroupsFilesContextFetchesAListWithNoPrintOnce(t *testing.T) {
+	t.Parallel()
+
+	kept := qbtstub.Torrent{Hash: cacheModeHashA, Name: "Film.2020", Layout: qbtstub.SingleFile}
+	rig := newFilesCacheRig(t, kept)
+	ctx := filesContext(t.Context())
+	require.Equal(t, 1, rig.fileRequests(ctx, t, cacheModeHashA))
+
+	rig.age(t, cacheModeHashA, 100*time.Hour, true)
+
+	require.Equal(t, 1, rig.fileRequests(ctx, t, cacheModeHashA), "a list with no print cannot show a change")
+	require.Zero(t, rig.fileRequests(ctx, t, cacheModeHashA), "the fetch stored a print")
 }
 
 func TestLocalReadsKeepTheirFilesAge(t *testing.T) {

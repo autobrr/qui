@@ -144,8 +144,9 @@ func WithFilesCacheMaxAge(ctx context.Context, maxAge time.Duration) context.Con
 
 // WithFilesUntilChanged returns a context under which [SyncManager.GetTorrentFilesBatch]
 // serves a cached file list at any age while the print of the torrent's
-// maindata entry matches the stored one. A list with no print is served at any
-// age. A list whose print moved is fetched again.
+// maindata entry matches the stored one. A list whose print moved, or a list
+// with no print, is fetched again. A list of a torrent with no maindata entry
+// is served at any age.
 func WithFilesUntilChanged(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheModeContextKey{}, filesCacheUntilChanged)
 }
@@ -3018,11 +3019,15 @@ func filesBackstopFor(hash string) time.Duration {
 // the print of the torrent's maindata entry, nil when it has none.
 func (mode filesCacheMode) current(hash string, entry CachedFilesEntry, live *int64, now time.Time) bool {
 	age := now.Sub(entry.SyncedAt)
-	if entry.Print != nil && live != nil {
+	switch {
+	case entry.Print != nil && live != nil:
 		if *entry.Print != *live {
 			return false
 		}
 		return mode == filesCacheUntilChanged || age < filesBackstopFor(hash)
+	case live != nil && mode == filesCacheUntilChanged:
+		// A list with no print cannot show a change. The fetch stores one.
+		return false
 	}
 	return mode == filesCacheUntilChanged || age < filesNoPrintMaxAge
 }

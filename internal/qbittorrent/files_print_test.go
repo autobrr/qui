@@ -257,45 +257,62 @@ func TestGetTorrentFilesBatch_MovedPrintFetchesOnce(t *testing.T) {
 func TestGetTorrentFilesBatch_UntilChangedServesAnyAge(t *testing.T) {
 	t.Parallel()
 
-	rig := newFilesModeRig(longHash, shortHash)
+	noEntryHash := fmt.Sprintf("%040x", 7)
+	rig := newFilesModeRig(longHash)
 	rig.store(longHash, new(FilesPrint(seededTorrent(longHash))), 100*time.Hour)
-	rig.store(shortHash, nil, 100*time.Hour)
+	rig.store(noEntryHash, nil, 100*time.Hour)
 
-	files := rig.read(WithFilesUntilChanged(t.Context()), t, longHash, shortHash)
+	files := rig.read(WithFilesUntilChanged(t.Context()), t, longHash, noEntryHash)
 	require.Len(t, files, 2)
 	require.Zero(t, rig.client.requests())
+}
+
+func TestGetTorrentFilesBatch_UntilChangedFetchesNoPrintOnce(t *testing.T) {
+	t.Parallel()
+
+	rig := newFilesModeRig(longHash)
+	rig.store(longHash, nil, time.Minute)
+
+	ctx := WithFilesUntilChanged(t.Context())
+	rig.read(ctx, t, longHash)
+	require.Equal(t, 1, rig.client.requests(), "a list with no print cannot show a change")
+	require.Equal(t, new(FilesPrint(seededTorrent(longHash))), rig.fm.prints[longHash])
+
+	rig.read(ctx, t, longHash)
+	require.Equal(t, 1, rig.client.requests(), "the stored print is current")
 }
 
 func TestGetTorrentFilesBatch_FilesModePrecedence(t *testing.T) {
 	t.Parallel()
 
-	// Each row is 2 h old. A moved print is fetched by each mode and served by
-	// a max age of 100 h. A row with no print is served by WithFilesUntilChanged
-	// and fetched by WithFilesUntilChangedOrStale.
-	movedPrint := new(FilesPrint(seededTorrent(longHash)) + 1)
+	// Each row is 30 h old. A moved print is fetched by each mode and served by
+	// a max age of 100 h. A matching print is served by WithFilesUntilChanged
+	// and fetched by WithFilesUntilChangedOrStale, past its backstop.
+	matchingPrint := new(FilesPrint(seededTorrent(longHash)))
+	movedPrint := new(*matchingPrint + 1)
 	tests := []struct {
 		name    string
 		stored  *int64
 		ctx     func(context.Context) context.Context
 		fetches int
 	}{
-		{"force wins over a mode", nil, func(ctx context.Context) context.Context {
+		{"force wins over a mode", matchingPrint, func(ctx context.Context) context.Context {
 			return WithForceFilesRefresh(WithFilesUntilChanged(ctx))
 		}, 1},
 		{"a mode wins over a max age", movedPrint, func(ctx context.Context) context.Context {
 			return WithFilesUntilChanged(WithFilesCacheMaxAge(ctx, 100*time.Hour))
 		}, 1},
-		{"a later mode replaces an earlier one", nil, func(ctx context.Context) context.Context {
+		{"a later mode replaces an earlier one", matchingPrint, func(ctx context.Context) context.Context {
 			return WithFilesUntilChangedOrStale(WithFilesUntilChanged(ctx))
 		}, 1},
-		{"the earlier mode alone serves the row", nil, WithFilesUntilChanged, 0},
+		{"the earlier mode alone serves the row", matchingPrint, WithFilesUntilChanged, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			rig := newFilesModeRig(longHash)
-			rig.store(longHash, tt.stored, 2*time.Hour)
+			rig.store(longHash, tt.stored, 30*time.Hour)
 			rig.read(tt.ctx(t.Context()), t, longHash)
 			require.Equal(t, tt.fetches, rig.client.requests())
 		})
