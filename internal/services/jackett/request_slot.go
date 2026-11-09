@@ -16,6 +16,10 @@ import (
 
 const defaultRequestGap = 60 * time.Second
 
+// rateLimitRecordTimeout bounds the database write that records a 429. The
+// write runs apart from the request, so a busy database delays no caller.
+const rateLimitRecordTimeout = 10 * time.Second
+
 // requestKind decides which Rate-limit cooldown a request obeys and whether it
 // waits for the Request slot. ADR 0046 gives the reasons.
 type requestKind int
@@ -175,8 +179,9 @@ func (r *requestSlots) stateLocked(indexerID int) *slotState {
 
 // done gives the ticket the answer of the indexer, or the error that ended
 // the request. The first call frees the slot and starts the Request gap. A 429
-// at any call starts the Rate-limit cooldown of the kind, records the error on
-// the indexer, and returns a *RateLimitError. Any other err comes back as is.
+// at any call starts the Rate-limit cooldown of the kind, starts the record of
+// the error on the indexer, and returns a *RateLimitError. Any other err comes
+// back as is.
 func (t *slotTicket) done(ctx context.Context, err error) error {
 	r := t.slots
 	retryAfter, rateLimited := detectRateLimit(err)
@@ -216,9 +221,14 @@ func (r *requestSlots) recordRateLimit(ctx context.Context, indexer *models.Torz
 	localRetryAt := retryAt.In(time.Local)
 	if r.recorder != nil {
 		message := fmt.Sprintf("Rate limit triggered for %s %s requests until %s", indexer.Name, scope, localRetryAt.Format(time.RFC3339))
-		if err := r.recorder.RecordError(context.WithoutCancel(ctx), indexer.ID, message, "rate_limit"); err != nil {
-			log.Debug().Err(err).Int("indexer_id", indexer.ID).Msg("Failed to record rate-limit error")
-		}
+		// A late 429 comes after the caller's context ended, and it is still recorded.
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rateLimitRecordTimeout)
+		go func() {
+			defer cancel()
+			if err := r.recorder.RecordError(recordCtx, indexer.ID, message, "rate_limit"); err != nil {
+				log.Debug().Err(err).Int("indexer_id", indexer.ID).Msg("Failed to record rate-limit error")
+			}
+		}()
 	}
 
 	log.Warn().

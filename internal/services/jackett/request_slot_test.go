@@ -207,6 +207,53 @@ func TestRequestSlots_ShorterCooldownKeepsTheLongerOne(t *testing.T) {
 	})
 }
 
+// stalledRecorder is a database whose writer stays busy: RecordError returns
+// only when its context ends.
+type stalledRecorder struct {
+	calls chan string
+	ended chan error
+}
+
+func (r *stalledRecorder) RecordError(ctx context.Context, _ int, errorMessage, _ string) error {
+	r.calls <- errorMessage
+	<-ctx.Done()
+	r.ended <- ctx.Err()
+	return ctx.Err()
+}
+
+func TestRequestSlots_RateLimitAnswerDoesNotWaitForTheErrorRecord(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		recorder := &stalledRecorder{calls: make(chan string, 1), ended: make(chan error, 1)}
+		slots := newRequestSlots(time.Second, recorder, nil)
+		ticket, _, err := slots.tryAcquire(nativeIndexer(), requestSearch)
+		require.NoError(t, err)
+
+		answered := make(chan error, 1)
+		go func() {
+			answered <- ticket.done(t.Context(), &responseError{StatusCode: http.StatusTooManyRequests})
+		}()
+		synctest.Wait()
+
+		select {
+		case err := <-answered:
+			var rateLimitErr *RateLimitError
+			require.ErrorAs(t, err, &rateLimitErr)
+		default:
+			t.Fatal("the 429 answer waited for the database write")
+		}
+		assert.Contains(t, <-recorder.calls, "Rate limit triggered")
+
+		time.Sleep(rateLimitRecordTimeout)
+		synctest.Wait()
+		select {
+		case err := <-recorder.ended:
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		default:
+			t.Fatal("the error record must end at its timeout")
+		}
+	})
+}
+
 func TestWithMinRequestInterval(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		indexer := nativeIndexer()
