@@ -509,9 +509,10 @@ const (
 	connectionSetupTimeout   = 5 * time.Second
 )
 
-// sqliteTimeZoneParam makes the driver convert each time to UTC when it binds
-// it and when it reads it back.
-const sqliteTimeZoneParam = "_timezone=UTC"
+// sqliteTimeParams makes the driver convert each time to UTC when it binds it
+// and when it reads it back, and write each bound time in the one text form
+// that SQL time functions read (ADR 0044, ADR 0045).
+const sqliteTimeParams = "_timezone=UTC&_time_format=sqlite"
 
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
@@ -620,7 +621,7 @@ func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
 }
 
 func openSQLiteReader(databasePath string) (*sql.DB, error) {
-	readerPool, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro&%s", databasePath, sqliteTimeZoneParam))
+	readerPool, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro&%s", databasePath, sqliteTimeParams))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite reader at %s: %w", databasePath, err)
 	}
@@ -647,7 +648,7 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open writer connection (single connection for all writes)
-	writerConn, err := sql.Open("sqlite", databasePath+"?"+sqliteTimeZoneParam)
+	writerConn, err := sql.Open("sqlite", databasePath+"?"+sqliteTimeParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open writer connection at %s: %w", databasePath, err)
 	}

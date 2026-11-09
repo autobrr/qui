@@ -1697,8 +1697,9 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 //
 // It stays a subquery rather than a value read into Go on purpose. Both engines write
 // these columns with CURRENT_TIMESTAMP, and SQLite compares timestamps as text: a
-// value read out and rebound arrives as time.Time.String(), which no longer matches
-// the stored 19-character form, and comparisons against it quietly fail.
+// value read out and rebound ends in "+00:00", so it sorts after the stored
+// 19-character form of the same second, and a row of that second lands on the wrong
+// side of the boundary.
 const fullScanStartedAtQuery = `
 		SELECT run.started_at
 		FROM dir_scan_runs run
