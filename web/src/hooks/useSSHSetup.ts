@@ -9,8 +9,9 @@ import { useCallback, useReducer } from "react"
 
 // The SSH setup flow of one instance: save or clear credentials, test the
 // connection, and pin or replace the host key the test presented. One state at
-// a time: a request in flight has no error beside it, and a result survives a
-// failed pin so the user still sees what the host presented.
+// a time: a request in flight has no error beside it. A result survives a
+// failed pin, save or clear so the user still sees what the host presented; a
+// failed test drops it, since the error now answers for the connection.
 export type SSHSetupState =
   | { kind: "idle"; result: SSHTestResponse | null; error: string | null }
   | { kind: "saving"; result: SSHTestResponse | null }
@@ -23,6 +24,7 @@ export type SSHSetupAction =
   | { type: "test" }
   | { type: "tested"; result: SSHTestResponse }
   | { type: "pin" }
+  | { type: "testFailed"; error: string }
   | { type: "failed"; error: string }
 
 export const initialSSHSetupState: SSHSetupState = { kind: "idle", result: null, error: null }
@@ -40,6 +42,8 @@ export function sshSetupReducer(state: SSHSetupState, action: SSHSetupAction): S
       return { kind: "idle", result: action.result, error: null }
     case "pin":
       return state.result ? { kind: "pinning", result: state.result } : state
+    case "testFailed":
+      return { kind: "idle", result: null, error: action.error }
     case "failed":
       return { kind: "idle", result: state.result, error: action.error }
   }
@@ -72,7 +76,7 @@ export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
       await onChanged()
       dispatch({ type: "tested", result })
     } catch (error) {
-      dispatch({ type: "failed", error: errorText(error) })
+      dispatch({ type: "testFailed", error: errorText(error) })
     }
   }, [instanceId, onChanged])
 

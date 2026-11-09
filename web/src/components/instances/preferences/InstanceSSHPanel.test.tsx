@@ -209,6 +209,45 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect(mocks.api.replaceSSHHostKey).toHaveBeenCalledWith(7, "BBBB"))
   })
 
+  it("Replace from an unreadable pin asks first, then posts the presented key", async () => {
+    mocks.api.replaceSSHHostKey.mockResolvedValue(undefined)
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    await runTest({ status: "pin_unreadable", hostKey: "BBBB", fingerprint: "SHA256:new" })
+
+    fireEvent.click(screen.getByText("preferences.ssh.buttons.replace"))
+    expect(mocks.api.replaceSSHHostKey).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByText("preferences.ssh.replaceDialog.confirm"))
+    await waitFor(() => expect(mocks.api.replaceSSHHostKey).toHaveBeenCalledWith(7, "BBBB"))
+  })
+
+  it("a refused save shows the server text inline", async () => {
+    mocks.api.setSSHCredentials.mockRejectedValue(new APIError("ssh host \"x\" must be a bare hostname or IP, without scheme, port or credentials", 400))
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    setValue("ssh-private-key", "KEY")
+    submitForm()
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("must be a bare hostname or IP"))
+    expect(mocks.invalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [true, "preferences.ssh.test.pinnedAtRest"],
+    [false, "preferences.ssh.test.unpinnedAtRest"],
+  ])("says whether a host key is pinned (%s) before any test", (pinned, text) => {
+    render(<InstanceSSHPanel instance={{ ...storedInstance, sshHostKeyPinned: pinned }} />)
+    expect(screen.getByText(text)).not.toBeNull()
+    expect(document.querySelector("[data-ssh-status]")).toBeNull()
+  })
+
+  it("a failed test shows the error with no result panel", async () => {
+    render(<InstanceSSHPanel instance={storedInstance} />)
+    await runTest({ status: "pinned", fingerprint: "SHA256:abc" })
+
+    mocks.api.testSSH.mockRejectedValue(new APIError("Could not reach the instance", 502))
+    fireEvent.click(screen.getByText("preferences.ssh.buttons.test"))
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Could not reach the instance"))
+    expect(document.querySelector("[data-ssh-status]")).toBeNull()
+  })
+
   it("a refused clear shows the server text inline", async () => {
     mocks.api.clearSSHCredentials.mockRejectedValue(new APIError("Disable hardlink or reflink mode on this instance before removing its SSH credentials", 400))
     render(<InstanceSSHPanel instance={storedInstance} />)

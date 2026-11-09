@@ -822,7 +822,6 @@ class ApiClient {
     return this.request(`/instances/${id}/test`, { method: "POST" })
   }
 
-  // SSH access. The credential routes answer 204; ssh-test answers 200 with a status.
   async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
     return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
   }
