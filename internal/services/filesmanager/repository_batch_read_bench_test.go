@@ -37,8 +37,8 @@ func BenchmarkBatchReads(b *testing.B) {
 			}
 			infos = append(infos, SyncInfo{InstanceID: 1, TorrentHash: hashes[i], TorrentProgress: 1, FileCount: filesPerTorrent})
 		}
-		require.NoError(b, repo.UpsertFiles(ctx, files))
-		require.NoError(b, repo.UpsertSyncInfoBatch(ctx, infos))
+		require.NoError(b, repo.UpsertCache(ctx, files, nil))
+		require.NoError(b, repo.UpsertCache(ctx, nil, infos))
 
 		read := hashes[:readHashes]
 
@@ -84,7 +84,7 @@ func BenchmarkCacheFilesBatch(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := svc.CacheFilesBatch(ctx, 1, files); err != nil {
+		if err := svc.CacheFilesBatch(ctx, 1, unprinted(files)); err != nil {
 			b.Fatal(err)
 		}
 	}

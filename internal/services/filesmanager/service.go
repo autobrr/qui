@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // InstanceLister lists all qBittorrent instances
@@ -125,23 +126,40 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 	return results, missing, nil
 }
 
-// CacheFilesBatch stores file information for multiple torrents in the database
-func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error {
+// GetCachedFilesBatchWithMeta returns, for each hash with a cached list, the
+// list, its stored print and the time of its write, at any age. A hash with no
+// cached list is left out.
+func (s *Service) GetCachedFilesBatchWithMeta(ctx context.Context, instanceID int, hashes []string) (map[string]qbittorrent.CachedFilesEntry, error) {
+	rows, err := s.repo.getEntriesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cached files batch: %w", err)
+	}
+	entries := make(map[string]qbittorrent.CachedFilesEntry, len(rows))
+	for hash, row := range rows {
+		entries[hash] = qbittorrent.CachedFilesEntry{Files: convertCachedFiles(row.files), Print: row.print, SyncedAt: row.syncedAt}
+	}
+	return entries, nil
+}
+
+// CacheFilesBatch stores the file list and the print of each torrent in one
+// transaction. An empty file list is not stored.
+func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, writes map[string]qbittorrent.CachedFilesWrite) error {
 	fileCount := 0
-	for _, torrentFiles := range files {
-		fileCount += len(torrentFiles)
+	for _, write := range writes {
+		fileCount += len(write.Files)
 	}
 	allCachedFiles := make([]CachedFile, 0, fileCount)
-	allSyncInfos := make([]SyncInfo, 0, len(files))
+	allSyncInfos := make([]SyncInfo, 0, len(writes))
 	seed, notSeed := true, false
+	// TIMESTAMP has no zone: Postgres reads a local time back as UTC.
+	syncedAt := time.Now().UTC()
 
-	for hash, torrentFiles := range files {
-		if len(torrentFiles) == 0 {
+	for hash, write := range writes {
+		if len(write.Files) == 0 {
 			continue
 		}
 
-		// Convert to cache format
-		for _, f := range torrentFiles {
+		for _, f := range write.Files {
 			pieceStart, pieceEnd := int64(0), int64(0)
 			if len(f.PieceRange) >= 2 {
 				pieceStart = int64(f.PieceRange[0])
@@ -167,37 +185,24 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 			})
 		}
 
-		// Collect sync metadata
-		syncInfo := SyncInfo{
-			InstanceID:      instanceID,
-			TorrentHash:     hash,
-			LastSyncedAt:    time.Now(),
-			TorrentProgress: 0.0, // Not tracking progress anymore
-			FileCount:       len(torrentFiles),
-		}
-		allSyncInfos = append(allSyncInfos, syncInfo)
+		allSyncInfos = append(allSyncInfos, SyncInfo{
+			InstanceID:    instanceID,
+			TorrentHash:   hash,
+			LastSyncedAt:  syncedAt,
+			FileCount:     len(write.Files),
+			MaindataPrint: write.Print,
+		})
 	}
 
-	if len(allCachedFiles) > 0 {
-		// Store all files in database in one batch
-		if err := s.repo.UpsertFiles(ctx, allCachedFiles); err != nil {
-			return fmt.Errorf("failed to cache files: %w", err)
-		}
+	if err := s.repo.UpsertCache(ctx, allCachedFiles, allSyncInfos); err != nil {
+		return fmt.Errorf("failed to cache files: %w", err)
 	}
-
-	if len(allSyncInfos) > 0 {
-		// Update all sync metadata in one batch
-		if err := s.repo.UpsertSyncInfoBatch(ctx, allSyncInfos); err != nil {
-			return fmt.Errorf("failed to update sync info: %w", err)
-		}
-	}
-
 	return nil
 }
 
 // CacheFiles stores file information in the database
-func (s *Service) CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error {
-	return s.CacheFilesBatch(ctx, instanceID, map[string]qbt.TorrentFiles{hash: files})
+func (s *Service) CacheFiles(ctx context.Context, instanceID int, hash string, write qbittorrent.CachedFilesWrite) error {
+	return s.CacheFilesBatch(ctx, instanceID, map[string]qbittorrent.CachedFilesWrite{hash: write})
 }
 
 // InvalidateCache removes cached file information for a torrent

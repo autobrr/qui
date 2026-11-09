@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"hash/maphash"
 	"maps"
-	"math"
 	"slices"
 	"sync"
 	"time"
@@ -278,11 +277,12 @@ func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentV
 	return sum
 }
 
-// filesContext reads the SQLite file lists at any age: file sizes never change
-// for a hash, and a change through qui clears the row.
+// filesContext reads cached file lists at any age until the torrent's maindata
+// entry moves: file sizes never change for a hash, and a change through qui
+// clears the row.
 func filesContext(ctx context.Context) context.Context {
 	ctx = qbittorrent.WithFileFetchLimit(ctx, localReadFetchSlots)
-	return qbittorrent.WithFilesCacheMaxAge(ctx, time.Duration(math.MaxInt64))
+	return qbittorrent.WithFilesUntilChanged(ctx)
 }
 
 // readFiles returns the next retry time of each torrent it could not read.

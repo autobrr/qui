@@ -66,8 +66,8 @@ func testBatchReadsMatchViews(t *testing.T, open testDBOpener) {
 		files = append(files, other)
 		infos = append(infos, SyncInfo{InstanceID: 2, TorrentHash: "only-on-2", FileCount: 1})
 
-		require.NoError(t, repo.UpsertFiles(ctx, files))
-		require.NoError(t, repo.UpsertSyncInfoBatch(ctx, infos))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+		require.NoError(t, repo.UpsertCache(ctx, nil, infos))
 
 		input := []string{"ccc333", "aaa111", "missing", "only-on-2", "AAA111", "ccc333", "bbb222"}
 
