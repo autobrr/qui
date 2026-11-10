@@ -356,7 +356,7 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 			// evidence the instance is down, and a deadline is treated as slow
 			// by design (ambiguous, see IsDeadlineExpired). Only hard failures
 			// (refused, DNS, EOF, auth) record a failure and advance backoff.
-			// Both helpers match even after go-qbt's retry wrapper flattens the
+			// The check matches even after go-qbt's retry wrapper flattens the
 			// sentinel into a string.
 			if shouldTrackProbeFailure(ctx, err) {
 				cp.trackFailure(instanceID, err)
