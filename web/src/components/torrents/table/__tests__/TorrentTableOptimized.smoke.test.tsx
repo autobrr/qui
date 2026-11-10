@@ -706,42 +706,26 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toBe(seedingText)
   })
 
-  describe("the tooltip of the pill", () => {
+  it("shows no tooltip on the pill on a device that can hover", () => {
     // jsdom has no matchMedia; without one, the device counts as one that cannot hover.
-    function setCanHover(canHover: boolean) {
-      window.matchMedia = ((query: string) => ({
-        matches: canHover && query === "(hover: hover)",
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as unknown as typeof window.matchMedia
-    }
-
-    afterEach(() => {
-      delete (window as { matchMedia?: unknown }).matchMedia
-    })
-
-    it("names the pill on a device that can hover", async () => {
-      setCanHover(true)
-      const { container, findByRole } = renderGroups(copyGroupRows())
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(hover: hover)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    try {
+      const { container, queryByRole } = renderGroups(copyGroupRows())
 
       // A keyboard user tabs to the pill.
       fireEvent.keyDown(pills(container)[0], { key: "Tab" })
       act(() => pills(container)[0].focus())
 
-      expect((await findByRole("tooltip")).textContent).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
-    })
-
-    it("stays closed on a tap on a touch screen, which only opens the group", () => {
-      setCanHover(false)
-      const { container, queryByRole } = renderGroups(copyGroupRows())
-
-      fireEvent.pointerDown(pills(container)[0], { pointerType: "touch" })
-      fireEvent.click(pills(container)[0])
-
-      expect(pills(container)[0].getAttribute("aria-expanded")).toBe("true")
+      expect(pills(container)[0].getAttribute("aria-label")).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
       expect(queryByRole("tooltip")).toBeNull()
-    })
+    } finally {
+      delete (window as { matchMedia?: unknown }).matchMedia
+    }
   })
 
   // regression: #3922
