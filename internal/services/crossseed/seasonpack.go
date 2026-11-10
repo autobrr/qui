@@ -154,7 +154,7 @@ type seasonPackPrep struct {
 
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
-const seasonPackNoEligibleInstances = "no instances with filesystem write access and hardlink/reflink mode; enable Local Filesystem Access, or set up SSH access, in instance settings"
+const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
 
 func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
