@@ -2097,7 +2097,6 @@
     "remote": "Via SSH",
     "none": "Nessuno",
     "localFull": "qui legge e scrive i file di questa istanza su questa macchina.",
-    "remoteFull": "qui legge e scrive i file di questa istanza via SSH, con identità dei file.",
     "limits": {
       "noIdentity": "Nessuna identità dei file: qui non riconosce quando due percorsi sono lo stesso file. La scansione orfani non può eliminare qui e una destinazione hardlink esistente blocca un'aggiunta con hardlink.",
       "noReflinks": "Nessun reflink su un'istanza remota.",

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { FilesystemMode, SSHTier } from "@/types"
-import { remoteAccessLimits, type RemoteAccessLimit } from "./remote-access"
+import { remoteAccessLimits, type RemoteAccessLimit } from "@/lib/remote-access"
 
 describe("remoteAccessLimits", () => {
   it.each<[string, FilesystemMode, SSHTier | undefined, boolean | undefined, RemoteAccessLimit[]]>([

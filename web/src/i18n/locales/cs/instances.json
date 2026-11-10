@@ -2133,7 +2133,6 @@
     "remote": "Přes SSH",
     "none": "Žádný",
     "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
-    "remoteFull": "qui čte a zapisuje soubory této instance přes SSH, s identitou souborů.",
     "limits": {
       "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
       "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",

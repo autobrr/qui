@@ -2067,7 +2067,6 @@
     "remote": "通过 SSH",
     "none": "无",
     "localFull": "qui 在本机读写此实例的文件。",
-    "remoteFull": "qui 通过 SSH 读写此实例的文件，并具备文件标识。",
     "limits": {
       "noIdentity": "无文件标识：qui 无法判断两个路径是否指向同一文件。孤立项目扫描在此无法删除，且已存在的硬链接目标会阻止硬链接添加。",
       "noReflinks": "远程实例不支持引用链接。",

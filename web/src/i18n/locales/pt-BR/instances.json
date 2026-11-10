@@ -2097,7 +2097,6 @@
     "remote": "Via SSH",
     "none": "Nenhum",
     "localFull": "O qui lê e grava os arquivos desta instância nesta máquina.",
-    "remoteFull": "O qui lê e grava os arquivos desta instância via SSH, com identidade dos arquivos.",
     "limits": {
       "noIdentity": "Sem identidade dos arquivos: o qui não consegue saber quando dois caminhos são o mesmo arquivo. A varredura de órfãos não pode excluir aqui, e um destino de hardlink existente interrompe uma adição por hardlink.",
       "noReflinks": "Sem reflinks em uma instância remota.",
