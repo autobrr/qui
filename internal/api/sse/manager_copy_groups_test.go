@@ -28,17 +28,17 @@ func TestParseStreamRequests_GroupCopies(t *testing.T) {
 
 	grouped, err := parse(map[string]any{"instanceId": 1, "groupCopies": true})
 	require.NoError(t, err)
-	require.True(t, grouped[0].options.GroupCopies)
+	require.True(t, grouped[0].options.View.CopyGroups)
 
 	flat, err := parse(map[string]any{"instanceId": 1})
 	require.NoError(t, err)
-	require.False(t, flat[0].options.GroupCopies)
+	require.False(t, flat[0].options.View.CopyGroups)
 	require.NotEqual(t, streamOptionsKey(flat[0].options), streamOptionsKey(grouped[0].options),
 		"a grouped stream must not share a payload with a flat stream")
 
 	cross, err := parse(map[string]any{"instanceIds": []int{1, 2}, "groupCopies": true})
 	require.NoError(t, err)
-	require.True(t, cross[0].options.GroupCopies)
+	require.True(t, cross[0].options.View.CopyGroups)
 
 	_, err = parse(map[string]any{"instanceId": 1, "groupCopies": true, "summary": true})
 	require.Error(t, err, "a summary has no rows to group")

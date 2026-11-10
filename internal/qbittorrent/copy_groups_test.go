@@ -118,12 +118,12 @@ func TestListWithoutGroupCopiesIgnoresTheMap(t *testing.T) {
 	f := newCopyGroupFixture(t)
 	f.sm.SetCopyGroups(f.groups(f.a, f.b))
 
-	single, err := f.sm.GetTorrentsWithFilters(t.Context(), f.a, 0, 0, "upspeed", "desc", "", FilterOptions{})
+	single, err := f.sm.ListTorrents(t.Context(), TorrentListView{InstanceID: f.a, Sort: "upspeed", Order: "desc"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"b1", "d1", "f1", "a1", "c1", "e1"}, f.rows(single.Torrents))
 	require.Nil(t, single.CopyGroupsReady)
 
-	unified, err := f.sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, "upspeed", "desc", "", FilterOptions{}, nil)
+	unified, err := f.sm.ListTorrents(t.Context(), TorrentListView{Unified: true, Sort: "upspeed", Order: "desc"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"b/a1", "a/b1", "a/d1", "a/f1", "a/a1", "a/c1", "a/e1"}, f.crossRows(unified.CrossInstanceTorrents))
 	require.Nil(t, unified.CopyGroupsReady)
@@ -141,7 +141,6 @@ func TestGroupCopiesInstanceView(t *testing.T) {
 
 	f := newCopyGroupFixture(t)
 	f.sm.SetCopyGroups(f.groups(f.a, f.b))
-	ctx := WithGroupCopies(t.Context())
 
 	tests := []struct {
 		name          string
@@ -206,7 +205,7 @@ func TestGroupCopiesInstanceView(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			response, err := f.sm.GetTorrentsWithFilters(ctx, f.a, tt.limit, tt.offset, "upspeed", tt.order, "", tt.filters)
+			response, err := f.sm.ListTorrents(t.Context(), TorrentListView{InstanceID: f.a, Limit: tt.limit, Offset: tt.offset, Sort: "upspeed", Order: tt.order, Filters: tt.filters, CopyGroups: true})
 			require.NoError(t, err)
 			require.Equal(t, tt.want, f.rows(response.Torrents))
 			require.Equal(t, tt.wantTotal, response.Total)
@@ -221,12 +220,11 @@ func TestGroupCopiesHoldViewParity(t *testing.T) {
 
 	f := newCopyGroupFixture(t)
 	f.sm.SetCopyGroups(f.groups(f.a, f.b))
-	ctx := WithGroupCopies(t.Context())
 
 	for _, order := range []string{"asc", "desc"} {
-		single, err := f.sm.GetTorrentsWithFilters(ctx, f.a, 0, 0, "upspeed", order, "", FilterOptions{})
+		single, err := f.sm.ListTorrents(t.Context(), TorrentListView{InstanceID: f.a, Sort: "upspeed", Order: order, CopyGroups: true})
 		require.NoError(t, err)
-		scoped, err := f.sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "upspeed", order, "", FilterOptions{}, []int{f.a})
+		scoped, err := f.sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: []int{f.a}, Sort: "upspeed", Order: order, CopyGroups: true})
 		require.NoError(t, err)
 
 		scopedRows := make([]TorrentView, 0, len(scoped.CrossInstanceTorrents))
@@ -244,11 +242,10 @@ func TestGroupCopiesUnifiedView(t *testing.T) {
 	t.Parallel()
 
 	f := newCopyGroupFixture(t)
-	ctx := WithGroupCopies(t.Context())
 
 	t.Run("a hash on two instances whose younger copy sorts first", func(t *testing.T) {
 		f.sm.SetCopyGroups(f.groups(f.a, f.b))
-		response, err := f.sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "upspeed", "desc", "", FilterOptions{}, nil)
+		response, err := f.sm.ListTorrents(t.Context(), TorrentListView{Unified: true, Sort: "upspeed", Order: "desc", CopyGroups: true})
 		require.NoError(t, err)
 		require.Equal(t, []string{
 			"a/a1 00000000000000aa first=b/a1", "b/a1 00000000000000aa", "a/b1 00000000000000aa", "a/c1 00000000000000aa",
@@ -261,7 +258,7 @@ func TestGroupCopiesUnifiedView(t *testing.T) {
 
 	t.Run("the rows of an instance outside the record stay flat", func(t *testing.T) {
 		f.sm.SetCopyGroups(f.groups(f.a))
-		response, err := f.sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "upspeed", "desc", "", FilterOptions{}, nil)
+		response, err := f.sm.ListTorrents(t.Context(), TorrentListView{Unified: true, Sort: "upspeed", Order: "desc", CopyGroups: true})
 		require.NoError(t, err)
 		require.Equal(t, []string{
 			"b/a1",
@@ -284,18 +281,17 @@ func TestGroupCopiesReady(t *testing.T) {
 	unsynced := instance.ID
 	f.sm.clientPool.clients[unsynced] = &Client{}
 	f.sm.clientPool.failureTracker = map[int]*failureInfo{unsynced: {nextRetry: time.Now().Add(time.Hour)}}
-	ctx := WithGroupCopies(WithSkipFreshData(t.Context()))
 
 	flatA := []string{"b1", "d1", "f1", "a1", "c1", "e1"}
 
 	t.Run("no map gives the flat rows", func(t *testing.T) {
 		sm := NewSyncManager(f.sm.clientPool, nil)
-		response, err := sm.GetTorrentsWithFilters(ctx, f.a, 0, 0, "upspeed", "desc", "", FilterOptions{})
+		response, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: f.a, Sort: "upspeed", Order: "desc", CopyGroups: true, CacheOnly: true})
 		require.NoError(t, err)
 		require.Equal(t, flatA, f.rows(response.Torrents))
 		require.Equal(t, new(false), response.CopyGroupsReady)
 
-		unified, err := sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "upspeed", "desc", "", FilterOptions{}, []int{unsynced})
+		unified, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: []int{unsynced}, Sort: "upspeed", Order: "desc", CopyGroups: true, CacheOnly: true})
 		require.NoError(t, err)
 		require.Equal(t, new(false), unified.CopyGroupsReady)
 	})
@@ -316,7 +312,7 @@ func TestGroupCopiesReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sm := NewSyncManager(f.sm.clientPool, nil)
 			sm.SetCopyGroups(f.groups(tt.read...))
-			response, err := sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "upspeed", "desc", "", FilterOptions{}, tt.instances)
+			response, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: tt.instances, Sort: "upspeed", Order: "desc", CopyGroups: true, CacheOnly: true})
 			require.NoError(t, err)
 			require.Equal(t, new(tt.want), response.CopyGroupsReady)
 		})
@@ -325,7 +321,7 @@ func TestGroupCopiesReady(t *testing.T) {
 	t.Run("an instance view outside the record gives the flat rows", func(t *testing.T) {
 		sm := NewSyncManager(f.sm.clientPool, nil)
 		sm.SetCopyGroups(f.groups(f.b))
-		response, err := sm.GetTorrentsWithFilters(ctx, f.a, 0, 0, "upspeed", "desc", "", FilterOptions{})
+		response, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: f.a, Sort: "upspeed", Order: "desc", CopyGroups: true, CacheOnly: true})
 		require.NoError(t, err)
 		require.Equal(t, flatA, f.rows(response.Torrents))
 		require.Equal(t, new(false), response.CopyGroupsReady)

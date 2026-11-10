@@ -491,7 +491,7 @@ func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 }
 
 func singleRowFingerprintFor(opts StreamOptions) func(*fpBuf, qbittorrent.TorrentView) uint64 {
-	if opts.Limit == 1 {
+	if opts.View.Limit == 1 {
 		return oneRowFingerprint
 	}
 	return singleRowFingerprint

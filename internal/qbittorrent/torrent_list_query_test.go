@@ -32,7 +32,7 @@ func listRows(sm *SyncManager, client *Client, torrents []qbt.Torrent, filters F
 		}
 	}
 	if filters.Expr != "" {
-		rows = sm.filterTorrentsByExpr(rows, filters.Expr, filters.HideTrackerPasskeys)
+		rows = sm.filterTorrentsByExpr(rows, filters.Expr, false)
 	}
 	return rows
 }
@@ -232,10 +232,10 @@ func rowHashes(resp *TorrentResponse) []string {
 }
 
 // regression: #3868
-// TestGetTorrentsWithFiltersFollowsOneRule sends each filter alone and with a
+// TestListTorrentsFollowsOneRule sends each filter alone and with a
 // second filter that excludes nothing. Both give the same rows, the rows equal
 // the sidebar count, and each Unified view instance follows the same rule.
-func TestGetTorrentsWithFiltersFollowsOneRule(t *testing.T) {
+func TestListTorrentsFollowsOneRule(t *testing.T) {
 	t.Parallel()
 
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-list-rule"), make([]byte, 32))
@@ -249,7 +249,6 @@ func TestGetTorrentsWithFiltersFollowsOneRule(t *testing.T) {
 		ids = append(ids, instance.ID)
 	}
 	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
-	ctx := WithSkipFreshData(t.Context())
 	id := ids[0]
 
 	for _, tc := range []struct {
@@ -277,7 +276,7 @@ func TestGetTorrentsWithFiltersFollowsOneRule(t *testing.T) {
 			second := tc.filters
 			second.ExcludeCategories = []string{"no-such-category"}
 			for _, filters := range []FilterOptions{tc.filters, second} {
-				resp, err := sm.GetTorrentsWithFilters(ctx, id, 0, 0, "", "", "", filters)
+				resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: id, Filters: filters, SidebarCounts: true, CacheOnly: true})
 				require.NoError(t, err)
 				require.Equal(t, tc.want, rowHashes(resp), "filters %+v", filters)
 				if tc.count != nil {
@@ -285,7 +284,7 @@ func TestGetTorrentsWithFiltersFollowsOneRule(t *testing.T) {
 				}
 			}
 
-			unified, err := sm.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "", "", "", tc.filters, ids)
+			unified, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: ids, Filters: tc.filters, CacheOnly: true})
 			require.NoError(t, err)
 			for _, instanceID := range ids {
 				var got []string

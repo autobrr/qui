@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"testing"
 	"time"
@@ -32,6 +33,47 @@ func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 			"aa":{"name":"A","state":"stalledUP","category":"movies","tags":"keep","progress":1},
 			"bb":{"name":"B","state":"downloading","category":"","tags":"","progress":0.5},
 			"cc":{"name":"C","state":"stalledUP","category":"movies/extra","tags":"","progress":1}}}`
+	handler, instanceID := newInfoTestHandler(t, mainData)
+
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{"filter=stalledup", []string{"aa", "cc"}},
+		{"filter=stalledup&category=movies", []string{"aa", "cc"}},
+		{"filter=seeding", []string{"aa", "cc"}},
+		{"category=movies", []string{"aa", "cc"}},
+		{"category=", []string{"bb"}},
+		{"tag=", []string{"bb", "cc"}},
+		{"tag=keep", []string{"aa"}},
+		{"filter=tpyo", []string{}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instanceID})
+			ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v2/torrents/info?"+tc.query, nil)
+			rec := httptest.NewRecorder()
+			handler.handleTorrentsInfo(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+			var torrents []struct {
+				Hash string `json:"hash"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &torrents))
+			got := make([]string, 0, len(torrents))
+			for _, torrent := range torrents {
+				got = append(got, torrent.Hash)
+			}
+			slices.Sort(got)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// newInfoTestHandler serves mainData from a fake qBittorrent 5.1 through the
+// proxy handler. It returns the handler and the ID of its instance.
+func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
@@ -61,39 +103,45 @@ func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 	client, err := pool.GetClient(t.Context(), instance.ID)
 	require.NoError(t, err)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
-	handler := NewHandler(pool, nil, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/")
+	return NewHandler(pool, nil, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/"), instance.ID
+}
 
-	for _, tc := range []struct {
-		query string
-		want  []string
-	}{
-		{"filter=stalledup", []string{"aa", "cc"}},
-		{"filter=stalledup&category=movies", []string{"aa", "cc"}},
-		{"filter=seeding", []string{"aa", "cc"}},
-		{"category=movies", []string{"aa", "cc"}},
-		{"category=", []string{"bb"}},
-		{"tag=", []string{"bb", "cc"}},
-		{"tag=keep", []string{"aa"}},
-		{"filter=tpyo", []string{}},
-	} {
-		t.Run(tc.query, func(t *testing.T) {
-			ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instance.ID})
-			ctx = context.WithValue(ctx, InstanceIDContextKey, instance.ID)
-			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v2/torrents/info?"+tc.query, nil)
-			rec := httptest.NewRecorder()
-			handler.handleTorrentsInfo(rec, req)
-			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+// A client behind the proxy needs the announce URL, so the proxy states full
+// passkey access.
+func TestProxyListsKeepTheAnnounceURL(t *testing.T) {
+	t.Parallel()
 
-			var torrents []struct {
-				Hash string `json:"hash"`
-			}
-			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &torrents))
-			got := make([]string, 0, len(torrents))
-			for _, torrent := range torrents {
-				got = append(got, torrent.Hash)
-			}
-			slices.Sort(got)
-			require.Equal(t, tc.want, got)
-		})
+	const announce = "https://tracker.example.invalid/abc123xyz/announce"
+	handler, instanceID := newInfoTestHandler(t, `{"rid":1,"full_update":true,
+		"torrents":{"aa":{"name":"A","state":"stalledUP","progress":1,"tracker":"`+announce+`"}}}`)
+	request := func(path string) *http.Request {
+		ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instanceID})
+		ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
+		return httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	}
+	type row struct {
+		Tracker string `json:"tracker"`
+	}
+
+	t.Run("torrents/info", func(t *testing.T) {
+		t.Parallel()
+		rec := httptest.NewRecorder()
+		handler.handleTorrentsInfo(rec, request("/api/v2/torrents/info"))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var rows []row
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &rows))
+		require.Equal(t, []row{{Tracker: announce}}, rows)
+	})
+
+	t.Run("torrents/search with an expression on the passkey", func(t *testing.T) {
+		t.Parallel()
+		rec := httptest.NewRecorder()
+		handler.handleTorrentSearch(rec, request(`/api/v2/torrents/search?expr=`+url.QueryEscape(`Tracker contains "abc123xyz"`)))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var response struct {
+			Torrents []row `json:"torrents"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Equal(t, []row{{Tracker: announce}}, response.Torrents)
+	})
 }

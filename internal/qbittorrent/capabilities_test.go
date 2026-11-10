@@ -245,7 +245,7 @@ func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 
 			live := tc.to == "2.15.1"
 			require.Equal(t, []bool{!live, live}, sink.liveReannounce)
-			resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+			resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
 			require.NoError(t, err)
 			require.Equal(t, map[int]string{1: tc.to}, resp.WebAPIVersions)
 			require.Len(t, resp.Torrents, 1)
@@ -267,7 +267,7 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 	require.Empty(t, client.GetWebAPIVersion())
 	require.Empty(t, sink.errs, "the sync succeeded, so the stream gets no error")
 
-	resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
 	require.NoError(t, err)
 	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
 }
@@ -326,7 +326,7 @@ func TestUnifiedViewCarriesTheVersionOfEachInstance(t *testing.T) {
 	}
 	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true})
 	require.NoError(t, err)
 	require.Equal(t, want, resp.WebAPIVersions)
 }

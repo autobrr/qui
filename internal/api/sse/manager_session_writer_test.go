@@ -18,6 +18,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // TestInitPhaseWritesDirectlyToSocket pins the session writer's two-phase
@@ -102,7 +104,7 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
 	t.Helper()
 	conn := manager.openConnection(false, 0)
-	sub, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, key, conn, false)
+	sub, err := manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 50}}, key, conn, false)
 	require.NoError(t, err)
 	ctx := context.WithValue(t.Context(), connectionContextKey, conn)
 	return context.WithValue(ctx, subscriptionIDsContextKey, []string{sub.id})

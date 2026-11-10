@@ -255,16 +255,13 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		warmCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
-		_, err := h.syncManager.GetTorrentsWithFilters(
-			warmCtx,
-			targetInstance.ID,
-			1,
-			0,
-			"added_on",
-			"desc",
-			"",
-			qbittorrent.FilterOptions{},
-		)
+		_, err := h.syncManager.ListTorrents(warmCtx, qbittorrent.TorrentListView{
+			InstanceID:    targetInstance.ID,
+			Limit:         1,
+			Sort:          "added_on",
+			Order:         "desc",
+			SidebarCounts: true,
+		})
 		if err != nil {
 			log.Error().
 				Int("instance_id", targetInstance.ID).

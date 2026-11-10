@@ -94,39 +94,28 @@ const (
 
 // StreamOptions captures the torrent view that the subscriber wants to keep in sync.
 //
-// A subscription is single-instance when InstanceIDs is empty (keyed by InstanceID),
-// or multi-instance (aggregated/cross-instance) when InstanceIDs holds one or more
-// concrete instance ids. Multi-instance subscriptions are kept in sync by every one
-// of their member instances.
+// A subscription is single-instance (keyed by View.InstanceID), or multi-instance
+// (the Unified view) when View.InstanceIDs holds one or more concrete instance ids.
+// Multi-instance subscriptions are kept in sync by every one of their member
+// instances.
 type StreamOptions struct {
-	InstanceID  int
-	InstanceIDs []int
-	Page        int
-	Limit       int
-	Sort        string
-	Order       string
-	Search      string
-	Filters     qbittorrent.FilterOptions
-	// Summary asks for the totals of the view without its rows.
-	Summary bool
-	// GroupCopies asks for Copy groups, as the groupCopies query parameter of a list request does.
-	GroupCopies bool
-	// hideTrackerPasskeys makes its own group, because the subscribers of a group share one payload.
-	hideTrackerPasskeys bool
+	// View is what each frame reads. The stream sets CacheOnly and SidebarCounts
+	// for each frame, so the two fields are not part of a subscription.
+	View qbittorrent.TorrentListView
 }
 
 // isMultiInstance reports whether the subscription aggregates multiple instances.
 func (o StreamOptions) isMultiInstance() bool {
-	return len(o.InstanceIDs) > 0
+	return o.View.Unified
 }
 
 // instanceIDs returns the concrete instance ids this subscription is kept in sync by.
 func (o StreamOptions) instanceIDs() []int {
-	if len(o.InstanceIDs) > 0 {
-		return o.InstanceIDs
+	if o.View.Unified {
+		return o.View.InstanceIDs
 	}
-	if o.InstanceID > 0 {
-		return []int{o.InstanceID}
+	if o.View.InstanceID > 0 {
+		return []int{o.View.InstanceID}
 	}
 	return nil
 }
@@ -145,8 +134,9 @@ func (r streamRequest) clientKey() string {
 }
 
 func streamOptionsKey(opts StreamOptions) string {
+	view := opts.View
 	filtersKey := "__none__"
-	raw, err := json.Marshal(opts.Filters)
+	raw, err := json.Marshal(view.Filters)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to marshal filter options for stream key; using fallback")
 	} else if len(raw) > 0 && string(raw) != "null" {
@@ -154,9 +144,9 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	// Multi-instance subscriptions are distinguished by their (sorted) member set.
-	instanceKey := strconv.Itoa(opts.InstanceID)
-	if opts.isMultiInstance() {
-		ids := append([]int(nil), opts.InstanceIDs...)
+	instanceKey := strconv.Itoa(view.InstanceID)
+	if view.Unified {
+		ids := slices.Clone(view.InstanceIDs)
 		slices.Sort(ids)
 		parts := make([]string, len(ids))
 		for i, id := range ids {
@@ -168,20 +158,23 @@ func streamOptionsKey(opts StreamOptions) string {
 	return fmt.Sprintf(
 		"%s|%d|%d|%s|%s|%s|%s|%t|%t",
 		instanceKey,
-		opts.Page,
-		opts.Limit,
-		strconv.Quote(opts.Sort),
-		strconv.Quote(opts.Order),
-		strconv.Quote(opts.Search),
+		// A client that sends no key gets this text as its stream key, so it keeps the page number.
+		view.Offset/max(view.Limit, 1),
+		view.Limit,
+		strconv.Quote(view.Sort),
+		strconv.Quote(view.Order),
+		strconv.Quote(view.Search),
 		strconv.Quote(filtersKey),
-		opts.Summary,
-		opts.GroupCopies,
+		view.NoRows,
+		view.CopyGroups,
 	)
 }
 
+// streamGroupKey gives a reader without passkey access its own group, because
+// the subscribers of a group share one payload.
 func streamGroupKey(opts StreamOptions) string {
 	key := streamOptionsKey(opts)
-	if opts.hideTrackerPasskeys {
+	if !opts.View.FullPasskeyAccess {
 		key += "|hideTrackerPasskeys"
 	}
 	return key
@@ -191,8 +184,7 @@ func streamGroupKey(opts StreamOptions) string {
 // depends on. Declared on the consumer side so payload building, coalescing, and
 // delivery can be exercised with injected fakes in tests.
 type syncProvider interface {
-	GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error)
-	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
+	ListTorrents(ctx context.Context, view qbittorrent.TorrentListView) (*qbittorrent.TorrentResponse, error)
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
@@ -425,9 +417,9 @@ type StreamMeta struct {
 	RID        int64     `json:"rid,omitempty"`
 	FullUpdate bool      `json:"fullUpdate,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
-	// IncludeCounts asks materialization to include cached aggregate counts even
-	// when the tick skips tracker hydration. Used after tracker-health cache writes
-	// so dashboards receive new health totals without inline qbit work.
+	// IncludeCounts asks the frame for the Sidebar counts. Used after
+	// tracker-health cache writes so dashboards receive new health totals without
+	// inline qbit work.
 	IncludeCounts bool `json:"includeCounts,omitempty"`
 	// LastSuccessfulSync is when the instance's data last actually updated, sourced
 	// from the success-only sync clock. On stream-error frames it lets the client
@@ -1045,10 +1037,9 @@ func (m *StreamManager) validateInstances(w http.ResponseWriter, r *http.Request
 }
 
 func applyPasskeyAccess(r *http.Request, requests []streamRequest) {
-	hide := !middleware.CanReadTrackerPasskeys(r)
+	full := middleware.CanReadTrackerPasskeys(r)
 	for i := range requests {
-		requests[i].options.hideTrackerPasskeys = hide
-		requests[i].options.Filters.HideTrackerPasskeys = hide
+		requests[i].options.View.FullPasskeyAccess = full
 	}
 }
 
@@ -1656,7 +1647,7 @@ func (m *StreamManager) enqueueIdleTicks(instanceID int) {
 			continue
 		}
 		group.pendingMeta = &StreamMeta{
-			InstanceID: group.options.InstanceID,
+			InstanceID: group.options.View.InstanceID,
 			Timestamp:  now,
 			// A tick that has to rebuild the view sends the counts too.
 			IncludeCounts: true,
@@ -1729,7 +1720,7 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			// The same bound as a rebuild, so a stalled task count request
 			// does not hold back the speeds.
 			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
-			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.InstanceID), meta)
+			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.View.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.View.InstanceID), meta)
 			cancel()
 		case meta.idle:
 			payload = group.buildIdlePayload(meta)
@@ -1777,7 +1768,7 @@ func (m *StreamManager) publishJoinInits(group *subscriptionGroup) {
 
 func initMeta(group *subscriptionGroup) *StreamMeta {
 	return &StreamMeta{
-		InstanceID: group.options.InstanceID,
+		InstanceID: group.options.View.InstanceID,
 		FullUpdate: true,
 		Timestamp:  time.Now(),
 		// The next tick can be minutes away when nothing changes.
@@ -1843,52 +1834,18 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *StreamMeta, groupKey string) (*qbittorrent.TorrentResponse, *StreamPayload) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
-	ctx = qbittorrent.WithSkipFreshData(ctx)
-	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
-	if metaCopy != nil && metaCopy.IncludeCounts {
-		ctx = qbittorrent.WithCachedCountsWhenSkippingTrackerHydration(ctx)
-	}
-	if opts.Summary {
-		ctx = qbittorrent.WithSummary(ctx)
-	}
-	if opts.GroupCopies {
-		ctx = qbittorrent.WithGroupCopies(ctx)
-	}
+	view := opts.View
+	view.CacheOnly = true
+	view.SidebarCounts = metaCopy != nil && metaCopy.IncludeCounts
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).
-	retryInstanceID := opts.InstanceID
-	if retryInstanceID <= 0 && len(opts.InstanceIDs) > 0 {
-		retryInstanceID = opts.InstanceIDs[0]
+	retryInstanceID := view.InstanceID
+	if retryInstanceID <= 0 && len(view.InstanceIDs) > 0 {
+		retryInstanceID = view.InstanceIDs[0]
 	}
 
-	var (
-		response *qbittorrent.TorrentResponse
-		err      error
-	)
-	if opts.isMultiInstance() {
-		response, err = m.syncManager.GetCrossInstanceTorrentsWithFilters(
-			ctx,
-			opts.Limit,
-			opts.Page*opts.Limit,
-			opts.Sort,
-			opts.Order,
-			opts.Search,
-			opts.Filters,
-			opts.InstanceIDs,
-		)
-	} else {
-		response, err = m.syncManager.GetTorrentsWithFilters(
-			ctx,
-			opts.InstanceID,
-			opts.Limit,
-			opts.Page*opts.Limit,
-			opts.Sort,
-			opts.Order,
-			opts.Search,
-			opts.Filters,
-		)
-	}
+	response, err := m.syncManager.ListTorrents(ctx, view)
 	if err != nil {
 		errMsg := "failed to refresh torrent list"
 		if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
@@ -1902,8 +1859,8 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		}
 
 		log.Error().Err(err).
-			Int("instanceID", opts.InstanceID).
-			Ints("instanceIDs", opts.InstanceIDs).
+			Int("instanceID", view.InstanceID).
+			Ints("instanceIDs", view.InstanceIDs).
 			Str("groupKey", groupKey).
 			Msg("Failed to build torrent response for SSE subscribers")
 
@@ -1911,9 +1868,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		// aggregate groups can have different per-instance backoff intervals, so a
 		// scalar retry hint would be misleading.
 		if metaCopy == nil {
-			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
+			metaCopy = &StreamMeta{InstanceID: view.InstanceID, Timestamp: time.Now()}
 		}
-		hasSingleConcreteInstance := retryInstanceID > 0 && (!opts.isMultiInstance() || len(opts.InstanceIDs) == 1)
+		hasSingleConcreteInstance := retryInstanceID > 0 && (!view.Unified || len(view.InstanceIDs) == 1)
 		if hasSingleConcreteInstance {
 			if seconds, ok := blockerRetrySeconds(err); ok {
 				metaCopy.RetryInSeconds = seconds
@@ -1939,13 +1896,10 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 
 	// Populate instance metadata for single-instance streams only. Cross-instance
 	// responses aggregate multiple instances and already carry per-instance data.
-	if !opts.isMultiInstance() {
-		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
+	if !view.Unified {
+		response.InstanceMeta = m.buildInstanceMeta(ctx, view.InstanceID)
 	}
 
-	if opts.hideTrackerPasskeys {
-		response = response.WithoutTrackerPasskeys()
-	}
 	return response, nil
 }
 
@@ -2262,13 +2216,13 @@ func clonePayloadForSubscriber(payload *StreamPayload, sub *subscriptionState) *
 	if payload.Meta != nil {
 		metaCopy := *payload.Meta
 		if metaCopy.InstanceID == 0 {
-			metaCopy.InstanceID = sub.options.InstanceID
+			metaCopy.InstanceID = sub.options.View.InstanceID
 		}
 		metaCopy.StreamKey = sub.clientKey
 		clone.Meta = &metaCopy
 	} else {
 		clone.Meta = &StreamMeta{
-			InstanceID: sub.options.InstanceID,
+			InstanceID: sub.options.View.InstanceID,
 			StreamKey:  sub.clientKey,
 			Timestamp:  time.Now(),
 		}
@@ -2544,7 +2498,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 
 func (m *StreamManager) demandCopyGroups(instanceID int) {
 	for _, group := range m.groupsForInstance(instanceID) {
-		if group.options.GroupCopies {
+		if group.options.View.CopyGroups {
 			m.copyGroups.DemandCopyGroups()
 			return
 		}
@@ -2667,26 +2621,24 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		filters = *p.Filters
 	}
 
-	opts := StreamOptions{
-		Page:        page,
-		Limit:       limit,
-		Sort:        sort,
-		Order:       order,
-		Search:      p.Search,
-		Filters:     filters,
-		Summary:     p.Summary,
-		GroupCopies: p.GroupCopies,
+	view := qbittorrent.TorrentListView{
+		Unified:    len(p.InstanceIDs) > 0,
+		Limit:      limit,
+		Offset:     page * limit,
+		Sort:       sort,
+		Order:      order,
+		Search:     p.Search,
+		Filters:    filters,
+		NoRows:     p.Summary,
+		CopyGroups: p.GroupCopies,
 	}
-	if p.Summary && p.GroupCopies {
-		return StreamOptions{}, errors.New("summary has no rows to group")
+	if err := view.Validate(); err != nil {
+		return StreamOptions{}, err
 	}
 
 	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and
 	// dedupe the member ids. InstanceID is left 0 for these.
-	if len(p.InstanceIDs) > 0 {
-		if p.Summary {
-			return StreamOptions{}, errors.New("summary needs a single instance")
-		}
+	if view.Unified {
 		if len(p.InstanceIDs) > maxStreamRequests {
 			return StreamOptions{}, errInvalidInstanceID
 		}
@@ -2702,13 +2654,13 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 			seen[id] = struct{}{}
 			ids = append(ids, id)
 		}
-		opts.InstanceIDs = ids
-		return opts, nil
+		view.InstanceIDs = ids
+		return StreamOptions{View: view}, nil
 	}
 
 	if p.InstanceID <= 0 {
 		return StreamOptions{}, errInvalidInstanceID
 	}
-	opts.InstanceID = p.InstanceID
-	return opts, nil
+	view.InstanceID = p.InstanceID
+	return StreamOptions{View: view}, nil
 }

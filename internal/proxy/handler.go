@@ -1186,7 +1186,7 @@ func parseInfoQueryValues(queryParams url.Values, key string) []string {
 
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -1276,7 +1276,15 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/info request via qui sync manager")
 
 	// Use qui's sync manager
-	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, "", filters)
+	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
+		InstanceID:        instanceID,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Filters:           filters,
+		FullPasskeyAccess: true,
+	})
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -1391,7 +1399,17 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/qui request with qui sync manager")
 
 	// Use qui's sync manager to get filtered torrents
-	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
+		InstanceID:        instanceID,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Search:            search,
+		Filters:           filters,
+		SidebarCounts:     true,
+		FullPasskeyAccess: true,
+	})
 	if err != nil {
 		log.Error().
 			Err(err).

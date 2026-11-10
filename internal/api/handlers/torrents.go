@@ -178,12 +178,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		strings.EqualFold(preferParam, "cached")
 
 	ctx := r.Context()
-	if groupCopiesParam(r) {
-		ctx = qbittorrent.WithGroupCopies(ctx)
-	}
-	if preferCached {
-		ctx = qbittorrent.WithSkipFreshData(ctx)
-	}
 
 	// Trace logging with truncated expression to prevent log bloat
 	logEvent := log.Trace().
@@ -217,8 +211,19 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
-	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
-	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
+		InstanceID:        instanceID,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Search:            search,
+		Filters:           filters,
+		SidebarCounts:     true,
+		CopyGroups:        groupCopiesParam(r),
+		CacheOnly:         preferCached,
+		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
 			return
@@ -243,9 +248,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
-	if !middleware.CanReadTrackerPasskeys(r) {
-		response = response.WithoutTrackerPasskeys()
-	}
 	RespondJSON(w, http.StatusOK, response)
 }
 
@@ -320,7 +322,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
 			seenTargets := make(map[int]map[string]struct{})
 			requestedHashes := buildExcludeHashSet(req.Hashes)
-			torrents, crossErr := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs, nil, nil)
+			torrents, crossErr := h.selectAllTorrents(r, true, allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs, nil, nil)
 			if crossErr != nil {
 				respondTorrentFieldSelectionError(w, crossErr, req.Field, req.InstanceIDs)
 				return
@@ -391,8 +393,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
-	torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), instanceID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
+	torrents, err := h.selectAllTorrents(r, true, instanceID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 	if err != nil {
 		if instanceID != allInstancesID && respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
 			return
@@ -1098,10 +1099,23 @@ func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map
 // selectAllTorrents reads every torrent the scope, search, and filters select,
 // drops the excluded ones, and drops the ones with no hash, which nothing can
 // address. It returns errPartialResults when a scoped instance could not be read.
-func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
+// With cacheOnly, the read starts no sync.
+func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	ctx := r.Context()
+	view := qbittorrent.TorrentListView{
+		InstanceID:        scope,
+		Sort:              sort,
+		Order:             order,
+		Search:            search,
+		Filters:           filters,
+		SidebarCounts:     true,
+		CacheOnly:         cacheOnly,
+		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+	}
 	var torrents []qbittorrent.CrossInstanceTorrentView
 	if scope == allInstancesID {
-		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, sort, order, search, filters, instanceIDs)
+		view.Unified, view.InstanceIDs = true, instanceIDs
+		response, err := h.syncManager.ListTorrents(ctx, view)
 		if err != nil {
 			return nil, err
 		}
@@ -1110,7 +1124,7 @@ func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort
 		}
 		torrents = response.CrossInstanceTorrents
 	} else {
-		response, err := h.syncManager.GetTorrentsWithFilters(ctx, scope, 0, 0, sort, order, search, filters)
+		response, err := h.syncManager.ListTorrents(ctx, view)
 		if err != nil {
 			if !errors.Is(err, qbittorrent.ErrInstanceDisabled) {
 				if recordErr := h.syncManager.GetErrorStore().RecordError(ctx, scope, err); recordErr != nil {
@@ -1381,9 +1395,7 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
-		req.Filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
-
-		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
+		torrents, selectErr := h.selectAllTorrents(r, false, instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 		if selectErr != nil {
 			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
 				return nil, false
@@ -2756,22 +2768,20 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	// A poll stands in for the stream, so it starts background syncs. The
-	// stream itself reads this function with WithSkipFreshData.
-	filters.HideTrackerPasskeys = !middleware.CanReadTrackerPasskeys(r)
-	ctx := r.Context()
-	if groupCopiesParam(r) {
-		ctx = qbittorrent.WithGroupCopies(ctx)
-	}
-	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-		ctx,
-		limit,
-		offset,
-		sort,
-		order,
-		search,
-		filters,
-		instanceIDs,
-	)
+	// stream itself reads the same view with CacheOnly.
+	response, err := h.syncManager.ListTorrents(r.Context(), qbittorrent.TorrentListView{
+		Unified:           true,
+		InstanceIDs:       instanceIDs,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Search:            search,
+		Filters:           filters,
+		SidebarCounts:     true,
+		CopyGroups:        groupCopiesParam(r),
+		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+	})
 	if err != nil {
 		// Note: Cross-instance queries don't have a single instanceID, so we pass 0 for logging purposes
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
@@ -2782,9 +2792,6 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if !middleware.CanReadTrackerPasskeys(r) {
-		response = response.WithoutTrackerPasskeys()
-	}
 	RespondJSON(w, http.StatusOK, response)
 }
 

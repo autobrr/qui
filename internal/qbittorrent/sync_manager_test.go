@@ -2298,7 +2298,7 @@ func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial
 	defer cancel()
 
 	// The stream read: a poll skips these clients, because they have no data.
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
 
 	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
 	require.NotNil(t, resp)
@@ -2342,7 +2342,7 @@ func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
 	}()
 
 	// The stream read: a poll skips these clients, because they have no data.
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
 
 	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
 	assert.Nil(t, resp)
@@ -2381,7 +2381,7 @@ func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *
 	}()
 
 	// The stream read: a poll skips these clients, because they have no data.
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(WithSkipFreshData(callCtx), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
 
 	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
 	assert.Nil(t, resp)
@@ -2562,7 +2562,7 @@ func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
 
 // The torrent list carries no preferences: screens read the preference view
 // route instead, so a list request neither fetches nor sends them.
-func TestGetTorrentsWithFiltersCarriesNoPreferences(t *testing.T) {
+func TestListTorrentsCarriesNoPreferences(t *testing.T) {
 	t.Parallel()
 
 	var preferenceRequests atomic.Int32
@@ -2609,7 +2609,7 @@ func TestGetTorrentsWithFiltersCarriesNoPreferences(t *testing.T) {
 
 	sm := NewSyncManager(pool, nil)
 
-	resp, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 100, Sort: "added_on", Order: "asc"})
 	require.NoError(t, err)
 	require.Equal(t, 1, resp.Total)
 
@@ -2624,7 +2624,7 @@ func TestGetTorrentsWithFiltersCarriesNoPreferences(t *testing.T) {
 // This pins that invariant end to end, on the prefer=cache path: a searched
 // request must still report sidebar counts for the WHOLE library, and the page
 // must come back sorted.
-func TestGetTorrentsWithFiltersSearchKeepsWholeLibraryCounts(t *testing.T) {
+func TestListTorrentsSearchKeepsWholeLibraryCounts(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2669,7 +2669,7 @@ func TestGetTorrentsWithFiltersSearchKeepsWholeLibraryCounts(t *testing.T) {
 
 	sm := NewSyncManager(pool, nil)
 
-	resp, err := sm.GetTorrentsWithFilters(WithSkipFreshData(ctx), inst.ID, 100, 0, "added_on", "asc", "beta", FilterOptions{})
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 100, Sort: "added_on", Order: "asc", Search: "beta", SidebarCounts: true, CacheOnly: true})
 	require.NoError(t, err)
 
 	require.Equal(t, 2, resp.Total, "the search narrows the page")
@@ -2690,7 +2690,7 @@ func TestGetTorrentsWithFiltersSearchKeepsWholeLibraryCounts(t *testing.T) {
 }
 
 // A summary stream gets the totals of the view without its rows.
-func TestGetTorrentsWithFiltersSummaryOmitsRows(t *testing.T) {
+func TestListTorrentsSummaryOmitsRows(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2734,7 +2734,7 @@ func TestGetTorrentsWithFiltersSummaryOmitsRows(t *testing.T) {
 
 	sm := NewSyncManager(pool, nil)
 
-	resp, err := sm.GetTorrentsWithFilters(WithSummary(WithSkipFreshData(ctx)), inst.ID, 1, 0, "added_on", "desc", "", FilterOptions{})
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", NoRows: true, SidebarCounts: true, CacheOnly: true})
 	require.NoError(t, err)
 	require.Empty(t, resp.Torrents)
 	require.False(t, resp.HasMore)
@@ -3221,7 +3221,7 @@ func TestGetAuthoritativeDomainToHashesMemoizesPerGeneration(t *testing.T) {
 // The details panel streams one torrent by hash on every sync tick. The cache
 // indexes rows by hash, so that request is a lookup, not a copy of the library
 // plus a filter pass. Not parallel: it reads process-wide allocation totals.
-func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
+func TestListTorrentsSingleHashSkipsLibraryCopy(t *testing.T) {
 	const librarySize = 500
 
 	var maindata bytes.Buffer
@@ -3255,7 +3255,7 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	ctx := WithSkipFreshData(t.Context())
+	ctx := t.Context()
 	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
@@ -3290,7 +3290,7 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 		{"hash plus a status the row fails", FilterOptions{Hashes: []string{target}, Status: []string{"downloading"}}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 1, 0, "added_on", "desc", "", tc.filters)
+			resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", Filters: tc.filters, SidebarCounts: true, CacheOnly: true})
 			require.NoError(t, err)
 			if tc.want == "" {
 				require.Equal(t, 0, resp.Total, "a miss reports total 0 so the panel drops its stale row")
@@ -3308,12 +3308,11 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 	// Allocation proof: the hash request must not copy the library the way the
 	// expr request does. Counts are left out, the way a stream tick without
 	// IncludeCounts leaves them out, so the runs compare only the row selection.
-	ctx = WithSkipTrackerHydration(ctx)
 	measure := func(filters FilterOptions) uint64 {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
 		for range 20 {
-			_, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 1, 0, "added_on", "desc", "", filters)
+			_, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", Filters: filters, CacheOnly: true, FullPasskeyAccess: true})
 			require.NoError(t, err)
 		}
 		runtime.ReadMemStats(&after)
