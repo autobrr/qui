@@ -497,6 +497,17 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 }
 
+// getTorrentsByHashesUnchecked returns the maindata entries of the hashes,
+// visiting only those, and never starts a sync.
+func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
+		return nil
+	}
+
+	return syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{Hashes: hashes})
+}
+
 func (c *Client) HealthCheck(ctx context.Context) error {
 	// While the version is unknown, keep probing: sync updates stamp health.
 	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Since(c.GetLastHealthCheck()) < minHealthCheckInterval {

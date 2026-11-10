@@ -1754,14 +1754,18 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, `summary`, and `groupCopies`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
             same fields as the torrent list filters. If `summary` is true, the
             frames carry the totals, stats, counts, and server state of the view,
-            but no rows. `summary` needs a single `instanceId`.
+            but no rows. `summary` needs a single `instanceId`. If `groupCopies` is
+            true, the frames carry Copy groups and `copyGroupsReady`, as the torrent
+            list does with `groupCopies=true`. A frame follows when the groups
+            change, also when no torrent changed. `groupCopies` cannot be combined
+            with `summary`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -9071,10 +9075,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -9117,6 +9117,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -9137,22 +9157,50 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -9214,10 +9262,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -9261,6 +9305,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -9281,6 +9345,54 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          default: false
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          default: false
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          default: false
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          default: false
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          default: false
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          default: true
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
@@ -9288,16 +9400,6 @@ components:
           type: boolean
           default: false
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -9345,9 +9447,11 @@ components:
         createdAt:
           type: string
           format: date-time
+          readOnly: true
         updatedAt:
           type: string
           format: date-time
+          readOnly: true
 
     CrossSeedAutomationStatus:
       type: object
@@ -10151,18 +10255,18 @@ components:
       properties:
         expr:
           type: string
-          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching.
+          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching. An expression that does not compile gives no rows.
           example: 'Hash == "abcd1234" || Hash == "efgh5678"'
         status:
           type: array
           items:
             type: string
-          description: Filter by torrent status
+          description: Filter by torrent status. A value is a status of qui, for example `seeding` or `completed`, or a qBittorrent state name such as `stalledUP`, in any letter case. A value that qui does not know gives no rows.
         excludeStatus:
           type: array
           items:
             type: string
-          description: Array of strings to omit torrents with these statuses
+          description: Array of strings to omit torrents with these statuses. A value that qui does not know gives no rows.
         categories:
           type: array
           items:
@@ -10187,7 +10291,7 @@ components:
           type: array
           items:
             type: string
-          description: Filter by tracker hostnames
+          description: Filter by tracker hostnames. The value "" selects the torrents with no tracker.
         excludeTrackers:
           type: array
           items:

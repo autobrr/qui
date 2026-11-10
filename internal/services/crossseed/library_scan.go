@@ -424,7 +424,7 @@ func (s *Service) contentPrefilterRejectionForCrossSeedResponse(instanceID int, 
 		hashes = append(hashes, resp.TorrentInfo.Hash)
 	}
 	for _, result := range resp.Results {
-		if result.class() != classExists {
+		if result.class() != ClassExists {
 			continue
 		}
 		hasExistingResult = true
@@ -1556,7 +1556,7 @@ func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) mode
 		return models.CrossSeedSearchResultStatusFailed
 	}
 	for _, result := range results {
-		if class := result.class(); class != classExists && class != classSkipped {
+		if class := result.class(); class != ClassExists && class != ClassSkipped {
 			return models.CrossSeedSearchResultStatusFailed
 		}
 	}

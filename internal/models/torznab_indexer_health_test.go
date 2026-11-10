@@ -9,16 +9,26 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // regression: #2714
-func TestTorznabIndexerHealthParsesSQLiteAggregateTimestamps(t *testing.T) {
+func TestTorznabIndexerHealthReadsLastMeasuredTime(t *testing.T) {
 	t.Parallel()
+	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedSQLite(t, "torznab-indexer-health-timestamps"))
+}
 
+// regression: #2714
+func TestTorznabIndexerHealthReadsLastMeasuredTimePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedPostgres(t, "torznab-indexer-health-timestamps"))
+}
+
+func checkIndexerHealthLastMeasuredTime(t *testing.T, db *database.DB) {
+	t.Helper()
 	ctx := t.Context()
-	db := testdb.NewMigratedSQLite(t, "torznab-indexer-health-timestamps")
 	store, err := models.NewTorznabIndexerStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 
@@ -28,11 +38,12 @@ func TestTorznabIndexerHealthParsesSQLiteAggregateTimestamps(t *testing.T) {
 	require.NoError(t, err)
 
 	measuredAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
-	for _, operation := range []string{"caps", "search"} {
+	// One row in the form that the database clock writes, and one bound time.
+	for operation, value := range map[string]any{"caps": measuredAt.Format(time.DateTime), "search": measuredAt} {
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO torznab_indexer_latency (indexer_id, operation_type, latency_ms, success, measured_at)
 			VALUES (?, ?, ?, ?, ?)
-		`, measured.ID, operation, 125, 1, measuredAt.Format(time.DateTime))
+		`, measured.ID, operation, 125, 1, value)
 		require.NoError(t, err)
 	}
 

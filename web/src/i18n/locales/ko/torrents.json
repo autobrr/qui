@@ -1169,6 +1169,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1426,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
     },
-    "ratio": "비율:"
+    "ratio": "비율:",
+    "added": "{{time}} 추가됨"
   },
   "tableView": {
     "ascending": "오름차순",
@@ -1602,5 +1604,17 @@
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "copiesWithProblem_other": "{{name}}의 추가 사본 {{count}}개. 숨겨진 사본에 문제가 있습니다",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "사본 묶기",
+    "expandAll": "모두 펼치기",
+    "collapseAll": "모두 접기",
+    "grouping": "묶는 중…"
   }
 }

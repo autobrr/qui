@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -351,4 +352,77 @@ func TestHardlinkIndexWithoutARouteIsUnchanged(t *testing.T) {
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.CrossScopeByHash[routedSourceHash])
 	require.Same(t, index, cachedHardlinkIndex(rig.sourceID))
+}
+
+// The routed lists of a rebuild come from the files cache under the build's
+// mode, with the print of the Cross-seed instance's maindata.
+func TestHardlinkIndexRoutedListsUseTheCrossSeedPrint(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	links := filepath.Join(dir, "links")
+	sourceFile := filepath.Join(dir, "data", "movie.mkv")
+	createFile(t, sourceFile)
+	require.NoError(t, os.MkdirAll(filepath.Join(links, "Movie"), 0o700))
+	require.NoError(t, os.Link(sourceFile, filepath.Join(links, "Movie", "movie.mkv")))
+
+	listRequests := func(counter *atomic.Int32) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			counter.Add(1)
+			_, _ = w.Write([]byte(`[{"name":"movie.mkv","size":1,"priority":1}]`))
+		}
+	}
+	var sourceRequests, crossRequests atomic.Int32
+	source := singleFileTorrent(routedSourceHash, filepath.Join(dir, "data"), "movie.mkv")
+	routed := singleFileTorrent(routedHash, filepath.Join(links, "Movie"), "movie.mkv")
+	sourceQbit := newFakeQbit(t, []qbt.Torrent{source}, listRequests(&sourceRequests))
+	crossQbit := newFakeQbit(t, []qbt.Torrent{routed}, listRequests(&crossRequests))
+
+	db := testdb.NewMigratedSQLite(t, "hardlink-routed-print")
+	instances, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	sourceInstance, err := instances.Create(ctx, "lib", sourceQbit.URL, "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	crossInstance, err := instances.Create(ctx, "seeds", crossQbit.URL, "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	routeStore := models.NewCrossSeedRouteStore(db)
+	require.NoError(t, routeStore.Upsert(ctx, &models.CrossSeedRoute{
+		SourceInstanceID: sourceInstance.ID, CrossSeedInstanceID: crossInstance.ID,
+		Rows: []models.CrossSeedRouteRow{{BaseDir: links}},
+	}))
+
+	clients, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clients.Close() })
+	syncManager := qbittorrent.NewSyncManager(clients, nil)
+	syncManager.SetFilesManager(filesmanager.NewService(db))
+	backends := fsops.NewPool(instances, localbackend.NewBackend())
+
+	forget := func() {
+		globalHardlinkIndexCache.mu.Lock()
+		delete(globalHardlinkIndexCache.indices, sourceInstance.ID)
+		globalHardlinkIndexCache.mu.Unlock()
+	}
+	forget()
+	t.Cleanup(forget)
+	service := &Service{
+		instanceStore:   instances,
+		filesReader:     syncManager,
+		routedTorrents:  syncManager,
+		backendPool:     backends,
+		crossSeedRoutes: crossseedroute.NewService(routeStore, instances, clients, backends),
+	}
+
+	index := service.GetHardlinkIndex(ctx, sourceInstance.ID, []qbt.Torrent{source})
+	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
+	require.Equal(t, int32(1), crossRequests.Load())
+
+	// The Source instance has no maindata entry for the routed torrent, so a
+	// print read there would leave the 2 h old row with no print, and stale.
+	expireHardlinkIndex(t, sourceInstance.ID)
+	ageFilesCache(t, db, 2*time.Hour)
+
+	index = service.GetHardlinkIndex(ctx, sourceInstance.ID, []qbt.Torrent{source})
+	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
+	require.Equal(t, int32(1), crossRequests.Load())
+	require.Equal(t, int32(1), sourceRequests.Load())
 }

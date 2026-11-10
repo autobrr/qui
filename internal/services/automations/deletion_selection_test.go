@@ -18,15 +18,15 @@ import (
 )
 
 // selectTestDeletions runs the Deletion selection without a qBittorrent client.
-func selectTestDeletions(t *testing.T, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, eligibleView bool) *deletionSelection {
+func selectTestDeletions(t *testing.T, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext) *deletionSelection {
 	t.Helper()
 	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
 	return svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-		rules:        rules,
-		torrents:     torrents,
-		evalCtx:      evalCtx,
-		crossSeeds:   buildCrossSeedGroups(torrents, evalCtx),
-		eligibleView: eligibleView,
+		rules:      rules,
+		torrents:   torrents,
+		evalCtx:    evalCtx,
+		crossSeeds: buildCrossSeedGroups(torrents, evalCtx),
+		scope:      noSkipWindow(rules...),
 	})
 }
 
@@ -49,7 +49,7 @@ func TestDeletionSelection_SharedCrossSeedGoesToTheFirstRule(t *testing.T) {
 	}
 
 	for range 20 {
-		selection := selectTestDeletions(t, []*models.Automation{rule(1, "first"), rule(2, "second")}, slices.Clone(torrents), evalCtx, false)
+		selection := selectTestDeletions(t, []*models.Automation{rule(1, "first"), rule(2, "second")}, slices.Clone(torrents), evalCtx)
 		require.Equal(t, map[string]struct{}{"a": {}, "b": {}}, selection.triggers)
 		require.Equal(t, 1, selection.byHash["a"].rule.id)
 		require.Equal(t, 1, selection.byHash["b"].rule.id, "rule 1 claims first, so its expansion takes the cross-seed")
@@ -71,7 +71,7 @@ func TestDeletionSelection_TrackerPatternPerRule(t *testing.T) {
 		}}
 	}
 
-	selection := selectTestDeletions(t, []*models.Automation{rule(1, "alpha.example"), rule(2, "!alpha.example")}, torrents, &EvalContext{}, false)
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "alpha.example"), rule(2, "!alpha.example")}, torrents, &EvalContext{})
 	require.Len(t, selection.byHash, 3)
 	require.Equal(t, 1, selection.byHash["a"].rule.id)
 	require.Equal(t, 2, selection.byHash["b"].rule.id)
@@ -102,7 +102,7 @@ func TestDeletionSelection_LaterClaimStillExpandsWiderScope(t *testing.T) {
 		}}
 	}
 
-	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx, false)
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx)
 	require.Equal(t, 1, selection.byHash["b"].rule.id, "rule 1 claims first, so its expansion takes the cross-seed")
 	require.Contains(t, selection.byHash, "c", "rule 2 claims b with hardlinks, so the hardlink copy goes too")
 	require.Equal(t, 2, selection.byHash["c"].rule.id)
@@ -138,7 +138,7 @@ func TestDeletionSelection_HardlinkRuleFollowsTakenTorrent(t *testing.T) {
 		}}
 	}
 
-	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx, false)
+	selection := selectTestDeletions(t, []*models.Automation{rule(1, "first", false), rule(2, "second", true)}, torrents, evalCtx)
 	require.Equal(t, 1, selection.byHash["pack"].rule.id, "rule 1 claims first, so its expansion takes the pack")
 	require.Contains(t, selection.byHash, "copy", "rule 2 includes hardlinks, so the hardlink copy of the pack goes too")
 	require.True(t, selection.byHash["copy"].hardlinkCopy)
@@ -150,8 +150,7 @@ func TestDeletePreview_KeepFilesGroupMemberGetsBadge(t *testing.T) {
 		"trigger": {hash: "trigger", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles, trigger: true},
 		"member":  {hash: "member", deleteMode: DeleteModeKeepFiles, batchMode: DeleteModeKeepFiles},
 	}}
-	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
-	result := svc.buildDeletePreviewResult(torrents, selection, &EvalContext{}, previewConfig{limit: 10}, &models.Automation{}, nil)
+	result := buildDeletePreviewResult(torrents, selection, &EvalContext{}, previewConfig{limit: 10}, &models.Automation{}, nil, noSkipWindow())
 	require.False(t, result.Examples[0].IsCrossSeed)
 	require.True(t, result.Examples[1].IsCrossSeed, "the group expansion took the member")
 	require.Zero(t, result.CrossSeedCount, "a keep-files group member is not a cross-seed")
@@ -228,6 +227,7 @@ func TestDeletionSelection_SharedSavePathChecksFileOverlap(t *testing.T) {
 				torrents:   slices.Clone(torrents),
 				evalCtx:    evalCtx,
 				crossSeeds: buildCrossSeedGroups(torrents, evalCtx),
+				scope:      noSkipWindow(rule),
 			})
 			require.ElementsMatch(t, tt.want, slices.Collect(maps.Keys(selection.byHash)))
 		})

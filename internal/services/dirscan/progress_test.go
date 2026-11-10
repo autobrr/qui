@@ -119,9 +119,8 @@ func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansPostgresIntegration(t *te
 }
 
 // runTrackedFileRescanTest stores an mtime through the real store and scans it
-// again. Postgres reads it back in microseconds, and pgx writes a non-UTC time as
-// its wall clock. The nanos sit at the top of the second so a driver that rounded
-// instead of truncating would fail here too.
+// again. Postgres reads it back in microseconds. The nanos sit at the top of the
+// second so a driver that rounded instead of truncating would fail here too.
 func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
 	t.Helper()
 	ctx := t.Context()

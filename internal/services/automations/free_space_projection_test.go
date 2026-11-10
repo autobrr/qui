@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func selectedFilesFixture(t *testing.T) ([]qbt.Torrent, *EvalContext, *models.Automation) {
@@ -24,7 +25,6 @@ func selectedFilesFixture(t *testing.T) ([]qbt.Torrent, *EvalContext, *models.Au
 		{Hash: "pack", Size: 2000, AddedOn: 4, SavePath: root, ContentPath: root + "/Pack"},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear: make(map[string]int64),
 		SameInstanceContentByHash: map[string][]string{
 			"first": {"pack"}, "second": {"pack"}, "pack": {"first", "second"},
 		},
@@ -42,6 +42,7 @@ func selectedFilesFixture(t *testing.T) ([]qbt.Torrent, *EvalContext, *models.Au
 			},
 		}},
 	}}
+	evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, rule)
 	return torrents, evalCtx, rule
 }
 
@@ -64,13 +65,13 @@ func TestPlainFreeSpaceProjection_SelectedFileUnion(t *testing.T) {
 			if tc.reverse {
 				torrents[0].AddedOn, torrents[1].AddedOn = torrents[1].AddedOn, torrents[0].AddedOn
 			}
-			selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false)
+			selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
 			require.ElementsMatch(t, []string{"first", "second"}, selection.order)
 			wantBytes := int64(2000)
 			if tc.overlap {
 				wantBytes += 100
 			}
-			require.Equal(t, wantBytes, evalCtx.SpaceToClear)
+			require.Equal(t, wantBytes, evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 		})
 	}
 }
@@ -79,9 +80,9 @@ func TestPlainFreeSpaceProjection_SelectedFileUnion(t *testing.T) {
 func TestPlainFreeSpaceProjection_SkipsCheckingTorrent(t *testing.T) {
 	torrents, evalCtx, rule := selectedFilesFixture(t)
 	torrents[0].State = qbt.TorrentStateCheckingUp
-	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, false)
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
 	require.ElementsMatch(t, []string{"second", "other"}, selection.order)
-	require.Equal(t, int64(2000), evalCtx.SpaceToClear)
+	require.Equal(t, int64(2000), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 }
 
 func TestPlainFreeSpaceProjection_UnreadSelectionStopsRule(t *testing.T) {
@@ -95,12 +96,12 @@ func TestPlainFreeSpaceProjection_UnreadSelectionStopsRule(t *testing.T) {
 		svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
 			rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx,
-			crossSeeds: buildCrossSeedGroups(torrents, evalCtx), stats: stats,
+			crossSeeds: buildCrossSeedGroups(torrents, evalCtx), scope: noSkipWindow(rule), stats: stats,
 		})
 		require.Empty(t, selection.byHash, "a failed estimate cancels earlier selections and stops later deletions")
 		require.Empty(t, selection.triggers)
 		require.Error(t, selection.failedRules[rule.ID])
-		require.Zero(t, evalCtx.SpaceToClear)
+		require.Zero(t, evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 		require.Zero(t, stats[rule.ID].DeleteApplied)
 	}
 }
@@ -114,17 +115,13 @@ func TestPlainFreeSpaceProjection_RuleAndSourceIsolation(t *testing.T) {
 		first.Conditions.Delete.Condition.Conditions[1].Value = "500"
 		second.Conditions.Delete.Condition.Conditions[1].Value = "500"
 		evalCtx.CrossSeedFilesByHash["second"] = evalCtx.CrossSeedFilesByHash["first"]
-		evalCtx.FreeSpaceStates = make(map[string]*FreeSpaceSourceState)
-		for _, rule := range []*models.Automation{first, second} {
-			evalCtx.FreeSpaceStates[GetFreeSpaceRuleKey(rule)] = &FreeSpaceSourceState{FilesToClear: make(map[string]int64)}
-		}
-		selection := selectTestDeletions(t, []*models.Automation{first, second}, torrents, evalCtx, false)
+		evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, first, second)
+		selection := selectTestDeletions(t, []*models.Automation{first, second}, torrents, evalCtx)
 		require.Len(t, selection.byHash, 2)
 		require.Equal(t, first.ID, selection.byHash["first"].rule.id)
 		require.Equal(t, second.ID, selection.byHash["second"].rule.id)
-		for _, state := range evalCtx.FreeSpaceStates {
-			require.Equal(t, int64(1000), state.SpaceToClear)
-			require.Len(t, state.FileBytesToClear, 1)
+		for _, rule := range []*models.Automation{first, second} {
+			require.Equal(t, int64(1000), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 		}
 	}
 }
@@ -136,14 +133,11 @@ func TestPlainFreeSpaceProjection_FailureDoesNotStopOtherRules(t *testing.T) {
 	_, _, other := selectedFilesFixture(t)
 	other.ID = 2
 	other.Conditions.Delete.Condition.Conditions[0].Value = "other-rule"
-	evalCtx.FreeSpaceStates = map[string]*FreeSpaceSourceState{
-		GetFreeSpaceRuleKey(failed): {FilesToClear: make(map[string]int64)},
-		GetFreeSpaceRuleKey(other):  {FilesToClear: make(map[string]int64)},
-	}
-	selection := selectTestDeletions(t, []*models.Automation{failed, other}, torrents, evalCtx, false)
+	evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, failed, other)
+	selection := selectTestDeletions(t, []*models.Automation{failed, other}, torrents, evalCtx)
 	require.Equal(t, []string{"other"}, selection.order)
 	require.Equal(t, other.ID, selection.byHash["other"].rule.id)
-	require.Zero(t, evalCtx.FreeSpaceStates[GetFreeSpaceRuleKey(failed)].SpaceToClear)
+	require.Zero(t, evalCtx.freeSpaceLedgers[failed.ID].projectedFreedBytes())
 }
 
 func TestPlainFreeSpaceProjection_LoadsFileListsOnlyForFreeSpaceDeletes(t *testing.T) {
@@ -151,4 +145,32 @@ func TestPlainFreeSpaceProjection_LoadsFileListsOnlyForFreeSpaceDeletes(t *testi
 	require.True(t, ruleNeedsCrossSeedFiles(rule))
 	rule.Conditions.Delete.Condition = rule.Conditions.Delete.Condition.Conditions[0]
 	require.False(t, ruleNeedsCrossSeedFiles(rule))
+}
+
+// regression: #2953
+func TestPreviewFreeSpaceRule_FailsWhenTheInstanceDoesNotLoad(t *testing.T) {
+	svc, instanceID := newDryRunParityService(t, defaultParityFixture())
+	// qBittorrent still answers, but the instance row does not load.
+	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))
+	require.NoError(t, err)
+	svc.instanceStore = emptyStore
+	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "50000000000"}
+
+	rule := parityDeleteRule(DeleteModeWithFiles, freeSpaceBelow)
+	for _, view := range []string{"needed", "eligible"} {
+		result, err := svc.PreviewDeleteRule(t.Context(), instanceID, rule, 10, 0, view)
+		require.Error(t, err, view)
+		require.Nil(t, result, view)
+	}
+
+	tagRule := parityTagRule(models.TagAction{})
+	tagRule.Conditions.Tags[0].Condition = freeSpaceBelow
+	result, err := svc.PreviewTagRule(t.Context(), instanceID, tagRule, 10, 0)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	// A rule that does not read FREE_SPACE previews without the instance.
+	result, err = svc.PreviewDeleteRule(t.Context(), instanceID, parityDeleteRule(DeleteModeWithFiles, parityDeleteTag), 10, 0, "needed")
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }

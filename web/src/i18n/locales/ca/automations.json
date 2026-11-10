@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Grup per a aquesta condició",
     "aboutGroupSelectionAriaLabel": "Sobre la selecció de grup de les condicions agrupades",
     "groupTooltip": "Aquest grup només s'aplica a aquesta fila de condició. Si cal, fes servir grups diferents a les altres files GROUP_SIZE/IS_GROUPED.",
+    "aboutHardlinkScopeAriaLabel": "Sobre l'abast dels enllaços durs",
+    "hardlinkScopeTooltip": "Fora de qBittorrent vol dir un enllaç dur que no pertany a cap torrent. Hi compta una importació a la biblioteca, i també un enllaç solt dins la carpeta de baixades.",
     "min": "Mín",
     "max": "Màx",
     "selectState": "Selecciona un estat",

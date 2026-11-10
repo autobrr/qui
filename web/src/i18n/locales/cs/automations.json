@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Skupina pro tuto podmínku",
     "aboutGroupSelectionAriaLabel": "O výběru skupiny pro seskupenou podmínku",
     "groupTooltip": "Tato skupina se vztahuje pouze na tuto řádku podmínky. Použijte různé skupiny na ostatních řádcích GROUP_SIZE/IS_GROUPED (velikost skupiny/je seskupená), pokud je třeba.",
+    "aboutHardlinkScopeAriaLabel": "O rozsahu pevných odkazů",
+    "hardlinkScopeTooltip": "Mimo qBittorrent znamená pevný odkaz, který nepatří žádnému torrentu. Počítá se import do knihovny i zapomenutý odkaz uvnitř složky pro stahování.",
     "min": "Min",
     "max": "Max",
     "wrappingRangeHint": "Rozsah přechází přes konec: odpovídá {{min}} a výše, potom všemu pod {{max}}.",

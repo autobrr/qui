@@ -109,6 +109,8 @@ type StreamOptions struct {
 	Filters     qbittorrent.FilterOptions
 	// Summary asks for the totals of the view without its rows.
 	Summary bool
+	// GroupCopies asks for Copy groups, as the groupCopies query parameter of a list request does.
+	GroupCopies bool
 	// hideTrackerPasskeys makes its own group, because the subscribers of a group share one payload.
 	hideTrackerPasskeys bool
 }
@@ -164,7 +166,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s|%t",
+		"%s|%d|%d|%s|%s|%s|%s|%t|%t",
 		instanceKey,
 		opts.Page,
 		opts.Limit,
@@ -173,6 +175,7 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(opts.Search),
 		strconv.Quote(filtersKey),
 		opts.Summary,
+		opts.GroupCopies,
 	)
 }
 
@@ -201,6 +204,13 @@ type versionWatcher interface {
 	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
 }
 
+// copyGroupsDemand keeps the Copy groups job running while a grouped stream is
+// open, because the browser sends no list request while the stream works. It
+// stays apart from syncProvider, which ADR 0005 caps at five methods.
+type copyGroupsDemand interface {
+	DemandCopyGroups()
+}
+
 // instanceStore is the subset of *models.InstanceStore that the StreamManager
 // depends on, so tests can run a stream without a database.
 type instanceStore interface {
@@ -219,6 +229,7 @@ type StreamManager struct {
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
 	versions    versionWatcher
+	copyGroups  copyGroupsDemand
 	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
@@ -446,7 +457,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, instanceStore instanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, copyGroups copyGroupsDemand, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -461,6 +472,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		clientPool:     clientPool,
 		syncManager:    syncManager,
 		versions:       versions,
+		copyGroups:     copyGroups,
 		instanceDB:     instanceStore,
 		subscriptions:  make(map[string]*subscriptionState),
 		instanceIndex:  make(map[int]map[string]*subscriptionState),
@@ -1839,6 +1851,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	if opts.Summary {
 		ctx = qbittorrent.WithSummary(ctx)
 	}
+	if opts.GroupCopies {
+		ctx = qbittorrent.WithGroupCopies(ctx)
+	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).
@@ -2515,6 +2530,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 				return
 			case <-timer.C:
 				m.publishHeartbeat(instanceID)
+				m.demandCopyGroups(instanceID)
 				m.enqueueIdleTicks(instanceID) //nolint:contextcheck // a tick builds on the manager context, like every other tick
 				// Jitter each interval so per-instance heartbeats do not align into a
 				// synchronized burst through the single dispatcher.
@@ -2524,6 +2540,15 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 	}()
 
 	return loop
+}
+
+func (m *StreamManager) demandCopyGroups(instanceID int) {
+	for _, group := range m.groupsForInstance(instanceID) {
+		if group.options.GroupCopies {
+			m.copyGroups.DemandCopyGroups()
+			return
+		}
+	}
 }
 
 func (m *StreamManager) publishHeartbeat(instanceID int) {
@@ -2569,6 +2594,7 @@ type streamRequestPayload struct {
 	Search      string                     `json:"search"`
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
 	Summary     bool                       `json:"summary"`
+	GroupCopies bool                       `json:"groupCopies"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2642,13 +2668,17 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 	}
 
 	opts := StreamOptions{
-		Page:    page,
-		Limit:   limit,
-		Sort:    sort,
-		Order:   order,
-		Search:  p.Search,
-		Filters: filters,
-		Summary: p.Summary,
+		Page:        page,
+		Limit:       limit,
+		Sort:        sort,
+		Order:       order,
+		Search:      p.Search,
+		Filters:     filters,
+		Summary:     p.Summary,
+		GroupCopies: p.GroupCopies,
+	}
+	if p.Summary && p.GroupCopies {
+		return StreamOptions{}, errors.New("summary has no rows to group")
 	}
 
 	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and

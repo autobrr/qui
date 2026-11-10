@@ -285,9 +285,9 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 		addedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
 		failedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
 		for _, result := range resp.Results {
-			if class := result.class(); class == classAdded {
+			if class := result.class(); class == ClassAdded {
 				addedResults = append(addedResults, result)
-			} else if class == classStranded || class == classFailed {
+			} else if class == ClassStranded || class == ClassFailed {
 				failedResults = append(failedResults, result)
 			}
 		}

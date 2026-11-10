@@ -10,6 +10,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
@@ -74,6 +75,28 @@ func (sm *SyncManager) SetCopyGroups(next *CopyGroups) {
 	}
 }
 
+// SetCopyGroupsDemandHandler registers the function that a list request or a grouped stream for Copy groups calls.
+func (sm *SyncManager) SetCopyGroupsDemandHandler(handler func()) {
+	sm.copyGroupsDemand.Store(&handler)
+}
+
+// DemandCopyGroups wakes the Copy groups job, or keeps it running.
+func (sm *SyncManager) DemandCopyGroups() {
+	if handler := sm.copyGroupsDemand.Load(); handler != nil {
+		(*handler)()
+	}
+}
+
+// LastSuccessfulSync reads the pool offline, so it never waits on a login. It
+// is zero for an instance with no client or no successful sync.
+func (sm *SyncManager) LastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
+	client, err := sm.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil {
+		return time.Time{}
+	}
+	return client.GetLastSyncUpdate()
+}
+
 func changedCopyGroupInstances(prev, next *CopyGroups) []int {
 	instances := map[int]struct{}{}
 	for _, g := range []*CopyGroups{prev, next} {
@@ -103,7 +126,6 @@ func (g *CopyGroups) entries(instanceID int) map[string]uint64 {
 	return g.ids[instanceID]
 }
 
-// copyGroupsReady reads the pool offline, so it never waits on a login.
 func (sm *SyncManager) copyGroupsReady(ctx context.Context, groups *CopyGroups, instanceIDs []int) bool {
 	if groups == nil {
 		return false
@@ -113,7 +135,7 @@ func (sm *SyncManager) copyGroupsReady(ctx context.Context, groups *CopyGroups, 
 		if groups.hasRead(id) {
 			return true
 		}
-		if client, err := sm.clientPool.GetClientOffline(ctx, id); err == nil && !client.GetLastSyncUpdate().IsZero() {
+		if !sm.LastSuccessfulSync(ctx, id).IsZero() {
 			synced = true
 		}
 	}

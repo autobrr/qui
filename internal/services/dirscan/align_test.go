@@ -547,6 +547,9 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 	if res.Success {
 		t.Fatalf("expected Success=false when alignment fails, got %+v", res)
 	}
+	if res.Class != crossseed.ClassStranded {
+		t.Errorf("Class = %q, want %q", res.Class, crossseed.ClassStranded)
+	}
 	if res.ErrorMessage == "" {
 		t.Errorf("expected an error message describing the alignment failure")
 	}
@@ -696,6 +699,9 @@ func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	if res.Success || res.ErrorMessage == "" {
 		t.Fatalf("expected a reported failure when the settle queue is full, got %+v", res)
 	}
+	if res.Class != crossseed.ClassAdded || !res.SettleQueueFull {
+		t.Errorf("expected an added torrent that the full settle queue keeps paused, got %+v", res)
+	}
 	if len(manager.folderRenames) != 1 {
 		t.Errorf("expected the folder rename to have been applied, got %+v", manager.folderRenames)
 	}
@@ -748,6 +754,9 @@ func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 			}
 			if res.Success != tt.wantSuccess || res.Success == (res.ErrorMessage != "") {
 				t.Fatalf("result = %+v, want success %v", res, tt.wantSuccess)
+			}
+			if res.Class != crossseed.ClassAdded || res.SettleQueueFull == tt.wantSuccess {
+				t.Fatalf("result = %+v, want class added and SettleQueueFull %v", res, !tt.wantSuccess)
 			}
 		})
 	}

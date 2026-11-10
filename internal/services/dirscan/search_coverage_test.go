@@ -104,10 +104,16 @@ func TestProcessSearchee_CoverageGatesFinalization(t *testing.T) {
 			t.Parallel()
 
 			svc := coverageTestService(tt.response)
-			matches, outcome := svc.processSearchee(ctx, dir, localScanTarget(), coverageTestSearchee(), settings, matcher, 1, enabled, nil, &l)
-			require.Nil(t, matches)
-			require.Equal(t, tt.wantSearched, outcome.searched)
-			require.False(t, outcome.searchError)
+			searchee := coverageTestSearchee()
+			report := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, matcher, 1, enabled, nil, &l)
+			require.Equal(t, itemSearched, report.search)
+			require.Empty(t, report.candidates)
+
+			report.files = searcheeFilePaths(searchee)
+			path := searchee.Files[0].Path
+			decisions := decideSearcheeOutcome([]searcheeFile{{path: path, video: true}}, sortedIndexerIDs(enabled), false, []workItemReport{report})
+			_, finalized := decisions[path]
+			require.Equal(t, tt.wantSearched, finalized)
 		})
 	}
 }

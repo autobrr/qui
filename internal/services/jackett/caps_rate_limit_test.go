@@ -196,9 +196,9 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 			if got := rateLimitErr != nil; got != tt.wantRateLimited {
 				t.Fatalf("applyIndexerRestrictions rateLimited = %v, want %v", got, tt.wantRateLimited)
 			}
-			inCooldown, _ := service.rateLimiter.IsInCooldown(idx.ID, rateLimitScopeQuery)
-			if inCooldown != tt.wantCooldown {
-				t.Fatalf("IsInCooldown = %v, want %v", inCooldown, tt.wantCooldown)
+			_, _, askErr := service.slots.tryAcquire(idx, requestSearch)
+			if inCooldown := askErr != nil; inCooldown != tt.wantCooldown {
+				t.Fatalf("search refused by cooldown = %v, want %v", inCooldown, tt.wantCooldown)
 			}
 			if got := capsCalls.Load(); got != tt.wantCapsCalls {
 				t.Fatalf("caps fetches = %d, want %d", got, tt.wantCapsCalls)
@@ -423,9 +423,10 @@ func TestSyncIndexerCapsRateLimitSetsQueryCooldown(t *testing.T) {
 	var rateLimitErr *RateLimitError
 	require.ErrorAs(t, err, &rateLimitErr)
 	assert.Equal(t, rateLimitScopeQuery, rateLimitErr.Scope)
-	inCooldown, retryAt := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeQuery)
-	assert.True(t, inCooldown)
-	assert.WithinDuration(t, rateLimitErr.RetryAt, retryAt, time.Microsecond)
+	_, _, err = service.slots.tryAcquire(indexer, requestSearch)
+	var searchRefusal *RateLimitError
+	require.ErrorAs(t, err, &searchRefusal)
+	assert.WithinDuration(t, rateLimitErr.RetryAt, searchRefusal.RetryAt, time.Microsecond)
 
 	_, err = service.SyncIndexerCaps(t.Context(), indexer.ID)
 	var secondRateLimitErr *RateLimitError
@@ -434,29 +435,16 @@ func TestSyncIndexerCapsRateLimitSetsQueryCooldown(t *testing.T) {
 	assert.WithinDuration(t, rateLimitErr.RetryAt, secondRateLimitErr.RetryAt, time.Microsecond)
 }
 
-func TestHandleRateLimitReturnsEffectiveCooldown(t *testing.T) {
-	t.Parallel()
-
-	indexer := &models.TorznabIndexer{ID: 1, Name: "Rate limited", Enabled: true}
-	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
-	t.Cleanup(service.searchScheduler.Stop)
-
-	longerRetryAt := time.Now().Add(2 * time.Minute)
-	service.rateLimiter.SetCooldown(indexer.ID, rateLimitScopeQuery, longerRetryAt)
-
-	rateLimitErr := service.handleRateLimit(t.Context(), indexer, rateLimitScopeQuery, 10*time.Second, errors.New("rate limited"))
-	inCooldown, storedRetryAt := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeQuery)
-
-	require.True(t, inCooldown)
-	assert.WithinDuration(t, longerRetryAt, storedRetryAt, time.Microsecond)
-	assert.WithinDuration(t, storedRetryAt, rateLimitErr.RetryAt, time.Microsecond)
-}
-
 func TestSearchMultipleIndexersReturnsEarliestCooldown(t *testing.T) {
 	t.Parallel()
 
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Retry-After", "60")
+		retryAfter := "60"
+		if requests.Add(1) == 1 {
+			retryAfter = "10"
+		}
+		w.Header().Set("Retry-After", retryAfter)
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	t.Cleanup(server.Close)
@@ -467,14 +455,16 @@ func TestSearchMultipleIndexersReturnsEarliestCooldown(t *testing.T) {
 	}
 	service := NewService(&mockTorznabIndexerStore{indexers: indexers})
 	t.Cleanup(service.searchScheduler.Stop)
-	earlyRetryAt := time.Now().Add(10 * time.Second)
-	service.rateLimiter.SetCooldown(indexers[0].ID, rateLimitScopeQuery, earlyRetryAt)
+	_, err := service.SyncIndexerCaps(t.Context(), indexers[0].ID)
+	var earlyLimit *RateLimitError
+	require.ErrorAs(t, err, &earlyLimit)
 
-	_, _, err := service.searchMultipleIndexers(t.Context(), indexers, url.Values{"q": {"synthetic movie"}}, &searchContext{searchMode: "search"})
+	_, _, err = service.searchMultipleIndexers(t.Context(), indexers, url.Values{"q": {"synthetic movie"}}, &searchContext{searchMode: "search"})
 	var rateLimitErr *RateLimitError
 	require.ErrorAs(t, err, &rateLimitErr)
 	assert.Equal(t, indexers[0].ID, rateLimitErr.IndexerID)
-	assert.WithinDuration(t, earlyRetryAt, rateLimitErr.RetryAt, time.Microsecond)
+	assert.WithinDuration(t, earlyLimit.RetryAt, rateLimitErr.RetryAt, time.Microsecond)
+	assert.Equal(t, int32(2), requests.Load(), "the limited indexer must not be searched")
 }
 
 func TestScheduledSearchCapsRateLimitIsNotCovered(t *testing.T) {

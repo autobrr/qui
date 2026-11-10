@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Gruppo per questa condizione",
     "aboutGroupSelectionAriaLabel": "Informazioni sulla selezione del gruppo per condizione raggruppata",
     "groupTooltip": "Questo gruppo si applica solo a questa riga di condizione. Usa gruppi diversi su altre righe GROUP_SIZE/IS_GROUPED se necessario.",
+    "aboutHardlinkScopeAriaLabel": "Informazioni sull'ambito degli hardlink",
+    "hardlinkScopeTooltip": "Al di fuori di qBittorrent indica un hardlink che non appartiene a nessun torrent. Conta un'importazione nella libreria, e anche un link orfano nella cartella di download.",
     "min": "Min",
     "max": "Max",
     "wrappingRangeHint": "L'intervallo si avvolge: corrisponde a {{min}} e oltre, poi a tutto ciò che è sotto {{max}}.",

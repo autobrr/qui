@@ -1161,63 +1161,21 @@ func (s *Service) processRootSearchee(
 		return matchesFoundOut, torrentsAddedOut
 	}
 
-	isFinalInDB := func(path string) bool {
-		if trackedFiles == nil {
-			return false
-		}
-		return isFinalTrackedFile(trackedFiles.byPath[path], enabledIndexerIDs)
-	}
-
-	fileUpdates := make(map[string]dirScanFileUpdate)
-	attemptedFiles := make(map[string]struct{})
-	// The set of indexers this scan considers; recorded on no_match stamps so a
-	// later scan can reopen the file when new indexers appear.
-	consideredIndexerIDs := sortedIndexerIDs(enabledIndexerIDs)
-	// Files of a work item that asked for a retry stay pending, also when a
-	// season search and its episode searches cover the same files.
-	retryFiles := make(map[string]struct{})
-	hadSearchSuccess := false
-	hadSearchError := false
-	hasProcessingError := false
-	hasAcceptedMatch := false
-
-	// If the entire root searchee is already seeding, mark all files as final and skip searching.
-	// This prevents already-seeding folders from staying eligible due to non-video extras.
+	// A root searchee that seeds already skips the search. Its non-video extras
+	// become final too, so they do not keep it eligible.
 	if isAlreadySeedingByFileID(searchee, fileIDIndex) {
-		for _, f := range searchee.Files {
-			if f == nil {
-				continue
-			}
-			if isFinalInDB(f.Path) {
-				continue
-			}
-			fileUpdates[f.Path] = dirScanFileUpdate{status: models.DirScanFileStatusAlreadySeeding}
-		}
-
-		if err := s.finalizeRootSearcheeFileStatuses(
-			ctx,
-			dir.ID,
-			searchee,
-			fileUpdates,
-			attemptedFiles,
-			trackedFiles,
-			false,
-			false,
-			false,
-			false,
-			nil,
-			enabledIndexerIDs,
-			l,
-		); err != nil && l != nil {
+		reports := []workItemReport{{files: searcheeFilePaths(searchee), search: itemSeedsAlready}}
+		if err := s.persistSearcheeOutcome(ctx, dir.ID, searchee, trackedFiles, enabledIndexerIDs, false, reports, l); err != nil && l != nil {
 			l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist already-seeding searchee file statuses")
 		}
-
 		return matchesFoundOut, torrentsAddedOut
 	}
 
+	reports := make([]workItemReport, 0, len(workItems))
+	canceled := false
 	for _, item := range workItems {
 		if ctx.Err() != nil {
-			hasProcessingError = true
+			canceled = true
 			break
 		}
 		if shouldSkipWorkItemTVGroup(item, injectedTVGroups) {
@@ -1227,97 +1185,32 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		if isAlreadySeedingByFileID(item.searchee, fileIDIndex) {
-			for _, f := range item.searchee.Files {
-				if f == nil {
-					continue
-				}
-				if isFinalInDB(f.Path) {
-					continue
-				}
-				if existing, ok := fileUpdates[f.Path]; ok && (existing.status == models.DirScanFileStatusMatched || existing.status == models.DirScanFileStatusInQBittorrent) {
-					continue
-				}
-				fileUpdates[f.Path] = dirScanFileUpdate{status: models.DirScanFileStatusAlreadySeeding}
+		report := workItemReport{search: itemSeedsAlready}
+		if !isAlreadySeedingByFileID(item.searchee, fileIDIndex) {
+			stillPending := func() bool {
+				return !s.itemFinishedByAnotherRun(ctx, dir.ID, item, trackedFiles, enabledIndexerIDs, l)
 			}
-			continue
+			report = s.processSearchee(ctx, dir, target, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
 		}
+		report.files = searcheeFilePaths(item.searchee)
+		report.episode = item.isEpisode
+		reports = append(reports, report)
 
-		stillPending := func() bool {
-			return !s.itemFinishedByAnotherRun(ctx, dir.ID, item, trackedFiles, enabledIndexerIDs, l)
-		}
-		matches, outcome := s.processSearchee(ctx, dir, target, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
-		if outcome.searched || outcome.searchError {
-			for _, f := range item.searchee.Files {
-				if f == nil {
-					continue
-				}
-				attemptedFiles[f.Path] = struct{}{}
-			}
-		}
-		if outcome.searched {
-			hadSearchSuccess = true
-		}
-		if outcome.retry {
-			for _, f := range item.searchee.Files {
-				if f != nil {
-					retryFiles[f.Path] = struct{}{}
-				}
-			}
-		}
-		if outcome.searchError {
-			hadSearchError = true
-			hasProcessingError = true
-			for _, f := range item.searchee.Files {
-				if f == nil {
-					continue
-				}
-				if isFinalInDB(f.Path) {
-					continue
-				}
-				if existing, ok := fileUpdates[f.Path]; ok && (existing.status == models.DirScanFileStatusMatched || existing.status == models.DirScanFileStatusInQBittorrent) {
-					continue
-				}
-				fileUpdates[f.Path] = dirScanFileUpdate{status: models.DirScanFileStatusError}
-			}
-		}
-		if len(matches) == 0 {
-			continue
-		}
-
-		var (
-			anyInjected  bool
-			anyNonFailed bool
-			primaryMatch *searcheeMatch
-		)
-
-		for _, m := range matches {
-			if m == nil {
+		matches := 0
+		anyInjected := false
+		for _, c := range report.candidates {
+			if !c.isMatch() {
 				continue
 			}
-
+			matches++
 			matchesFoundOut++
-
-			if m.injected {
+			if c.added() {
 				torrentsAddedOut++
 				anyInjected = true
 			}
-			if !m.injectionFailed {
-				anyNonFailed = true
-			}
-
-			if primaryMatch == nil {
-				primaryMatch = m
-				continue
-			}
-			if !primaryMatch.injected && m.injected {
-				primaryMatch = m
-				continue
-			}
-			if !primaryMatch.injected && !primaryMatch.inQBittorrent && m.inQBittorrent {
-				primaryMatch = m
-				continue
-			}
+		}
+		if matches == 0 {
+			continue
 		}
 
 		// A season pack covers the other episodes of its group. A single episode does not.
@@ -1326,87 +1219,30 @@ func (s *Service) processRootSearchee(
 		}
 
 		s.setRunProgress(runID, matchesFoundOut, torrentsAddedOut)
-
-		// If we found matches but all accepted injections failed, mark this work as error so it can be inspected.
-		// (A successful injection or an "already in qBittorrent" outcome is considered a success.)
-		if !anyNonFailed || primaryMatch == nil {
-			hasProcessingError = true
-			for _, f := range item.searchee.Files {
-				if f == nil {
-					continue
-				}
-				if isFinalInDB(f.Path) {
-					continue
-				}
-				if existing, ok := fileUpdates[f.Path]; ok && (existing.status == models.DirScanFileStatusMatched || existing.status == models.DirScanFileStatusInQBittorrent) {
-					continue
-				}
-				fileUpdates[f.Path] = dirScanFileUpdate{status: models.DirScanFileStatusError}
-			}
-			continue
-		}
-
-		updateStatus := models.DirScanFileStatusMatched
-		if !anyInjected && primaryMatch.inQBittorrent {
-			updateStatus = models.DirScanFileStatusInQBittorrent
-		}
-
-		hasAcceptedMatch = true
-
-		var indexerID *int
-		if primaryMatch.searchResult != nil && primaryMatch.searchResult.IndexerID > 0 {
-			id := primaryMatch.searchResult.IndexerID
-			indexerID = &id
-		}
-
-		if primaryMatch.matchResult != nil {
-			var torrentHash string
-			if primaryMatch.parsedTorrent != nil {
-				torrentHash = primaryMatch.parsedTorrent.InfoHash
-			}
-			for _, pair := range primaryMatch.matchResult.MatchedFiles {
-				if pair.SearcheeFile == nil {
-					continue
-				}
-				fileUpdates[pair.SearcheeFile.Path] = dirScanFileUpdate{
-					status:             updateStatus,
-					matchedTorrentHash: torrentHash,
-					matchedIndexerID:   indexerID,
-				}
-			}
-		}
 	}
 
-	for path := range retryFiles {
-		delete(attemptedFiles, path)
-	}
-
-	finalizeCtx := ctx
+	persistCtx := ctx
 	if ctx.Err() != nil {
-		persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		detached, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		finalizeCtx = persistCtx
+		persistCtx = detached
 	}
 
-	if err := s.finalizeRootSearcheeFileStatuses(
-		finalizeCtx,
-		dir.ID,
-		searchee,
-		fileUpdates,
-		attemptedFiles,
-		trackedFiles,
-		hasAcceptedMatch,
-		hadSearchSuccess,
-		hadSearchError,
-		hasProcessingError,
-		consideredIndexerIDs,
-		enabledIndexerIDs,
-		l,
-	); err != nil && l != nil {
+	if err := s.persistSearcheeOutcome(persistCtx, dir.ID, searchee, trackedFiles, enabledIndexerIDs, canceled, reports, l); err != nil && l != nil {
 		l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist searchee file statuses")
 	}
 
 	return matchesFoundOut, torrentsAddedOut
+}
+
+func searcheeFilePaths(searchee *Searchee) []string {
+	paths := make([]string, 0, len(searchee.Files))
+	for _, f := range searchee.Files {
+		if f != nil {
+			paths = append(paths, f.Path)
+		}
+	}
+	return paths
 }
 
 // itemFinishedByAnotherRun rereads the item's files into the run's snapshot and
@@ -1459,92 +1295,53 @@ func shouldSkipWorkItemTVGroup(item searcheeWorkItem, injectedTVGroups map[tvGro
 	return alreadyInjected
 }
 
-func (s *Service) finalizeRootSearcheeFileStatuses(
+func (s *Service) persistSearcheeOutcome(
 	ctx context.Context,
 	directoryID int,
 	root *Searchee,
-	updates map[string]dirScanFileUpdate,
-	attemptedFiles map[string]struct{},
 	trackedFiles *trackedFilesIndex,
-	hasAcceptedMatch bool,
-	hadSearchSuccess bool,
-	hadSearchError bool,
-	hasProcessingError bool,
-	consideredIndexerIDs []int,
 	enabledIndexerIDs map[int]struct{},
+	canceled bool,
+	reports []workItemReport,
 	l *zerolog.Logger,
 ) error {
-	if s == nil || s.store == nil || directoryID <= 0 || root == nil {
+	if s.store == nil {
 		return nil
 	}
 
-	markAllError := !hasAcceptedMatch && hadSearchError && !hadSearchSuccess
-	markRemainingNoMatch := !hasProcessingError && (hasAcceptedMatch || hadSearchSuccess)
-
+	files := make([]searcheeFile, 0, len(root.Files))
 	for _, f := range root.Files {
 		if f == nil {
 			continue
 		}
-
-		_, attempted := attemptedFiles[f.Path]
-		isVideo := isVideoPath(f.Path)
-
-		tracked := (*models.DirScanFile)(nil)
+		var tracked *models.DirScanFile
 		if trackedFiles != nil {
 			tracked = trackedFiles.byPath[f.Path]
 		}
-		isFinal := isFinalTrackedFile(tracked, enabledIndexerIDs)
+		files = append(files, searcheeFile{path: f.Path, video: isVideoPath(f.Path), final: isFinalTrackedFile(tracked, enabledIndexerIDs)})
+	}
 
-		update, ok := updates[f.Path]
-		switch {
-		case ok:
-			// Avoid downgrading already-final rows (e.g. matched -> already_seeding / error) when a
-			// partially-processed searchee is resumed.
-			if isFinal && (update.status == models.DirScanFileStatusAlreadySeeding || update.status == models.DirScanFileStatusError) {
-				continue
-			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, update); err != nil {
-				return err
-			}
-		case markAllError:
-			if isFinal {
-				continue
-			}
-			// Only mark work that was actually attempted as error; skipped TV-group files should remain eligible.
-			if !attempted {
-				continue
-			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, dirScanFileUpdate{status: models.DirScanFileStatusError}); err != nil {
-				return err
-			}
-		case markRemainingNoMatch:
-			if isFinal {
-				continue
-			}
-			// Finalize work we actually attempted; also finalize non-video extras so they don't keep the
-			// searchee eligible (TV heuristics only searches video files).
-			if !attempted && isVideo {
-				continue
-			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, dirScanFileUpdate{
-				status:             models.DirScanFileStatusNoMatch,
-				searchedIndexerIDs: consideredIndexerIDs,
-			}); err != nil {
-				return err
-			}
-		default:
-			// Leave existing status (likely pending) so the searchee remains eligible next run.
+	decisions := decideSearcheeOutcome(files, sortedIndexerIDs(enabledIndexerIDs), canceled, reports)
+	for _, f := range root.Files {
+		if f == nil {
+			continue
+		}
+		update, ok := decisions[f.Path]
+		if !ok {
+			continue
+		}
+		if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, update); err != nil {
+			return err
 		}
 	}
 
 	if l != nil {
-		ev := l.Debug().
+		l.Debug().
 			Str("name", root.Name).
-			Bool("acceptedMatch", hasAcceptedMatch).
-			Bool("searchSuccess", hadSearchSuccess).
-			Bool("searchError", hadSearchError).
-			Bool("processingError", hasProcessingError)
-		ev.Msg("dirscan: persisted searchee file statuses")
+			Int("files", len(files)).
+			Int("written", len(decisions)).
+			Bool("canceled", canceled).
+			Msg("dirscan: persisted searchee file statuses")
 	}
 
 	return nil
@@ -1709,29 +1506,6 @@ func isAlreadySeedingByFileID(searchee *Searchee, index *seedingIndex) bool {
 	return true
 }
 
-// searcheeMatch holds the result of processing a searchee.
-type searcheeMatch struct {
-	searchee        *Searchee
-	torrentData     []byte
-	parsedTorrent   *ParsedTorrent
-	matchResult     *MatchResult
-	searchResult    *jackett.SearchResult
-	injected        bool
-	inQBittorrent   bool
-	injectionFailed bool
-}
-
-type searcheeOutcome struct {
-	// searched is true only when the search covered every requested indexer.
-	// A partial search (some indexers failed or timed out) does not count, so
-	// the searchee stays pending and the next scan retries it.
-	searched    bool
-	searchError bool
-	// retry is set when a linked instance of a cross-seed route was
-	// unavailable, so the searchee's files must stay pending.
-	retry bool
-}
-
 type tryMatchResultsStats struct {
 	skippedTooSmall         int
 	skippedTooLarge         int
@@ -1744,14 +1518,10 @@ func tryMatchResultsPerIndexer(
 	results []jackett.SearchResult,
 	minSize, maxSize int64,
 	shouldSkipExists func(result *jackett.SearchResult) bool,
-	attempt func(result *jackett.SearchResult) *searcheeMatch,
-) ([]*searcheeMatch, tryMatchResultsStats) {
+	attempt func(result *jackett.SearchResult) candidateReport,
+) ([]candidateReport, tryMatchResultsStats) {
 	stats := tryMatchResultsStats{}
-	if len(results) == 0 {
-		return nil, stats
-	}
-
-	var matches []*searcheeMatch
+	var candidates []candidateReport
 	satisfiedIndexers := make(map[int]struct{})
 
 	for i := range results {
@@ -1779,25 +1549,19 @@ func tryMatchResultsPerIndexer(
 		}
 
 		stats.attemptedMatches++
-		match := attempt(result)
-		if match != nil {
-			matches = append(matches, match)
-			// Only mark an indexer as satisfied once we successfully injected (or confirmed the
-			// torrent already exists in qBittorrent). If injection failed, keep trying other
-			// results from the same indexer.
-			if result.IndexerID > 0 && !match.injectionFailed {
-				satisfiedIndexers[result.IndexerID] = struct{}{}
-			}
+		candidate := attempt(result)
+		candidates = append(candidates, candidate)
+		// Only an add or a torrent in qBittorrent satisfies the indexer. After a
+		// failed add, keep trying the other results of the same indexer.
+		if result.IndexerID > 0 && (candidate.added() || candidate.inQBittorrent()) {
+			satisfiedIndexers[result.IndexerID] = struct{}{}
 		}
 	}
 
-	if len(matches) == 0 {
-		return nil, stats
-	}
-	return matches, stats
+	return candidates, stats
 }
 
-// processSearchee searches for and processes a single searchee.
+// processSearchee searches for one Work item and tries its candidates.
 func (s *Service) processSearchee(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -1809,9 +1573,9 @@ func (s *Service) processSearchee(
 	enabledIndexerIDs map[int]struct{},
 	stillPending func() bool,
 	l *zerolog.Logger,
-) ([]*searcheeMatch, searcheeOutcome) {
+) workItemReport {
 	if searchee == nil || settings == nil || matcher == nil {
-		return nil, searcheeOutcome{}
+		return workItemReport{}
 	}
 
 	searcheeSize := CalculateTotalSize(searchee)
@@ -1843,33 +1607,25 @@ func (s *Service) processSearchee(
 		if l != nil {
 			l.Debug().Msg("dirscan: no eligible indexers")
 		}
-		// Don't mark this as searched: if the user later enables indexers,
-		// we want this searchee to be retried rather than finalized as no_match.
-		return nil, searcheeOutcome{}
+		return workItemReport{search: itemNoIndexers}
 	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
 	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
 
-	// Search indexers
 	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, stillPending, l)
 	if err != nil {
-		// Cancellation is handled by the caller; avoid marking this as a retryable error.
 		if ctx.Err() != nil {
-			return nil, searcheeOutcome{}
+			return workItemReport{search: itemSearchCanceled}
 		}
-		return nil, searcheeOutcome{searchError: true}
+		return workItemReport{search: itemSearchFailed}
 	}
 	if response == nil {
-		return nil, searcheeOutcome{}
+		return workItemReport{search: itemSearchCanceled}
 	}
 
-	// A search counts as complete only when at least one indexer was resolved
-	// and every resolved indexer answered (or was excluded on purpose). An
-	// incomplete search must not finalize the searchee as no_match: the files
-	// stay pending and the next scan retries the indexers that were missed.
-	searchComplete := len(response.RequestedIndexerIDs) > 0 && response.FullyCovered()
-	if !searchComplete && l != nil {
+	report := workItemReport{search: itemSearched, requested: response.RequestedIndexerIDs, answered: response.CoveredIndexerIDs}
+	if !report.searchCovered() && l != nil {
 		l.Debug().
 			Str("name", searchee.Name).
 			Ints("requestedIndexers", response.RequestedIndexerIDs).
@@ -1878,7 +1634,7 @@ func (s *Service) processSearchee(
 	}
 
 	if len(response.Results) == 0 {
-		return nil, searcheeOutcome{searched: searchComplete}
+		return report
 	}
 
 	l.Debug().
@@ -1886,9 +1642,8 @@ func (s *Service) processSearchee(
 		Int("results", len(response.Results)).
 		Msg("dirscan: got search results")
 
-	// Try to match and inject
-	matches, retry := s.tryMatchResults(ctx, dir, target, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
-	return matches, searcheeOutcome{searched: searchComplete && !retry, retry: retry}
+	report.candidates = s.tryMatchResults(ctx, dir, target, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return report
 }
 
 // sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
@@ -2268,7 +2023,6 @@ func (s *Service) searchForSearchee(
 	}
 }
 
-// tryMatchResults iterates through search results trying to find and inject a match.
 func (s *Service) tryMatchResults(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -2282,8 +2036,8 @@ func (s *Service) tryMatchResults(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) (matches []*searcheeMatch, retry bool) {
-	matches, stats := tryMatchResultsPerIndexer(
+) []candidateReport {
+	candidates, stats := tryMatchResultsPerIndexer(
 		response.Results,
 		minSize,
 		maxSize,
@@ -2293,18 +2047,22 @@ func (s *Service) tryMatchResults(
 			}
 			return false
 		},
-		func(result *jackett.SearchResult) *searcheeMatch {
-			match, retryResult := s.tryMatchAndInject(ctx, dir, target, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
-			retry = retry || retryResult
-			return match
+		func(result *jackett.SearchResult) candidateReport {
+			return s.tryMatchAndInject(ctx, dir, target, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
 		},
 	)
 
 	if l != nil {
+		matches := 0
+		for _, c := range candidates {
+			if c.isMatch() {
+				matches++
+			}
+		}
 		ev := l.Debug().
 			Str("name", searchee.Name).
 			Int("results", len(response.Results)).
-			Int("matches", len(matches)).
+			Int("matches", matches).
 			Int("attemptedMatches", stats.attemptedMatches).
 			Int("skippedTooSmall", stats.skippedTooSmall).
 			Int("skippedTooLarge", stats.skippedTooLarge).
@@ -2313,16 +2071,13 @@ func (s *Service) tryMatchResults(
 			Int64("minResultSize", minSize).
 			Int64("maxResultSize", maxSize).
 			Str("contentType", contentType)
-		if len(matches) == 0 {
+		if matches == 0 {
 			ev.Msg("dirscan: no matching search results")
 		} else {
 			ev.Msg("dirscan: matched search results")
 		}
 	}
-	if len(matches) == 0 {
-		return nil, retry
-	}
-	return matches, retry
+	return candidates
 }
 
 func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists, checked bool) {
@@ -2358,8 +2113,6 @@ func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int,
 }
 
 // tryMatchAndInject downloads a torrent, matches files, and injects if successful.
-// retry is set when a linked instance of a cross-seed route is unavailable, so
-// the searchee stays pending and the next scan tries the match again.
 func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -2372,10 +2125,10 @@ func (s *Service) tryMatchAndInject(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) (match *searcheeMatch, retry bool) {
+) candidateReport {
 	torrentData, parsed := s.downloadAndParseTorrent(ctx, result, l)
 	if parsed == nil {
-		return nil, false
+		return candidateReport{event: candidateDownloadFailed}
 	}
 
 	matchResult := matcher.Match(searchee, parsed.Files)
@@ -2383,31 +2136,23 @@ func (s *Service) tryMatchAndInject(
 	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
-		return nil, false
+		return candidateReport{event: candidateRejected}
 	}
 
 	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
-	switch {
-	case refusal == nil:
-	case refusal.Status == crossseed.StatusBlocked:
-		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
-		return nil, false
-	case refusal.Status != crossseed.StatusExists:
-		// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
-		l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
-		return nil, errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
-	default:
-		l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
-		return &searcheeMatch{
-			searchee:        searchee,
-			torrentData:     torrentData,
-			parsedTorrent:   parsed,
-			matchResult:     matchResult,
-			searchResult:    result,
-			inQBittorrent:   true,
-			injected:        false,
-			injectionFailed: false,
-		}, false
+	if refusal != nil {
+		candidate := matchedCandidate(candidateRefused, refusal.Class(), parsed, matchResult, result)
+		switch candidate.class {
+		case crossseed.ClassExists:
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
+		case crossseed.ClassFailed:
+			// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
+			l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
+			candidate.routeUnavailable = errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
+		default:
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
+		}
+		return candidate
 	}
 
 	logDirScanAcceptedMatch(l, searchee, parsed, matchResult, decision)
@@ -2449,8 +2194,6 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	injectResult, err := s.injector.Inject(ctx, injectReq)
-	injected := err == nil && injectResult.Success
-	injectionFailed := !injected
 	if err != nil {
 		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to inject torrent")
 	} else {
@@ -2459,15 +2202,19 @@ func (s *Service) tryMatchAndInject(
 
 	s.recordRunInjection(ctx, dir, runID, searchee, parsed, contentType, result, injectReq.Category, injectReq.Tags, trackerDomain, injectResult, err)
 
-	return &searcheeMatch{
-		searchee:        searchee,
-		torrentData:     torrentData,
-		parsedTorrent:   parsed,
-		matchResult:     matchResult,
-		searchResult:    result,
-		injected:        injected,
-		injectionFailed: injectionFailed,
-	}, false
+	candidate := matchedCandidate(candidateAddRan, injectResult.Class, parsed, matchResult, result)
+	candidate.settleQueueFull = injectResult.SettleQueueFull
+	return candidate
+}
+
+func matchedCandidate(event candidateEvent, class crossseed.ResultClass, parsed *ParsedTorrent, match *MatchResult, result *jackett.SearchResult) candidateReport {
+	candidate := candidateReport{event: event, class: class, hash: parsed.InfoHash, indexerID: result.IndexerID}
+	for _, pair := range match.MatchedFiles {
+		if pair.SearcheeFile != nil {
+			candidate.matchedFiles = append(candidate.matchedFiles, pair.SearcheeFile.Path)
+		}
+	}
+	return candidate
 }
 
 func logDirScanMatchRejection(

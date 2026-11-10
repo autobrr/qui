@@ -73,13 +73,9 @@ func ComputeTitleHash(title string) string {
 
 // Get retrieves a cached ID entry if it exists and hasn't expired.
 //
-// Expiry is compared against a bound UTC time parameter rather than SQL's
-// CURRENT_TIMESTAMP. expires_at is stored by binding a Go time.Time, which the
-// SQLite driver serializes as a string; CURRENT_TIMESTAMP returns its own UTC
-// string in a different format, so a lexical comparison of the two only behaves
-// chronologically when the process runs in UTC. Binding the comparison value
-// through the same driver path (and storing expires_at in UTC, see SetWithTitles)
-// makes the comparison timezone-independent on both SQLite and Postgres (#1961).
+// Expiry is compared against a bound time rather than CURRENT_TIMESTAMP: SQLite
+// compares the text, and CURRENT_TIMESTAMP has a different text form than a
+// bound time.Time (#1961).
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
 		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
@@ -157,9 +153,6 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 // same title can race, and a slower no-ID result must not hide freshly resolved
 // IDs for the negative TTL (#2300). Positive writes always win.
 func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
-	// Store expires_at in UTC so the comparisons in Get and CleanupExpired
-	// do not depend on the process timezone. Without .UTC() the value carries the
-	// process-local offset and the cache silently misses in non-UTC zones (#1961).
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
@@ -227,7 +220,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 
 // CleanupExpired removes all expired cache entries
 func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
-	// Compare against a bound UTC time rather than CURRENT_TIMESTAMP; see Get (#1961).
+	// Compare against a bound time rather than CURRENT_TIMESTAMP; see Get (#1961).
 	query := `DELETE FROM arr_id_cache WHERE expires_at <= ?`
 
 	result, err := s.db.ExecContext(ctx, query, time.Now().UTC())
