@@ -208,7 +208,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | --- | --- |
 | Hardlink Scope | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` (requires local filesystem access, see [Hardlink detection](#hardlink-detection)) |
 | Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
-| Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access) |
+| Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access or [SSH access](./ssh-access.md)) |
 | Has Skipped Files | Boolean: one or more files are set to `Do not download`. qui reads file priorities from its files cache, so a priority change made outside qui can take up to 5 minutes to reach this field |
 
 ### State values
@@ -597,7 +597,7 @@ If you enable "Include hardlinked copies" (available only with `deleteWithFilesI
 
 qui follows both hardlinks and shared file paths until it finds every affected torrent. If a hardlinked episode shares its path with a season pack, qui includes the pack and its other cross-seeds. If a file check fails, qui skips the entire deletion group.
 
-- **Requires**: You must enable Local Filesystem Access on the instance.
+- **Requires**: You must enable Local Filesystem Access on the instance. The option is not available on a [remote instance](./ssh-access.md).
 - **Safe scope**: qui includes only hardlinks fully contained within qBittorrent's torrent set. qui never follows hardlinks to files outside qBittorrent (for example, your media library).
 - **Preview**: The preview marks hardlink-expanded torrents as "Cross-seed (hardlinked)".
 - **Free Space projection**: If you use Free Space conditions, qui deduplicates hardlink groups in the space projection. Torrents that share the same physical files count once.
@@ -1130,7 +1130,7 @@ The `Has Missing Files` field detects whether any file of a completed torrent is
 - If **any** file is missing from its expected path, this condition returns `true`.
 
 :::note
-Requires "Local filesystem access" enabled on the instance.
+Requires filesystem access on the instance: "Local filesystem access", or [SSH access](./ssh-access.md) for a remote instance. On a remote instance, qui looks for the files on the remote machine. If the connection drops during the check, the torrents that qui did not check stay unknown until the next run.
 :::
 
 ## Important behavior
@@ -1268,13 +1268,13 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Path on server | Reads free space from a specific filesystem path |
 
 :::note
-Path on server requires "Local Filesystem Access" enabled on the instance.
+Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
 :::
 
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them.
+When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching

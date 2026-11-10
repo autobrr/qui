@@ -90,7 +90,7 @@ Common reasons:
 - **Coverage is below your threshold**: qui did not find enough matching episodes
 - **Episodes are still downloading**: only fully completed episode torrents count toward coverage
 - **Release details do not match**: the episodes must match the pack's title, season, and normal release details such as source, resolution, and release group
-- **No eligible instance was scanned**: the instance requires local filesystem access plus hardlink or reflink mode
+- **No eligible instance was scanned**: an eligible instance has a link base directory, and either local filesystem access with hardlink or reflink mode, or [SSH access](../ssh-access.md) with hardlink mode
 - **Webhook source filters excluded your episodes**: include/exclude category or tag filters removed them from the scan
 - **The release is not a season pack** or **season-pack matching is disabled**
 
@@ -190,7 +190,8 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 
 Common causes:
 - **Filesystem mismatch**: the hardlink base directory resides on a different filesystem or volume than the download paths. Hardlinks cannot cross filesystems.
-- **Missing local filesystem access**: the target instance does not have "Local filesystem access" enabled in Instance Settings.
+- **Missing filesystem access**: the target instance has no "Local filesystem access" in Instance Settings and no [SSH access](../ssh-access.md). For a remote instance, do not turn on "Local filesystem access". Set up SSH access.
+- **No hardlinks on the SSH server**: the server of a remote instance cannot create hardlinks. The SSH tab of the instance shows "No hardlinks" in its list of limits.
 - **Permissions**: qui cannot read the instance content paths or write to the hardlink base directory.
 - **Invalid base directory**: the hardlink base directory path does not exist and qui failed to create it.
 

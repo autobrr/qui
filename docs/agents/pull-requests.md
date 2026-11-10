@@ -13,7 +13,6 @@ Before you post or apply a review suggestion that changes or removes a code bran
 ## Documentation
 
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
-  - Until the SSH setup screen (#2917) ships, a documentation change that describes only remote instances goes in #3330, not in the PR. Add it there as an item with the PR number.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
 - Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier through a PR to `main` that cherry-picks the squashed commit (`main` is protected). After that PR merges, a maintainer merges `main` into `develop`.

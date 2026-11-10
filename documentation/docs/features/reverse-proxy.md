@@ -163,6 +163,6 @@ These endpoints proxy to qBittorrent and update qui's local state:
 | `/api/v2/torrents/setSavePath` | Forwards to qBittorrent unchanged, removes leftover folders |
 | `/api/v2/torrents/setDownloadPath` | Forwards to qBittorrent unchanged, removes leftover folders |
 
-qui removes leftover folders only after qBittorrent answers with success, only on an instance with **Local Filesystem Access**, and only for a request sent as a URL-encoded form. See [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents).
+qui removes leftover folders only after qBittorrent answers with success, only on an instance with **Local Filesystem Access** or on a [remote instance](./ssh-access.md), and only for a request sent as a URL-encoded form. See [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents).
 
 qui forwards all other endpoints unchanged to qBittorrent.
