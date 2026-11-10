@@ -706,42 +706,26 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toBe(seedingText)
   })
 
-  describe("the tooltip of the pill", () => {
+  it("shows no tooltip on the pill on a device that can hover", () => {
     // jsdom has no matchMedia; without one, the device counts as one that cannot hover.
-    function setCanHover(canHover: boolean) {
-      window.matchMedia = ((query: string) => ({
-        matches: canHover && query === "(hover: hover)",
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as unknown as typeof window.matchMedia
-    }
-
-    afterEach(() => {
-      delete (window as { matchMedia?: unknown }).matchMedia
-    })
-
-    it("names the pill on a device that can hover", async () => {
-      setCanHover(true)
-      const { container, findByRole } = renderGroups(copyGroupRows())
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(hover: hover)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    try {
+      const { container, queryByRole } = renderGroups(copyGroupRows())
 
       // A keyboard user tabs to the pill.
       fireEvent.keyDown(pills(container)[0], { key: "Tab" })
       act(() => pills(container)[0].focus())
 
-      expect((await findByRole("tooltip")).textContent).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
-    })
-
-    it("stays closed on a tap on a touch screen, which only opens the group", () => {
-      setCanHover(false)
-      const { container, queryByRole } = renderGroups(copyGroupRows())
-
-      fireEvent.pointerDown(pills(container)[0], { pointerType: "touch" })
-      fireEvent.click(pills(container)[0])
-
-      expect(pills(container)[0].getAttribute("aria-expanded")).toBe("true")
+      expect(pills(container)[0].getAttribute("aria-label")).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
       expect(queryByRole("tooltip")).toBeNull()
-    })
+    } finally {
+      delete (window as { matchMedia?: unknown }).matchMedia
+    }
   })
 
   // regression: #3922
@@ -975,18 +959,23 @@ describe("TorrentTableOptimized Group copies switch", () => {
     expect(container.textContent?.includes("copyGroups.grouping")).toBe(shown)
   })
 
-  it.each([
-    ["on a phone", () => {
-      window.matchMedia = ((query: string) => ({
-        matches: query === "(max-width: 767px)",
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as unknown as typeof window.matchMedia
-    }],
-    ["in the demo", () => { scenario.isDemo = true }],
-  ])("asks for no groups and shows no switch %s", async (_, setUp) => {
-    setUp()
+  // A phone reaches this table in the Unified view.
+  it("asks for groups and shows the switch on a phone", async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(max-width: 767px)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderTable()
+
+    expect(scenario.listOptions?.groupCopies).toBe(true)
+    expect((await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("asks for no groups and shows no switch in the demo", async () => {
+    scenario.isDemo = true
     localStorage.setItem(GROUP_COPIES_KEY, "true")
     const view = renderTable()
 

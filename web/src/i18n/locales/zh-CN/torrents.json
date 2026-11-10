@@ -1427,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "输入后自动搜索"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "添加于{{time}}"
   },
   "tableView": {
     "ascending": "升序",

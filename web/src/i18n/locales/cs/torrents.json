@@ -1571,7 +1571,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "ratio": "Poměr:"
+    "ratio": "Poměr:",
+    "added": "Přidáno {{time}}"
   },
   "tableView": {
     "ascending": "vzestupně",

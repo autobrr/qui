@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { DropdownMenuCheckboxItem, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
+import { isDemo } from "@/lib/demo"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -17,8 +18,10 @@ interface CopyGroupMenuItemsProps {
 // Both items keep the menu open, so the user sees Expand all appear after the switch.
 const keepMenuOpen = (event: Event) => event.preventDefault()
 
+/** The Group copies switch and Expand all, with a separator under them. The demo shows none of them. */
 export function CopyGroupMenuItems({ groupCopies, expandAll, onToggleGroupCopies, onToggleExpandAll }: CopyGroupMenuItemsProps) {
   const { t } = useTranslation("torrents")
+  if (isDemo) return null
   return (
     <>
       <DropdownMenuCheckboxItem
@@ -38,6 +41,7 @@ export function CopyGroupMenuItems({ groupCopies, expandAll, onToggleGroupCopies
           {expandAll ? t("copyGroups.collapseAll") : t("copyGroups.expandAll")}
         </DropdownMenuItem>
       )}
+      <DropdownMenuSeparator />
     </>
   )
 }
