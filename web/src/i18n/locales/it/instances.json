@@ -111,7 +111,8 @@
       "none": "Nessuno",
       "usernamePassword": "Nome utente e password",
       "apiKey": "Chiave API"
-    }
+    },
+    "sshAfterSave": "L'accesso SSH ai file dell'istanza si configura nelle impostazioni dell'istanza dopo il salvataggio."
   },
   "settingsButton": {
     "tooltip": "Impostazioni istanza"
@@ -150,7 +151,8 @@
         "downloads": "Download",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "Limiti di distribuzione"
+        },
+        "ssh": {
+          "title": "Accesso SSH",
+          "description": "Raggiungi i file di questa istanza via SSH quando qui e qBittorrent girano su macchine diverse"
         }
       }
     },
@@ -1751,6 +1757,92 @@
       "testEmailQueued": "qBittorrent ha messo in coda l'email di prova",
       "testEmailQueuedDescription": "qBittorrent usa le impostazioni salvate. Controlla la posta in arrivo e il log di qBittorrent per eventuali errori.",
       "testEmailFailed": "Impossibile inviare l'email di prova"
+    },
+    "ssh": {
+      "localWins": "L'accesso al filesystem locale è attivo, quindi qui legge i file di questa istanza in locale e non usa queste impostazioni SSH.",
+      "labels": {
+        "host": "Host SSH",
+        "hostDescription": "Nome host o indirizzo IP della macchina che contiene i file di questa istanza, senza schema né porta. Cambiare host o porta elimina la chiave host fissata, quindi la prossima prova è di nuovo un primo contatto.",
+        "port": "Porta",
+        "username": "Nome utente",
+        "privateKey": "Chiave privata",
+        "privateKeyDescription": "Una chiave privata OpenSSH senza passphrase. qui la salva cifrata e non la mostra più. Serve di nuovo quando cambiano host, porta o nome utente."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Una chiave è salvata. Incollane una nuova per sostituirla."
+      },
+      "validation": {
+        "hostRequired": "L'host SSH è obbligatorio",
+        "portRange": "La porta deve essere compresa tra 1 e 65535",
+        "usernameRequired": "Il nome utente è obbligatorio",
+        "keyRequired": "La chiave privata è necessaria quando cambiano host, porta o nome utente"
+      },
+      "buttons": {
+        "save": "Salva impostazioni SSH",
+        "clear": "Rimuovi accesso SSH",
+        "test": "Prova connessione",
+        "testing": "Prova in corso...",
+        "confirm": "Conferma chiave host",
+        "replace": "Sostituisci chiave host"
+      },
+      "test": {
+        "title": "Connessione",
+        "pinnedAtRest": "Chiave host fissata. Prova la connessione per vedere cosa consente l'host.",
+        "unpinnedAtRest": "Nessuna chiave host fissata. Prova la connessione per confermare l'impronta dell'host.",
+        "saveFirst": "Salva prima le modifiche. Il test usa le credenziali salvate."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primo contatto",
+          "text": "Confronta questa impronta con quella dell'host prima di confermarla. Le connessioni successive rifiuteranno qualsiasi altra chiave."
+        },
+        "pinned": {
+          "title": "Chiave host fissata"
+        },
+        "mismatch": {
+          "title": "Chiave host cambiata",
+          "text": "L'host ha presentato una chiave diversa da quella fissata. Sostituiscila solo se ti aspetti il cambiamento, per esempio dopo una reinstallazione del server."
+        },
+        "pinUnreadable": {
+          "title": "Chiave fissata illeggibile",
+          "text": "La chiave fissata non può essere decifrata, di solito perché la chiave di cifratura di qui è cambiata. Sostituiscila per continuare.",
+          "noKey": "L'host non ha risposto, quindi non c'è alcuna chiave con cui sostituirla."
+        },
+        "error": {
+          "title": "Connessione non riuscita"
+        }
+      },
+      "fingerprint": {
+        "label": "Impronta",
+        "pinned": "Fissata",
+        "presented": "Presentata"
+      },
+      "probes": {
+        "tier": "Livello: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + comandi",
+        "tierHint": "I comandi richiedono una shell POSIX con GNU find e stat sull'host. Senza di essi qui usa solo SFTP e non può leggere l'identità dei file.",
+        "sftp": "SFTP",
+        "statvfs": "Spazio libero (statvfs)",
+        "hardlink": "Hardlink (hardlink@openssh.com)",
+        "limits": "Estensione limits",
+        "exec": "Comandi",
+        "gnuUserland": "GNU find e stat",
+        "yes": "Disponibile",
+        "no": "Non disponibile"
+      },
+      "replaceDialog": {
+        "title": "Sostituire la chiave host fissata?",
+        "description": "D'ora in poi qui considererà attendibile la chiave presentata per questo host e rifiuterà quella fissata.",
+        "cancel": "Annulla",
+        "confirm": "Sostituisci"
+      },
+      "toast": {
+        "saved": "Impostazioni SSH salvate",
+        "cleared": "Accesso SSH rimosso"
+      }
     }
   },
   "backups": {

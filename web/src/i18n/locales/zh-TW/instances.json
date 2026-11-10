@@ -111,7 +111,8 @@
       "none": "無",
       "usernamePassword": "使用者名稱和密碼",
       "apiKey": "API 金鑰"
-    }
+    },
+    "sshAfterSave": "儲存後，可在實例設定中設定透過 SSH 存取該實例的檔案。"
   },
   "settingsButton": {
     "tooltip": "實例設定"
@@ -150,7 +151,8 @@
         "downloads": "下載",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "做種限制"
+        },
+        "ssh": {
+          "title": "SSH 存取",
+          "description": "當 qui 與 qBittorrent 在不同機器上執行時，透過 SSH 存取此實例的檔案"
         }
       }
     },
@@ -1722,6 +1728,92 @@
       "testEmailQueued": "qBittorrent 已將測試郵件加入佇列",
       "testEmailQueuedDescription": "qBittorrent 使用已儲存的設定。請檢查收件匣，並在 qBittorrent 記錄中查看錯誤。",
       "testEmailFailed": "傳送測試郵件失敗"
+    },
+    "ssh": {
+      "localWins": "本機檔案系統存取已開啟，qui 會在本機讀取此實例的檔案，不使用這些 SSH 設定。",
+      "labels": {
+        "host": "SSH 主機",
+        "hostDescription": "存放此實例檔案的機器的主機名稱或 IP 位址，不含協定和連接埠。變更主機或連接埠會捨棄已釘選的主機金鑰，下次測試將再次視為首次連線。",
+        "port": "連接埠",
+        "username": "使用者名稱",
+        "privateKey": "私密金鑰",
+        "privateKeyDescription": "不含密碼片語的 OpenSSH 私密金鑰。qui 會加密儲存且不再顯示。主機、連接埠或使用者名稱變更後需要重新提供。"
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "已儲存一把金鑰。貼上新金鑰即可取代。"
+      },
+      "validation": {
+        "hostRequired": "SSH 主機為必填項",
+        "portRange": "連接埠必須介於 1 到 65535 之間",
+        "usernameRequired": "使用者名稱為必填項",
+        "keyRequired": "主機、連接埠或使用者名稱變更後需要提供私密金鑰"
+      },
+      "buttons": {
+        "save": "儲存 SSH 設定",
+        "clear": "移除 SSH 存取",
+        "test": "測試連線",
+        "testing": "測試中...",
+        "confirm": "確認主機金鑰",
+        "replace": "取代主機金鑰"
+      },
+      "test": {
+        "title": "連線",
+        "pinnedAtRest": "主機金鑰已釘選。測試連線以查看主機允許的功能。",
+        "unpinnedAtRest": "尚未釘選主機金鑰。測試連線以確認主機的指紋。",
+        "saveFirst": "請先儲存變更。測試會使用已儲存的憑證。"
+      },
+      "status": {
+        "unpinned": {
+          "title": "首次連線",
+          "text": "確認前請將此指紋與主機的指紋比對。之後的連線將拒絕任何其他金鑰。"
+        },
+        "pinned": {
+          "title": "主機金鑰已釘選"
+        },
+        "mismatch": {
+          "title": "主機金鑰已變更",
+          "text": "主機提供的金鑰與已釘選的不同。僅在預期會變更時（例如伺服器重新安裝後）才取代釘選的金鑰。"
+        },
+        "pinUnreadable": {
+          "title": "釘選的金鑰無法讀取",
+          "text": "無法解密已儲存的釘選金鑰，通常是因為 qui 的加密金鑰已變更。請取代後繼續。",
+          "noKey": "主機未回應，因此沒有可用來取代的金鑰。"
+        },
+        "error": {
+          "title": "連線失敗"
+        }
+      },
+      "fingerprint": {
+        "label": "指紋",
+        "pinned": "已釘選",
+        "presented": "本次提供"
+      },
+      "probes": {
+        "tier": "等級：{{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + 命令執行",
+        "tierHint": "命令執行需要主機上有含 GNU find 和 stat 的 POSIX shell。否則 qui 僅使用 SFTP，無法讀取檔案識別資訊。",
+        "sftp": "SFTP",
+        "statvfs": "可用空間（statvfs）",
+        "hardlink": "硬連結（hardlink@openssh.com）",
+        "limits": "limits 擴充",
+        "exec": "命令執行",
+        "gnuUserland": "GNU find 和 stat",
+        "yes": "可使用",
+        "no": "無法使用"
+      },
+      "replaceDialog": {
+        "title": "取代已釘選的主機金鑰？",
+        "description": "qui 今後將信任此主機本次提供的金鑰，並拒絕已釘選的金鑰。",
+        "cancel": "取消",
+        "confirm": "取代"
+      },
+      "toast": {
+        "saved": "SSH 設定已儲存",
+        "cleared": "已移除 SSH 存取"
+      }
     }
   },
   "backups": {

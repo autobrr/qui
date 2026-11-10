@@ -111,7 +111,8 @@
       "none": "Keine",
       "usernamePassword": "Benutzername und Passwort",
       "apiKey": "API-Key"
-    }
+    },
+    "sshAfterSave": "Der SSH-Zugriff auf die Dateien der Instanz wird nach dem Speichern in den Instanz-Einstellungen eingerichtet."
   },
   "settingsButton": {
     "tooltip": "Instanz-Einstellungen"
@@ -150,7 +151,8 @@
         "downloads": "Downloads",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "Seeding-Limits"
+        },
+        "ssh": {
+          "title": "SSH-Zugriff",
+          "description": "Greife über SSH auf die Dateien dieser Instanz zu, wenn qui und qBittorrent auf verschiedenen Rechnern laufen"
         }
       }
     },
@@ -1751,6 +1757,92 @@
       "testEmailQueued": "qBittorrent hat die Test-E-Mail in die Warteschlange gestellt",
       "testEmailQueuedDescription": "qBittorrent verwendet die gespeicherten Einstellungen. Prüfe deinen Posteingang und das qBittorrent-Log auf Fehler.",
       "testEmailFailed": "Die Test-E-Mail konnte nicht gesendet werden"
+    },
+    "ssh": {
+      "localWins": "Lokaler Dateisystemzugriff ist aktiv, daher liest qui die Dateien dieser Instanz lokal und verwendet diese SSH-Einstellungen nicht.",
+      "labels": {
+        "host": "SSH-Host",
+        "hostDescription": "Hostname oder IP-Adresse des Rechners, auf dem die Dateien dieser Instanz liegen, ohne Schema oder Port. Eine Änderung von Host oder Port verwirft den gepinnten Host-Key, der nächste Test ist dann wieder ein Erstkontakt.",
+        "port": "Port",
+        "username": "Benutzername",
+        "privateKey": "Privater Schlüssel",
+        "privateKeyDescription": "Ein privater OpenSSH-Schlüssel ohne Passphrase. qui speichert ihn verschlüsselt und zeigt ihn nie wieder an. Er wird erneut benötigt, wenn sich Host, Port oder Benutzername ändern."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Ein Schlüssel ist gespeichert. Füge einen neuen ein, um ihn zu ersetzen."
+      },
+      "validation": {
+        "hostRequired": "SSH-Host ist erforderlich",
+        "portRange": "Port muss zwischen 1 und 65535 liegen",
+        "usernameRequired": "Benutzername ist erforderlich",
+        "keyRequired": "Der private Schlüssel wird benötigt, wenn sich Host, Port oder Benutzername ändern"
+      },
+      "buttons": {
+        "save": "SSH-Einstellungen speichern",
+        "clear": "SSH-Zugriff entfernen",
+        "test": "Verbindung testen",
+        "testing": "Wird getestet...",
+        "confirm": "Host-Key bestätigen",
+        "replace": "Host-Key ersetzen"
+      },
+      "test": {
+        "title": "Verbindung",
+        "pinnedAtRest": "Host-Key gepinnt. Teste die Verbindung, um zu sehen, was der Host erlaubt.",
+        "unpinnedAtRest": "Noch kein Host-Key gepinnt. Teste die Verbindung, um den Fingerabdruck des Hosts zu bestätigen.",
+        "saveFirst": "Speichere die Änderungen zuerst. Ein Test läuft gegen die gespeicherten Zugangsdaten."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Erstkontakt",
+          "text": "Vergleiche diesen Fingerabdruck mit dem des Hosts, bevor du ihn bestätigst. Spätere Verbindungen lehnen jeden anderen Schlüssel ab."
+        },
+        "pinned": {
+          "title": "Host-Key gepinnt"
+        },
+        "mismatch": {
+          "title": "Host-Key hat sich geändert",
+          "text": "Der Host hat einen anderen Schlüssel vorgelegt als den gepinnten. Ersetze den Pin nur, wenn du die Änderung erwartest, zum Beispiel nach einer Neuinstallation des Servers."
+        },
+        "pinUnreadable": {
+          "title": "Gepinnter Schlüssel nicht lesbar",
+          "text": "Der gespeicherte Pin lässt sich nicht entschlüsseln, meist weil sich der Verschlüsselungsschlüssel von qui geändert hat. Ersetze ihn, um fortzufahren.",
+          "noKey": "Der Host hat nicht geantwortet, daher gibt es keinen Schlüssel, der ihn ersetzen könnte."
+        },
+        "error": {
+          "title": "Verbindung fehlgeschlagen"
+        }
+      },
+      "fingerprint": {
+        "label": "Fingerabdruck",
+        "pinned": "Gepinnt",
+        "presented": "Vorgelegt"
+      },
+      "probes": {
+        "tier": "Stufe: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + Befehle",
+        "tierHint": "Befehle brauchen eine POSIX-Shell mit GNU find und stat auf dem Host. Ohne sie nutzt qui nur SFTP und kann die Dateiidentität nicht lesen.",
+        "sftp": "SFTP",
+        "statvfs": "Freier Speicher (statvfs)",
+        "hardlink": "Hardlinks (hardlink@openssh.com)",
+        "limits": "Limits-Erweiterung",
+        "exec": "Befehle",
+        "gnuUserland": "GNU find und stat",
+        "yes": "Verfügbar",
+        "no": "Nicht verfügbar"
+      },
+      "replaceDialog": {
+        "title": "Gepinnten Host-Key ersetzen?",
+        "description": "qui vertraut für diesen Host ab jetzt dem vorgelegten Schlüssel und lehnt den gepinnten ab.",
+        "cancel": "Abbrechen",
+        "confirm": "Ersetzen"
+      },
+      "toast": {
+        "saved": "SSH-Einstellungen gespeichert",
+        "cleared": "SSH-Zugriff entfernt"
+      }
     }
   },
   "backups": {

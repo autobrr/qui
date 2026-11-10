@@ -111,7 +111,8 @@
       "none": "Cap",
       "usernamePassword": "Nom d'usuari i contrasenya",
       "apiKey": "Clau API"
-    }
+    },
+    "sshAfterSave": "L'accés SSH als fitxers de la instància es configura a la configuració de la instància després de desar."
   },
   "settingsButton": {
     "tooltip": "Configuració de la instància"
@@ -150,7 +151,8 @@
         "downloads": "Baixades",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "Límits de sembra"
+        },
+        "ssh": {
+          "title": "Accés SSH",
+          "description": "Accedeix als fitxers d'aquesta instància per SSH quan qui i qBittorrent s'executen en màquines diferents"
         }
       }
     },
@@ -1751,6 +1757,92 @@
       "testEmailQueued": "El qBittorrent ha posat a la cua el correu de prova",
       "testEmailQueuedDescription": "El qBittorrent fa servir la configuració desada. Comproveu la safata d'entrada i el registre del qBittorrent per si hi ha errors.",
       "testEmailFailed": "No s'ha pogut enviar el correu de prova"
+    },
+    "ssh": {
+      "localWins": "L'accés al sistema de fitxers local està activat, així que qui llegeix els fitxers d'aquesta instància localment i no fa servir aquesta configuració SSH.",
+      "labels": {
+        "host": "Amfitrió SSH",
+        "hostDescription": "Nom d'amfitrió o adreça IP de la màquina que conté els fitxers d'aquesta instància, sense esquema ni port. Canviar l'amfitrió o el port descarta la clau d'amfitrió fixada, de manera que la propera prova torna a ser un primer contacte.",
+        "port": "Port",
+        "username": "Nom d'usuari",
+        "privateKey": "Clau privada",
+        "privateKeyDescription": "Una clau privada OpenSSH sense contrasenya. qui la desa xifrada i no la torna a mostrar mai. Torna a fer falta quan canvia l'amfitrió, el port o el nom d'usuari."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Hi ha una clau desada. Enganxa'n una de nova per substituir-la."
+      },
+      "validation": {
+        "hostRequired": "L'amfitrió SSH és obligatori",
+        "portRange": "El port ha d'estar entre 1 i 65535",
+        "usernameRequired": "El nom d'usuari és obligatori",
+        "keyRequired": "La clau privada és necessària quan canvia l'amfitrió, el port o el nom d'usuari"
+      },
+      "buttons": {
+        "save": "Desa la configuració SSH",
+        "clear": "Suprimeix l'accés SSH",
+        "test": "Prova la connexió",
+        "testing": "S'està provant...",
+        "confirm": "Confirma la clau d'amfitrió",
+        "replace": "Substitueix la clau d'amfitrió"
+      },
+      "test": {
+        "title": "Connexió",
+        "pinnedAtRest": "Clau d'amfitrió fixada. Prova la connexió per veure què permet l'amfitrió.",
+        "unpinnedAtRest": "Encara no hi ha cap clau d'amfitrió fixada. Prova la connexió per confirmar l'empremta de l'amfitrió.",
+        "saveFirst": "Desa primer els canvis. La prova utilitza les credencials desades."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primer contacte",
+          "text": "Compara aquesta empremta amb la de l'amfitrió abans de confirmar-la. Les connexions posteriors rebutjaran qualsevol altra clau."
+        },
+        "pinned": {
+          "title": "Clau d'amfitrió fixada"
+        },
+        "mismatch": {
+          "title": "La clau d'amfitrió ha canviat",
+          "text": "L'amfitrió ha presentat una clau diferent de la fixada. Substitueix-la només si esperes el canvi, per exemple després de reinstal·lar el servidor."
+        },
+        "pinUnreadable": {
+          "title": "La clau fixada no es pot llegir",
+          "text": "La clau fixada no es pot desxifrar, normalment perquè la clau de xifratge de qui ha canviat. Substitueix-la per continuar.",
+          "noKey": "L'amfitrió no ha respost, així que no hi ha cap clau amb què substituir-la."
+        },
+        "error": {
+          "title": "Ha fallat la connexió"
+        }
+      },
+      "fingerprint": {
+        "label": "Empremta",
+        "pinned": "Fixada",
+        "presented": "Presentada"
+      },
+      "probes": {
+        "tier": "Nivell: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + ordres",
+        "tierHint": "Les ordres necessiten un shell POSIX amb GNU find i stat a l'amfitrió. Sense ells, qui només fa servir SFTP i no pot llegir la identitat dels fitxers.",
+        "sftp": "SFTP",
+        "statvfs": "Espai lliure (statvfs)",
+        "hardlink": "Enllaços durs (hardlink@openssh.com)",
+        "limits": "Extensió limits",
+        "exec": "Ordres",
+        "gnuUserland": "GNU find i stat",
+        "yes": "Disponible",
+        "no": "No disponible"
+      },
+      "replaceDialog": {
+        "title": "Vols substituir la clau d'amfitrió fixada?",
+        "description": "A partir d'ara qui confiarà en la clau presentada per a aquest amfitrió i rebutjarà la fixada.",
+        "cancel": "Cancel·la",
+        "confirm": "Substitueix"
+      },
+      "toast": {
+        "saved": "S'ha desat la configuració SSH",
+        "cleared": "S'ha suprimit l'accés SSH"
+      }
     }
   },
   "backups": {

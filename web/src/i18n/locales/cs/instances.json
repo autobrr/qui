@@ -111,7 +111,8 @@
       "none": "Žádná",
       "usernamePassword": "Uživatelské jméno a heslo",
       "apiKey": "API klíč"
-    }
+    },
+    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení."
   },
   "settingsButton": {
     "tooltip": "Nastavení instance"
@@ -150,7 +151,8 @@
         "downloads": "Stahování",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +164,10 @@
         },
         "seedingLimits": {
           "title": "Limity sdílení"
+        },
+        "ssh": {
+          "title": "Přístup přes SSH",
+          "description": "Přistupujte k souborům této instance přes SSH, když qui a qBittorrent běží na různých strojích"
         }
       }
     },
@@ -1786,6 +1792,92 @@
       "testEmailQueued": "qBittorrent zařadil testovací e-mail do fronty",
       "testEmailQueuedDescription": "qBittorrent použije uložená nastavení. Zkontrolujte doručenou poštu a v logu qBittorrentu chyby.",
       "testEmailFailed": "Testovací e-mail se nepodařilo odeslat"
+    },
+    "ssh": {
+      "localWins": "Lokální přístup k souborům je zapnutý, takže qui čte soubory této instance lokálně a tato nastavení SSH nepoužívá.",
+      "labels": {
+        "host": "Hostitel SSH",
+        "hostDescription": "Název hostitele nebo IP adresa stroje, na kterém jsou soubory této instance, bez schématu a portu. Změna hostitele nebo portu zahodí připnutý klíč hostitele, takže další test je znovu prvním kontaktem.",
+        "port": "Port",
+        "username": "Uživatelské jméno",
+        "privateKey": "Soukromý klíč",
+        "privateKeyDescription": "Soukromý klíč OpenSSH bez hesla. qui ho ukládá šifrovaný a už ho nikdy nezobrazí. Je znovu potřeba, když se změní hostitel, port nebo uživatelské jméno."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Klíč je uložen. Vložte nový, pokud ho chcete nahradit."
+      },
+      "validation": {
+        "hostRequired": "Hostitel SSH je povinný",
+        "portRange": "Port musí být mezi 1 a 65535",
+        "usernameRequired": "Uživatelské jméno je povinné",
+        "keyRequired": "Soukromý klíč je potřeba, když se změní hostitel, port nebo uživatelské jméno"
+      },
+      "buttons": {
+        "save": "Uložit nastavení SSH",
+        "clear": "Odebrat přístup přes SSH",
+        "test": "Testovat připojení",
+        "testing": "Testuje se...",
+        "confirm": "Potvrdit klíč hostitele",
+        "replace": "Nahradit klíč hostitele"
+      },
+      "test": {
+        "title": "Připojení",
+        "pinnedAtRest": "Klíč hostitele je připnutý. Otestujte připojení a zjistěte, co hostitel umožňuje.",
+        "unpinnedAtRest": "Zatím není připnutý žádný klíč hostitele. Otestujte připojení a potvrďte otisk hostitele.",
+        "saveFirst": "Nejdříve uložte změny. Test používá uložené přihlašovací údaje."
+      },
+      "status": {
+        "unpinned": {
+          "title": "První kontakt",
+          "text": "Před potvrzením porovnejte tento otisk s otiskem hostitele. Pozdější připojení odmítnou jakýkoli jiný klíč."
+        },
+        "pinned": {
+          "title": "Klíč hostitele připnut"
+        },
+        "mismatch": {
+          "title": "Klíč hostitele se změnil",
+          "text": "Hostitel předložil jiný klíč než připnutý. Připnutý klíč nahraďte jen tehdy, když změnu očekáváte, například po přeinstalaci serveru."
+        },
+        "pinUnreadable": {
+          "title": "Připnutý klíč je nečitelný",
+          "text": "Uložený připnutý klíč nelze dešifrovat, obvykle proto, že se změnil šifrovací klíč qui. Pro pokračování ho nahraďte.",
+          "noKey": "Hostitel neodpověděl, takže není žádný klíč, kterým by se dal nahradit."
+        },
+        "error": {
+          "title": "Připojení selhalo"
+        }
+      },
+      "fingerprint": {
+        "label": "Otisk",
+        "pinned": "Připnutý",
+        "presented": "Předložený"
+      },
+      "probes": {
+        "tier": "Úroveň: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + příkazy",
+        "tierHint": "Příkazy potřebují na hostiteli POSIX shell s GNU find a stat. Bez nich qui používá jen SFTP a nemůže číst identitu souborů.",
+        "sftp": "SFTP",
+        "statvfs": "Volné místo (statvfs)",
+        "hardlink": "Pevné odkazy (hardlink@openssh.com)",
+        "limits": "Rozšíření limits",
+        "exec": "Příkazy",
+        "gnuUserland": "GNU find a stat",
+        "yes": "K dispozici",
+        "no": "Není k dispozici"
+      },
+      "replaceDialog": {
+        "title": "Nahradit připnutý klíč hostitele?",
+        "description": "qui bude od teď pro tohoto hostitele důvěřovat předloženému klíči a připnutý odmítne.",
+        "cancel": "Zrušit",
+        "confirm": "Nahradit"
+      },
+      "toast": {
+        "saved": "Nastavení SSH uloženo",
+        "cleared": "Přístup přes SSH odebrán"
+      }
     }
   },
   "backups": {

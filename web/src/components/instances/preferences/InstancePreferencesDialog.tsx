@@ -28,13 +28,14 @@ import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { cn } from "@/lib/utils"
 import type { Instance, PreferenceField } from "@/types"
-import { Cog, Download, Gauge, Globe, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
+import { Cog, Download, Gauge, Globe, KeyRound, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
 import { lazy, Suspense, useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
+import { InstanceSSHPanel } from "./InstanceSSHPanel"
 import { preferenceTabLabels } from "./labels"
 import { preferenceTabsOf, usePreferenceView } from "./preferenceView"
 
@@ -76,6 +77,10 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
             <Server className="h-4 w-4" />
             <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.instance")}</span>
           </TabsTrigger>
+          <TabsTrigger value="ssh" className="flex items-center gap-1.5 shrink-0">
+            <KeyRound className="h-4 w-4" />
+            <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.ssh")}</span>
+          </TabsTrigger>
           <div className="h-6 w-px bg-muted-foreground/50 mx-1 sm:mx-2 self-center shrink-0" />
           {tabs.map(tab => {
             const Icon = TAB_ICONS[tab]
@@ -110,6 +115,22 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {instance ? (
             <InstanceSettingsPanel instance={instance} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              {t("preferences.dialog.instanceNotAvailable")}
+            </p>
+          )}
+        </div>
+      </TabsContent>
+
+      <TabsContent value="ssh" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="space-y-1 mb-6 shrink-0">
+          <h3 className="text-lg font-medium">{t("preferences.dialog.sections.ssh.title")}</h3>
+          <p className="text-sm text-muted-foreground">{t("preferences.dialog.sections.ssh.description")}</p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {instance ? (
+            <InstanceSSHPanel key={instance.id} instance={instance} />
           ) : (
             <p className="text-sm text-muted-foreground py-8 text-center">
               {t("preferences.dialog.instanceNotAvailable")}
