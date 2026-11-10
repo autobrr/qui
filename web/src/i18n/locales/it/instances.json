@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Disabilitato",
-      "enabled": "Abilitato",
       "connected": "Connesso",
       "disconnected": "Disconnesso"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verifica TLS:",
       "tlsSkipped": "Ignorata",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Accesso ai file locali:",
-      "testingConnection": "Prova della connessione in corso..."
+      "testingConnection": "Prova della connessione in corso...",
+      "fileAccess": "Accesso ai file:"
     },
     "deleteDialog": {
       "title": "Elimina istanza",
@@ -2091,6 +2090,17 @@
       "success": "Riuscito",
       "failed": "Non riuscito",
       "canceled": "Annullato"
+    }
+  },
+  "access": {
+    "local": "Locale",
+    "remote": "Via SSH",
+    "none": "Nessuno",
+    "localFull": "qui legge e scrive i file di questa istanza su questa macchina.",
+    "limits": {
+      "noIdentity": "Nessuna identità dei file: qui non riconosce quando due percorsi sono lo stesso file. La scansione orfani non può eliminare qui e una destinazione hardlink esistente blocca un'aggiunta con hardlink.",
+      "noReflinks": "Nessun reflink su un'istanza remota.",
+      "noHardlinkExtension": "Nessun hardlink: il server non annuncia hardlink@openssh.com. Un'aggiunta cross-seed con hardlink qui fallisce, oppure aggiunge in modalità normale se «Ripiega sulla modalità normale in caso di errore» è attivo."
     }
   }
 }

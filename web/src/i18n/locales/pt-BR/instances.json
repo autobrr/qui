@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desativado",
-      "enabled": "Ativado",
       "connected": "Conectado",
       "disconnected": "Desconectado"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificação TLS:",
       "tlsSkipped": "Ignorada",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Acesso a Arquivo Local:",
-      "testingConnection": "Testando conexão..."
+      "testingConnection": "Testando conexão...",
+      "fileAccess": "Acesso aos arquivos:"
     },
     "deleteDialog": {
       "title": "Excluir Instância",
@@ -2091,6 +2090,17 @@
       "failedToDeleteBackup": "Falha ao excluir execução de backup",
       "allBackupsDeleted": "Todos os backups excluídos",
       "failedToDeleteBackups": "Falha ao excluir backups"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Via SSH",
+    "none": "Nenhum",
+    "localFull": "O qui lê e grava os arquivos desta instância nesta máquina.",
+    "limits": {
+      "noIdentity": "Sem identidade dos arquivos: o qui não consegue saber quando dois caminhos são o mesmo arquivo. A varredura de órfãos não pode excluir aqui, e um destino de hardlink existente interrompe uma adição por hardlink.",
+      "noReflinks": "Sem reflinks em uma instância remota.",
+      "noHardlinkExtension": "Sem hardlinks: o servidor não anuncia hardlink@openssh.com. Uma adição de cross-seed por hardlink falha aqui, ou adiciona no modo regular quando \"Retornar ao modo regular em caso de erro\" está ativado."
     }
   }
 }

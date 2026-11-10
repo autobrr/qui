@@ -19,6 +19,7 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { useSSHSetup } from "@/hooks/useSSHSetup"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
@@ -273,14 +274,18 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
                   ) : result ? (
                     <SSHTestResult
                       result={result}
-                      tier={instance.sshTier}
+                      instance={instance}
                       onConfirm={() => pin(false)}
                       onReplace={() => setReplaceOpen(true)}
                     />
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
-                    </p>
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
+                      </p>
+                      {/* The limits come from the stored probe, so a pinned host shows them before any new test. */}
+                      {instance.sshHostKeyPinned && <RemoteAccessIndicator instance={instance} variant="inline" />}
+                    </>
                   )}
                 </div>
               )}
@@ -317,13 +322,14 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
 
 interface SSHTestResultProps {
   result: SSHTestResponse
-  tier: Instance["sshTier"]
+  instance: Instance
   onConfirm: () => void
   onReplace: () => void
 }
 
-function SSHTestResult({ result, tier, onConfirm, onReplace }: SSHTestResultProps) {
+function SSHTestResult({ result, instance, onConfirm, onReplace }: SSHTestResultProps) {
   const { t } = useTranslation("instances")
+  const tier = instance.sshTier
 
   switch (result.status) {
     case "unpinned":
@@ -346,6 +352,8 @@ function SSHTestResult({ result, tier, onConfirm, onReplace }: SSHTestResultProp
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
+          {/* The hardlink flag comes from this test, not the row: a failed probe write would otherwise leave the limits contradicting the table above. */}
+          <RemoteAccessIndicator instance={result.capabilities ? { ...instance, sshHardlink: result.capabilities.hardlink } : instance} variant="inline" />
         </div>
       )
     case "mismatch":

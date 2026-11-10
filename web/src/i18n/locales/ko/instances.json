@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "비활성화됨",
-      "enabled": "활성화됨",
       "connected": "연결됨",
       "disconnected": "연결 끊김"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 검증:",
       "tlsSkipped": "건너뜀",
       "tlsStrict": "엄격",
-      "localFileAccess": "로컬 파일 접근:",
-      "testingConnection": "연결 테스트 중..."
+      "testingConnection": "연결 테스트 중...",
+      "fileAccess": "파일 접근:"
     },
     "deleteDialog": {
       "title": "인스턴스 삭제",
@@ -2061,6 +2060,17 @@
       "failedToDeleteBackup": "백업 실행을 삭제하지 못했습니다",
       "allBackupsDeleted": "모든 백업을 삭제했습니다",
       "failedToDeleteBackups": "백업을 삭제하지 못했습니다"
+    }
+  },
+  "access": {
+    "local": "로컬",
+    "remote": "SSH 경유",
+    "none": "없음",
+    "localFull": "qui가 이 인스턴스의 파일을 이 컴퓨터에서 읽고 씁니다.",
+    "limits": {
+      "noIdentity": "파일 식별 정보 없음: qui는 두 경로가 같은 파일인지 구분할 수 없습니다. 여기서는 고아 항목 스캔이 삭제할 수 없고, 이미 존재하는 하드링크 대상이 있으면 하드링크 추가가 중단됩니다.",
+      "noReflinks": "원격 인스턴스에서는 리플링크를 사용할 수 없습니다.",
+      "noHardlinkExtension": "하드링크 없음: 서버가 hardlink@openssh.com을 지원한다고 알리지 않습니다. 여기서는 크로스시드 하드링크 추가가 실패하거나, \"오류 시 일반 모드로 대체\"가 켜져 있으면 일반 모드로 추가됩니다."
     }
   }
 }

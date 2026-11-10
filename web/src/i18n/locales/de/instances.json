@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Deaktiviert",
-      "enabled": "Aktiviert",
       "connected": "Verbunden",
       "disconnected": "Getrennt"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS-Überprüfung:",
       "tlsSkipped": "Übersprungen",
       "tlsStrict": "Strikt",
-      "localFileAccess": "Lokaler Dateizugriff:",
-      "testingConnection": "Verbindung wird getestet..."
+      "testingConnection": "Verbindung wird getestet...",
+      "fileAccess": "Dateizugriff:"
     },
     "deleteDialog": {
       "title": "Instanz löschen",
@@ -2091,6 +2090,17 @@
       "failedToDeleteBackup": "Backup-Lauf konnte nicht gelöscht werden",
       "allBackupsDeleted": "Alle Backups gelöscht",
       "failedToDeleteBackups": "Backups konnten nicht gelöscht werden"
+    }
+  },
+  "access": {
+    "local": "Lokal",
+    "remote": "Über SSH",
+    "none": "Keiner",
+    "localFull": "qui liest und schreibt die Dateien dieser Instanz auf diesem Rechner.",
+    "limits": {
+      "noIdentity": "Keine Dateiidentität: qui erkennt nicht, wenn zwei Pfade dieselbe Datei sind. Der Orphan-Scan kann hier nicht löschen, und ein vorhandenes Hardlink-Ziel stoppt ein Hinzufügen per Hardlink.",
+      "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",
+      "noHardlinkExtension": "Keine Hardlinks: Der Server bietet hardlink@openssh.com nicht an. Ein Cross-Seed-Hinzufügen per Hardlink schlägt hier fehl oder fügt im regulären Modus hinzu, wenn „Bei Fehler auf regulären Modus zurückfallen“ aktiv ist."
     }
   }
 }

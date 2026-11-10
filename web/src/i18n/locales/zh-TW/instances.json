@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "已停用",
-      "enabled": "已啟用",
       "connected": "已連線",
       "disconnected": "已斷開"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 驗證：",
       "tlsSkipped": "已跳過",
       "tlsStrict": "嚴格",
-      "localFileAccess": "本機檔案系統存取：",
-      "testingConnection": "正在測試連線..."
+      "testingConnection": "正在測試連線...",
+      "fileAccess": "檔案存取："
     },
     "deleteDialog": {
       "title": "刪除實例",
@@ -2061,6 +2060,17 @@
       "failedToDeleteBackup": "刪除備份失敗",
       "allBackupsDeleted": "所有備份已刪除",
       "failedToDeleteBackups": "刪除備份失敗"
+    }
+  },
+  "access": {
+    "local": "本機",
+    "remote": "透過 SSH",
+    "none": "無",
+    "localFull": "qui 在本機讀寫此實例的檔案。",
+    "limits": {
+      "noIdentity": "無檔案識別資訊：qui 無法判斷兩個路徑是否指向同一檔案。孤立項目掃描在此無法刪除，且已存在的硬連結目標會阻止硬連結新增。",
+      "noReflinks": "遠端實例不支援引用連結。",
+      "noHardlinkExtension": "無硬連結：伺服器未宣告支援 hardlink@openssh.com。交叉做種的硬連結新增在此會失敗；若已開啟「出錯時回退到一般模式」，則以一般模式新增。"
     }
   }
 }

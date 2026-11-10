@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "已禁用",
-      "enabled": "已启用",
       "connected": "已连接",
       "disconnected": "已断开"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 验证：",
       "tlsSkipped": "已跳过",
       "tlsStrict": "严格",
-      "localFileAccess": "本地文件系统访问：",
-      "testingConnection": "正在测试连接..."
+      "testingConnection": "正在测试连接...",
+      "fileAccess": "文件访问："
     },
     "deleteDialog": {
       "title": "删除实例",
@@ -2061,6 +2060,17 @@
       "failedToDeleteBackup": "删除备份失败",
       "allBackupsDeleted": "所有备份已删除",
       "failedToDeleteBackups": "删除备份失败"
+    }
+  },
+  "access": {
+    "local": "本地",
+    "remote": "通过 SSH",
+    "none": "无",
+    "localFull": "qui 在本机读写此实例的文件。",
+    "limits": {
+      "noIdentity": "无文件标识：qui 无法判断两个路径是否指向同一文件。孤立项目扫描在此无法删除，且已存在的硬链接目标会阻止硬链接添加。",
+      "noReflinks": "远程实例不支持引用链接。",
+      "noHardlinkExtension": "无硬链接：服务器未声明支持 hardlink@openssh.com。交叉做种的硬链接添加在此会失败；若已开启“出错时回退到常规模式”，则以常规模式添加。"
     }
   }
 }

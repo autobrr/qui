@@ -170,6 +170,20 @@ describe("InstanceSSHPanel", () => {
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it("a pinned remote instance lists its limits before any test", () => {
+    render(<InstanceSSHPanel instance={{ ...storedInstance, filesystemMode: "remote", sshHostKeyPinned: true, sshTier: "sftp", sshHardlink: true }} />)
+    expect(screen.getByText("preferences.ssh.test.pinnedAtRest")).not.toBeNull()
+    expect(screen.getByText("access.limits.noIdentity")).not.toBeNull()
+    expect(screen.getByText("access.limits.noReflinks")).not.toBeNull()
+    expect(document.querySelector("[data-ssh-status]")).toBeNull()
+  })
+
+  it("the limits under a pinned result follow the test, not the stored flag", async () => {
+    render(<InstanceSSHPanel instance={{ ...storedInstance, filesystemMode: "remote", sshHostKeyPinned: true, sshTier: "exec", sshHardlink: true }} />)
+    await runTest({ status: "pinned", fingerprint: "SHA256:abc", capabilities: { sftp: true, statvfs: true, hardlink: false, limits: true, exec: true, gnuUserland: true } })
+    expect(screen.getByText("access.limits.noHardlinkExtension")).not.toBeNull()
+  })
+
   it("unsaved edits hide the test result and disable Test", async () => {
     render(<InstanceSSHPanel instance={storedInstance} />)
     await runTest({ status: "unpinned", hostKey: "AAAA", fingerprint: "SHA256:abc" })

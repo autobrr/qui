@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Vypnuto",
-      "enabled": "Zapnuto",
       "connected": "Připojeno",
       "disconnected": "Odpojeno"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS ověření:",
       "tlsSkipped": "Přeskočit",
       "tlsStrict": "Striktní",
-      "localFileAccess": "Lokální přístup k souborům:",
-      "testingConnection": "Testuji připojení..."
+      "testingConnection": "Testuji připojení...",
+      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -2127,6 +2126,17 @@
       "success": "Úspěch",
       "failed": "Selhalo",
       "canceled": "Zrušeno"
+    }
+  },
+  "access": {
+    "local": "Lokální",
+    "remote": "Přes SSH",
+    "none": "Žádný",
+    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "limits": {
+      "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
+      "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
+      "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
   }
 }

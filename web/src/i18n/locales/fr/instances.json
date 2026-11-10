@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Désactivé",
-      "enabled": "Activé",
       "connected": "Connecté",
       "disconnected": "Déconnecté"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Vérification TLS :",
       "tlsSkipped": "Ignorée",
       "tlsStrict": "Stricte",
-      "localFileAccess": "Accès fichiers locaux :",
-      "testingConnection": "Test de connexion..."
+      "testingConnection": "Test de connexion...",
+      "fileAccess": "Accès aux fichiers :"
     },
     "deleteDialog": {
       "title": "Supprimer l'instance",
@@ -2091,6 +2090,17 @@
       "failedToDeleteBackup": "Échec de la suppression de l'exécution de sauvegarde",
       "allBackupsDeleted": "Toutes les sauvegardes supprimées",
       "failedToDeleteBackups": "Échec de la suppression des sauvegardes"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Via SSH",
+    "none": "Aucun",
+    "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
+    "limits": {
+      "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
+      "noReflinks": "Pas de reflinks sur une instance distante.",
+      "noHardlinkExtension": "Pas de liens physiques : le serveur n'annonce pas hardlink@openssh.com. Un ajout de cross-seed par lien physique échoue ici, ou se fait en mode normal si « Repli sur le mode normal en cas d'erreur » est activé."
     }
   }
 }

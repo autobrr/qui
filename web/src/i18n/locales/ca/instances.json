@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desactivada",
-      "enabled": "Activada",
       "connected": "Connectada",
       "disconnected": "Desconnectada"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificació TLS:",
       "tlsSkipped": "Omesa",
       "tlsStrict": "Estricta",
-      "localFileAccess": "Accés als fitxers locals:",
-      "testingConnection": "S'està provant la connexió..."
+      "testingConnection": "S'està provant la connexió...",
+      "fileAccess": "Accés als fitxers:"
     },
     "deleteDialog": {
       "title": "Elimina la instància",
@@ -2091,6 +2090,17 @@
       "failedToDeleteBackup": "No s'ha pogut eliminar l'execució de còpia de seguretat",
       "allBackupsDeleted": "S'han eliminat totes les còpies de seguretat",
       "failedToDeleteBackups": "No s'han pogut eliminar les còpies de seguretat"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Per SSH",
+    "none": "Cap",
+    "localFull": "qui llegeix i escriu els fitxers d'aquesta instància en aquesta màquina.",
+    "limits": {
+      "noIdentity": "Sense identitat dels fitxers: qui no pot saber quan dos camins són el mateix fitxer. L'exploració d'orfes no pot suprimir aquí, i una destinació de hardlink existent atura una addició per hardlink.",
+      "noReflinks": "Sense reflinks en una instància remota.",
+      "noHardlinkExtension": "Sense hardlinks: el servidor no anuncia hardlink@openssh.com. Una addició de cross-seed per hardlink falla aquí, o s'afegeix en mode normal quan «Recorre al mode normal si hi ha un error» està activat."
     }
   }
 }
