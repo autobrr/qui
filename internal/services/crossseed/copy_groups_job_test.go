@@ -317,6 +317,7 @@ func TestCopyGroupsJob_NoDemandNoWork(t *testing.T) {
 	})
 }
 
+// regression: #3977
 func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.demandAndWait()
@@ -326,6 +327,7 @@ func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	})
 }
 
+// regression: #3977
 func TestCopyGroupsJob_EachInstanceGroupsWhenItsFirstReadEnds(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
