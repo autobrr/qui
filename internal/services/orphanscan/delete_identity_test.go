@@ -206,10 +206,6 @@ func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 // no such file.
 // regression: #3596
 func TestExecuteDeletion_TorrentFileBehindASymlinkLoopDoesNotStopTheRun(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows does not report a symlink loop as ELOOP")
-	}
-
 	var orphan, loopDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-loop-late", orphanOnlyOptions{}, func(defaultSavePath string) {
 		orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")

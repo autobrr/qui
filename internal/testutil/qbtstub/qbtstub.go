@@ -122,6 +122,7 @@ type Server struct {
 	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
 	FailSyncs int
 
+	calls        map[string]int
 	writes       map[string]int
 	conflicts    map[string]int
 	bodies       map[string]string
@@ -134,7 +135,7 @@ type Server struct {
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
 	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
-		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}, synced: map[int]chan struct{}{}}
+		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -227,6 +228,13 @@ func (s *Server) Conflicts(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.conflicts[endpoint]
+}
+
+// Calls counts the requests qBittorrent received on an endpoint.
+func (s *Server) Calls(endpoint string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls[endpoint]
 }
 
 // Requests counts every request qBittorrent received.
@@ -417,6 +425,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	s.requests++
 	endpoint := strings.TrimPrefix(r.URL.Path, "/api/v2/")
+	s.calls[endpoint]++
 	if r.Method == http.MethodPost && endpoint != "auth/login" {
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(s.t, err)

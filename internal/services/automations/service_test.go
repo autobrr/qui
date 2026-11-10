@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,208 +43,6 @@ func TestNormalizeShareLimitEnum(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, normalizeShareLimitEnum(tc.in))
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
-// matchesTracker tests
-// -----------------------------------------------------------------------------
-
-func TestMatchesTracker(t *testing.T) {
-	tests := []struct {
-		name    string
-		pattern string
-		domains []string
-		want    bool
-	}{
-		// Wildcard
-		{
-			name:    "wildcard matches all",
-			pattern: "*",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "wildcard matches empty domains",
-			pattern: "*",
-			domains: []string{},
-			want:    true,
-		},
-
-		// Empty pattern
-		{
-			name:    "empty pattern matches nothing",
-			pattern: "",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-
-		// Exact match
-		{
-			name:    "exact match",
-			pattern: "tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "exact match case insensitive",
-			pattern: "Tracker.Example.COM",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "exact match no match",
-			pattern: "other.tracker.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-
-		// Suffix pattern (.domain)
-		{
-			name:    "suffix pattern matches",
-			pattern: ".example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "suffix pattern case insensitive",
-			pattern: ".Example.COM",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "suffix pattern no match different domain",
-			pattern: ".other.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-
-		// Multiple patterns (comma separated)
-		{
-			name:    "comma separated first matches",
-			pattern: "tracker.example.com, other.tracker.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "comma separated second matches",
-			pattern: "other.tracker.com, tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "comma separated none match",
-			pattern: "foo.com, bar.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-
-		// Multiple patterns (semicolon separated)
-		{
-			name:    "semicolon separated matches",
-			pattern: "foo.com; tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-
-		// Multiple patterns (pipe separated)
-		{
-			name:    "pipe separated matches",
-			pattern: "foo.com|tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-
-		// Glob patterns
-		{
-			name:    "glob wildcard prefix",
-			pattern: "*.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "glob wildcard middle",
-			pattern: "tracker.*.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "glob question mark",
-			pattern: "tracker.exampl?.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "glob no match",
-			pattern: "*.other.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-		{
-			name:    "exclude single tracker match",
-			pattern: "!tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-		{
-			name:    "exclude single tracker non-match",
-			pattern: "!tracker.example.com",
-			domains: []string{"other.tracker.com"},
-			want:    true,
-		},
-		{
-			name:    "include and exclude where exclude wins",
-			pattern: "tracker.example.com,!tracker.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-		{
-			name:    "include and exclude where include matches",
-			pattern: "tracker.example.com,!other.tracker.com",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-		{
-			name:    "exclude supports glob",
-			pattern: "!*.example.com",
-			domains: []string{"tracker.example.com"},
-			want:    false,
-		},
-
-		// Multiple domains
-		{
-			name:    "multiple domains first matches",
-			pattern: "tracker.example.com",
-			domains: []string{"tracker.example.com", "other.tracker.com"},
-			want:    true,
-		},
-		{
-			name:    "multiple domains second matches",
-			pattern: "other.tracker.com",
-			domains: []string{"tracker.example.com", "other.tracker.com"},
-			want:    true,
-		},
-
-		// Edge cases
-		{
-			name:    "empty domains with non-wildcard pattern",
-			pattern: "tracker.example.com",
-			domains: []string{},
-			want:    false,
-		},
-		{
-			name:    "whitespace in pattern is trimmed",
-			pattern: "  tracker.example.com  ",
-			domains: []string{"tracker.example.com"},
-			want:    true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := matchesTracker(tc.pattern, tc.domains)
-			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -486,10 +286,10 @@ func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
 		},
 	}
 	torrents := []qbt.Torrent{{Hash: "a"}}
-	evalCtx := &EvalContext{FreeSpace: 100}
+	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(100, 0)}
 
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
-	evalCtx.FreeSpace = 25
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(25, 0)
 
 	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
 	require.NotNil(t, score)
@@ -537,8 +337,7 @@ func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
 		torrents,
 		&EvalContext{},
 		nil,
-		nil,
-		nil,
+		noSkipWindow(rule),
 		map[int]*ruleRunStats{},
 		map[string]*torrentDesiredState{},
 	)
@@ -963,14 +762,9 @@ func TestLimitHashBatch(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// selectMatchingRules tests
-// -----------------------------------------------------------------------------
-
-func TestSelectMatchingRules(t *testing.T) {
-	// Create a minimal SyncManager for domain extraction
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+// The per-torrent pass runs each enabled rule whose tracker pattern matches the torrent, in rule
+// order. The category of the last rule wins, so the winner shows the order.
+func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
 	tests := []struct {
 		name        string
 		torrent     qbt.Torrent
@@ -1028,20 +822,28 @@ func TestSelectMatchingRules(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := selectMatchingRules(tc.torrent, tc.rules, sm)
+			for _, rule := range tc.rules {
+				rule.Conditions = &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: fmt.Sprintf("rule-%d", rule.ID)}}
+			}
+			stats := make(map[int]*ruleRunStats)
+			states := processTorrents([]qbt.Torrent{tc.torrent}, tc.rules, nil, nil, noSkipWindow(tc.rules...), stats, nil)
+			var got []int
+			for _, rule := range tc.rules {
+				if stats[rule.ID] != nil {
+					got = append(got, rule.ID)
+				}
+			}
 			if tc.wantFirstID == 0 {
 				assert.Empty(t, got)
+				assert.Empty(t, states)
 			} else {
 				require.NotEmpty(t, got)
-				assert.Equal(t, tc.wantFirstID, got[0].ID)
+				assert.Equal(t, tc.wantFirstID, got[0])
+				assert.Equal(t, got[len(got)-1], states[tc.torrent.Hash].categoryRule.id)
 			}
 			assert.Len(t, got, tc.wantCount)
 			if len(tc.wantIDs) > 0 {
-				gotIDs := make([]int, len(got))
-				for i, r := range got {
-					gotIDs[i] = r.ID
-				}
-				assert.Equal(t, tc.wantIDs, gotIDs)
+				assert.Equal(t, tc.wantIDs, got)
 			}
 		})
 	}
@@ -1227,8 +1029,6 @@ func TestCategoryConditionNotMet(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-	s := &Service{syncManager: sm}
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "first",
@@ -1263,8 +1063,8 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 	}
 
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
-	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx, true)
-	result := s.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
+	result := buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
 }
@@ -1309,9 +1109,9 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 				evalCtx.CrossSeedFilesByHash = nil
 			}
 			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, eligibleView: true,
+				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
 			})
-			result := svc.buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil)
+			result := buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
 			if unread {
 				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
 				require.True(t, selection.isClaimed("source"), "a trigger whose expansion failed gets no other action")
@@ -1862,36 +1662,6 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// updateCumulativeFreeSpaceCleared tests for preview view behavior
-// -----------------------------------------------------------------------------
-
-func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
-	// Test that "needed" mode updates cumulative space tracking
-	// so FREE_SPACE condition stops matching after target is satisfied
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1", SavePath: "/data"}, // 100 GB
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2", SavePath: "/data"},  // 50 GB
-		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/movie3", SavePath: "/data"},  // 30 GB
-	}
-
-	evalCtx := &EvalContext{
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
-	}
-
-	// Simulate "needed" mode processing: each deletion updates SpaceToClear
-	crossSeeds := testCrossSeedGroups(allTorrents)
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
-
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
-
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, crossSeeds, true)
-	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
-}
-
 func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	// Test that cross-seed expansion works the same way in both views
 	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
@@ -1916,14 +1686,11 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 }
 
 func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
-	// Test that FREE_SPACE condition logic respects SpaceToClear projection
-	// When SpaceToClear + FreeSpace >= target, condition should stop matching
+	// The FREE_SPACE condition reads the Projected free space: it stops matching
+	// once the free space at the start plus the Projected freed bytes reaches the target.
 
 	// Simulate 400GB free, target 500GB => need to clear 100GB
-	evalCtx := &EvalContext{
-		FreeSpace:    400000000000, // 400 GB
-		SpaceToClear: 0,
-	}
+	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(400000000000, 0)} // 400 GB
 
 	// Create a FREE_SPACE < 500GB condition (value in bytes)
 	condition := &RuleCondition{
@@ -1938,7 +1705,7 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	assert.True(t, match1, "Should match when effective free space is below target")
 
 	// Simulate clearing 50GB
-	evalCtx.SpaceToClear = 50000000000 // 50GB
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 50000000000) // 50GB freed
 
 	// Now: 400GB free + 50GB to be cleared = 450GB effective
 	// 450GB < 500GB => should still match
@@ -1946,7 +1713,7 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	assert.True(t, match2, "Should match when effective free space is still below target")
 
 	// Simulate clearing another 60GB (total 110GB)
-	evalCtx.SpaceToClear = 110000000000 // 110GB
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 110000000000) // 110GB freed
 
 	// Now: 400GB free + 110GB to be cleared = 510GB effective
 	// 510GB < 500GB => false, should NOT match
@@ -2047,6 +1814,7 @@ func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map
 		ruleByID:      ruleByID,
 		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
 		evalCtx:       evalCtx,
+		scope:         noSkipWindow(slices.Collect(maps.Values(ruleByID))...),
 	})
 	return plan, torrentByHash
 }
@@ -2075,6 +1843,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		1,
 		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
 		map[string]qbt.Torrent{"abc123": torrent},
+		noSkipWindow(),
 		true,
 	)
 
@@ -2136,13 +1905,13 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
 	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, map[int]*models.Automation{1: rule}, evalCtx)
-	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
@@ -2173,6 +1942,7 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 		1,
 		runPlan{deletions: &deletionSelection{}},
 		nil,
+		noSkipWindow(),
 		true,
 	)
 
@@ -2221,7 +1991,7 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 
 	require.NotPanics(t, func() {
 		plan, torrentByHash := dryRunTestPlan(t, s, []qbt.Torrent{torrent}, states, ruleByID, nil)
-		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
+		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
 	})
 
 	require.Len(t, mockDB.activities, 1)
@@ -2295,7 +2065,7 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 	}
 
 	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
-	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -2333,7 +2103,7 @@ func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *test
 			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
 
 			plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, evalCtx)
-			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
+			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
 
 			require.Len(t, mockDB.activities, 1)
 			if tc.wantMove {
@@ -2364,6 +2134,7 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 		1,
 		runPlan{deletions: &deletionSelection{}},
 		nil,
+		noSkipWindow(),
 		false,
 	)
 

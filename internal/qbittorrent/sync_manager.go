@@ -6,8 +6,10 @@ package qbittorrent
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"maps"
 	"net"
 	"net/url"
@@ -40,19 +42,38 @@ import (
 // IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
 // to preserve cache integrity. Do not append, modify, or re-slice.
 type FilesManager interface {
-	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
 	// A row older than maxAge is stale; zero maxAge means the implementation's default freshness.
 	// Callers must pass hashes already trimmed/normalized (e.g. uppercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
 	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error)
-	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
-	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
+	// GetCachedFilesBatchWithMeta returns each cached list with its stored print
+	// and write time, at any age. A hash with no cached list is left out.
+	GetCachedFilesBatchWithMeta(ctx context.Context, instanceID int, hashes []string) (map[string]CachedFilesEntry, error)
+	CacheFilesBatch(ctx context.Context, instanceID int, writes map[string]CachedFilesWrite) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
+}
+
+// CachedFilesWrite is one torrent's file list and the print of its maindata
+// entry at the time of the read. A nil Print stores no print.
+type CachedFilesWrite struct {
+	Files qbt.TorrentFiles
+	Print *int64
+}
+
+// CachedFilesEntry is a cached file list, the print stored with it, and the
+// time of its write. Print is nil when the row has no valid print.
+type CachedFilesEntry struct {
+	Files    qbt.TorrentFiles
+	Print    *int64
+	SyncedAt time.Time
 }
 
 type torrentFilesClient interface {
 	getTorrentsByHashes(hashes []string) []qbt.Torrent
+	// getTorrentsByHashesUnchecked reads the maindata entries of the hashes and
+	// never starts a sync.
+	getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent
 	GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error)
 }
 
@@ -71,6 +92,7 @@ var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minu
 
 type filesCacheContextKey struct{}
 type filesCacheMaxAgeContextKey struct{}
+type filesCacheModeContextKey struct{}
 type fileFetchLimitContextKey struct{}
 type postAddBulkActionRetryContextKey struct{}
 type postAddFileFetchRetryContextKey struct{}
@@ -103,6 +125,9 @@ type bulkActionTorrentSyncer interface {
 }
 
 // WithForceFilesRefresh returns a context that bypasses the cached torrent files snapshot.
+// It wins over [WithFilesUntilChanged] and [WithFilesUntilChangedOrStale], and
+// those win over [WithFilesCacheMaxAge]. A context holds at most one of the two
+// UntilChanged modes: a later call replaces an earlier one.
 func WithForceFilesRefresh(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheContextKey{}, true)
 }
@@ -115,6 +140,22 @@ func WithForceFilesRefresh(ctx context.Context) context.Context {
 // are set.
 func WithFilesCacheMaxAge(ctx context.Context, maxAge time.Duration) context.Context {
 	return context.WithValue(ctx, filesCacheMaxAgeContextKey{}, maxAge)
+}
+
+// WithFilesUntilChanged returns a context under which [SyncManager.GetTorrentFilesBatch]
+// serves a cached file list at any age while the print of the torrent's
+// maindata entry matches the stored one. A list whose print moved, or a list
+// with no print, is fetched again. A list of a torrent with no maindata entry
+// is served at any age.
+func WithFilesUntilChanged(ctx context.Context) context.Context {
+	return context.WithValue(ctx, filesCacheModeContextKey{}, filesCacheUntilChanged)
+}
+
+// WithFilesUntilChangedOrStale is [WithFilesUntilChanged], but a list with a
+// matching print is served for at most 23 h (11.5 h to 23 h, spread by hash),
+// and a list with no print for at most 1 h.
+func WithFilesUntilChangedOrStale(ctx context.Context) context.Context {
+	return context.WithValue(ctx, filesCacheModeContextKey{}, filesCacheUntilChangedOrStale)
 }
 
 // WithFileFetchLimit returns a context under which [SyncManager.GetTorrentFilesBatch]
@@ -145,6 +186,11 @@ func forceFilesRefresh(ctx context.Context) bool {
 
 func filesCacheMaxAge(ctx context.Context) time.Duration {
 	value, _ := ctx.Value(filesCacheMaxAgeContextKey{}).(time.Duration)
+	return value
+}
+
+func filesCacheModeOf(ctx context.Context) filesCacheMode {
+	value, _ := ctx.Value(filesCacheModeContextKey{}).(filesCacheMode)
 	return value
 }
 
@@ -470,8 +516,11 @@ type SyncManager struct {
 	// filesChangedHandler runs after qui renames the files of a torrent or
 	// drops its file list from the file cache.
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
+	filesInvalidations  filesInvalidations
 	copyGroups          atomic.Pointer[CopyGroups]
 	copyGroupsDemand    atomic.Pointer[func()]
+	// instanceName is nil outside tests; then the name comes from the instance store.
+	instanceName func(ctx context.Context, instanceID int) (string, error)
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -483,6 +532,9 @@ type SyncManager struct {
 	syncDebounceSince     map[int]time.Time
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
+
+	writeTimesMu sync.Mutex
+	writeTimes   map[int]time.Time
 
 	// categoryVersions holds each instance's version answer for
 	// InstanceFolders.
@@ -621,7 +673,7 @@ func (sm *SyncManager) SetFilesChangedHandler(handler func(instanceID int, hash 
 
 func (sm *SyncManager) notifyFilesChanged(instanceID int, hash string) {
 	if handler := sm.filesChangedHandler.Load(); handler != nil {
-		(*handler)(instanceID, hash)
+		(*handler)(instanceID, canonicalizeHash(hash))
 	}
 }
 
@@ -1308,11 +1360,81 @@ func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, 
 	// Notify after the cached list is gone, so a read that starts on the
 	// notify cannot load the old list.
 	defer sm.notifyFilesChanged(instanceID, hash)
+	return sm.dropCachedFiles(ctx, instanceID, hash)
+}
+
+// dropCachedFiles drops the cached file list of hash. A fetch that began
+// before the drop then does not save the list it got.
+func (sm *SyncManager) dropCachedFiles(ctx context.Context, instanceID int, hash string) error {
 	fm := sm.getFilesManager()
 	if fm == nil {
-		return nil // No files manager configured, nothing to do
+		return nil
 	}
-	return fm.InvalidateCache(ctx, instanceID, hash)
+	return sm.filesInvalidations.invalidate(instanceID, hash, func() error {
+		return fm.InvalidateCache(ctx, instanceID, hash)
+	})
+}
+
+// filesInvalidations orders the saves of fetched file lists against the drops
+// of cached ones.
+type filesInvalidations struct {
+	mu  sync.RWMutex
+	seq uint64
+	// fetches counts the fetches between mark and release.
+	fetches int
+	// dropped holds the seq of the last drop of each hash while a fetch runs.
+	dropped map[filesInvalidationKey]uint64
+}
+
+type filesInvalidationKey struct {
+	instanceID int
+	hash       string
+}
+
+// mark returns the value that a fetch passes to save. The fetch calls
+// release after its save.
+func (f *filesInvalidations) mark() uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fetches++
+	return f.seq
+}
+
+// release forgets the drops once no fetch runs, because a later mark is
+// never older than them.
+func (f *filesInvalidations) release() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fetches--
+	if f.fetches == 0 {
+		clear(f.dropped)
+	}
+}
+
+func (f *filesInvalidations) invalidate(instanceID int, hash string, drop func() error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seq++
+	if f.fetches > 0 {
+		if f.dropped == nil {
+			f.dropped = make(map[filesInvalidationKey]uint64)
+		}
+		f.dropped[filesInvalidationKey{instanceID, canonicalizeHash(hash)}] = f.seq
+	}
+	return drop()
+}
+
+// save stores the writes whose hash was not dropped after mark.
+func (f *filesInvalidations) save(instanceID int, mark uint64, writes map[string]CachedFilesWrite, store func(map[string]CachedFilesWrite) error) error {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	maps.DeleteFunc(writes, func(hash string, _ CachedFilesWrite) bool {
+		return f.dropped[filesInvalidationKey{instanceID, hash}] > mark
+	})
+	if len(writes) == 0 {
+		return nil
+	}
+	return store(writes)
 }
 
 // GetErrorStore returns the error store for recording errors
@@ -1718,9 +1840,9 @@ type TorrentFieldResponse struct {
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
 func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]CrossInstanceTorrentView, error) {
-	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	name, err := sm.lookupInstanceName(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get instance %d: %w", instanceID, err)
+		return nil, err
 	}
 
 	// Check for cancellation before touching the sync manager.
@@ -1733,9 +1855,24 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	return sm.instanceTorrentViews(client, instanceID, name, syncManager.GetTorrents(qbt.TorrentFilterOptions{})), nil
+}
+
+func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (string, error) {
+	if sm.instanceName != nil {
+		return sm.instanceName(ctx, instanceID)
+	}
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance %d: %w", instanceID, err)
+	}
+	return instance.Name, nil
+}
+
+// instanceTorrentViews sorts the views by name, then hash. It returns nil for no torrents.
+func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []qbt.Torrent) []CrossInstanceTorrentView {
 	if len(torrents) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var cachedHealth *TrackerHealthSnapshot
@@ -1748,8 +1885,8 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
 			TorrentView:  new(rows.view(i, &torrents[i], cachedHealth.Health(torrents[i].Hash))),
-			InstanceID:   instance.ID,
-			InstanceName: instance.Name,
+			InstanceID:   instanceID,
+			InstanceName: instanceName,
 		}
 	}
 
@@ -1760,7 +1897,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return strings.Compare(a.Hash, b.Hash)
 	})
 
-	return views, nil
+	return views
 }
 
 // GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
@@ -2665,10 +2802,24 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	hashesToFetch := normalized.canonical
 	cacheHits := 0
 
-	forceRefresh := forceFilesRefresh(ctx)
+	fm := sm.getFilesManager()
+	// prints holds the print of each hash's maindata entry, read before any
+	// fetch. A fetched list is cached only with a print.
+	var prints map[string]int64
 
-	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx)); cacheErr != nil {
+	if fm != nil && !forceFilesRefresh(ctx) {
+		var (
+			cached   map[string]qbt.TorrentFiles
+			missing  []string
+			cacheErr error
+		)
+		if mode := filesCacheModeOf(ctx); mode != filesCacheByAge {
+			prints = readFilesPrints(client, normalized.canonical)
+			cached, missing, cacheErr = sm.cachedFilesUntilChanged(ctx, fm, instanceID, normalized.canonical, prints, mode)
+		} else {
+			cached, missing, cacheErr = fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx))
+		}
+		if cacheErr != nil {
 			// A failed cache read must not turn into one qBittorrent request per
 			// torrent. A single torrent still costs one request, so it falls back.
 			if len(normalized.canonical) > 1 {
@@ -2694,7 +2845,12 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	if len(hashesToFetch) == 0 {
 		return filesByHash, nil
 	}
+	if fm != nil && prints == nil {
+		prints = readFilesPrints(client, hashesToFetch)
+	}
 
+	fetchMark := sm.filesInvalidations.mark()
+	defer sm.filesInvalidations.release()
 	g, gctx := errgroup.WithContext(ctx)
 	limit := fileFetchConcurrency(len(hashesToFetch))
 	if ctxLimit := fileFetchLimit(ctx); ctxLimit > 0 {
@@ -2762,15 +2918,20 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	// Fresh fetches share the cloned slice between caller and cache (one clone total).
 	// Cache hits (handled earlier) return isolated clones.
 	// IMPORTANT: Callers must treat qbt.TorrentFiles as read-only to avoid cache corruption.
-	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
-		fetchedFiles := make(map[string]qbt.TorrentFiles)
+	if fm != nil {
+		fetchedFiles := make(map[string]CachedFilesWrite)
 		for _, canonicalHash := range hashesToFetch {
-			if files, ok := filesByHash[canonicalHash]; ok {
-				fetchedFiles[canonicalHash] = files
+			files, fetched := filesByHash[canonicalHash]
+			filesPrint, printed := prints[canonicalHash]
+			if fetched && printed {
+				fetchedFiles[canonicalHash] = CachedFilesWrite{Files: files, Print: new(filesPrint)}
 			}
 		}
 		if len(fetchedFiles) > 0 {
-			if err := fm.CacheFilesBatch(context.WithoutCancel(ctx), instanceID, fetchedFiles); err != nil {
+			store := func(writes map[string]CachedFilesWrite) error {
+				return fm.CacheFilesBatch(context.WithoutCancel(ctx), instanceID, writes)
+			}
+			if err := sm.filesInvalidations.save(instanceID, fetchMark, fetchedFiles, store); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", instanceID).
@@ -2810,6 +2971,99 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	}
 
 	return filesByHash, nil
+}
+
+const (
+	// filesNoPrintMaxAge bounds how long [WithFilesUntilChangedOrStale] serves a
+	// cached list with no print.
+	filesNoPrintMaxAge = time.Hour
+	// filesBackstop bounds how long [WithFilesUntilChangedOrStale] serves a list
+	// with a matching print. A change that maindata does not show, such as a
+	// rename inside a folder made outside qui, waits for it.
+	filesBackstop = 23 * time.Hour
+)
+
+type filesCacheMode int
+
+const (
+	filesCacheByAge filesCacheMode = iota
+	filesCacheUntilChanged
+	filesCacheUntilChangedOrStale
+)
+
+// FilesPrint is a fingerprint of the maindata fields that move when a torrent's
+// file list changes: total_size, size and the root of content_path. It leaves
+// out name, which a display-name rename changes with no file change, and the
+// rest of content_path, which is the temp download folder until completion.
+// The print is stored, so it is the same after a restart and on every OS and CPU.
+func FilesPrint(t qbt.Torrent) int64 {
+	buf := make([]byte, 0, 16+len(t.ContentPath))
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.TotalSize)) //nolint:gosec // The bytes, not the value, feed the hash.
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.Size))      //nolint:gosec // The bytes, not the value, feed the hash.
+	buf = append(buf, t.ContentPath[strings.LastIndexAny(t.ContentPath, `/\`)+1:]...)
+	h := fnv.New64a()
+	_, _ = h.Write(buf)
+	return int64(h.Sum64()) //nolint:gosec // database/sql rejects a uint64 with the high bit set.
+}
+
+// filesBackstopFor spreads the backstop over [filesBackstop/2, filesBackstop)
+// by hash, so the lists of one batch do not expire together.
+func filesBackstopFor(hash string) time.Duration {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(hash))
+	half := filesBackstop / 2
+	return half + time.Duration(h.Sum64()%uint64(half/time.Second))*time.Second //nolint:gosec // The modulus keeps the value under 11.5 h.
+}
+
+// current reports whether mode serves the cached entry of hash at now. live is
+// the print of the torrent's maindata entry, nil when it has none.
+func (mode filesCacheMode) current(hash string, entry CachedFilesEntry, live *int64, now time.Time) bool {
+	age := now.Sub(entry.SyncedAt)
+	switch {
+	case entry.Print != nil && live != nil:
+		if *entry.Print != *live {
+			return false
+		}
+		return mode == filesCacheUntilChanged || age < filesBackstopFor(hash)
+	case live != nil && mode == filesCacheUntilChanged:
+		// A list with no print cannot show a change. The fetch stores one.
+		return false
+	}
+	return mode == filesCacheUntilChanged || age < filesNoPrintMaxAge
+}
+
+func readFilesPrints(client torrentFilesClient, hashes []string) map[string]int64 {
+	torrents := client.getTorrentsByHashesUnchecked(hashes)
+	prints := make(map[string]int64, len(torrents))
+	for i := range torrents {
+		prints[canonicalizeHash(torrents[i].Hash)] = FilesPrint(torrents[i])
+	}
+	return prints
+}
+
+// cachedFilesUntilChanged returns the cached lists that mode serves and the
+// hashes it does not.
+func (sm *SyncManager) cachedFilesUntilChanged(ctx context.Context, fm FilesManager, instanceID int, hashes []string, prints map[string]int64, mode filesCacheMode) (map[string]qbt.TorrentFiles, []string, error) {
+	entries, err := fm.GetCachedFilesBatchWithMeta(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now()
+	cached := make(map[string]qbt.TorrentFiles, len(entries))
+	var missing []string
+	for _, hash := range hashes {
+		entry, ok := entries[hash]
+		var live *int64
+		if p, printed := prints[hash]; printed {
+			live = new(p)
+		}
+		if ok && mode.current(hash, entry, live, now) {
+			cached[hash] = entry.Files
+			continue
+		}
+		missing = append(missing, hash)
+	}
+	return cached, missing, nil
 }
 
 // fetchTorrentFilesWithRetry returns the first usable file response within the
@@ -3521,13 +3775,34 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 // syncDebounceMaxWait bounds how long hints can keep postponing a sync.
 const syncDebounceMaxWait = time.Second
 
-// syncAfterModification performs a background sync after a modification operation.
-// Calls are debounced per instance to avoid excessive syncs during bursts of mutations.
 func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, operation string) {
 	if sm == nil {
 		return
 	}
+	sm.NoteWrite(instanceID)
+	sm.scheduleSync(instanceID, client, operation)
+}
 
+// NoteWrite records that a write reached the instance. For 60 seconds after
+// it, each [SyncManager.ReadInstanceTorrents] also starts a sync.
+func (sm *SyncManager) NoteWrite(instanceID int) {
+	sm.writeTimesMu.Lock()
+	defer sm.writeTimesMu.Unlock()
+	if sm.writeTimes == nil {
+		sm.writeTimes = make(map[int]time.Time)
+	}
+	sm.writeTimes[instanceID] = time.Now()
+}
+
+func (sm *SyncManager) lastWriteAt(instanceID int) time.Time {
+	sm.writeTimesMu.Lock()
+	defer sm.writeTimesMu.Unlock()
+	return sm.writeTimes[instanceID]
+}
+
+// scheduleSync starts a background sync. Calls are debounced per instance to
+// avoid excessive syncs during bursts of mutations.
+func (sm *SyncManager) scheduleSync(instanceID int, client *Client, operation string) {
 	delay := sm.syncDebounceDelay
 	if delay <= 0 {
 		delay = 200 * time.Millisecond
@@ -5061,12 +5336,10 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		}
 
 		// Invalidate file cache for all affected torrents since paths may change
-		if fm := sm.getFilesManager(); fm != nil {
-			for _, hash := range hashes {
-				if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-					log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-						Msg("Failed to invalidate file cache after location change")
-				}
+		for _, hash := range hashes {
+			if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after location change")
 			}
 		}
 		return nil
@@ -5115,11 +5388,9 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		}
 
 		// Invalidate file cache since priorities changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after priority change")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after priority change")
 		}
 		return nil
 	})
@@ -5174,11 +5445,9 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 		}
 
 		// Invalidate file cache since file paths changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after file rename")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after file rename")
 		}
 
 		sm.notifyFilesChanged(instanceID, hash)
@@ -5211,11 +5480,9 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 		}
 
 		// Invalidate file cache since folder paths changed
-		if fm := sm.getFilesManager(); fm != nil {
-			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after folder rename")
-			}
+		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after folder rename")
 		}
 
 		sm.notifyFilesChanged(instanceID, hash)

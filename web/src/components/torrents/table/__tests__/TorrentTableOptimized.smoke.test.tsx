@@ -34,7 +34,9 @@ import type { ComponentProps, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
-import type { Torrent } from "@/types"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import { formatBytes } from "@/lib/utils"
+import type { LocalCrossSeedMatch, Torrent } from "@/types"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
 const scenario = vi.hoisted(() => ({
@@ -44,10 +46,15 @@ const scenario = vi.hoisted(() => ({
   // The loaded rows; undefined means `torrents`.
   rows: undefined as Torrent[] | undefined,
   renameDialogOpen: false,
+  deleteDialogOpen: false,
+  totalSize: 0,
   copyGroupsReady: undefined as boolean | undefined,
+  // The options that the table last gave the list hook.
+  listOptions: undefined as { groupCopies?: boolean } | undefined,
+  isDemo: false,
 }))
-// The real list controller, so a test can press Expand all before its button exists (#3884).
-const controller = vi.hoisted(() => ({ current: undefined as undefined | { toggleExpandAll: () => void } }))
+// The real list controller, so a test can read its load-more window.
+const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -132,6 +139,11 @@ vi.mock("@/hooks/useTorrentListController", async (importOriginal) => {
   }
 })
 
+vi.mock("@/lib/demo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/demo")>()),
+  get isDemo() { return scenario.isDemo },
+}))
+
 // The grid measures its width through ResizeObserver, which jsdom lacks.
 vi.stubGlobal("ResizeObserver", class {
   observe() {}
@@ -165,7 +177,8 @@ vi.mock("@/hooks/useTorrentsList", () => {
   let result: Record<string, unknown> | undefined
   return {
     TORRENT_STREAM_POLL_INTERVAL_SECONDS: 2,
-    useTorrentsList: () => {
+    useTorrentsList: (_instanceId: number, options: { groupCopies?: boolean }) => {
+      scenario.listOptions = options
       result ??= {
         get torrents() { return scenario.rows ?? torrents },
         get totalCount() { return scenario.totalCount },
@@ -179,7 +192,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
           totalUploadSpeed: 0,
           totalDownloadData: 0,
           totalUploadData: 0,
-          totalSize: 0,
+          get totalSize() { return scenario.totalSize },
         },
         counts: { status: {}, categories: {}, tags: {}, trackers: {} },
         categories: {},
@@ -229,6 +242,7 @@ vi.mock("@/hooks/useTorrentActions", () => {
       get(target, prop: string) {
         if (prop in target) return target[prop]
         if (prop === "showRenameTorrentDialog") return scenario.renameDialogOpen
+        if (prop === "showDeleteDialog") return scenario.deleteDialogOpen
         if (prop.startsWith("show")) return false
         return noop
       },
@@ -477,7 +491,26 @@ const warnings = (container: HTMLElement) => container.querySelectorAll("button[
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
 const cellOf = (row: HTMLElement, columnId: string) => row.querySelector(`[data-torrent-column-measure="${columnId}"]`) as HTMLElement
 
+const GROUP_COPIES_KEY = "qui-group-copies"
+
+// The columns menu in Table and Dense, the sort menu in Stacked. The menu stays open after a press of its items.
+async function listMenuItem(view: ReturnType<typeof render>, role: "menuitem" | "menuitemcheckbox", name: string | RegExp) {
+  if (!view.queryByRole("menu")) {
+    const trigger = localStorage.getItem("qui-torrent-desktop-view-mode") === "compact"
+      ? view.container.querySelector<HTMLElement>("[aria-haspopup='menu']")
+      : view.getByRole("button", { name: "tableView.toggleColumns" })
+    if (!trigger) throw new Error("no list menu")
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+  }
+  return view.findByRole(role, { name })
+}
+
+async function pressExpandAll(view: ReturnType<typeof render>) {
+  fireEvent.click(await listMenuItem(view, "menuitem", /^copyGroups\.(expandAll|collapseAll)$/))
+}
+
 function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
+  localStorage.setItem(GROUP_COPIES_KEY, "true")
   scenario.rows = rows
   scenario.totalCount = rows.length
   scenario.copyGroupsReady = true
@@ -499,6 +532,8 @@ describe("TorrentTableOptimized Copy groups", () => {
     scenario.isCrossSeedFiltering = false
     scenario.rows = undefined
     scenario.renameDialogOpen = false
+    scenario.deleteDialogOpen = false
+    scenario.totalSize = 0
     scenario.copyGroupsReady = undefined
   })
 
@@ -561,13 +596,16 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(onTorrentSelect).not.toHaveBeenCalled()
     })
 
-    it("shows one pill while Expand all is on", () => {
-      const { container } = renderGroups(copyGroupRows())
+    it("opens and closes all groups from Expand all in the menu, with one pill while they are open", async () => {
+      const view = renderGroups(copyGroupRows())
 
-      act(() => controller.current?.toggleExpandAll())
+      await pressExpandAll(view)
+      expect(view.container.textContent).toContain("Delta Release copy C")
+      expect(pills(view.container).length).toBe(1)
+      expect((await listMenuItem(view, "menuitem", "copyGroups.collapseAll"))).toBeTruthy()
 
-      expect(container.textContent).toContain("Delta Release copy C")
-      expect(pills(container).length).toBe(1)
+      await pressExpandAll(view)
+      expect(view.container.textContent).not.toContain("Delta Release copy C")
     })
 
     it("shows the warning pill when a hidden copy changes to an error, and a plain pill when the group is open", () => {
@@ -668,42 +706,26 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toBe(seedingText)
   })
 
-  describe("the tooltip of the pill", () => {
+  it("shows no tooltip on the pill on a device that can hover", () => {
     // jsdom has no matchMedia; without one, the device counts as one that cannot hover.
-    function setCanHover(canHover: boolean) {
-      window.matchMedia = ((query: string) => ({
-        matches: canHover && query === "(hover: hover)",
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as unknown as typeof window.matchMedia
-    }
-
-    afterEach(() => {
-      delete (window as { matchMedia?: unknown }).matchMedia
-    })
-
-    it("names the pill on a device that can hover", async () => {
-      setCanHover(true)
-      const { container, findByRole } = renderGroups(copyGroupRows())
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(hover: hover)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    try {
+      const { container, queryByRole } = renderGroups(copyGroupRows())
 
       // A keyboard user tabs to the pill.
       fireEvent.keyDown(pills(container)[0], { key: "Tab" })
       act(() => pills(container)[0].focus())
 
-      expect((await findByRole("tooltip")).textContent).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
-    })
-
-    it("stays closed on a tap on a touch screen, which only opens the group", () => {
-      setCanHover(false)
-      const { container, queryByRole } = renderGroups(copyGroupRows())
-
-      fireEvent.pointerDown(pills(container)[0], { pointerType: "touch" })
-      fireEvent.click(pills(container)[0])
-
-      expect(pills(container)[0].getAttribute("aria-expanded")).toBe("true")
+      expect(pills(container)[0].getAttribute("aria-label")).toContain("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
       expect(queryByRole("tooltip")).toBeNull()
-    })
+    } finally {
+      delete (window as { matchMedia?: unknown }).matchMedia
+    }
   })
 
   // regression: #3922
@@ -718,6 +740,141 @@ describe("TorrentTableOptimized Copy groups", () => {
 
     expect(shownName).toBeTruthy()
     expect(pill.getAttribute("aria-label")).toContain(JSON.stringify({ name: shownName }).slice(1, -1))
+  })
+
+  describe("selection", () => {
+    const actionTargetOf = (call = 0) => actionHandler.mock.calls[call][1] as ActionTarget
+    const headerCheckbox = (container: HTMLElement) => container.querySelector("[role=\"checkbox\"]") as HTMLElement
+    const pillText = (container: HTMLElement) => pills(container)[0].textContent
+
+    it("ticks only the collapsed row, and a bulk pause reaches only that torrent", async () => {
+      const { container, findByRole } = renderGroups(copyGroupRows())
+      fireEvent.click(within(container).getByText("Delta Release"), { ctrlKey: true })
+
+      expect(await pauseFromMenu(container, "Delta Release", findByRole)).toEqual(["hash-top"])
+    })
+
+    it("acts on only the collapsed row from a right-click outside the selection", async () => {
+      const { container, findByRole } = renderGroups(copyGroupRows())
+      fireEvent.click(within(container).getByText("Echo Release"))
+
+      expect(await pauseFromMenu(container, "Delta Release", findByRole)).toEqual(["hash-top"])
+    })
+
+    it("Shift-selects across a collapsed group only the visible rows", async () => {
+      const rows = [makeTorrent({ hash: "hash-first", name: "Alpha Release" }), ...copyGroupRows()]
+      const { container, findByRole } = renderGroups(rows)
+      fireEvent.click(within(container).getByText("Alpha Release"))
+      fireEvent.click(within(container).getByText("Echo Release"), { shiftKey: true })
+
+      expect(await pauseFromMenu(container, "Echo Release", findByRole)).toEqual(["hash-first", "hash-top", "hash-plain"])
+    })
+
+    it.each([
+      ["a group opens", async (view: ReturnType<typeof render>) => fireEvent.click(pills(view.container)[0])],
+      ["a press of the Expand all button", pressExpandAll],
+    ])("starts a Shift-select at the clicked row after %s", async (_, expand) => {
+      const view = renderGroups(copyGroupRows())
+      const { container } = view
+      fireEvent.click(within(container).getByText("Echo Release"))
+
+      await expand(view)
+      fireEvent.click(within(container).getByText("Delta Release"), { shiftKey: true })
+
+      expect(isRowChecked(container, "Delta Release copy B")).toBe(false)
+      expect(isRowChecked(container, "Delta Release")).toBe(true)
+      expect(isRowChecked(container, "Echo Release")).toBe(true)
+    })
+
+    it("checks the header checkbox when every visible row is ticked", () => {
+      const { container } = renderGroups(copyGroupRows())
+      fireEvent.click(within(container).getByText("Delta Release"), { ctrlKey: true })
+      fireEvent.click(within(container).getByText("Echo Release"), { ctrlKey: true })
+
+      expect(headerCheckbox(container).getAttribute("aria-checked")).toBe("true")
+    })
+
+    it("keeps a tick on a copy that its group hides, and the badge counts it", async () => {
+      const { container, findByRole } = renderGroups(copyGroupRows())
+      fireEvent.click(pills(container)[0])
+      fireEvent.click(within(container).getByText("Delta Release copy C"), { ctrlKey: true })
+      expect(pillText(container)).toContain("copyGroups.badge {\"hidden\":2}")
+
+      fireEvent.click(pills(container)[0])
+
+      expect(pillText(container)).toContain("copyGroups.badgeTicked {\"hidden\":2,\"count\":1}")
+      expect(pills(container)[0].getAttribute("aria-label")).toContain("copyGroups.hiddenTicked")
+      fireEvent.click(within(container).getByText("Echo Release"), { ctrlKey: true })
+      expect(await pauseFromMenu(container, "Echo Release", findByRole)).toEqual(["hash-third", "hash-plain"])
+    })
+
+    it("counts a tick on a copy that a stream update hides", () => {
+      const rows = copyGroupRows()
+      const flat = rows.map(({ copy_group: _, ...row }) => row as Torrent)
+      const view = renderGroups(flat)
+      fireEvent.click(within(view.container).getByText("Delta Release copy B"), { ctrlKey: true })
+
+      view.showRows(rows)
+
+      expect(pillText(view.container)).toContain("copyGroups.badgeTicked {\"hidden\":2,\"count\":1}")
+    })
+
+    it("shows no ticks on the badge in Select all mode, and the preview holds the hidden copies", async () => {
+      const { container, findByRole } = renderGroups(copyGroupRows())
+      fireEvent.click(headerCheckbox(container))
+
+      expect(pillText(container)).toContain("copyGroups.badge {\"hidden\":2}")
+      expect(pills(container)[0].getAttribute("aria-label")).not.toContain("hiddenTicked")
+      expect(await pauseFromMenu(container, "Echo Release", findByRole)).toBeUndefined()
+      expect(actionTargetOf().previewTorrents.map(torrent => torrent.hash)).toEqual(["hash-top", "hash-sorted", "hash-third", "hash-plain"])
+    })
+
+    it("sends the same select-all request as the flat list", async () => {
+      const selectAllRequest = async (rows: Torrent[]) => {
+        const { container, findByRole, unmount } = renderGroups(rows)
+        fireEvent.click(headerCheckbox(container))
+        await pauseFromMenu(container, "Echo Release", findByRole)
+        const target = actionTargetOf()
+        unmount()
+        actionHandler.mockClear()
+        return target.kind === "selectAll" ? target.selectAll : undefined
+      }
+      const flat = await selectAllRequest(copyGroupRows().map(({ copy_group: _, ...row }) => row as Torrent))
+
+      expect(flat).toBeDefined()
+      expect(await selectAllRequest(copyGroupRows())).toEqual(flat)
+    })
+
+    it("counts an exclusion on a hidden copy in the select-all size", () => {
+      scenario.totalSize = 4_000_000
+      const rows = copyGroupRows().map(row => ({ ...row, size: 1_000_000 }))
+      const { container } = renderGroups(rows)
+      fireEvent.click(headerCheckbox(container))
+      fireEvent.click(pills(container)[0])
+      fireEvent.click(within(container).getByText("Delta Release copy C"), { ctrlKey: true })
+
+      fireEvent.click(pills(container)[0])
+
+      expect(container.textContent).toContain(formatBytes(3_000_000))
+      expect(headerCheckbox(container).getAttribute("aria-checked")).toBe("mixed")
+    })
+
+    it("lists a hidden copy after one press of Check in the delete dialog of a collapsed row", async () => {
+      vi.mocked(api.getDeleteCrossSeeds).mockResolvedValue({
+        matches: [{ ...copyGroupRows()[1], instanceId: 1, instanceName: "qb", matchType: "content_path" } as unknown as LocalCrossSeedMatch],
+        uncheckedInstances: [],
+      })
+      const view = renderGroups(copyGroupRows())
+      fireEvent.click(within(view.container).getByText("Delta Release"), { ctrlKey: true })
+      scenario.deleteDialogOpen = true
+      view.showRows(copyGroupRows())
+
+      fireEvent.click(await view.findByRole("button", { name: "crossSeedWarning.idle.check" }))
+      fireEvent.click(await view.findByText("crossSeedWarning.showAffected"))
+
+      expect(vi.mocked(api.getDeleteCrossSeeds).mock.calls).toEqual([[1, { targets: [{ instanceId: 1, hash: "hash-top" }] }, expect.any(AbortSignal)]])
+      expect((await view.findAllByText("Delta Release copy B")).length).toBeGreaterThan(0)
+    })
   })
 
   it("shows no warning pill for a problem on the top row itself", () => {
@@ -735,5 +892,97 @@ describe("TorrentTableOptimized Copy groups", () => {
   ] as const)("shows the warning pill for a hidden copy with %o: %s", (hidden, expected) => {
     const { container } = renderGroups(copyGroupRows({ third: hidden }))
     expect(warnings(container).length).toBe(expected ? 1 : 0)
+  })
+})
+
+describe("TorrentTableOptimized Group copies switch", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    scenario.routeSearch = ""
+    scenario.isCrossSeedFiltering = false
+    scenario.totalCount = torrents.length
+    scenario.rows = undefined
+    scenario.copyGroupsReady = undefined
+    scenario.isDemo = false
+  })
+
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  // Table and Dense share the columns menu; Stacked has the sort menu.
+  describe.each(["normal", "compact"] as const)("in the %s row style", (viewMode) => {
+    beforeEach(() => {
+      localStorage.setItem("qui-torrent-desktop-view-mode", viewMode)
+    })
+
+    it("asks for groups while the switch is on, with Expand all beside it", async () => {
+      const view = renderTable()
+      expect(scenario.listOptions?.groupCopies).toBe(false)
+      const groupSwitch = await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
+      expect(groupSwitch.getAttribute("aria-checked")).toBe("false")
+      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+
+      fireEvent.click(groupSwitch)
+
+      expect(scenario.listOptions?.groupCopies).toBe(true)
+      expect(localStorage.getItem(GROUP_COPIES_KEY)).toBe("true")
+      expect(groupSwitch.getAttribute("aria-checked")).toBe("true")
+      expect(view.getByRole("menuitem", { name: "copyGroups.expandAll" })).toBeTruthy()
+
+      fireEvent.click(groupSwitch)
+
+      expect(scenario.listOptions?.groupCopies).toBe(false)
+      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+    })
+  })
+
+  it("starts the loaded rows again at the first rows on a press of the switch", async () => {
+    scenario.rows = Array.from({ length: 300 }, (_, i) => makeTorrent({ hash: `hash-${i}`, name: `Release ${i}` }))
+    scenario.totalCount = 300
+    const view = renderTable()
+    act(() => controller.current?.reportNearEnd())
+    expect(controller.current?.loadedRows).toBe(200)
+
+    fireEvent.click(await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies"))
+
+    expect(controller.current?.loadedRows).toBe(100)
+  })
+
+  it.each([
+    [false, true],
+    [undefined, false],
+  ] as const)("with a ready field of %s, shows the Grouping hint: %s", (ready, shown) => {
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    scenario.copyGroupsReady = ready
+    const { container } = renderTable()
+    expect(container.textContent?.includes("copyGroups.grouping")).toBe(shown)
+  })
+
+  // A phone reaches this table in the Unified view.
+  it("asks for groups and shows the switch on a phone", async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(max-width: 767px)",
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderTable()
+
+    expect(scenario.listOptions?.groupCopies).toBe(true)
+    expect((await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("asks for no groups and shows no switch in the demo", async () => {
+    scenario.isDemo = true
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderTable()
+
+    fireEvent.pointerDown(view.getByRole("button", { name: "tableView.toggleColumns" }), { button: 0, ctrlKey: false })
+    await view.findByRole("menu")
+
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+    expect(view.queryByRole("menuitemcheckbox", { name: "copyGroups.groupCopies" })).toBeNull()
   })
 })

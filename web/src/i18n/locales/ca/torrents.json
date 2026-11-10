@@ -692,7 +692,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
@@ -1554,7 +1555,7 @@
       "dropped": "S'ha afegit el pack. Destinacions descartades: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Aquesta instància necessita accés al sistema de fitxers local per muntar un pack.",
+        "no_filesystem_access": "Aquesta instància necessita accés d'escriptura al sistema de fitxers per muntar un pack. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
         "no_link_mode": "Activa el mode hardlink o reflink en aquesta instància per seleccionar diverses destinacions.",
         "no_base_directory": "Configura un directori base d'enllaços en aquesta instància.",
         "no_episode_files": "No s'ha trobat cap fitxer d'episodi reproduïble en aquest pack.",
@@ -1686,6 +1687,15 @@
     "copies_other": "{{count}} còpies més de {{name}}",
     "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
     "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "expandAll": "Desplega-ho tot",
+    "collapseAll": "Plega-ho tot",
+    "grouping": "S'està agrupant…"
   }
 }

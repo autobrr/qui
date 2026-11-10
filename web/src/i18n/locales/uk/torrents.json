@@ -1647,7 +1647,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Автоматичний пошук після введення"
     },
-    "ratio": "Співвідношення:"
+    "ratio": "Співвідношення:",
+    "added": "Додано {{time}}"
   },
   "tableView": {
     "ascending": "висхідний",
@@ -1812,7 +1813,7 @@
       "dropped": "Пакет додано. Пропущені цілі: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Для складання пакета цьому екземпляру потрібен доступ до локальної файлової системи.",
+        "no_filesystem_access": "Цьому екземпляру потрібен доступ до файлової системи на запис, щоб зібрати пакет. Увімкніть «Доступ до локальної файлової системи» або налаштуйте доступ через SSH у налаштуваннях екземпляра.",
         "no_link_mode": "Увімкніть жорсткі посилання або reflink для цього екземпляра, щоб вибрати кілька цілей.",
         "no_base_directory": "Налаштуйте базовий каталог посилань для цього екземпляра.",
         "no_episode_files": "У пакеті не знайдено відтворюваних файлів епізодів.",
@@ -1844,6 +1845,19 @@
     "copiesWithProblem_few": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
     "copiesWithProblem_many": "Ще {{count}} копій торрента {{name}}. Прихована копія має проблему",
     "copiesWithProblem_other": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_few": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_many": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_other": "+{{hidden}} · вибрано {{count}}",
+    "hiddenTicked_one": "Вибрано {{count}} приховану копію",
+    "hiddenTicked_few": "Вибрано {{count}} приховані копії",
+    "hiddenTicked_many": "Вибрано {{count}} прихованих копій",
+    "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Групувати копії",
+    "expandAll": "Розгорнути все",
+    "collapseAll": "Згорнути все",
+    "grouping": "Групування…"
   }
 }

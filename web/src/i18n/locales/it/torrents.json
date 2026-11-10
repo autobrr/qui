@@ -1503,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
     },
-    "ratio": "Rapporto:"
+    "ratio": "Rapporto:",
+    "added": "Aggiunto {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1658,7 +1659,7 @@
       "dropped": "Pacchetto aggiunto. Destinazioni escluse: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Questa istanza richiede accesso al file system locale per assemblare un pacchetto.",
+        "no_filesystem_access": "Questa istanza richiede l'accesso in scrittura al filesystem per assemblare un pacchetto. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
         "no_link_mode": "Abilita hardlink o reflink su questa istanza per selezionare più destinazioni.",
         "no_base_directory": "Configura una directory di base per i collegamenti di questa istanza.",
         "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",
@@ -1686,6 +1687,15 @@
     "copies_other": "{{count}} altre copie di {{name}}",
     "copiesWithProblem_one": "{{count}} altra copia di {{name}}. Una copia nascosta ha un problema",
     "copiesWithProblem_other": "{{count}} altre copie di {{name}}. Una copia nascosta ha un problema",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",
+    "hiddenTicked_one": "{{count}} copia nascosta è selezionata",
+    "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Raggruppa le copie",
+    "expandAll": "Espandi tutto",
+    "collapseAll": "Comprimi tutto",
+    "grouping": "Raggruppamento…"
   }
 }

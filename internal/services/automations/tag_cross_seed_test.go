@@ -275,7 +275,6 @@ func TestExpandTagStatesForCrossSeeds_SharedFilesNotPath(t *testing.T) {
 // A group whose file check did not complete gets no decision, as for category,
 // so the copies never diverge.
 func TestProcessTagAction_IncludeCrossSeeds_SkipsUnknownGroup(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
 		{Hash: "sibling", Name: "Copy", SavePath: "/data", ContentPath: "/data/show"},
@@ -291,11 +290,11 @@ func TestProcessTagAction_IncludeCrossSeeds_SkipsUnknownGroup(t *testing.T) {
 		SameInstanceCrossSeedUnknown: map[string]struct{}{"sibling": {}},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	require.NotContains(t, states, "trigger", "a member's unknown file check skips the trigger's own decision")
 
 	evalCtx.SameInstanceCrossSeedUnknown = nil
-	states = processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), sm, nil, nil, nil)
+	states = processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	require.Equal(t, "add", states["trigger"].tagActions["managed"])
 }
 
@@ -453,8 +452,6 @@ func TestExpandTagStatesForCrossSeeds_InjectedConflictsResolveByRuleOrder(t *tes
 }
 
 func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// Trigger matches the condition; the sibling carries the tag but does not
 	// match. Full mode alone would strip the sibling; any-match-wins expansion
 	// must converge both copies on the tag instead.
@@ -475,7 +472,7 @@ func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
 		},
 	})
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "trigger")
 	require.Contains(t, states, "sibling")
 	require.Equal(t, "remove", states["sibling"].tagActions["managed"], "precondition: full mode strips non-matching sibling")
@@ -492,8 +489,6 @@ func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
 }
 
 func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// Run 2 of the any-match-wins scenario: the trigger matches and already
 	// carries the tag (no local change), the sibling carries the tag but does
 	// not match. The trigger's assert intent must cancel the sibling's
@@ -515,7 +510,7 @@ func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) 
 		},
 	})
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "trigger", "matching already-tagged trigger must keep an intent-only state")
 	require.Contains(t, states, "sibling")
 	require.Equal(t, "remove", states["sibling"].tagActions["managed"], "precondition: full mode strips non-matching sibling")
@@ -529,8 +524,6 @@ func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) 
 }
 
 func TestProcessAndExpand_Tag_DeleteFromClient_ReaddsSiblings(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// DeleteFromClient wholesale-deletes the managed tag before re-adding
 	// matches; expanded siblings must land in tagChanges so they are re-added.
 	torrents := []qbt.Torrent{
@@ -551,7 +544,7 @@ func TestProcessAndExpand_Tag_DeleteFromClient_ReaddsSiblings(t *testing.T) {
 		},
 	})
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "trigger")
 	require.NotContains(t, states, "sibling", "precondition: managed reset records nothing for non-matching sibling")
 
@@ -608,13 +601,13 @@ func TestRecordDryRunActivities_Tags_IncludeCrossSeeds_CountsSiblings(t *testing
 	})
 	ruleByID := map[int]*models.Automation{1: rule}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
 	expandTagStatesForCrossSeeds(states, ruleByID, crossSeedGroupsForTest(torrents))
 	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
-	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, true)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionTagsChanged, mockDB.activities[0].Action)
@@ -726,7 +719,6 @@ func TestPreviewTag_ExpansionCancellingOwnRemovalCountsNothing(t *testing.T) {
 }
 
 func TestProcessTagAction_DeleteFromClient_UnknownGroupKeepsTag(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
 		{Hash: "sibling", Name: "Copy", SavePath: "/data", ContentPath: "/data/show"},
@@ -744,7 +736,7 @@ func TestProcessTagAction_DeleteFromClient_UnknownGroupKeepsTag(t *testing.T) {
 		SameInstanceCrossSeedUnknown: map[string]struct{}{"sibling": {}},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	changes := buildTagChangesForTest(states)
 
 	// The client-wide delete removes the tag from every torrent first.
@@ -754,7 +746,6 @@ func TestProcessTagAction_DeleteFromClient_UnknownGroupKeepsTag(t *testing.T) {
 }
 
 func TestExpandTagStatesForCrossSeeds_LaterAddKeepsResetReadd(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrents := []qbt.Torrent{
 		{Hash: "a-trigger", Name: "Alpha", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
 		{Hash: "b-trigger", Name: "Bravo", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -777,7 +768,7 @@ func TestExpandTagStatesForCrossSeeds_LaterAddKeepsResetReadd(t *testing.T) {
 	})
 	addRule.ID = 2
 
-	states := processTorrents(torrents, []*models.Automation{resetRule, addRule}, nil, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{resetRule, addRule}, nil, nil, noSkipWindow(resetRule, addRule), nil, nil)
 	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: resetRule, 2: addRule}, crossSeedGroupsForTest(torrents))
 
 	changes := buildTagChangesForTest(states)
@@ -788,7 +779,6 @@ func TestExpandTagStatesForCrossSeeds_LaterAddKeepsResetReadd(t *testing.T) {
 func TestExpandTagStatesForCrossSeeds_SameRuleInjectedAddOverRemove(t *testing.T) {
 	// One rule adds the tag to one copy and removes it from another. The
 	// sibling must get the same result whichever trigger hash sorts first.
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	rule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -819,7 +809,7 @@ func TestExpandTagStatesForCrossSeeds_SameRuleInjectedAddOverRemove(t *testing.T
 				{Hash: "m-sibling", Name: "Copy", SavePath: "/data", ContentPath: "/data/show"},
 			}
 
-			states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, sm, nil, nil, nil)
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 			expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: rule}, crossSeedGroupsForTest(torrents))
 
 			require.Contains(t, states, "m-sibling")
@@ -832,7 +822,6 @@ func TestProcessAndExpand_Tag_OtherRuleNoOpDecisionWins(t *testing.T) {
 	// One rule adds the tag to a torrent and its cross-seeds, another removes
 	// it from the copy. The copy's own rule must win on every run, also when
 	// the removal has nothing to do, or the tag flips each run.
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	addRule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -855,7 +844,7 @@ func TestProcessAndExpand_Tag_OtherRuleNoOpDecisionWins(t *testing.T) {
 		}
 		evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
 
-		states := processTorrents(torrents, []*models.Automation{addRule, removeRule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), sm, nil, nil, nil)
+		states := processTorrents(torrents, []*models.Automation{addRule, removeRule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(addRule, removeRule), nil, nil)
 		expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: addRule, 2: removeRule}, crossSeedGroupsForTest(torrents))
 
 		changes := buildTagChangesForTest(states)
@@ -872,7 +861,6 @@ func TestProcessAndExpand_Tag_OtherFullRuleNonMatchWins(t *testing.T) {
 	// A full-mode rule decides about every torrent it checks: a copy that
 	// does not match it must not have the tag. Another rule's expansion must
 	// not add the tag there, or the full rule removes it on the next run.
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	addRule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -894,7 +882,7 @@ func TestProcessAndExpand_Tag_OtherFullRuleNonMatchWins(t *testing.T) {
 	}
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
 
-	states := processTorrents(torrents, []*models.Automation{fullRule, addRule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{fullRule, addRule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(fullRule, addRule), nil, nil)
 	require.Contains(t, states["trigger"].tagExpandByTag, "managed", "precondition: the trigger expands the tag")
 	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{1: addRule, 2: fullRule}, crossSeedGroupsForTest(torrents))
 

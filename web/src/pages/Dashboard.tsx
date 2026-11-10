@@ -10,6 +10,7 @@ import { MigrationHint } from "@/components/instances/MigrationHint"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
   AlertDialog,
@@ -912,16 +913,7 @@ function InstanceCard({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {instance.hasLocalFilesystemAccess && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HardDrive className="h-4 w-4 text-primary" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t("instanceCard.localFileAccess")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <RemoteAccessIndicator instance={instance} variant="icon" />
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}

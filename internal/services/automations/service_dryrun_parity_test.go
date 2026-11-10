@@ -199,7 +199,7 @@ func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) 
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, models.NewAutomationStore(db), models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, db, instanceIDs
 }
 
@@ -260,7 +260,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityDeleteRule(DeleteModeWithFilesIncludeCrossSeeds,
 				&models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThanOrEqual, Value: "1"}),
 			state: func(svc *Service, instanceID int) {
-				svc.lastApplied[instanceID] = map[string]time.Time{parityHash: time.Now()}
+				svc.startSkipWindow(instanceID, []string{parityHash}, time.Now())
 			},
 			want: []string{parityHash},
 		},

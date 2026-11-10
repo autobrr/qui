@@ -33,6 +33,22 @@ vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
 afterEach(cleanup)
 
 describe("InstanceCard", () => {
+  it.each([
+    ["local", "Local"],
+    ["remote", "Over SSH"],
+    ["none", "None"],
+  ] as const)("the file access row reads the %s mode", (filesystemMode, text) => {
+    const instance = { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode, sshTier: "sftp" } as InstanceResponse
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TooltipProvider>
+          <InstanceCard instance={instance} onEdit={() => {}} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    expect(screen.getByText("File access:").parentElement?.textContent).toContain(text)
+  })
+
   it("names the Source instances that route to the instance in the delete dialog", async () => {
     server.use(
       http.get("*/api/instances", () => HttpResponse.json(instances.instances)),

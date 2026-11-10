@@ -18,10 +18,6 @@ type RuleNeeds struct {
 	MissingFiles       bool
 	SkippedFiles       bool
 	CrossMatch         CrossMatchNeeds
-	// CrossSeedGroupsAll is set when a reader needs the groups of the whole library.
-	CrossSeedGroupsAll bool
-	// CrossSeedSharedAll is set when an include or preserve FREE_SPACE delete needs the Shared-file check before its first claim.
-	CrossSeedSharedAll bool
 	// TagCrossSeeds is set when a tag action includes cross-seeds.
 	TagCrossSeeds         bool
 	SeasonPack            bool
@@ -104,10 +100,13 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	// The switch skips the map lookup for the common field that reads only the
 	// torrent; this runs for every leaf on every torrent.
 	switch field {
-	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
-		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance,
-		FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
+	case FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
 		FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance:
+		if ctx != nil {
+			ctx.crossSeeds.askFacts(hash)
+		}
+	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
+		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance:
 	default:
 		return true
 	}
@@ -178,33 +177,20 @@ func (n *RuleNeeds) addCrossSeedActions(ac *models.ActionConditions) {
 	if deleteKeepsFilesForOtherInstances(ac.Delete) {
 		n.CrossMatch.SameContent = true
 		n.CrossMatch.OtherShared = true
-		if ConditionUsesField(ac.Delete.Condition, FieldFreeSpace) {
-			n.CrossSeedSharedAll = true
-		}
 	}
-	if actionsReadAllCrossSeedGroups(ac) {
+	if del := ac.Delete; del != nil && del.Enabled && del.Mode == DeleteModeWithFiles && ConditionUsesField(del.Condition, FieldFreeSpace) {
 		n.CrossMatch.SameContent = true
-		n.CrossSeedGroupsAll = true
-	}
-	if tagsIncludeCrossSeeds(ac) {
-		n.TagCrossSeeds = true
-	}
-}
-
-// actionsReadAllCrossSeedGroups reports whether an enabled action reads the groups of the whole library.
-func actionsReadAllCrossSeedGroups(ac *models.ActionConditions) bool {
-	if del := ac.Delete; del != nil && del.Enabled && ConditionUsesField(del.Condition, FieldFreeSpace) {
-		switch del.Mode {
-		case DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds, DeleteModeWithFiles:
-			return true
-		}
 	}
 	if move := ac.Move; move != nil && move.Enabled {
-		return true
+		n.CrossMatch.SameContent = true
 	}
-	cat := ac.Category
-	return tagsIncludeCrossSeeds(ac) ||
-		cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)
+	if categoryActionOf(ac.Category).readsCrossSeedGroups() {
+		n.CrossMatch.SameContent = true
+	}
+	if tagsIncludeCrossSeeds(ac) {
+		n.CrossMatch.SameContent = true
+		n.TagCrossSeeds = true
+	}
 }
 
 func tagsIncludeCrossSeeds(ac *models.ActionConditions) bool {

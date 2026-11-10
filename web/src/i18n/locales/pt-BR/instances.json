@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desativado",
-      "enabled": "Ativado",
       "connected": "Conectado",
       "disconnected": "Desconectado"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificação TLS:",
       "tlsSkipped": "Ignorada",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Acesso a Arquivo Local:",
-      "testingConnection": "Testando conexão..."
+      "testingConnection": "Testando conexão...",
+      "fileAccess": "Acesso aos arquivos:"
     },
     "deleteDialog": {
       "title": "Excluir Instância",
@@ -111,7 +110,8 @@
       "none": "Nenhuma",
       "usernamePassword": "Usuário e Senha",
       "apiKey": "Chave de API"
-    }
+    },
+    "sshAfterSave": "O acesso SSH aos arquivos da instância é configurado nas configurações da instância depois de salvar."
   },
   "settingsButton": {
     "tooltip": "Configurações da Instância"
@@ -150,7 +150,8 @@
         "downloads": "Downloads",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Limites de Seeding"
+        },
+        "ssh": {
+          "title": "Acesso SSH",
+          "description": "Acesse os arquivos desta instância por SSH quando o qui e o qBittorrent rodam em máquinas diferentes"
         }
       }
     },
@@ -730,10 +735,8 @@
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",
-      "tooltip": "Busca arquivos no disco que não fazem mais parte do qBittorrent.",
+      "tooltip": "Busca arquivos no disco que não estão associados a nenhum torrent no qBittorrent.\nPrecisa de acesso aos arquivos de cada instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
-      "noLocalAccess": "Acesso Local Ausente",
-      "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
       "remoteLimits": "A exclusão e a auto-limpeza em uma instância remota precisam da identidade dos arquivos, que o qui só consegue ler quando o servidor permite executar GNU find e stat.",
       "remoteNoIdentity": "Esta instância remota não permite isso, então o qui não consegue saber quando dois caminhos são o mesmo arquivo, e um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize. As varreduras aqui podem ser visualizadas e exportadas, mas não excluídas.",
       "on": "Ligado",
@@ -791,7 +794,9 @@
         "cancelFailed": "Falha ao cancelar"
       },
       "errorMessage": "Mensagem de erro",
-      "scanPaths": "Caminhos de verificação"
+      "scanPaths": "Caminhos de verificação",
+      "noFilesystemAccess": "Sem acesso ao sistema de arquivos",
+      "noFilesystemAccessTooltip": "A varredura de órfãos precisa de acesso aos arquivos desta instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância."
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -1286,14 +1291,14 @@
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
-        "pathSourceLocalAccessRequired": "Localização Manual (Requer que o Acesso Local esteja ativado)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
-          "localAccessRequired": "A origem de espaço livre por caminho requer o \"Acesso ao Sistema de Arquivos Local\".",
-          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
-        }
+          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
+          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",
@@ -1484,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
-        "enableLocalAccessOrDefault": "Ative o Acesso ao Sistema de Arquivos Local nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\"",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
         "fieldMultiplierInvalid": "O multiplicador de campo deve ser um número válido.",
@@ -1501,7 +1505,8 @@
         "groupIdInvalid": "Apague os espaços e use underlines nesse Id Customizado.",
         "selectGroupKey": "Requer chaves.",
         "groupExists": "O nome já está sendo usado por outro grupamento.",
-        "customGroupAdded": "Grupo personalizado adicionado"
+        "customGroupAdded": "Grupo personalizado adicionado",
+        "setUpFilesystemAccessOrDefault": "Configure o acesso ao sistema de arquivos local ou via SSH nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\""
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"
@@ -1751,6 +1756,92 @@
       "testEmailQueued": "O qBittorrent colocou o e-mail de teste na fila",
       "testEmailQueuedDescription": "O qBittorrent usa as configurações salvas. Verifique sua caixa de entrada e o log do qBittorrent para ver erros.",
       "testEmailFailed": "Falha ao enviar o e-mail de teste"
+    },
+    "ssh": {
+      "localWins": "O Acesso ao Sistema de Arquivos Local está ativado, então o qui lê os arquivos desta instância localmente e não usa estas configurações SSH.",
+      "labels": {
+        "host": "Host SSH",
+        "hostDescription": "Nome do host ou endereço IP da máquina que guarda os arquivos desta instância, sem esquema nem porta. Alterar o host ou a porta descarta a chave do host fixada, e o próximo teste volta a ser um primeiro contato.",
+        "port": "Porta",
+        "username": "Usuário",
+        "privateKey": "Chave privada",
+        "privateKeyDescription": "Uma chave privada OpenSSH sem senha. O qui a armazena criptografada e nunca a mostra de novo. Ela é necessária novamente quando o host, a porta ou o usuário mudam."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Uma chave está armazenada. Cole uma nova para substituí-la."
+      },
+      "validation": {
+        "hostRequired": "O host SSH é obrigatório",
+        "portRange": "A porta deve estar entre 1 e 65535",
+        "usernameRequired": "O usuário é obrigatório",
+        "keyRequired": "A chave privada é necessária quando o host, a porta ou o usuário mudam"
+      },
+      "buttons": {
+        "save": "Salvar configurações SSH",
+        "clear": "Remover acesso SSH",
+        "test": "Testar conexão",
+        "testing": "Testando...",
+        "confirm": "Confirmar chave do host",
+        "replace": "Substituir chave do host"
+      },
+      "test": {
+        "title": "Conexão",
+        "pinnedAtRest": "Chave do host fixada. Teste a conexão para ver o que o host permite.",
+        "unpinnedAtRest": "Nenhuma chave do host fixada ainda. Teste a conexão para confirmar a impressão digital do host.",
+        "saveFirst": "Salve as alterações primeiro. O teste usa as credenciais salvas."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primeiro contato",
+          "text": "Compare esta impressão digital com a do host antes de confirmar. As próximas conexões recusarão qualquer outra chave."
+        },
+        "pinned": {
+          "title": "Chave do host fixada"
+        },
+        "mismatch": {
+          "title": "Chave do host alterada",
+          "text": "O host apresentou uma chave diferente da fixada. Substitua a chave fixada apenas se você espera a mudança, por exemplo depois de reinstalar o servidor."
+        },
+        "pinUnreadable": {
+          "title": "Chave fixada ilegível",
+          "text": "A chave fixada não pode ser descriptografada, geralmente porque a chave de criptografia do qui mudou. Substitua-a para continuar.",
+          "noKey": "O host não respondeu, então não há chave para substituí-la."
+        },
+        "error": {
+          "title": "Falha na conexão"
+        }
+      },
+      "fingerprint": {
+        "label": "Impressão digital",
+        "pinned": "Fixada",
+        "presented": "Apresentada"
+      },
+      "probes": {
+        "tier": "Nível: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + comandos",
+        "tierHint": "Os comandos precisam de um shell POSIX com GNU find e stat no host. Sem eles, o qui usa apenas SFTP e não consegue ler a identidade dos arquivos.",
+        "sftp": "SFTP",
+        "statvfs": "Espaço livre (statvfs)",
+        "hardlink": "Hardlinks (hardlink@openssh.com)",
+        "limits": "Extensão limits",
+        "exec": "Comandos",
+        "gnuUserland": "GNU find e stat",
+        "yes": "Disponível",
+        "no": "Indisponível"
+      },
+      "replaceDialog": {
+        "title": "Substituir a chave do host fixada?",
+        "description": "A partir de agora o qui confiará na chave apresentada para este host e recusará a chave fixada.",
+        "cancel": "Cancelar",
+        "confirm": "Substituir"
+      },
+      "toast": {
+        "saved": "Configurações SSH salvas",
+        "cleared": "Acesso SSH removido"
+      }
     }
   },
   "backups": {
@@ -1999,6 +2090,17 @@
       "failedToDeleteBackup": "Falha ao excluir execução de backup",
       "allBackupsDeleted": "Todos os backups excluídos",
       "failedToDeleteBackups": "Falha ao excluir backups"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Via SSH",
+    "none": "Nenhum",
+    "localFull": "O qui lê e grava os arquivos desta instância nesta máquina.",
+    "limits": {
+      "noIdentity": "Sem identidade dos arquivos: o qui não consegue saber quando dois caminhos são o mesmo arquivo. A varredura de órfãos não pode excluir aqui, e um destino de hardlink existente interrompe uma adição por hardlink.",
+      "noReflinks": "Sem reflinks em uma instância remota.",
+      "noHardlinkExtension": "Sem hardlinks: o servidor não anuncia hardlink@openssh.com. Uma adição de cross-seed por hardlink falha aqui, ou adiciona no modo regular quando \"Retornar ao modo regular em caso de erro\" está ativado."
     }
   }
 }

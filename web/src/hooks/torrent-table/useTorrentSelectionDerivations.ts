@@ -14,7 +14,10 @@ export interface UseTorrentSelectionDerivationsParams {
   selection: TorrentSelectionState
   getSelectionIdentity: (torrent: Torrent) => string
   getVisibleRows: () => SelectionRow[]
+  /** Every loaded row, the hidden copies of a Copy group included. */
   sortedTorrents: Torrent[]
+  /** The list holds Copy groups: the Action target then reads every loaded row, not the row model. */
+  isGrouped?: boolean
   columnFiltersExpr: string | null
   // True when the table, not the backend, applies the column filters (cross-seed mode).
   clientSideFiltering?: boolean
@@ -36,6 +39,7 @@ export function useTorrentSelectionDerivations({
   getSelectionIdentity,
   getVisibleRows,
   sortedTorrents,
+  isGrouped = false,
   columnFiltersExpr,
   clientSideFiltering = false,
   filters,
@@ -60,9 +64,10 @@ export function useTorrentSelectionDerivations({
       tickedTorrentsRef.current.clear()
       return EMPTY_ACTION_TARGET
     }
-    // The table's row model, not sortedTorrents: in cross-seed mode the column
-    // filter applies client-side, and select-all is the visible set (#1925).
-    const loaded = getVisibleRowsRef.current().map(row => row.original)
+    // On a flat list the table's row model, not sortedTorrents: in cross-seed mode
+    // the column filter applies client-side, and select-all is the visible set (#1925).
+    // A grouped list never filters in the browser, and its row model leaves out the hidden copies.
+    const loaded = isGrouped ? sortedTorrents : getVisibleRowsRef.current().map(row => row.original)
     const ticked = isAllSelected ? [] : rememberTickedTorrents(tickedTorrentsRef.current, selected, loaded, getSelectionIdentity)
     const scope: ActionTargetScope = {
       instanceId,
@@ -73,9 +78,7 @@ export function useTorrentSelectionDerivations({
       isCrossInstance: isCrossInstanceEndpoint,
     }
     return buildActionTarget(selection, scope, { loaded, ticked, totalCount })
-    // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, sortedTorrents, columnFiltersExpr, clientSideFiltering, filters, search, totalCount, isCrossInstanceEndpoint, instanceId, instanceIds, getSelectionIdentity])
+  }, [selection, sortedTorrents, isGrouped, columnFiltersExpr, clientSideFiltering, filters, search, totalCount, isCrossInstanceEndpoint, instanceId, instanceIds, getSelectionIdentity])
 
   const { isAllSelected, excluded } = selection
   const selectedTotalSize = useMemo(() => {

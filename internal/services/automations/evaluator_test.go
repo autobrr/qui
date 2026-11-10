@@ -563,9 +563,7 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 				Operator: OperatorGreaterThan,
 				Value:    "1073741824",
 			},
-			evalCtx: &EvalContext{
-				FreeSpace: 2147483648,
-			},
+			evalCtx:  &EvalContext{activeFreeSpace: testFreeSpaceLedger(2147483648, 0)},
 			expected: true,
 		},
 		{
@@ -576,6 +574,16 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 				Value:    "1073741824",
 			},
 			evalCtx:  nil,
+			expected: false,
+		},
+		{
+			name: "free space greater than is false for a rule without a ledger",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx:  &EvalContext{},
 			expected: false,
 		},
 		{
@@ -725,7 +733,6 @@ func TestEvaluateCondition_GroupFields_UseConditionGroupID(t *testing.T) {
 		ActiveRuleID:        42,
 		activeGroupIndex:    defaultIdx,
 		groupIndexCache:     map[int]map[string]*groupIndex{42: {"release_item": releaseIdx}},
-		FreeSpaceStates:     nil,
 		CategoryIndex:       nil,
 		CategoryNames:       nil,
 		HardlinkScopeByHash: nil,
@@ -2764,7 +2771,7 @@ func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
 	}
 }
 
-func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
+func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 	tests := []struct {
 		name     string
 		cond     *RuleCondition
@@ -2772,76 +2779,71 @@ func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "free space condition considers SpaceToClear - now above threshold",
+			name: "free space condition considers Projected freed bytes - now above threshold",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
 				Value:    "500000000000", // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    400000000000, // 400GB actual
-				SpaceToClear: 150000000000, // 150GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(400000000000, 150000000000),
 				// Effective: 550GB > 500GB, so condition (< 500GB) is false
 			},
 			expected: false,
 		},
 		{
-			name: "free space condition considers SpaceToClear - still below threshold",
+			name: "free space condition considers Projected freed bytes - still below threshold",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
 				Value:    "500000000000", // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    400000000000, // 400GB actual
-				SpaceToClear: 50000000000,  // 50GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(400000000000, 50000000000),
 				// Effective: 450GB < 500GB, so condition is true
 			},
 			expected: true,
 		},
 		{
-			name: "free space with zero SpaceToClear",
+			name: "free space with zero Projected freed bytes",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
 				Value:    "500000000000", // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    400000000000, // 400GB actual
-				SpaceToClear: 0,
+				activeFreeSpace: testFreeSpaceLedger(400000000000, 0),
 			},
 			expected: true, // 400GB < 500GB
 		},
 		{
-			name: "free space greater than with SpaceToClear",
+			name: "free space greater than with Projected freed bytes",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorGreaterThan,
 				Value:    "500000000000", // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    400000000000, // 400GB actual
-				SpaceToClear: 200000000000, // 200GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(400000000000, 200000000000),
 				// Effective: 600GB > 500GB
 			},
 			expected: true,
 		},
 		{
-			name: "free space equal with SpaceToClear",
+			name: "free space equal with Projected freed bytes",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorEqual,
 				Value:    "500000000000", // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    300000000000, // 300GB actual
-				SpaceToClear: 200000000000, // 200GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(300000000000, 200000000000),
 				// Effective: 500GB == 500GB
 			},
 			expected: true,
 		},
 		{
-			name: "free space between with SpaceToClear",
+			name: "free space between with Projected freed bytes",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
@@ -2849,14 +2851,13 @@ func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 				MaxValue: new(float64(600000000000)), // 600GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    300000000000, // 300GB actual
-				SpaceToClear: 200000000000, // 200GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(300000000000, 200000000000),
 				// Effective: 500GB, within [400GB, 600GB]
 			},
 			expected: true,
 		},
 		{
-			name: "free space between with SpaceToClear - outside range",
+			name: "free space between with Projected freed bytes - outside range",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
@@ -2864,8 +2865,7 @@ func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 				MaxValue: new(float64(500000000000)), // 500GB
 			},
 			evalCtx: &EvalContext{
-				FreeSpace:    300000000000, // 300GB actual
-				SpaceToClear: 300000000000, // 300GB to be cleared
+				activeFreeSpace: testFreeSpaceLedger(300000000000, 300000000000),
 				// Effective: 600GB, outside [400GB, 500GB]
 			},
 			expected: false,

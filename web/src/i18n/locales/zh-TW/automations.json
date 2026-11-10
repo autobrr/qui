@@ -232,7 +232,8 @@
       "qbittorrent50": "需要 qBittorrent 5.0+",
       "qbittorrent52": "需要 qBittorrent 5.2+",
       "localFilesystemAccess": "需要本機檔案系統存取權限",
-      "remoteInstance": "遠端實例不可用"
+      "remoteInstance": "遠端實例不可用",
+      "filesystemAccess": "需要檔案系統存取權限。請在實例設定中啟用「本機檔案系統存取」或設定 SSH 存取。"
     },
     "ruleSkip": "不會在此執行個體上執行：{{field}} 需要 {{requires}}。"
   }

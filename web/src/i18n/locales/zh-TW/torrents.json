@@ -1427,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "新增於{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1581,7 +1582,7 @@
       "dropped": "整季包已加入。已排除的目標：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_filesystem_access": "此實例需要檔案系統寫入權限才能組裝整季包。請在實例設定中啟用「本機檔案系統存取」或設定 SSH 存取。",
         "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
         "no_base_directory": "請為此實例設定連結基礎目錄。",
         "no_episode_files": "此整季包中未找到可播放的單集檔案。",
@@ -1607,6 +1608,13 @@
   "copyGroups": {
     "copies_other": "{{name}} 的另外 {{count}} 個副本",
     "copiesWithProblem_other": "{{name}} 的另外 {{count}} 個副本。某個隱藏的副本有問題",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合併副本",
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合",
+    "grouping": "正在分組…"
   }
 }

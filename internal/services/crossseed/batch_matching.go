@@ -135,118 +135,6 @@ func releaseDate(r *rls.Release) int {
 	return 0
 }
 
-// BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
-// same instance and/or other instances. It uses the same per-file rule as the
-// Cross-Seed tab (localMatchTier), and it always applies title rescue. The cached
-// torrent fields select the Name and Release candidates and the torrents that
-// can share a file path, and only their file lists are fetched, through the
-// files cache. The Hardlink and Reflink check runs only for a Name or Release
-// candidate whose file sizes do not pair, because only that candidate can
-// change the result.
-func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
-	result := &CrossMatchResult{}
-	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags || needs.SameContent
-	needsOther := needs.OtherExists || needs.OtherSeeding
-
-	if !needsSame && !needsOther && !needs.OtherShared {
-		return result
-	}
-
-	// Keep shared-path safety groups available if the instance list fails.
-	// Conditions become unknown below because link and other-instance checks need it.
-	currentTorrents, instances, listErr, err := s.crossMatchSnapshot(ctx, currentInstanceID)
-	if err != nil {
-		result.Err = err
-		return result
-	}
-	files := newBatchFiles(s, instances, needs.SameContent)
-
-	reads := s.readLocalTorrents(ctx, currentInstanceID, viewTorrents(currentTorrents))
-
-	// Select the candidates of every torrent first, so that the file lists they
-	// need are read in one batch per instance.
-	var samePicks, otherPicks, sharedPicks [][]*candidatePick
-	var sharedGroups []crossPathGroup
-	var pathGroups [][]int
-	var offline []*models.Instance
-	if needsSame {
-		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding, reads); sameIdx != nil {
-			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true, reads)
-			pathGroups = sharedPathGroups(currentTorrents)
-		}
-	}
-	checkShared := needs.OtherShared && instanceHas(instances, currentInstanceID, models.CapabilityTrustedIdentity)
-	if (needsOther || checkShared) && listErr == nil {
-		otherIdx, others, failed := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding, reads)
-		offline = failed
-		if otherIdx != nil {
-			picks := s.selectAllCandidates(ctx, currentTorrents, otherIdx, false, reads)
-			if needsOther {
-				otherPicks = picks
-			}
-			if checkShared {
-				sharedPicks, sharedGroups = otherSharedCandidates(instances, currentTorrents, picks, otherIdx, others)
-			}
-		}
-	}
-	groupSources, groupPicks := prefetchGroups(len(currentTorrents), sharedGroups)
-	files.prefetch(ctx, currentInstanceID, currentTorrents, slices.Concat(pathGroups, groupSources), samePicks, otherPicks, sharedPicks, groupPicks)
-
-	if samePicks != nil {
-		result.SameInstanceContentByHash = files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs)
-		result.SameInstanceExists = make(map[string]struct{})
-		result.SameInstanceUnknown = make(map[string]struct{})
-		if needs.SameSeeding {
-			result.SameInstanceSeeding = make(map[string]struct{})
-		}
-		if needs.SameTags {
-			result.SameInstanceTagsByHash = make(map[string][]string)
-		}
-		for i := range currentTorrents {
-			if ctx.Err() != nil {
-				break
-			}
-			source := currentTorrents[i].Torrent
-			m := s.classifyCandidates(ctx, source, currentInstanceID, samePicks[i], true, needs.SameTags, files)
-			if needs.SameContent && len(m.unreadCandidates) > 0 {
-				hashes := result.SameInstanceContentByHash[source.Hash]
-				hashes = append(hashes, m.unreadCandidates...)
-				slices.Sort(hashes)
-				result.SameInstanceContentByHash[source.Hash] = slices.Compact(hashes)
-			}
-			if m.unread {
-				result.SameInstanceUnknown[source.Hash] = struct{}{}
-			}
-			if !m.matched {
-				continue
-			}
-			result.SameInstanceExists[source.Hash] = struct{}{}
-			if needs.SameSeeding && m.seeding {
-				result.SameInstanceSeeding[source.Hash] = struct{}{}
-			}
-			if needs.SameTags && len(m.memberTags) > 0 {
-				result.SameInstanceTagsByHash[source.Hash] = m.memberTags
-			}
-		}
-	}
-
-	if otherPicks != nil {
-		s.addOtherInstanceFacts(ctx, currentInstanceID, currentTorrents, otherPicks, indexesOf(len(currentTorrents)), needs, files, result)
-	}
-
-	if checkShared {
-		files.addOtherSharedResult(ctx, currentInstanceID, currentTorrents, sharedPicks, sharedGroups, offline, result)
-	}
-
-	// A peer whose torrents could not be read can hold the only copy.
-	addUnknownSets(result, currentTorrents,
-		needsSame && listErr != nil,
-		needsOther && (listErr != nil || len(offline) > 0),
-		needs.OtherShared && (listErr != nil || len(result.OfflineLocalInstances) > 0))
-
-	return result
-}
-
 func (s *Service) crossMatchSnapshot(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, []*models.Instance, error, error) {
 	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
@@ -380,8 +268,8 @@ func (b *batchFiles) addOtherSharedResult(
 	}
 }
 
-// batchFiles keeps the file data of each torrent for one BuildCrossMatchSets
-// call, so that a torrent that is a candidate of many sources is read once.
+// batchFiles keeps the file data of each torrent that one caller reads, so
+// that a torrent that is a candidate of many sources is read once.
 type batchFiles struct {
 	svc       *Service
 	instances []*models.Instance

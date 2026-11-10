@@ -1503,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Added {{time}}"
   },
   "tableView": {
     "ascending": "ascending",
@@ -1658,7 +1659,7 @@
       "dropped": "Pack added. Dropped targets: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "This instance needs local filesystem access to assemble a pack.",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
         "no_link_mode": "Enable hardlink or reflink mode on this instance to select several targets.",
         "no_base_directory": "Configure a link base directory on this instance.",
         "no_episode_files": "No playable episode files were found in this pack.",
@@ -1686,6 +1687,15 @@
     "copies_other": "{{count}} more copies of {{name}}",
     "copiesWithProblem_one": "{{count}} more copy of {{name}}. A hidden copy has a problem",
     "copiesWithProblem_other": "{{count}} more copies of {{name}}. A hidden copy has a problem",
-    "badge": "+{{hidden}}"
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ticked",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ticked",
+    "hiddenTicked_one": "{{count}} hidden copy is ticked",
+    "hiddenTicked_other": "{{count}} hidden copies are ticked",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Group copies",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "grouping": "Grouping…"
   }
 }

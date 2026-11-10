@@ -73,7 +73,6 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
-import { isCopyGroupOpen, summarizeCopyGroups } from "@/lib/copy-groups"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { cn } from "@/lib/utils"
 import type {
@@ -114,6 +113,9 @@ import { TorrentDropZone } from "./TorrentDropZone"
 import { TableColumnHeader } from "./table/TableColumnHeader"
 import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
+import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
+import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
+import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
@@ -349,6 +351,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
 
+  const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -382,6 +386,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     visibleRows,
     groupExpansion,
     toggleGroup,
+    toggleExpandAll,
     copyGroupsReady,
   } = useTorrentListController({
     instanceId,
@@ -391,6 +396,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     search: effectiveSearch,
     sort: activeSortField,
     order: activeSortOrder,
+    groupCopies: groupCopiesSetting,
   })
 
   // When the stream drops but rows are already on screen, the data is stale but
@@ -560,8 +566,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
-  // The warning icon and the sorted value read all loaded rows, hidden copies included.
-  const copyGroups = useMemo(() => summarizeCopyGroups(torrents), [torrents])
   // With no sort set by the user, the server sorts by added time.
   const sortedColumnId = sorting[0]?.id ?? "added_on"
 
@@ -592,7 +596,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleCheckboxPointerDown,
     handleCheckboxChange,
   } = useTorrentSelection({
-    sortedTorrents,
+    visibleTorrents: visibleRows,
+    groupExpansion,
+    groupedRows: copyGroupsReady === true,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,
@@ -600,6 +606,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   const { selection, publishSummary } = useTorrentSelectionContext()
+  const { hasGroups, describeRow: describeCopyGroupRow } = useCopyGroupRows({ rows: torrents, expansion: groupExpansion, selection, getSelectionIdentity })
 
   // Memoize columns to avoid unnecessary recalculations
   const { columns, torrentIdentityCounts } = useTorrentTableColumns({
@@ -722,6 +729,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getSelectionIdentity,
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
+    isGrouped: hasGroups,
     columnFiltersExpr,
     clientSideFiltering: isCrossSeedFiltering,
     filters,
@@ -1129,6 +1137,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.changeSortField")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                            <CopyGroupMenuItems
+                              groupCopies={groupCopiesSetting}
+                              expandAll={groupExpansion.expandAll}
+                              onToggleGroupCopies={toggleGroupCopies}
+                              onToggleExpandAll={toggleExpandAll}
+                            />
                             <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
@@ -1239,6 +1253,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-52">
+                            <CopyGroupMenuItems
+                              groupCopies={groupCopiesSetting}
+                              expandAll={groupExpansion.expandAll}
+                              onToggleGroupCopies={toggleGroupCopies}
+                              onToggleExpandAll={toggleExpandAll}
+                            />
                             <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
@@ -1351,13 +1371,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   const rowInstanceID = (torrent as Partial<CrossInstanceTorrent>).instanceId ?? instanceId
                   const isSelected = selectedTorrent?.hash === torrent.hash && selectedInstanceID === rowInstanceID
                   const isRowSelected = isTorrentSelected(torrent)
-                  const groupId = torrent.copy_group?.id
-                  const group = groupId === undefined ? undefined : copyGroups.get(groupId)
-                  const isGroupRow = group !== undefined && group.size > 1
-                  const isGroupTop = isGroupRow && group.top === torrent
-                  const isGroupOpen = groupId !== undefined && isGroupTop && isCopyGroupOpen(groupExpansion, groupId)
-                  const isCollapsedTop = isGroupTop && !isGroupOpen
-                  const sortedTorrent = isCollapsedTop && group.firstSorted !== torrent ? group.firstSorted : undefined
+                  const copyGroup = describeCopyGroupRow(torrent)
 
                   return (
                     <TorrentTableRow
@@ -1379,13 +1393,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       compact={compactRowProps}
                       onRowClick={handleRowClick}
                       onRowContextMenu={handleRowContextMenu}
-                      copyGroupId={isGroupTop ? groupId : undefined}
-                      copyGroupOpen={isGroupOpen}
-                      copies={isGroupTop ? group.size - 1 : 0}
-                      hiddenCopyProblem={isCollapsedTop && group.hiddenProblem}
-                      sortedTorrent={sortedTorrent}
-                      sortedColumnId={sortedTorrent ? sortedColumnId : undefined}
-                      nestedCopy={isGroupRow && !isGroupTop}
+                      copyGroupId={copyGroup.groupId}
+                      copyGroupOpen={copyGroup.open}
+                      copies={copyGroup.copies}
+                      hiddenCopyProblem={copyGroup.hiddenProblem}
+                      hiddenCopyTicks={copyGroup.hiddenTicks}
+                      sortedTorrent={copyGroup.sortedTorrent}
+                      sortedColumnId={copyGroup.sortedTorrent ? sortedColumnId : undefined}
+                      nestedCopy={copyGroup.nestedCopy}
                       onToggleCopyGroup={toggleGroup}
                     />
                   )
@@ -1482,6 +1497,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       </>
                     )}
                   </div>
+                  {copyGroupsReady === false && (
+                    <span className="flex items-center gap-1 opacity-70">
+                      <Loader2 className="h-3 w-3 animate-spin"/>
+                      {t("copyGroups.grouping")}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs">

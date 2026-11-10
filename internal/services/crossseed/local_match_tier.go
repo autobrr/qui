@@ -24,10 +24,11 @@ type sameDataFiles struct {
 
 func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string], withFilePaths bool) sameDataFiles {
 	var data sameDataFiles
+	// These calls skip the shared cache: it would keep one entry per file for 5 min.
 	if savePath != "" && withFilePaths {
 		data.filePaths = make([]string, len(files))
 		for i, file := range files {
-			data.filePaths[i] = normalizePathForComparison(savePath + "/" + file.Name)
+			data.filePaths[i] = normalizePathForComparisonInner(savePath + "/" + file.Name)
 		}
 	}
 	content := contentFiles(files, normalizer)
@@ -41,7 +42,7 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 		case data.filePaths != nil:
 			data.paths[data.filePaths[i]] = struct{}{}
 		case savePath != "":
-			data.paths[normalizePathForComparison(savePath+"/"+file.Name)] = struct{}{}
+			data.paths[normalizePathForComparisonInner(savePath+"/"+file.Name)] = struct{}{}
 		}
 		data.sizes = append(data.sizes, file.Size)
 	}

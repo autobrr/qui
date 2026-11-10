@@ -97,7 +97,7 @@ func (f *dirScanRemoteFixture) directory(t *testing.T, dirPath string, instance 
 
 func TestDirScanTargetInstanceGate(t *testing.T) {
 	f := newDirScanRemoteFixture(t)
-	const noAccess = `{"error":"Target instance must have local filesystem access enabled"}`
+	const noAccess = `{"error":"Target instance needs filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings first."}`
 	for i, tt := range []struct {
 		name     string
 		instance *models.Instance
