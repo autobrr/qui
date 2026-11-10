@@ -30,7 +30,7 @@ import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashe
 import { formatBytes } from "@/lib/utils"
 import type { CrossInstanceTorrent } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type MouseEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { DeleteTorrentDialog } from "../DeleteTorrentDialog"
@@ -75,7 +75,8 @@ interface DeletePlan {
  * and exports. An open dialog follows the live selection, and it closes when
  * the selection becomes empty or the Layout publishes nothing. A failed
  * request leaves it open, except the tag editor, which closes after a
- * failure. A delete clears the selection when the Action target is deleted.
+ * failure, and the share limits, which close on submit. A delete clears the
+ * selection when the Action target is deleted.
  */
 export function BulkActionProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("torrents")
@@ -226,7 +227,9 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     },
   })
 
-  const isPending = isRequestPending || isDeletePending || isTagsPending || isRenamePending
+  // One mutation reports only its latest call, so the two speed-limit requests need their own flag.
+  const [isSpeedLimitsPending, setIsSpeedLimitsPending] = useState(false)
+  const isPending = isRequestPending || isDeletePending || isTagsPending || isRenamePending || isSpeedLimitsPending
 
   const send = useCallback((values: BulkRequestValues) => {
     const target = publishedRef.current
@@ -274,7 +277,9 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     const requests: BulkRequestValues[] = []
     if (uploadLimit >= 0) requests.push({ action: "setUploadLimit", uploadLimit })
     if (downloadLimit >= 0) requests.push({ action: "setDownloadLimit", downloadLimit })
+    setIsSpeedLimitsPending(true)
     const results = await Promise.allSettled(requests.map(values => mutateAsync(bulkRequest(values, published))))
+    setIsSpeedLimitsPending(false)
     if (results.every(result => result.status === "fulfilled")) {
       dispatch({ type: "requestSucceeded", action: "setSpeedLimits" })
     }

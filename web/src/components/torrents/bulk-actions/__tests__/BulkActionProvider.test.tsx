@@ -934,6 +934,27 @@ describe("bulk action module - dialogs with values", () => {
     await flush()
 
     expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "setUploadLimit", uploadLimit: 500 })]])
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("stays pending until both speed-limit requests settle", async () => {
+    let finishUpload: () => void = () => {}
+    mockedApi.bulkAction
+      .mockImplementationOnce(() => new Promise(resolve => { finishUpload = () => resolve(undefined as never) }))
+      .mockResolvedValueOnce(undefined as never)
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setSpeedLimits" }))
+    confirmDialog("speedLimits", 100, 200)
+    await flush()
+
+    expect(result.current.isPending).toBe(true)
+
+    await act(async () => finishUpload())
+    await flush()
+
+    expect(result.current.isPending).toBe(false)
+    expect(dialogTitle()).toBeNull()
   })
 
   it("leaves the speed limits open when one request fails", async () => {
