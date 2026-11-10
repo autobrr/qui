@@ -3357,7 +3357,7 @@ func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 					<-releaseLeader
 					_, _ = w.Write([]byte(`{"rid":2}`))
 				default:
-					_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
+					_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"added_on":1700000000,"name":"New.Torrent"}}}`))
 				}
 			case "/api/v2/app/webapiVersion":
 				_, _ = w.Write([]byte("2.16.0"))
@@ -3463,7 +3463,7 @@ func TestAddTagsSyncsWhenTheHashIsMissingFromTheCache(t *testing.T) {
 				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
 				return
 			}
-			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"added_on":1700000000,"name":"New.Torrent"}}}`))
 		case "/api/v2/torrents/addTags":
 			// 200 with no body; AddTagsCtx errors on any other status.
 		case "/api/v2/app/webapiVersion":
