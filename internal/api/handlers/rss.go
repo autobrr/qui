@@ -181,155 +181,13 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	targetFolder := req.Path
-
-	matchesFeedURL := func(feedURL, reqURL string) bool {
-		feedURL = strings.TrimSpace(feedURL)
-		reqURL = strings.TrimSpace(reqURL)
-		if feedURL == reqURL {
-			return true
-		}
-
-		feedParsed, feedErr := url.Parse(feedURL)
-		reqParsed, reqErr := url.Parse(reqURL)
-		if feedErr != nil || reqErr != nil {
-			return false
-		}
-
-		feedParsed.Fragment = ""
-		reqParsed.Fragment = ""
-
-		normalizePath := func(p string) string {
-			if p == "/" {
-				return ""
-			}
-			return strings.TrimRight(p, "/")
-		}
-
-		return strings.EqualFold(feedParsed.Scheme, reqParsed.Scheme) &&
-			strings.EqualFold(feedParsed.Host, reqParsed.Host) &&
-			normalizePath(feedParsed.Path) == normalizePath(reqParsed.Path) &&
-			feedParsed.RawQuery == reqParsed.RawQuery
-	}
-
-	// If a folder path is specified, we need to:
-	// 1. Add the feed to root (no path)
-	// 2. Find the newly created feed's name
-	// 3. Move it to the target folder
-	// This is because qBittorrent's path param is the full item path, not the parent folder
-	if targetFolder != "" {
-		// Get existing feeds before adding
-		existingFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
-		hasBaseline := err == nil
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get existing RSS items before add")
-		}
-
-		existingNames := make(map[string]bool)
-		if hasBaseline {
-			for name := range existingFeeds {
-				existingNames[name] = true
-			}
-		}
-
-		// Add feed to root
-		if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, ""); err != nil {
-			if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
-				return
-			}
-			log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(req.URL)).Msg("failed to add RSS feed")
-			RespondError(w, http.StatusInternalServerError, "Failed to add RSS feed")
-			return
-		}
-
-		// Get feeds again to find the new one
-		newFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get RSS items after add")
-			// Feed was added but we can't move it - return success with warning
-			RespondJSON(w, http.StatusCreated, WarningResponse{
-				Warning: "Feed added to root - could not move to folder",
-			})
-			return
-		}
-
-		if !hasBaseline {
-			log.Warn().Int("instanceID", instanceID).Msg("RSS feed added to root; could not determine baseline to safely move into folder")
-			RespondJSON(w, http.StatusCreated, WarningResponse{
-				Warning: "Feed added to root - could not move to folder",
-			})
-			return
-		}
-
-		var newFeedName string
-		type rssFeedMeta struct {
-			URL string `json:"url"`
-		}
-
-		// Deterministically identify the feed to move by matching the URL we just added.
-		var candidates []string
-		for name, rawItem := range newFeeds {
-			if existingNames[name] {
-				continue
-			}
-
-			var meta rssFeedMeta
-			if err := json.Unmarshal(rawItem, &meta); err != nil {
-				log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding feed to move")
-				continue
-			}
-			if meta.URL == "" {
-				continue // folder
-			}
-			if !matchesFeedURL(meta.URL, req.URL) {
-				continue
-			}
-			candidates = append(candidates, name)
-		}
-
-		switch {
-		case len(candidates) == 1:
-			newFeedName = candidates[0]
-		case len(candidates) > 1:
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("url", redact.URLString(req.URL)).
-				Strs("candidates", candidates).
-				Msg("multiple RSS feeds matched URL; cannot safely move")
-		}
-
-		if newFeedName != "" {
-			// Move the feed to the target folder
-			// destPath must be the full new path: "FolderName\FeedName"
-			destPath := targetFolder + "\\" + newFeedName
-			if err := h.syncManager.MoveRSSItem(ctx, instanceID, newFeedName, destPath); err != nil {
-				log.Warn().Err(err).
-					Int("instanceID", instanceID).
-					Str("feedName", newFeedName).
-					Str("destPath", destPath).
-					Msg("failed to move RSS feed to folder (feed was added to root)")
-				// Feed was added but couldn't be moved - return success with warning
-				RespondJSON(w, http.StatusCreated, WarningResponse{
-					Warning: "Feed added to root - could not move to folder",
-				})
-				return
-			}
-		} else {
-			// Couldn't find the newly added feed to move it
-			log.Warn().Int("instanceID", instanceID).Str("url", redact.URLString(req.URL)).Msg("could not identify RSS feed to move to folder")
-			RespondJSON(w, http.StatusCreated, WarningResponse{
-				Warning: "Feed added to root - could not identify feed to move",
-			})
-			return
-		}
-
-		RespondJSON(w, http.StatusCreated, nil)
+	if req.Path != "" {
+		h.addFeedToFolder(w, r, instanceID, req.URL, req.Path)
 		return
 	}
 
 	// No folder specified - add directly to root
-	if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, ""); err != nil {
+	if err := h.syncManager.AddRSSFeed(r.Context(), instanceID, req.URL, ""); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 			return
 		}
@@ -339,6 +197,145 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusCreated, nil)
+}
+
+// qBittorrent's path param is the full item path, not the parent folder, so
+// the feed goes to the root first and then moves into targetFolder.
+func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, instanceID int, feedURL, targetFolder string) {
+	ctx := r.Context()
+
+	existingFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
+	hasBaseline := err == nil
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get existing RSS items before add")
+	}
+
+	existingNames := make(map[string]bool)
+	if hasBaseline {
+		for name := range existingFeeds {
+			existingNames[name] = true
+		}
+	}
+
+	if err := h.syncManager.AddRSSFeed(ctx, instanceID, feedURL, ""); err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(feedURL)).Msg("failed to add RSS feed")
+		RespondError(w, http.StatusInternalServerError, "Failed to add RSS feed")
+		return
+	}
+
+	newFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get RSS items after add")
+		RespondJSON(w, http.StatusCreated, WarningResponse{
+			Warning: "Feed added to root - could not move to folder",
+		})
+		return
+	}
+
+	if !hasBaseline {
+		log.Warn().Int("instanceID", instanceID).Msg("RSS feed added to root; could not determine baseline to safely move into folder")
+		RespondJSON(w, http.StatusCreated, WarningResponse{
+			Warning: "Feed added to root - could not move to folder",
+		})
+		return
+	}
+
+	newFeedName := findNewRSSFeedName(newFeeds, existingNames, instanceID, feedURL)
+	if newFeedName == "" {
+		log.Warn().Int("instanceID", instanceID).Str("url", redact.URLString(feedURL)).Msg("could not identify RSS feed to move to folder")
+		RespondJSON(w, http.StatusCreated, WarningResponse{
+			Warning: "Feed added to root - could not identify feed to move",
+		})
+		return
+	}
+
+	// destPath must be the full new path: "FolderName\FeedName"
+	destPath := targetFolder + "\\" + newFeedName
+	if err := h.syncManager.MoveRSSItem(ctx, instanceID, newFeedName, destPath); err != nil {
+		log.Warn().Err(err).
+			Int("instanceID", instanceID).
+			Str("feedName", newFeedName).
+			Str("destPath", destPath).
+			Msg("failed to move RSS feed to folder (feed was added to root)")
+		RespondJSON(w, http.StatusCreated, WarningResponse{
+			Warning: "Feed added to root - could not move to folder",
+		})
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, nil)
+}
+
+// findNewRSSFeedName returns the one feed that is not in existingNames and whose
+// URL matches feedURL, or "" when no feed or several feeds match.
+func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, instanceID int, feedURL string) string {
+	type rssFeedMeta struct {
+		URL string `json:"url"`
+	}
+
+	var candidates []string
+	for name, rawItem := range newFeeds {
+		if existingNames[name] {
+			continue
+		}
+
+		var meta rssFeedMeta
+		if err := json.Unmarshal(rawItem, &meta); err != nil {
+			log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding feed to move")
+			continue
+		}
+		if meta.URL == "" {
+			continue // folder
+		}
+		if !matchesRSSFeedURL(meta.URL, feedURL) {
+			continue
+		}
+		candidates = append(candidates, name)
+	}
+
+	switch {
+	case len(candidates) == 1:
+		return candidates[0]
+	case len(candidates) > 1:
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("url", redact.URLString(feedURL)).
+			Strs("candidates", candidates).
+			Msg("multiple RSS feeds matched URL; cannot safely move")
+	}
+	return ""
+}
+
+func matchesRSSFeedURL(feedURL, reqURL string) bool {
+	feedURL = strings.TrimSpace(feedURL)
+	reqURL = strings.TrimSpace(reqURL)
+	if feedURL == reqURL {
+		return true
+	}
+
+	feedParsed, feedErr := url.Parse(feedURL)
+	reqParsed, reqErr := url.Parse(reqURL)
+	if feedErr != nil || reqErr != nil {
+		return false
+	}
+
+	feedParsed.Fragment = ""
+	reqParsed.Fragment = ""
+
+	normalizePath := func(p string) string {
+		if p == "/" {
+			return ""
+		}
+		return strings.TrimRight(p, "/")
+	}
+
+	return strings.EqualFold(feedParsed.Scheme, reqParsed.Scheme) &&
+		strings.EqualFold(feedParsed.Host, reqParsed.Host) &&
+		normalizePath(feedParsed.Path) == normalizePath(reqParsed.Path) &&
+		feedParsed.RawQuery == reqParsed.RawQuery
 }
 
 // SetFeedURL changes the URL of an existing feed
