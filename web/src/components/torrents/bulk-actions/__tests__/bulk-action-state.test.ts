@@ -5,9 +5,10 @@
 
 import { describe, expect, it } from "vitest"
 
-import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, dialogPick, resolvePick, type BulkDialog } from "../bulk-action-state"
+import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, deleteSize, dialogPick, resolvePick, type BulkDialog } from "../bulk-action-state"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import { makeFilters } from "@/test/mockFilters"
+import { makeTorrent } from "@/test/mockTorrent"
 
 describe("resolvePick", () => {
   it("runs a pick with no confirmation at once, with its option", () => {
@@ -29,6 +30,10 @@ describe("resolvePick", () => {
   it("asks before automatic management with the direction, also for 1 torrent", () => {
     expect(resolvePick({ action: "toggleAutoTMM", enable: false }, 1)).toEqual({ kind: "open", dialog: { name: "toggleAutoTMM", enable: false } })
   })
+
+  it("opens the delete dialog, also for 1 torrent", () => {
+    expect(resolvePick({ action: "delete" }, 1)).toEqual({ kind: "open", dialog: { name: "delete", deleteCrossSeeds: false } })
+  })
 })
 
 describe("bulkDialogReducer", () => {
@@ -42,6 +47,23 @@ describe("bulkDialogReducer", () => {
   it("closes on a request of its own action, and stays open on another one", () => {
     expect(bulkDialogReducer(recheck, { type: "requestSucceeded", action: "recheck" })).toBe(CLOSED_DIALOG)
     expect(bulkDialogReducer(recheck, { type: "requestSucceeded", action: "pause" })).toBe(recheck)
+  })
+
+  it("starts each open of the delete dialog with \"also delete cross-seeds\" cleared", () => {
+    const openDelete = (state: BulkDialog) => {
+      const outcome = resolvePick({ action: "delete" }, 2)
+      if (outcome.kind !== "open") throw new Error("delete must open a dialog")
+      return bulkDialogReducer(state, { type: "open", dialog: outcome.dialog })
+    }
+    const checked = bulkDialogReducer(openDelete(CLOSED_DIALOG), { type: "deleteCrossSeeds", checked: true })
+    expect(checked).toEqual({ name: "delete", deleteCrossSeeds: true })
+
+    expect(openDelete(checked)).toEqual({ name: "delete", deleteCrossSeeds: false })
+    expect(openDelete(bulkDialogReducer(checked, { type: "close" }))).toEqual({ name: "delete", deleteCrossSeeds: false })
+  })
+
+  it("keeps \"also delete cross-seeds\" out of the other dialogs", () => {
+    expect(bulkDialogReducer(recheck, { type: "deleteCrossSeeds", checked: true })).toBe(recheck)
   })
 
   it("closes on close", () => {
@@ -58,7 +80,7 @@ describe("bulkRequest", () => {
   const ticks: ActionTarget = { kind: "ticks", hashes: ["a", "b"], count: 2, previewTorrents: [] }
 
   it("sends the ticked hashes to the instance of the page", () => {
-    expect(bulkRequest({ action: "pause" }, { instanceId: 7, actionTarget: ticks, selectedTotalSize: 0 })).toEqual({
+    expect(bulkRequest({ action: "pause" }, { instanceId: 7, actionTarget: ticks, totalSize: 0, excludedSize: 0 })).toEqual({
       scope: 7,
       count: 2,
       body: { action: "pause", hashes: ["a", "b"], targets: undefined, selectAll: false, instanceIds: undefined },
@@ -67,7 +89,7 @@ describe("bulkRequest", () => {
 
   it("sends the instance subset of the page and the direction of a toggle", () => {
     const pairs: ActionTarget = { kind: "ticks", hashes: [], targets: [{ instanceId: 3, hash: "x" }, { instanceId: 4, hash: "y" }], count: 2, previewTorrents: [] }
-    expect(bulkRequest({ action: "forceStart", enable: false }, { instanceId: 0, instanceIds: [3, 4], actionTarget: pairs, selectedTotalSize: 0 })).toEqual({
+    expect(bulkRequest({ action: "forceStart", enable: false }, { instanceId: 0, instanceIds: [3, 4], actionTarget: pairs, totalSize: 0, excludedSize: 0 })).toEqual({
       scope: 0,
       count: 2,
       body: { action: "forceStart", enable: false, hashes: [], targets: [{ instanceId: 3, hash: "x" }, { instanceId: 4, hash: "y" }], selectAll: false, instanceIds: [3, 4] },
@@ -77,10 +99,30 @@ describe("bulkRequest", () => {
   it("sends the Select all scope with its Exclusions, and the instance subset of the target wins", () => {
     const filters = makeFilters({ categories: ["movies"] })
     const selectAll: ActionTarget = { kind: "selectAll", selectAll: { filters, search: "linux", instanceIds: [3], excludeTargets: [{ instanceId: 3, hash: "skip" }] }, count: 39, previewTorrents: [] }
-    expect(bulkRequest({ action: "resume" }, { instanceId: 0, instanceIds: [3, 4], actionTarget: selectAll, selectedTotalSize: 0 })).toEqual({
+    expect(bulkRequest({ action: "resume" }, { instanceId: 0, instanceIds: [3, 4], actionTarget: selectAll, totalSize: 0, excludedSize: 0 })).toEqual({
       scope: 0,
       count: 39,
       body: { action: "resume", hashes: [], selectAll: true, filters, search: "linux", instanceIds: [3], excludeTargets: [{ instanceId: 3, hash: "skip" }] },
     })
+  })
+})
+
+describe("deleteSize", () => {
+  const facts = { instanceId: 7, totalSize: 0, excludedSize: 0 }
+  const loaded = [makeTorrent({ hash: "a", size: 100 }), makeTorrent({ hash: "b", size: 200 })]
+  const selectAll: ActionTarget = { kind: "selectAll", selectAll: { filters: makeFilters(), search: "" }, count: 40, previewTorrents: loaded }
+
+  it("gives the total of the filter minus the loaded Exclusions in Select all mode", () => {
+    expect(deleteSize({ ...facts, actionTarget: selectAll, totalSize: 1000, excludedSize: 300 })).toBe(700)
+  })
+
+  it("gives the size of the ticked torrents", () => {
+    const ticks: ActionTarget = { kind: "ticks", hashes: ["a", "b"], count: 2, previewTorrents: loaded }
+    expect(deleteSize({ ...facts, actionTarget: ticks, totalSize: 1000 })).toBe(300)
+  })
+
+  it("gives the size of the loaded torrents of the Action target when the result is 0", () => {
+    expect(deleteSize({ ...facts, actionTarget: selectAll })).toBe(300)
+    expect(deleteSize({ ...facts, actionTarget: selectAll, totalSize: 300, excludedSize: 300 })).toBe(300)
   })
 })

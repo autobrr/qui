@@ -32,7 +32,7 @@ export interface UseTorrentSelectionDerivationsParams {
 
 /**
  * Derives the Action target of the desktop table (ADR 0034) and the sizes that
- * the status bar and the delete dialog show.
+ * the status bar shows, and the size facts that the delete dialog needs.
  */
 export function useTorrentSelectionDerivations({
   selection,
@@ -81,41 +81,26 @@ export function useTorrentSelectionDerivations({
   }, [selection, sortedTorrents, isGrouped, columnFiltersExpr, clientSideFiltering, filters, search, totalCount, isCrossInstanceEndpoint, instanceId, instanceIds, getSelectionIdentity])
 
   const { isAllSelected, excluded } = selection
-  const selectedTotalSize = useMemo(() => {
-    if (isAllSelected && !clientSideFiltering) {
-      const aggregateTotalSize = stats?.totalSize ?? 0
-
-      if (aggregateTotalSize <= 0) {
-        return 0
-      }
-
-      if (excluded.size === 0) {
-        return aggregateTotalSize
-      }
-
-      const excludedSize = sortedTorrents.reduce((total, torrent) => {
-        if (excluded.has(getSelectionIdentity(torrent))) {
-          return total + (torrent.size || 0)
-        }
-        return total
-      }, 0)
-
-      return Math.max(aggregateTotalSize - excludedSize, 0)
+  // The table filters in the browser in cross-seed mode, so the total of the filter does not apply.
+  const totalSize = isAllSelected && !clientSideFiltering ? stats?.totalSize ?? 0 : 0
+  const excludedSize = useMemo(() => {
+    if (!isAllSelected || clientSideFiltering || excluded.size === 0) {
+      return 0
     }
+    return sortedTorrents.reduce((total, torrent) => excluded.has(getSelectionIdentity(torrent)) ? total + (torrent.size || 0) : total, 0)
+  }, [isAllSelected, clientSideFiltering, excluded, sortedTorrents, getSelectionIdentity])
 
-    return getTotalSize(actionTarget.previewTorrents)
-  }, [isAllSelected, clientSideFiltering, stats?.totalSize, excluded, sortedTorrents, actionTarget.previewTorrents, getSelectionIdentity])
+  const selectedTotalSize = useMemo(
+    () => isAllSelected && !clientSideFiltering ? Math.max(totalSize - excludedSize, 0) : getTotalSize(actionTarget.previewTorrents),
+    [isAllSelected, clientSideFiltering, totalSize, excludedSize, actionTarget.previewTorrents]
+  )
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
-
-  // Without an aggregate size, the delete dialog shows the size of the loaded torrents.
-  const deleteDialogTotalSize = selectedTotalSize > 0 ? selectedTotalSize : getTotalSize(actionTarget.previewTorrents)
-  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
 
   return {
     actionTarget,
     selectedTotalSize,
     selectedFormattedSize,
-    deleteDialogTotalSize,
-    deleteDialogFormattedSize,
+    totalSize,
+    excludedSize,
   }
 }

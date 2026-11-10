@@ -122,14 +122,15 @@ describe("useTorrentSelectionDerivations — no-selection identity across stream
   })
 })
 
-describe("useTorrentSelectionDerivations — deleteDialogTotalSize", () => {
-  it("prefers the aggregate selected size in select-all mode", () => {
-    const { result } = render({ selection: allSelected(), stats: { totalSize: 600 } })
-    expect(result.current.deleteDialogTotalSize).toBe(600)
+describe("useTorrentSelectionDerivations — size facts for the delete dialog", () => {
+  it("publishes the total of the filter and the size of the loaded Exclusions in Select all mode", () => {
+    const { result } = render({ selection: allSelected("h1"), stats: { totalSize: 600 } })
+    expect(result.current.totalSize).toBe(600)
+    expect(result.current.excludedSize).toBe(200)
   })
 
-  it("falls back to the loaded torrents in select-all mode without an aggregate size", () => {
-    const { result } = render({ selection: allSelected("h0"), stats: undefined })
-    expect(result.current.deleteDialogTotalSize).toBe(500)
+  it("publishes no total of the filter when the table filters in the browser", () => {
+    const { result } = render({ selection: allSelected(), stats: { totalSize: 600 }, clientSideFiltering: true })
+    expect(result.current.totalSize).toBe(0)
   })
 })

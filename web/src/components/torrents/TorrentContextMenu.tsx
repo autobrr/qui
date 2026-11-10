@@ -66,7 +66,6 @@ export interface TorrentContextMenuProps {
   onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
   // Sends a Bulk action to the bulk action module, which acts on the Action target.
   onPick: (pick: BulkActionPick) => void
-  onPrepareDelete: () => void
   onPrepareTags: () => void
   onPrepareComment?: () => void
   onPrepareCategory: () => void
@@ -109,7 +108,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   actionTarget,
   onTorrentSelect,
   onPick,
-  onPrepareDelete,
   onPrepareTags,
   onPrepareComment,
   onPrepareShareLimit,
@@ -610,7 +608,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             </ContextMenuSub>
             <ContextMenuSeparator />
             <ContextMenuItem
-              onClick={() => onPrepareDelete()}
+              onClick={() => onPick({ action: TORRENT_ACTIONS.DELETE })}
               disabled={isPending}
               className="text-destructive"
             >

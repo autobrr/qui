@@ -24,7 +24,7 @@ import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
-import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
+import { useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
@@ -274,26 +274,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [showLoadingState, setShowLoadingState] = useState(false)
 
   // Use the shared torrent actions hook
-  const torrentActions = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        clearSelection()
-      }
-    },
-  })
+  const torrentActions = useTorrentActions({ instanceId, instanceIds })
   const {
-    showDeleteDialog,
-    closeDeleteDialog,
-    deleteFiles,
-    setDeleteFiles,
-    isDeleteFilesLocked,
-    toggleDeleteFilesLock,
-    blockCrossSeeds,
-    setBlockCrossSeeds,
-    deleteCrossSeeds,
-    setDeleteCrossSeeds,
     showTagsDialog,
     setShowTagsDialog,
     showCommentDialog,
@@ -318,7 +300,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowLocationWarningDialog,
     isPending: isActionPending,
     proceedToLocationDialog,
-    prepareDeleteAction,
     prepareTagsAction,
     prepareCommentAction,
     prepareCategoryAction,
@@ -718,8 +699,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     actionTarget,
     selectedTotalSize,
     selectedFormattedSize,
-    deleteDialogTotalSize,
-    deleteDialogFormattedSize,
+    totalSize,
+    excludedSize,
   } = useTorrentSelectionDerivations({
     selection,
     getSelectionIdentity,
@@ -820,7 +801,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     supportsTrackerHealth,
     onSelectionChange: publishSummary,
     actionTarget,
-    selectedTotalSize,
+    totalSize,
+    excludedSize,
     instanceIds,
   })
 
@@ -920,11 +902,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Dialog wiring: each wrapper passes its value with the Action target to the handler.
   const {
-    crossSeedWarning,
-    hasCrossSeedTag,
     renameHash,
     handleExportWrapper,
-    handleDeleteWrapper,
     handleSetCommentWrapper,
     handleTagsWrapper,
     handleSetCategoryWrapper,
@@ -1045,7 +1024,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     actionTarget,
     onTorrentSelect,
     onPick: pickBulkAction,
-    onPrepareDelete: prepareDeleteAction,
     onPrepareTags: prepareTagsAction,
     onPrepareComment: prepareCommentAction,
     onPrepareCategory: prepareCategoryAction,
@@ -1067,7 +1045,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1662,8 +1640,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           instanceId={instanceId}
           actionTarget={actionTarget}
           isPending={isPending}
-          showDeleteDialog={showDeleteDialog}
-          closeDeleteDialog={closeDeleteDialog}
           showCommentDialog={showCommentDialog}
           setShowCommentDialog={setShowCommentDialog}
           showTagsDialog={showTagsDialog}
@@ -1686,15 +1662,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           setShowRenameFolderDialog={setShowRenameFolderDialog}
           showLocationWarningDialog={showLocationWarningDialog}
           setShowLocationWarningDialog={setShowLocationWarningDialog}
-          deleteFiles={deleteFiles}
-          setDeleteFiles={setDeleteFiles}
-          isDeleteFilesLocked={isDeleteFilesLocked}
-          toggleDeleteFilesLock={toggleDeleteFilesLock}
-          blockCrossSeeds={blockCrossSeeds}
-          setBlockCrossSeeds={setBlockCrossSeeds}
-          deleteCrossSeeds={deleteCrossSeeds}
-          setDeleteCrossSeeds={setDeleteCrossSeeds}
-          handleDeleteWrapper={handleDeleteWrapper}
           handleSetCommentWrapper={handleSetCommentWrapper}
           handleTagsWrapper={handleTagsWrapper}
           handleSetCategoryWrapper={handleSetCategoryWrapper}
@@ -1706,10 +1673,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleRenameFileWrapper={handleRenameFileWrapper}
           handleRenameFolderWrapper={handleRenameFolderWrapper}
           proceedToLocationDialog={proceedToLocationDialog}
-          deleteDialogTotalSize={deleteDialogTotalSize}
-          deleteDialogFormattedSize={deleteDialogFormattedSize}
-          crossSeedWarning={crossSeedWarning}
-          hasCrossSeedTag={hasCrossSeedTag}
           availableTags={availableTags}
           availableCategories={availableCategories}
           isLoadingTags={isLoadingTags}
