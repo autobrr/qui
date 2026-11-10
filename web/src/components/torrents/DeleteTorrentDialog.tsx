@@ -82,7 +82,8 @@ export function DeleteTorrentDialog({
   const notLoaded = Math.max(0, count - previewTorrents.length)
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    // A delete that started cannot stop, so the dialog stays open until it ends.
+    <AlertDialog open={open} onOpenChange={(next) => isPending || onOpenChange(next)}>
       <AlertDialogContent className="sm:max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -149,7 +150,7 @@ export function DeleteTorrentDialog({
           </div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel>{t("deleteDialog.cancel")}</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{t("deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             disabled={isPending}

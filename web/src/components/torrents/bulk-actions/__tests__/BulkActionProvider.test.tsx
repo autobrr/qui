@@ -484,6 +484,25 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBe("deleteDialog.title/2")
   })
 
+  it("keeps the dialog open while the delete runs, so Cancel and Escape do not suggest that they stop it", async () => {
+    let finish = () => {}
+    mockedApi.bulkAction.mockReturnValueOnce(new Promise(resolve => {
+      finish = () => resolve(undefined as never)
+    }))
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete()
+    clickButton("deleteDialog.cancel")
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    await flush()
+    expect(deleteTitle()).toBe("deleteDialog.title/1")
+
+    finish()
+    await flush()
+    expect(deleteTitle()).toBeNull()
+  })
+
   it("starts each open with \"also delete cross-seeds\" cleared and no cross-seed result", async () => {
     const { result } = renderModule({ actionTarget: ticks("h1") })
 
