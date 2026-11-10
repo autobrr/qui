@@ -519,7 +519,7 @@ function SwipeableCard({
 
           {/* Tracker, Size and Ratio on the left, state badge on the right. On a full line, the tracker name gets shorter first, then the size. */}
           <div className="flex h-[22px] items-center gap-2 text-xs">
-            <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
+            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
               {trackerDisplayName && (
                 <span className="flex items-center gap-1 min-w-0 shrink-[9999]" title={trackerTitle}>
                   <TrackerIcon
