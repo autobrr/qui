@@ -41,6 +41,10 @@ Add the line in `qui_seedbox.pub` to `~/.ssh/authorized_keys` of your user on th
 ssh-copy-id -i qui_seedbox.pub user@seedbox.example.com
 ```
 
+- If the SSH server does not use port 22, add `-p <port>`.
+- If the provider limits the login to SFTP, add `-s`. The command then adds the key over SFTP.
+- If the command asks you to accept a host key, compare the fingerprint with the one that the server has before you type `yes`. [Step 4](#4-test-the-connection-and-confirm-the-host-key) tells you where to find it.
+
 Some seedbox providers have a page for SSH keys in their control panel. Paste the content of `qui_seedbox.pub` there.
 
 ### 3. Enter the settings in qui
@@ -58,7 +62,7 @@ Some seedbox providers have a page for SSH keys in their control panel. Paste th
 
 4. Click **Save SSH settings**.
 
-qui stores the private key encrypted and does not show it again. After the save, you can delete the private key file. If you change the host, the port, or the username later, paste the key again.
+qui stores the private key encrypted and does not show it again. You must paste the key again if you change the host, the port, or the username, or if [the encryption key of qui changes](#the-encryption-key-of-qui-changed). Keep the private key file in a safe place, for example a password manager. If you delete the file, create a new key and add its public key on the server when you need one.
 
 ### 4. Test the connection and confirm the host key
 
