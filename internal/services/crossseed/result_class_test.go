@@ -195,9 +195,9 @@ func TestTroubleshootingPageMatchesClasses(t *testing.T) {
 	require.True(t, found, "the troubleshooting page has no status table")
 	_, table, _ = strings.Cut(table, "\n")
 
-	allowed := map[string][]resultClass{
-		"Skipped": {classExists, classSkipped},
-		"Failed":  {classStranded, classFailed},
+	allowed := map[string][]ResultClass{
+		"Skipped": {ClassExists, ClassSkipped},
+		"Failed":  {ClassStranded, ClassFailed},
 	}
 	read := 0
 	for line := range strings.Lines(table) {

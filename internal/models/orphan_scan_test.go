@@ -6,6 +6,7 @@ package models_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -496,4 +497,47 @@ func runListRunsScanPathCount(t *testing.T, newDB func(testing.TB, string) *data
 		require.Equal(t, count, run.ScanPathCount, "run %d", id)
 		require.Len(t, run.ScanPaths, count, "run %d", id)
 	}
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThreshold(t *testing.T) {
+	t.Parallel()
+	runMarkStuckRunsFailed(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThresholdPostgresIntegration(t *testing.T) {
+	runMarkStuckRunsFailed(t, testdb.NewMigratedPostgres)
+}
+
+func runMarkStuckRunsFailed(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-stuck-runs")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	const threshold = time.Hour
+	now := time.Now().UTC()
+	runIDs := map[string]int64{}
+	// The store writes started_at with the database clock, which has this form.
+	for name, startedAt := range map[string]time.Time{
+		"stuck":  now.Add(-threshold - time.Minute),
+		"recent": now.Add(-threshold + time.Minute),
+	} {
+		instance, err := instances.Create(ctx, name, "http://example.invalid", "user", "pass", nil, nil, false, nil)
+		require.NoError(t, err)
+		runIDs[name], err = store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE orphan_scan_runs SET started_at = ? WHERE id = ?`, startedAt.Format(time.DateTime), runIDs[name])
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, store.MarkStuckRunsFailed(ctx, threshold, []string{"pending", "scanning"}))
+
+	stuck, err := store.GetRun(ctx, runIDs["stuck"])
+	require.NoError(t, err)
+	require.Equal(t, "failed", stuck.Status)
+	recent, err := store.GetRun(ctx, runIDs["recent"])
+	require.NoError(t, err)
+	require.Equal(t, "pending", recent.Status)
 }

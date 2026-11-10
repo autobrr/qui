@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
@@ -84,10 +86,10 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *t
 	require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
 }
 
-// A hardlink of a listed file made since the scan is kept too, matching the
-// scan (#3487).
-// regression: #3596
-func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
+// A hardlink of a listed file made since the scan is its own directory entry,
+// so the delete removes the listed one and the torrent keeps its file.
+// regression: #3908
+func TestExecuteDeletion_DeletesHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-hardlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
 		orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
@@ -101,8 +103,9 @@ func TestExecuteDeletion_KeepsHardlinkOfATorrentFileMadeSinceTheScan(t *testing.
 	addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: other}, "movie.mkv")
 	f.svc.executeDeletion(t.Context(), 1, f.runID)
 
-	require.FileExists(t, orphan)
-	require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
+	require.NoFileExists(t, orphan)
+	require.FileExists(t, filepath.Join(other, "movie.mkv"))
+	require.Equal(t, "deleted: ", fileStatuses(t, f.store, f.runID)[orphan])
 }
 
 // Each row reaches the listed file through a path only one step of the
@@ -157,20 +160,27 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "Alias/movie.mkv", "alias/movie.mkv")
 		}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var orphan string
-			f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-kinds", orphanOnlyOptions{}, func(defaultSavePath string) {
-				orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
-				writeFile(t, orphan)
+		// A second link outside the roots must not turn the path into a hardlink of its own.
+		for _, linked := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/linked=%t", tc.name, linked), func(t *testing.T) {
+				var orphan string
+				f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-kinds", orphanOnlyOptions{}, func(defaultSavePath string) {
+					orphan = filepath.Join(defaultSavePath, "loose", "movie.mkv")
+					writeFile(t, orphan)
+				})
+				require.Contains(t, fileStatuses(t, f.store, f.runID), orphan, "the scan lists it")
+				base := filepath.Dir(f.defaultSavePath)
+				if linked {
+					require.NoError(t, os.Link(orphan, filepath.Join(base, "movie.mkv")))
+				}
+
+				tc.late(t, f, orphan, base)
+				f.svc.executeDeletion(t.Context(), 1, f.runID)
+
+				require.FileExists(t, orphan)
+				require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
 			})
-			require.Contains(t, fileStatuses(t, f.store, f.runID), orphan, "the scan lists it")
-
-			tc.late(t, f, orphan, filepath.Dir(f.defaultSavePath))
-			f.svc.executeDeletion(t.Context(), 1, f.runID)
-
-			require.FileExists(t, orphan)
-			require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
-		})
+		}
 	}
 }
 
@@ -668,4 +678,215 @@ func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothin
 			f.requireNothingDeleted(t)
 		})
 	}
+}
+
+// A case-insensitive volume opens a torrent's file under any case or Unicode
+// form of its name, so the name qBittorrent reports and the name on disk are
+// one entry when the torrent file map would match them.
+// regression: #3908
+func TestSameEntry_ComparesNamesLikeTheTorrentFileMap(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	dirIDs := readDirIDs(t.Context(), local.NewBackend(), nil, []string{a, b})
+	require.Len(t, dirIDs, 2)
+	d := fsops.HostPaths
+	for _, tc := range []struct {
+		name       string
+		disk, path string
+		dirIDs     map[string]fsops.FileKey
+		want       bool
+	}{
+		{"other case, folder unknown", "/x/Movie.mkv", "/y/movie.mkv", nil, true},
+		{"other Unicode form, folder unknown", "/x/Caf\u00e9.mkv", "/y/Cafe\u0301.mkv", nil, true},
+		{"other case, same folder", filepath.Join(a, "Movie.mkv"), filepath.Join(a, "movie.mkv"), dirIDs, true},
+		{"other case, other folder", filepath.Join(a, "Movie.mkv"), filepath.Join(b, "movie.mkv"), dirIDs, false},
+		{"other name, folder unknown", "/x/movie.mkv", "/y/extras.mkv", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sameEntry(d, tc.dirIDs, tc.disk, tc.path))
+		})
+	}
+}
+
+// A folder qui cannot identify could be the torrent file's own folder, so a
+// hardlink in it with a matching name stays.
+// regression: #3908
+func TestReadDirIDs_LeavesOutAFolderItCannotReadSoTheHardlinkStays(t *testing.T) {
+	a := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "gone")
+	dirIDs := readDirIDs(t.Context(), local.NewBackend(), nil, []string{a, missing})
+	require.Contains(t, dirIDs, a)
+	require.NotContains(t, dirIDs, missing)
+	require.True(t, sameEntry(fsops.HostPaths, dirIDs, filepath.Join(missing, "movie.mkv"), filepath.Join(a, "movie.mkv")))
+}
+
+// A torrent moved during the delete leaves a hardlink at a path no torrent
+// uses, so the delete goes ahead instead of failing the file.
+// regression: #3908
+func TestHolds_TorrentPathGoneSinceTheCollectDoesNotFailTheTarget(t *testing.T) {
+	root := t.TempDir()
+	torrentFile := filepath.Join(root, "a", "movie.mkv")
+	target := filepath.Join(root, "b", "movie.mkv")
+	moved := filepath.Join(root, "c", "movie.mkv")
+	for _, p := range []string{torrentFile, target, moved} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	}
+	require.NoError(t, os.WriteFile(torrentFile, []byte("x"), 0o600))
+	require.NoError(t, os.Link(torrentFile, target))
+	backend := local.NewBackend()
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{torrentFile}, false)
+	require.NoError(t, err)
+	require.NoError(t, os.Rename(torrentFile, moved))
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.False(t, held)
+}
+
+// linkAfterStat is the local backend, and it hardlinks from to to right after
+// the Stat of from, as if someone made the link while qui read the
+// torrent paths.
+type linkAfterStat struct {
+	fsops.Backend
+	t        *testing.T
+	from, to string
+}
+
+func (b linkAfterStat) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Stat(ctx, p)
+	if p == b.from {
+		require.NoError(b.t, os.Link(b.from, b.to))
+	}
+	return info, err
+}
+
+// A hardlink made while qui reads the torrent paths must not leave the first
+// torrent path out of the entry check, or an alias of it is deleted.
+// regression: #3908
+func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "a", "movie.mkv")
+	second := filepath.Join(root, "b", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(first), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
+	require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
+	alias := filepath.Join(root, "alias")
+	require.NoError(t, os.Symlink(filepath.Dir(first), alias))
+
+	backend := linkAfterStat{Backend: local.NewBackend(), t: t, from: first, to: second}
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{first, second}, false)
+	require.NoError(t, err)
+
+	info, err := backend.Lstat(t.Context(), filepath.Join(alias, "movie.mkv"))
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.True(t, held, "the alias is the first torrent's own entry")
+}
+
+// A torrent path the walk met with a different link count than another one
+// had its link count changed during the walk. The entry check has only the
+// paths met with more than one link, so every path to the file stays, as
+// when no torrent path had more than one.
+// regression: #3908
+func TestLinkedAliases_KeepsAliasOfATorrentFileWhoseLinkCountChangedDuringTheWalk(t *testing.T) {
+	type visit struct {
+		path   string
+		nlinks uint64
+	}
+	for _, tc := range []struct {
+		name  string
+		inUse func(first, second string) []visit
+	}{
+		{"linked after the only torrent path", func(first, _ string) []visit { return []visit{{first, 1}} }},
+		{"linked between two torrent paths", func(first, second string) []visit { return []visit{{first, 1}, {second, 2}} }},
+		{"unlinked between two torrent paths", func(first, second string) []visit { return []visit{{second, 2}, {first, 1}} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			first := filepath.Join(root, "a", "movie.mkv")
+			second := filepath.Join(root, "b", "movie.mkv")
+			require.NoError(t, os.MkdirAll(filepath.Dir(first), 0o755))
+			require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
+			require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
+			alias := filepath.Join(root, "alias")
+			symlinkOrSkip(t, filepath.Dir(first), alias)
+
+			backend := local.NewBackend()
+			info, err := backend.Lstat(t.Context(), first)
+			require.NoError(t, err)
+			key, ok := fsops.FileKeyOf(info.FileID, nil)
+			require.True(t, ok)
+
+			keys := newFileKeys()
+			for _, v := range tc.inUse(first, second) {
+				keys.addInUse(key, v.path, v.nlinks)
+			}
+			aliasPath := filepath.Join(alias, "movie.mkv")
+			keys.addOther(key, aliasPath, 2)
+
+			require.Contains(t, keys.linkedAliases(t.Context(), backend, nil), aliasPath, "the alias is the first torrent's own entry")
+		})
+	}
+}
+
+// A torrent file read with one link protects a target hardlinked to it since,
+// because the read kept no path to compare the target's entry with.
+// regression: #3908
+func TestHolds_KeepsAHardlinkOfATorrentFileReadWithOneLink(t *testing.T) {
+	root := t.TempDir()
+	torrentPath := filepath.Join(root, "a", "movie.mkv")
+	target := filepath.Join(root, "b", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(torrentPath), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.WriteFile(torrentPath, []byte("x"), 0o600))
+
+	backend := local.NewBackend()
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{torrentPath}, false)
+	require.NoError(t, err)
+	require.NoError(t, os.Link(torrentPath, target))
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	held, err := ids.holds(t.Context(), backend, info)
+	require.NoError(t, err)
+	require.True(t, held)
+}
+
+type lstatFails struct {
+	fsops.Backend
+	path string
+}
+
+func (b lstatFails) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	if p == b.path {
+		return nil, fs.ErrPermission
+	}
+	return b.Backend.Lstat(ctx, p)
+}
+
+// A torrent path qui cannot read again could be the target's own entry, so the
+// delete of the target fails.
+// regression: #3908
+func TestHolds_FailsWhenATorrentPathCannotBeReadAgain(t *testing.T) {
+	root := t.TempDir()
+	readable := filepath.Join(root, "a", "movie.mkv")
+	unreadable := filepath.Join(root, "b", "movie.mkv")
+	target := filepath.Join(root, "c", "movie.mkv")
+	for _, p := range []string{readable, unreadable, target} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	}
+	require.NoError(t, os.WriteFile(readable, []byte("x"), 0o600))
+	require.NoError(t, os.Link(readable, unreadable))
+	require.NoError(t, os.Link(readable, target))
+
+	backend := lstatFails{Backend: local.NewBackend(), path: unreadable}
+	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{readable, unreadable}, false)
+	require.NoError(t, err)
+
+	info, err := backend.Lstat(t.Context(), target)
+	require.NoError(t, err)
+	_, err = ids.holds(t.Context(), backend, info)
+	require.ErrorIs(t, err, fs.ErrPermission)
 }

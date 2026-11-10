@@ -224,6 +224,8 @@ type Service struct {
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
 	// localReadMemo remembers the file-based reads of local torrents.
 	localReadMemo localReadMemo
+	// copyGroups is nil without a sync manager.
+	copyGroups *copyGroupsJob
 
 	// Cached deduplication results to avoid recomputing on every search run.
 	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
@@ -371,6 +373,8 @@ func NewService(
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
 		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
+		svc.copyGroups = newCopyGroupsJob(svc, syncManager)
+		syncManager.SetCopyGroupsDemandHandler(svc.copyGroups.demand)
 	}
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,

@@ -111,9 +111,10 @@ const STATE_SORT_ORDER: Record<string, number> = {
   pausedDL: 50, pausedUP: 51, checkingUP: 60, checkingResumeData: 61, moving: 70, error: 80, missingFiles: 81,
 }
 
-// Mirrors torrentStateCategories in internal/qbittorrent/sync_manager.go.
+// Mirrors namedStatuses in internal/qbittorrent/torrent_list_query.go.
 const STATE_CATEGORIES: Record<string, readonly string[]> = {
-  downloading: ["downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
   uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   seeding: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
@@ -143,8 +144,6 @@ export function matchesStatus(t: Torrent, status: string): boolean {
       return t.tracker_health === status
     case "all":
       return true
-    case "completed":
-      return t.progress === 1
     case "inactive":
       return !inCategory(t.state, "active")
     case "running":
@@ -153,8 +152,6 @@ export function matchesStatus(t: Torrent, status: string): boolean {
     case "stopped":
     case "paused":
       return isPausedOrStopped(t.state)
-    case "error":
-      return inCategory(t.state, "errored")
   }
   if (STATE_CATEGORIES[status]) return inCategory(t.state, status)
   return t.state === status
@@ -478,7 +475,6 @@ function computeCounts(torrents: readonly Torrent[]): TorrentCounts {
       if (name === "active" || name === "paused" || name === "stopped") continue
       if (states.includes(t.state)) status[name] = (status[name] ?? 0) + 1
     }
-    if (t.progress === 1) status.completed++
     if (t.tracker_health) status[t.tracker_health]++
     categories[t.category] = (categories[t.category] ?? 0) + 1
     categorySizes[t.category] = (categorySizes[t.category] ?? 0) + t.size

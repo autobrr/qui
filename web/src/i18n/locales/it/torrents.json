@@ -1239,6 +1239,7 @@
     "status": "Stato",
     "tracker": "Tracker",
     "seeds": "Seed",
+    "peers": "Peer",
     "leeches": "Leech",
     "downloaded": "DL",
     "message": "Messaggio",
@@ -1502,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
     },
-    "ratio": "Rapporto:"
+    "ratio": "Rapporto:",
+    "added": "Aggiunto {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1679,5 +1681,21 @@
         "add_failed": "Impossibile aggiungere il torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} altra copia di {{name}}",
+    "copies_other": "{{count}} altre copie di {{name}}",
+    "copiesWithProblem_one": "{{count}} altra copia di {{name}}. Una copia nascosta ha un problema",
+    "copiesWithProblem_other": "{{count}} altre copie di {{name}}. Una copia nascosta ha un problema",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",
+    "hiddenTicked_one": "{{count}} copia nascosta è selezionata",
+    "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Raggruppa le copie",
+    "expandAll": "Espandi tutto",
+    "collapseAll": "Comprimi tutto",
+    "grouping": "Raggruppamento…"
   }
 }

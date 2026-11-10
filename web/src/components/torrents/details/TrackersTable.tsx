@@ -136,7 +136,7 @@ export const TrackersTable = memo(function TrackersTable({
       size: 70,
     }),
     columnHelper.accessor("num_peers", {
-      header: t("trackersTable.leeches"),
+      header: t("trackersTable.peers"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 70,
     }),

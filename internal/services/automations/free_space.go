@@ -46,16 +46,6 @@ func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 	}
 }
 
-// GetFreeSpaceRuleKey returns a unique key for the given rule's free space state.
-// The key includes both the source key and rule ID to ensure each rule has its own
-// projection state, even when multiple rules share the same disk/source.
-func GetFreeSpaceRuleKey(rule *models.Automation) string {
-	if rule == nil {
-		return FreeSpaceSourceKeyQBittorrent + "|rule:0"
-	}
-	return GetFreeSpaceSourceKey(rule.FreeSpaceSource) + fmt.Sprintf("|rule:%d", rule.ID)
-}
-
 // qbtFreeSpace returns qBittorrent's reported free space for the instance.
 func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance) (int64, error) {
 	if syncManager == nil {

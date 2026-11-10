@@ -153,7 +153,7 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			l := zerolog.New(io.Discard)
 			dir := &models.DirScanDirectory{ID: 1, TargetInstanceID: instance.ID}
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
-			matches, outcome := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 0, map[int]struct{}{indexer.ID: {}}, nil, &l)
+			report := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 0, map[int]struct{}{indexer.ID: {}}, nil, &l)
 			// Fetch starts a detached cache touch; join it before SQLite and TempDir cleanup.
 			select {
 			case <-cacheDB.done:
@@ -161,22 +161,23 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 				t.Fatal("torrent cache touch did not finish")
 			}
 
-			// A searchee that does not count as searched stays pending, and the next scan tries it again.
-			require.Equal(t, !tt.retry, outcome.searched, "only an unavailable linked instance keeps the searchee pending")
-			var match *searcheeMatch
-			if len(matches) > 0 {
-				match = matches[0]
-			}
 			found := tt.existing && (tt.link == nil || tt.link.state == "")
 			cleared := !tt.skipped && !found
 			require.Equal(t, cleared, manager.called, "AddTorrent must run only for a torrent that the Pre-add check clears")
+
+			// A file that stays pending gets no decision, and the next scan tries it again.
+			report.files = []string{sourceFile}
+			decisions := decideSearcheeOutcome([]searcheeFile{{path: sourceFile}}, []int{indexer.ID}, false, []workItemReport{report})
+			decision, decided := decisions[sourceFile]
+			require.Equal(t, !tt.retry, decided, "only an unavailable linked instance keeps the searchee pending")
 			switch {
 			case found:
-				require.NotNil(t, match)
-				require.True(t, match.inQBittorrent)
-			case tt.skipped:
+				require.Equal(t, models.DirScanFileStatusInQBittorrent, decision.status)
+			case cleared:
+				require.Equal(t, models.DirScanFileStatusError, decision.status, "the add fails in this test")
+			case tt.skipped && !tt.retry:
 				// A skipped match is neither injected nor failed.
-				require.Nil(t, match)
+				require.Equal(t, models.DirScanFileStatusNoMatch, decision.status)
 			}
 		})
 	}

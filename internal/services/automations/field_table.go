@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -68,6 +69,10 @@ type FieldSpec struct {
 	Legacy bool
 	// Sort is what a workflow sorts or scores torrents by. A field without it cannot sort.
 	Sort SortValue
+	// NoValue reports that one torrent has no value for the field on an instance that sends the
+	// field. Nil means that each torrent has a value. The Rule scope and the condition evaluation
+	// read it (ADR 0039).
+	NoValue func(t qbt.Torrent) bool
 }
 
 // SortValue reads the Sort value of a field, a number or lowercase text. At most one reader is set.
@@ -84,6 +89,11 @@ func (s FieldSpec) Scorable() bool { return s.Sort.Number != nil }
 
 func (s FieldSpec) requires(r Requirement) FieldSpec {
 	s.Requires = r
+	return s
+}
+
+func (s FieldSpec) noValue(test func(t qbt.Torrent) bool) FieldSpec {
+	s.NoValue = test
 	return s
 }
 
@@ -204,12 +214,12 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldUploaded:          numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.Uploaded) }),
 	models.FieldUploadedSession:   numberField(ValueInteger, UnitBytes),
 	models.FieldAmountLeft:        numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.AmountLeft) }),
-	// The sort reads the current free space. A Condition also adds the space that earlier deletes in the run free.
+	// The sort reads the free space at the start of the run. A Condition reads the Projected free space.
 	models.FieldFreeSpace: numberField(ValueInteger, UnitBytes).sortNumber(func(_ qbt.Torrent, ctx *EvalContext) float64 {
-		if ctx == nil {
+		if ctx == nil || ctx.activeFreeSpace == nil {
 			return 0
 		}
-		return positive(ctx.FreeSpace)
+		return positive(ctx.activeFreeSpace.startFreeSpace())
 	}),
 
 	// The sort reads the timestamp. A Condition compares the age.
@@ -256,7 +266,8 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldPriority:      numberField(ValueInteger, UnitNone),
 	models.FieldGroupSize:     numberField(ValueInteger, UnitNone),
 
-	models.FieldPrivate:                booleanField().requires(RequiresListFieldsV5),
+	// A magnet link has no private value until its metadata arrives.
+	models.FieldPrivate:                booleanField().requires(RequiresListFieldsV5).noValue(func(t qbt.Torrent) bool { return qbittorrent.PrivateUnknown(&t) }),
 	models.FieldAutoManaged:            booleanField(),
 	models.FieldFirstLastPiecePrio:     booleanField(),
 	models.FieldForceStart:             booleanField(),
@@ -284,4 +295,32 @@ var ConditionFields = map[ConditionField]FieldSpec{
 
 	models.FieldHardlinkScope:      {Type: ValueEnum, Operators: equalOperators, Values: hardlinkScopes, Requires: RequiresLocalAccess},
 	models.FieldHardlinkScopeCross: {Type: ValueEnum, Operators: equalOperators, Values: hardlinkScopes, Requires: RequiresLocalAccess},
+}
+
+// noValueField is a field whose row has a NoValue test.
+type noValueField struct {
+	field   ConditionField
+	noValue func(t qbt.Torrent) bool
+}
+
+// noValueFields holds the rows with a NoValue test. The condition evaluation reads it for each
+// leaf of each torrent, so it is a short list and not a lookup in ConditionFields.
+var noValueFields = func() []noValueField {
+	var fields []noValueField
+	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
+		if test := ConditionFields[field].NoValue; test != nil {
+			fields = append(fields, noValueField{field, test})
+		}
+	}
+	return fields
+}()
+
+// fieldHasNoValue reports whether the torrent has no value for the field.
+func fieldHasNoValue(field ConditionField, t *qbt.Torrent) bool {
+	for _, f := range noValueFields {
+		if f.field == field {
+			return f.noValue(*t)
+		}
+	}
+	return false
 }

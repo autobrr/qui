@@ -1239,6 +1239,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Message",
@@ -1502,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Added {{time}}"
   },
   "tableView": {
     "ascending": "ascending",
@@ -1679,5 +1681,21 @@
         "add_failed": "Failed to add the torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} more copy of {{name}}",
+    "copies_other": "{{count}} more copies of {{name}}",
+    "copiesWithProblem_one": "{{count}} more copy of {{name}}. A hidden copy has a problem",
+    "copiesWithProblem_other": "{{count}} more copies of {{name}}. A hidden copy has a problem",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ticked",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ticked",
+    "hiddenTicked_one": "{{count}} hidden copy is ticked",
+    "hiddenTicked_other": "{{count}} hidden copies are ticked",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Group copies",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "grouping": "Grouping…"
   }
 }

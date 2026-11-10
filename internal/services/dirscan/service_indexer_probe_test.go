@@ -108,8 +108,6 @@ func TestService_ProcessSearchee_NoEnabledIndexers_StaysPending(t *testing.T) {
 
 	// The searchee must not error and must not count as searched: with no known
 	// enabled indexers, a no_match stamp here would be permanent and wrong.
-	matches, outcome := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, matcher, 1, nil, nil, &l)
-	require.Nil(t, matches)
-	require.False(t, outcome.searched)
-	require.False(t, outcome.searchError)
+	report := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, matcher, 1, nil, nil, &l)
+	require.Equal(t, itemNoIndexers, report.search)
 }

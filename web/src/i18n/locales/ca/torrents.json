@@ -274,6 +274,7 @@
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
@@ -691,7 +692,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
@@ -1679,5 +1681,21 @@
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
+    "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "expandAll": "Desplega-ho tot",
+    "collapseAll": "Plega-ho tot",
+    "grouping": "S'està agrupant…"
   }
 }

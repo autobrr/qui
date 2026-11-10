@@ -1169,6 +1169,7 @@
     "status": "狀態",
     "tracker": "Tracker",
     "seeds": "做種",
+    "peers": "節點",
     "leeches": "下載",
     "downloaded": "已完成",
     "message": "訊息",
@@ -1426,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "新增於{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1602,5 +1604,17 @@
         "add_failed": "加入種子失敗。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 個副本",
+    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 個副本。某個隱藏的副本有問題",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合併副本",
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合",
+    "grouping": "正在分組…"
   }
 }

@@ -129,7 +129,7 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 // newListTestClient starts a fake qBittorrent that serves torrents, the tracker
 // lists that trackers gives each torrent, and a Web API version with tracker
 // health.
-func newListTestClient(t *testing.T, instanceID int, torrents []qbt.Torrent, trackers func(i int) []qbt.TorrentTracker) *Client {
+func newListTestClient(t testing.TB, instanceID int, torrents []qbt.Torrent, trackers func(i int) []qbt.TorrentTracker) *Client {
 	t.Helper()
 
 	trackersByHash := make(map[string][]qbt.TorrentTracker, len(torrents))
