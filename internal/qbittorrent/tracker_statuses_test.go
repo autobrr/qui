@@ -165,6 +165,26 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 
 		// Non-matching messages
 		{
+			name:    "UNIT3D old passkey",
+			message: "Passkey does not exist! Please Re-download the .torrent",
+			want:    false,
+		},
+		{
+			name:    "UNIT3D-Announce unknown user",
+			message: "User does not exist. Please re-download the .torrent file.",
+			want:    false,
+		},
+		{
+			name:    "XBT old torrent pass",
+			message: "unregistered torrent pass",
+			want:    false,
+		},
+		{
+			name:    "TBDev unknown passkey",
+			message: "Unknown passkey. Please redownload the torrent from https://tracker.example.invalid - READ THE FAQ!",
+			want:    false,
+		},
+		{
 			name:    "libtorrent unknown HTTP error",
 			message: "504 (unknown HTTP error)",
 			want:    false,
