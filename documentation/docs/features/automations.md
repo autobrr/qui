@@ -1360,6 +1360,14 @@ Remove torrents the tracker no longer recognizes:
 - Condition: `Unregistered is true`
 - Action: Delete (keep files)
 
+To see these torrents without a rule, select the **Unregistered** status filter in the sidebar.
+
+qui sets **Unregistered** when no tracker of the torrent works and the message of a failed tracker has a known phrase, for example "unregistered" or "torrent not found". The torrent must be 1 hour old or more. A message that names the passkey or the torrent pass, or says "User does not exist", does not count. qui reads the tracker messages again every 60 seconds, and a rule acts on the first match.
+
+A torrent with two trackers can match while it still works. If one tracker says unregistered and the other tracker is down, the torrent matches until the other tracker works again. On qBittorrent 5.1, the torrent can also match for a short time while the working tracker sends an announce.
+
+Run a dry run before you turn on the rule.
+
 ### Maintain minimum free space
 
 Keep at least 200GB free by removing oldest completed torrents:
