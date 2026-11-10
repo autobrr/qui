@@ -78,7 +78,7 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 			return 0, fmt.Errorf("no filesystem backend for free space path: %w", err)
 		}
 		if windowsLocalPathSource(fsInstance) {
-			return 0, errors.New("path-based free space source is not supported on Windows")
+			return 0, errors.New("path-based free space source is not supported on Windows with local filesystem access")
 		}
 		p := backend.Paths().Clean(strings.TrimSpace(resolved.Path))
 		if p == "" || p == "." {

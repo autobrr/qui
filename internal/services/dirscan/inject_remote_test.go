@@ -266,7 +266,7 @@ func TestValidateLinkTreeInstance(t *testing.T) {
 	}{
 		{name: "local", instance: withLinks(models.Instance{HasLocalFilesystemAccess: true})},
 		{name: "remote has Write", instance: withLinks(*remoteInstance(models.SSHTierSFTP))},
-		{name: "no filesystem access has no Write", instance: withLinks(models.Instance{}), wantErr: "instance does not have local filesystem access enabled"},
+		{name: "no filesystem access has no Write", instance: withLinks(models.Instance{}), wantErr: "instance does not have filesystem write access"},
 		{name: "no base directory", instance: &models.Instance{HasLocalFilesystemAccess: true, UseHardlinks: true}, wantErr: "hardlink base directory is not configured"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

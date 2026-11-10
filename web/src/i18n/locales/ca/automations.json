@@ -231,7 +231,8 @@
       "qbittorrent50": "Requereix qBittorrent 5.0+",
       "qbittorrent52": "Requereix qBittorrent 5.2+",
       "localFilesystemAccess": "Requereix accés al sistema de fitxers local",
-      "remoteInstance": "No disponible en instàncies remotes"
+      "remoteInstance": "No disponible en instàncies remotes",
+      "filesystemAccess": "Requereix accés al sistema de fitxers. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància."
     },
     "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}.",
     "ruleSkip": "No s'executa en aquesta instància: {{field}} necessita {{requires}}."

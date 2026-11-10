@@ -51,7 +51,7 @@ func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *ht
 	}
 
 	if !models.FilesystemCapabilitiesOf(instance).Has(models.CapabilityRead) {
-		RespondError(w, http.StatusForbidden, "Orphan scanning requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+		RespondError(w, http.StatusForbidden, "Orphan scanning needs access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 		return false
 	}
 

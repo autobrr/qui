@@ -692,7 +692,7 @@ func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.R
 	}
 
 	if !models.FilesystemCapabilitiesOf(instance).Read {
-		RespondError(w, http.StatusBadRequest, "Target instance must have local filesystem access enabled")
+		RespondError(w, http.StatusBadRequest, "Target instance needs filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 		return nil, errors.New("instance lacks filesystem access")
 	}
 

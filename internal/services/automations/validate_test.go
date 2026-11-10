@@ -962,10 +962,15 @@ func TestValidateRule(t *testing.T) {
 			r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldName, Operator: models.OperatorMatches, Value: "(?=x)"}}}
 		}},
 		{name: "missing files without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}),
-			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+			wantMsg: "File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first."},
 		{name: "missing files with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: local},
 		{name: "hardlink scope without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}),
-			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+			wantMsg: "This file condition requires Local Filesystem Access. Enable it in instance settings first."},
+		{name: "missing files and hardlink scope without local access: the local-only field decides", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{
+			Operator:   models.OperatorAnd,
+			Conditions: []*models.RuleCondition{cond(FieldHasMissingFiles), cond(FieldHardlinkScope)},
+		}}}),
+			wantMsg: "This file condition requires Local Filesystem Access. Enable it in instance settings first."},
 		{name: "hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: remoteExec,
 			wantMsg: "This file condition is not available on remote instances."},
 		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,

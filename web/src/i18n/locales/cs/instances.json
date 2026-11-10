@@ -753,10 +753,8 @@
     "orphanScanOverview": {
       "title": "Vyhledání sirotků",
       "noInstancesDescription": "Žádné instance nenastaveny. Přidejte jednu v Nastavení pro použití této služby.",
-      "tooltip": "Vyhledává soubory na disku, které nejsou přidruženy k žádnému torrentu v qBittorrentu.\nVyžaduje povolený přístup k místnímu souborovému systému pro každou instanci.",
+      "tooltip": "Vyhledává soubory na disku, které nejsou přidruženy k žádnému torrentu v qBittorrentu.\nPotřebuje přístup k souborům každé instance. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
-      "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
-      "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
       "remoteLimits": "Mazání a automatické vyčištění na vzdálené instanci potřebují identitu souborů, kterou qui přečte jen tehdy, když mu server dovolí spouštět GNU find a stat.",
       "remoteNoIdentity": "Tato vzdálená instance je spouštět nedovoluje, takže qui nepozná, že dvě cesty vedou ke stejnému souboru, a soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent. Výsledky vyhledávání zde lze zobrazit a exportovat, ale ne smazat.",
       "on": "Zapnuto",
@@ -823,7 +821,9 @@
         "cancelFailed": "Selhala zrušení"
       },
       "errorMessage": "Chybová zpráva",
-      "scanPaths": "Cesty ke skenování"
+      "scanPaths": "Cesty ke skenování",
+      "noFilesystemAccess": "Žádný přístup k souborovému systému",
+      "noFilesystemAccessTooltip": "Vyhledání sirotků potřebuje přístup k souborům této instance. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance."
     },
     "orphanScanPreview": {
       "title": "Náhled sirotků",
@@ -1326,14 +1326,14 @@
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
-        "pathSourceLocalAccessRequired": "Cesta na serveru (vyžaduje místní přístup)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
-          "localAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému.",
-          "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\"."
-        }
+          "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\".",
+          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)"
       },
       "grouping": {
         "title": "Skupiny podmínek",
@@ -1524,7 +1524,6 @@
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
-        "enableLocalAccessOrDefault": "Povolit místní přístup k souborovému systému v nastavení instance, nebo použít výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",
         "addScoreRule": "Přidat alespoň jedno pravidlo skóre pro řazení skóre",
         "fieldMultiplierInvalid": "Multiplikátor pole musí být platné číslo",
@@ -1541,7 +1540,8 @@
         "groupIdInvalid": "ID skupiny musí obsahovat pouze alfanumerické znaky a podtržítka",
         "selectGroupKey": "Vyberte alespoň jeden klíč",
         "groupExists": "Skupina s tímto ID již existuje",
-        "customGroupAdded": "Vlastní skupina přidána"
+        "customGroupAdded": "Vlastní skupina přidána",
+        "setUpFilesystemAccessOrDefault": "Nastavte lokální nebo SSH přístup k souborovému systému v nastavení instance, nebo použijte Výchozí (qBittorrent)"
       },
       "trackerMatchInclude": "Zahrnout",
       "trackerMatchExclude": "Vyloučit"

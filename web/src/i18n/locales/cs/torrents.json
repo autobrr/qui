@@ -1736,7 +1736,7 @@
       "dropped": "Balíček přidán. Vynechané cíle: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Tato instance potřebuje přístup k místnímu souborovému systému pro sestavení balíčku.",
+        "no_filesystem_access": "Tato instance potřebuje přístup k souborovému systému pro zápis, aby mohla sestavit balíček. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
         "no_link_mode": "Pro výběr více cílů povolte v této instanci pevné odkazy nebo reflinky.",
         "no_base_directory": "Nastavte základní adresář odkazů této instance.",
         "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",

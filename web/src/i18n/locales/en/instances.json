@@ -735,10 +735,8 @@
     "orphanScanOverview": {
       "title": "Orphan Scan",
       "noInstancesDescription": "No instances configured. Add one in Settings to use this service.",
-      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nRequires local filesystem access to be enabled for each instance.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Scans download directories and identifies orphan files for cleanup.",
-      "noLocalAccess": "No Local Access",
-      "noLocalAccessTooltip": "qui and qBittorrent must run on the same machine. Enable \"Local Filesystem Access\" in instance settings to use orphan scanning.",
       "remoteLimits": "Deletion and auto-cleanup on a remote instance need file identity, which qui reads only when the server lets it run GNU find and stat.",
       "remoteNoIdentity": "This remote instance does not let qui run them, so qui cannot tell when two paths are the same file, and a file reachable at a second path, such as through a bind mount, can be listed even when a torrent uses it. Scans here can be previewed and exported, but not deleted.",
       "on": "On",
@@ -796,7 +794,9 @@
         "cancelFailed": "Failed to cancel"
       },
       "errorMessage": "Error message",
-      "scanPaths": "Scan paths"
+      "scanPaths": "Scan paths",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Orphan Preview",
@@ -1291,14 +1291,14 @@
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
-        "pathSourceLocalAccessRequired": "Path on server (requires Local Access)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
-          "localAccessRequired": "Path-based free space source requires Local Filesystem Access.",
-          "pathRequired": "Path is required when using \"Path on server\"."
-        }
+          "pathRequired": "Path is required when using \"Path on server\".",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Grouped condition groups",
@@ -1489,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
-        "enableLocalAccessOrDefault": "Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",
         "addScoreRule": "Add at least one score rule for Score sorting",
         "fieldMultiplierInvalid": "Field multiplier must be a valid number",
@@ -1506,7 +1505,8 @@
         "groupIdInvalid": "Group ID must contain only alphanumeric characters and underscores",
         "selectGroupKey": "Select at least one key",
         "groupExists": "A group with this ID already exists",
-        "customGroupAdded": "Custom group added"
+        "customGroupAdded": "Custom group added",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Include",
       "trackerMatchExclude": "Exclude"

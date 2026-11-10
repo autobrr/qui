@@ -735,10 +735,8 @@
     "orphanScanOverview": {
       "title": "Scansione orfani",
       "noInstancesDescription": "Nessuna istanza configurata. Aggiungine una nelle Impostazioni per usare questo servizio.",
-      "tooltip": "Trova i file su disco che non sono associati ad alcun torrent in qBittorrent.\nRichiede l'accesso al filesystem locale abilitato per ogni istanza.",
+      "tooltip": "Trova i file su disco che non sono associati ad alcun torrent in qBittorrent.\nRichiede l'accesso ai file di ogni istanza. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
-      "noLocalAccess": "Nessun accesso locale",
-      "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
       "remoteLimits": "L'eliminazione e la pulizia automatica su un'istanza remota richiedono l'identità dei file, che qui può leggere solo se il server gli consente di eseguire GNU find e stat.",
       "remoteNoIdentity": "Questa istanza remota non lo consente, quindi qui non riconosce quando due percorsi sono lo stesso file e un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa. Le scansioni qui si possono visualizzare ed esportare, ma non eliminare.",
       "on": "On",
@@ -796,7 +794,9 @@
         "cancelFailed": "Annullamento non riuscito"
       },
       "errorMessage": "Messaggio di errore",
-      "scanPaths": "Percorsi di scansione"
+      "scanPaths": "Percorsi di scansione",
+      "noFilesystemAccess": "Nessun accesso al filesystem",
+      "noFilesystemAccessTooltip": "La scansione orfani richiede l'accesso ai file di questa istanza. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza."
     },
     "orphanScanPreview": {
       "title": "Anteprima orfani",
@@ -1291,14 +1291,14 @@
         "defaultSource": "Predefinito (qBittorrent)",
         "pathSource": "Percorso sul server",
         "pathSourceWindowsUnsupported": "Percorso sul server (non supportato su Windows)",
-        "pathSourceLocalAccessRequired": "Percorso sul server (richiede l'Accesso locale)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Inserisci il percorso su cui controllare lo spazio libero (es., un punto di montaggio)",
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
-          "localAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'Accesso al filesystem locale.",
-          "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\"."
-        }
+          "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\".",
+          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)"
       },
       "grouping": {
         "title": "Gruppi di condizioni raggruppate",
@@ -1489,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Passato all'intervallo di 5 minuti perché le eliminazioni per Spazio libero hanno un'attesa di circa 5 minuti",
         "pathSourceUnsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows. Passato al valore predefinito di qBittorrent.",
         "switchFreeSpaceSourceDefault": "Cambia l'origine dello spazio libero in Predefinito (qBittorrent)",
-        "enableLocalAccessOrDefault": "Abilita l'accesso al filesystem locale nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)",
         "enterPathOrDefault": "Inserisci un percorso o riporta l'origine dello spazio libero su Predefinito (qBittorrent)",
         "addScoreRule": "Aggiungi almeno una regola di punteggio per l'ordinamento per Punteggio",
         "fieldMultiplierInvalid": "Il moltiplicatore del campo deve essere un numero valido",
@@ -1506,7 +1505,8 @@
         "groupIdInvalid": "L'ID del gruppo può contenere solo caratteri alfanumerici e trattini bassi",
         "selectGroupKey": "Seleziona almeno una chiave",
         "groupExists": "Esiste già un gruppo con questo ID",
-        "customGroupAdded": "Gruppo personalizzato aggiunto"
+        "customGroupAdded": "Gruppo personalizzato aggiunto",
+        "setUpFilesystemAccessOrDefault": "Configura l'accesso al filesystem locale o via SSH nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)"
       },
       "trackerMatchInclude": "Includi",
       "trackerMatchExclude": "Escludi"

@@ -608,7 +608,7 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 		return errors.New("instance is nil")
 	}
 	if !models.FilesystemCapabilitiesOf(instance).Write {
-		return errors.New("instance does not have local filesystem access enabled")
+		return errors.New("instance does not have filesystem write access")
 	}
 	if instance.HardlinkBaseDir == "" {
 		return errors.New("hardlink base directory is not configured")

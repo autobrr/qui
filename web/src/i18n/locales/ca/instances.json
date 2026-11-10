@@ -954,14 +954,14 @@
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
-        "pathSourceLocalAccessRequired": "Camí al servidor (cal accés local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
-          "localAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local.",
-          "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor»."
-        }
+          "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor».",
+          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Camí al servidor (necessita accés local o SSH)"
       },
       "grouping": {
         "title": "Grups de condicions agrupades",
@@ -1141,7 +1141,6 @@
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
-        "enableLocalAccessOrDefault": "Activa l'accés al sistema de fitxers local a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "addScoreRule": "Afegeix com a mínim una regla de puntuació per ordenar per puntuació",
         "fieldMultiplierInvalid": "El multiplicador de camp ha de ser un número vàlid",
@@ -1158,7 +1157,8 @@
         "groupIdInvalid": "L'ID del grup només pot contenir caràcters alfanumèrics i guions baixos",
         "selectGroupKey": "Selecciona com a mínim una clau",
         "groupExists": "Ja hi ha un grup amb aquest ID",
-        "customGroupAdded": "S'ha afegit el grup personalitzat"
+        "customGroupAdded": "S'ha afegit el grup personalitzat",
+        "setUpFilesystemAccessOrDefault": "Configura l'accés al sistema de fitxers local o per SSH a la configuració de la instància, o fes servir Predeterminat (qBittorrent)"
       },
       "trackerMatchInclude": "Inclou",
       "trackerMatchExclude": "Exclou"
@@ -1360,10 +1360,8 @@
     "orphanScanOverview": {
       "title": "Exploració d'orfes",
       "noInstancesDescription": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nCal activar l'accés al sistema de fitxers local per a cada instància.",
+      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nNecessita accés als fitxers de cada instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
-      "noLocalAccess": "Sense accés local",
-      "noLocalAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
       "remoteLimits": "La supressió i la neteja automàtica en una instància remota necessiten la identitat dels fitxers, que qui només pot llegir si el servidor li permet executar GNU find i stat.",
       "remoteNoIdentity": "Aquesta instància remota no li permet executar-los, de manera que qui no pot saber quan dos camins són el mateix fitxer, i un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi. Les exploracions d'aquí es poden previsualitzar i exportar, però no suprimir.",
       "on": "Activada",
@@ -1421,7 +1419,9 @@
       "deletedDirs_other": "{{count}} directoris",
       "deletedSeparator": ", ",
       "errorMessage": "Missatge d'error",
-      "scanPaths": "Camins d'exploració"
+      "scanPaths": "Camins d'exploració",
+      "noFilesystemAccess": "Sense accés al sistema de fitxers",
+      "noFilesystemAccessTooltip": "L'exploració d'orfes necessita accés als fitxers d'aquesta instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància."
     },
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",
