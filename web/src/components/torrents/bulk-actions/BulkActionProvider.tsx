@@ -16,7 +16,7 @@ import { useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { actionRefetchDelay, failedActionCount, getActionErrorMessage, scheduleTorrentListRefetches, showSuccessToast } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useMemo, useReducer, useRef, type ReactNode } from "react"
+import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { TmmConfirmDialog } from "../TorrentDialogs"
@@ -40,7 +40,9 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
 
   // A pick reads the target at click time, so a new target does not change the value of the context.
   const publishedRef = useRef(published)
-  publishedRef.current = published
+  useLayoutEffect(() => {
+    publishedRef.current = published
+  }, [published])
 
   if (!published?.actionTarget.count && dialog !== CLOSED_DIALOG) {
     dispatch({ type: "close" })
