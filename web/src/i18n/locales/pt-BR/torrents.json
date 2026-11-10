@@ -1657,7 +1657,7 @@
       "dropped": "Pacote adicionado. Destinos descartados: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Esta instância precisa de acesso de escrita ao sistema de arquivos para montar um pacote.",
+        "no_filesystem_access": "Esta instância precisa de acesso de escrita ao sistema de arquivos para montar um pacote. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
         "no_link_mode": "Ative hardlinks ou reflinks nesta instância para selecionar vários destinos.",
         "no_base_directory": "Configure um diretório base para os links desta instância.",
         "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
