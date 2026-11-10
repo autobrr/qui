@@ -47,32 +47,23 @@ function sshDefaults(instance: Instance) {
 }
 
 export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
-  const queryClient = useQueryClient()
-  const onChanged = useCallback(() => queryClient.invalidateQueries({ queryKey: ["instances"] }), [queryClient])
-  const setup = useSSHSetup({ instanceId: instance.id, onChanged })
-
-  // The form starts over from the row whenever the stored endpoint or user
-  // changes: a save that the server normalized, a clear, or another instance.
-  // The test result lives in the hook outside it and survives; the replace
-  // dialog belongs to the form and closes with it.
+  // The setup starts over from the row whenever the stored endpoint or user
+  // changes: a save that the server normalized, a clear, or a change from
+  // another client. A test result answers for the endpoint it ran against.
   return (
     <SSHCredentialsForm
       key={`${instance.id}:${instance.sshHost ?? ""}:${instance.sshPort ?? ""}:${instance.sshUsername ?? ""}`}
       instance={instance}
-      setup={setup}
     />
   )
 }
 
-interface SSHCredentialsFormProps {
-  instance: Instance
-  setup: ReturnType<typeof useSSHSetup>
-}
-
-function SSHCredentialsForm({ instance, setup }: SSHCredentialsFormProps) {
+function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
-  const { state, test, save, clear, pin } = setup
+  const queryClient = useQueryClient()
+  const onChanged = useCallback(() => queryClient.invalidateQueries({ queryKey: ["instances"] }), [queryClient])
+  const { state, test, save, clear, pin } = useSSHSetup({ instanceId: instance.id, onChanged })
   const [replaceOpen, setReplaceOpen] = useState(false)
 
   const stored = !!instance.sshUsername
