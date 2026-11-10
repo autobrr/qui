@@ -58,9 +58,9 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 					singleColumn, singleOrder = "name", "asc"
 				}
 				for _, id := range ids {
-					single, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: id, Sort: singleColumn, Order: singleOrder})
+					single, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: id, Sort: singleColumn, Order: singleOrder, SidebarCounts: true})
 					require.NoError(t, err)
-					scoped, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: []int{id}, Sort: column, Order: order})
+					scoped, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: []int{id}, Sort: column, Order: order, SidebarCounts: true})
 					require.NoError(t, err)
 
 					var scopedRows, bothRows []TorrentView
@@ -79,6 +79,7 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 					require.Equal(t, single.Torrents, scopedRows)
 					require.Equal(t, single.Total, scoped.Total)
 					require.Equal(t, single.Stats, scoped.Stats)
+					require.NotNil(t, single.Counts)
 					require.Equal(t, single.Counts, scoped.Counts)
 					require.ElementsMatch(t, single.Tags, scoped.Tags)
 				}
