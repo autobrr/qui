@@ -162,6 +162,12 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Unknown torrent",
 			want:    true,
 		},
+		// regression: #3987
+		{
+			name:    "removal reason with a passkey only in a URL",
+			message: "Trumped: download the new torrent from https://tracker.example.invalid/download?id=1&passkey=abc",
+			want:    true,
+		},
 
 		// Non-matching messages
 		// regression: #3987
