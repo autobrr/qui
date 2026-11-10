@@ -7,10 +7,13 @@ import { EMPTY_SELECTION, selectionReducer, type ActionTarget, type TorrentSelec
 import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
 
-// What the desktop table resolves from the selection for the header management bar.
+// What the desktop table publishes for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
   actionTarget: ActionTarget
   selectedTotalSize: number
+  // The instance of the page, and the instance subset of the Unified view.
+  instanceId: number
+  instanceIds?: number[]
 }
 
 interface TorrentSelectionContextType {

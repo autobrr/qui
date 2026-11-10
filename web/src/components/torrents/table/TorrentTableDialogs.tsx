@@ -3,15 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
 import type { useTorrentListActions } from "@/hooks/useTorrentListController"
 import type { useTorrentsList } from "@/hooks/useTorrentsList"
 import { api } from "@/lib/api"
@@ -20,7 +11,6 @@ import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
 import type { Category, CrossInstanceTorrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { type Dispatch, type SetStateAction, useMemo } from "react"
-import { useTranslation } from "react-i18next"
 import { DeleteTorrentDialog } from "../DeleteTorrentDialog"
 import {
   CreateAndAssignCategoryDialog,
@@ -33,8 +23,7 @@ import {
   TagEditorDialog,
   SetCommentDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog,
-  TmmConfirmDialog
+  SpeedLimitsDialog
 } from "../TorrentDialogs"
 
 type Wrappers = ReturnType<typeof useTorrentListActions>
@@ -68,13 +57,6 @@ export interface TorrentTableDialogsProps {
   setShowRenameFileDialog: Dispatch<SetStateAction<boolean>>
   showRenameFolderDialog: boolean
   setShowRenameFolderDialog: Dispatch<SetStateAction<boolean>>
-  showRecheckDialog: boolean
-  setShowRecheckDialog: Dispatch<SetStateAction<boolean>>
-  showReannounceDialog: boolean
-  setShowReannounceDialog: Dispatch<SetStateAction<boolean>>
-  showTmmDialog: boolean
-  setShowTmmDialog: Dispatch<SetStateAction<boolean>>
-  pendingTmmEnable: boolean
   showLocationWarningDialog: boolean
   setShowLocationWarningDialog: Dispatch<SetStateAction<boolean>>
 
@@ -100,9 +82,6 @@ export interface TorrentTableDialogsProps {
   handleRenameTorrentWrapper: Wrappers["handleRenameTorrentWrapper"]
   handleRenameFileWrapper: Wrappers["handleRenameFileWrapper"]
   handleRenameFolderWrapper: Wrappers["handleRenameFolderWrapper"]
-  handleRecheckWrapper: Wrappers["handleRecheckWrapper"]
-  handleReannounceWrapper: Wrappers["handleReannounceWrapper"]
-  handleTmmConfirmWrapper: Wrappers["handleTmmConfirmWrapper"]
   proceedToLocationDialog: () => void
 
   deleteDialogTotalSize: number
@@ -123,7 +102,7 @@ export interface TorrentTableDialogsProps {
 
 /**
  * Renders the torrent-table action dialogs (delete, tags, category, locations,
- * renames, share/speed limits, recheck/reannounce/tmm confirmations, …). All
+ * renames, share/speed limits, the location warning, …). All
  * open/close state and submit handlers are threaded in from the orchestrator's
  * hooks; this component owns only the rename-entry query that exclusively feeds
  * the rename dialogs.
@@ -154,13 +133,6 @@ export function TorrentTableDialogs({
   setShowRenameFileDialog,
   showRenameFolderDialog,
   setShowRenameFolderDialog,
-  showRecheckDialog,
-  setShowRecheckDialog,
-  showReannounceDialog,
-  setShowReannounceDialog,
-  showTmmDialog,
-  setShowTmmDialog,
-  pendingTmmEnable,
   showLocationWarningDialog,
   setShowLocationWarningDialog,
   deleteFiles,
@@ -182,9 +154,6 @@ export function TorrentTableDialogs({
   handleRenameTorrentWrapper,
   handleRenameFileWrapper,
   handleRenameFolderWrapper,
-  handleRecheckWrapper,
-  handleReannounceWrapper,
-  handleTmmConfirmWrapper,
   proceedToLocationDialog,
   deleteDialogTotalSize,
   deleteDialogFormattedSize,
@@ -197,7 +166,6 @@ export function TorrentTableDialogs({
   allowSubcategories,
   capabilities,
 }: TorrentTableDialogsProps) {
-  const { t } = useTranslation("torrents")
   const { count, previewTorrents } = actionTarget
   const isAllSelected = actionTarget.kind === "selectAll"
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
@@ -369,56 +337,6 @@ export function TorrentTableDialogs({
         isPending={isPending}
       />
 
-
-      {/* Force Recheck Confirmation Dialog */}
-      <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("recheckDialog.title", { count })}</DialogTitle>
-            <DialogDescription>
-              {t("recheckDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-              {t("recheckDialog.cancel")}
-            </Button>
-            <Button onClick={handleRecheckWrapper} disabled={isPending}>
-              {t("recheckDialog.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reannounce Confirmation Dialog */}
-      <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("reannounceDialog.title", { count })}</DialogTitle>
-            <DialogDescription>
-              {t("reannounceDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-              {t("reannounceDialog.cancel")}
-            </Button>
-            <Button onClick={handleReannounceWrapper} disabled={isPending}>
-              {t("reannounceDialog.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* TMM Confirmation Dialog */}
-      <TmmConfirmDialog
-        open={showTmmDialog}
-        onOpenChange={setShowTmmDialog}
-        count={count}
-        enable={pendingTmmEnable}
-        onConfirm={handleTmmConfirmWrapper}
-        isPending={isPending}
-      />
 
       {/* Location Warning Dialog */}
       <LocationWarningDialog

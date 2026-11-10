@@ -193,13 +193,9 @@ export function useTorrentListActions({
     handleRenameTorrent,
     handleRenameFile,
     handleRenameFolder,
-    handleRecheck,
-    handleReannounce,
     handleTmmConfirm,
     handleSetShareLimit,
     handleSetSpeedLimits,
-    prepareRecheckAction,
-    prepareReannounceAction,
   } = actions
 
   const crossSeedWarning = useCrossSeedWarning({
@@ -271,10 +267,6 @@ export function useTorrentListActions({
     await handleRenameFolder(renameHash, oldPath, newPath)
   }, [handleRenameFolder, renameHash])
 
-  const prepareRecheckWrapper = useCallback(() => prepareRecheckAction(actionTarget), [prepareRecheckAction, actionTarget])
-  const prepareReannounceWrapper = useCallback(() => prepareReannounceAction(actionTarget), [prepareReannounceAction, actionTarget])
-  const handleRecheckWrapper = useCallback(() => void handleRecheck(actionTarget), [handleRecheck, actionTarget])
-  const handleReannounceWrapper = useCallback(() => void handleReannounce(actionTarget), [handleReannounce, actionTarget])
   const handleTmmConfirmWrapper = useCallback(() => handleTmmConfirm(actionTarget), [handleTmmConfirm, actionTarget])
 
   const handleSetShareLimitWrapper = useCallback((
@@ -305,10 +297,6 @@ export function useTorrentListActions({
     handleRenameTorrentWrapper,
     handleRenameFileWrapper,
     handleRenameFolderWrapper,
-    prepareRecheckWrapper,
-    prepareReannounceWrapper,
-    handleRecheckWrapper,
-    handleReannounceWrapper,
     handleTmmConfirmWrapper,
     handleSetShareLimitWrapper,
     handleSetSpeedLimitsWrapper,

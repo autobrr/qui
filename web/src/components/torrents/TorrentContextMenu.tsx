@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/context-menu"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstancesSupport, type CapabilityFlag } from "@/hooks/useInstanceCapabilities"
-import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
@@ -51,6 +50,7 @@ import {
 import { memo, useCallback, useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+import type { BulkActionPick } from "./bulk-actions/bulk-action-state"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -64,7 +64,8 @@ export interface TorrentContextMenuProps {
   // The Action target of the selection. Every action item acts on it.
   actionTarget: ActionTarget
   onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
-  onAction: (action: TorrentAction, options?: { enable?: boolean }) => void
+  // Sends a Bulk action to the bulk action module, which acts on the Action target.
+  onPick: (pick: BulkActionPick) => void
   onPrepareDelete: () => void
   onPrepareTags: () => void
   onPrepareComment?: () => void
@@ -72,10 +73,7 @@ export interface TorrentContextMenuProps {
   onPrepareCreateCategory: () => void
   onPrepareShareLimit: () => void
   onPrepareSpeedLimits: () => void
-  onPrepareRecheck: () => void
-  onPrepareReannounce: () => void
   onPrepareLocation: () => void
-  onPrepareTmm: (enable: boolean) => void
   onPrepareRenameTorrent: () => void
   availableCategories?: Record<string, Category>
   onSetCategory: (category: string) => void
@@ -110,17 +108,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   isSelected,
   actionTarget,
   onTorrentSelect,
-  onAction,
+  onPick,
   onPrepareDelete,
   onPrepareTags,
   onPrepareComment,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
-  onPrepareRecheck,
-  onPrepareReannounce,
   onPrepareLocation,
   onPrepareRenameTorrent,
-  onPrepareTmm,
   availableCategories = {},
   onSetCategory,
   isPending = false,
@@ -312,16 +307,20 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(torrents.map(t => t.seq_dl), stateUnknownForSelection)
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    onAction(action)
-  }, [onAction])
+    onPick({ action })
+  }, [onPick])
 
   const handleForceStartToggle = useCallback((enable: boolean) => {
-    onAction(TORRENT_ACTIONS.FORCE_START, { enable })
-  }, [onAction])
+    onPick({ action: TORRENT_ACTIONS.FORCE_START, enable })
+  }, [onPick])
 
   const handleSeqDlToggle = useCallback((enable: boolean) => {
-    onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable })
-  }, [onAction])
+    onPick({ action: TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, enable })
+  }, [onPick])
+
+  const handleTmmToggle = useCallback((enable: boolean) => {
+    onPick({ action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM, enable })
+  }, [onPick])
 
   const supportsInstanceScopedActions = _instanceId > 0
 
@@ -361,7 +360,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.RESUME)}
+              onClick={() => onPick({ action: TORRENT_ACTIONS.RESUME })}
               disabled={isPending}
             >
               <Play className="mr-2 h-4 w-4" />
@@ -394,21 +393,21 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               </ContextMenuItem>
             )}
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.PAUSE)}
+              onClick={() => onPick({ action: TORRENT_ACTIONS.PAUSE })}
               disabled={isPending}
             >
               <Pause className="mr-2 h-4 w-4" />
               {t("contextMenu.pause")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onPrepareRecheck()}
+              onClick={() => onPick({ action: TORRENT_ACTIONS.RECHECK })}
               disabled={isPending}
             >
               <CheckCircle className="mr-2 h-4 w-4" />
               {t("contextMenu.forceRecheck")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onPrepareReannounce()}
+              onClick={() => onPick({ action: TORRENT_ACTIONS.REANNOUNCE })}
               disabled={isPending}
             >
               <Radio className="mr-2 h-4 w-4" />
@@ -546,14 +545,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             {mixed ? (
               <>
                 <ContextMenuItem
-                  onClick={() => onPrepareTmm(true)}
+                  onClick={() => handleTmmToggle(true)}
                   disabled={isPending}
                 >
                   <Sparkles className="mr-2 h-4 w-4" />
                   {t("contextMenu.enableTmm")} {mixedLabel}
                 </ContextMenuItem>
                 <ContextMenuItem
-                  onClick={() => onPrepareTmm(false)}
+                  onClick={() => handleTmmToggle(false)}
                   disabled={isPending}
                 >
                   <Settings2 className="mr-2 h-4 w-4" />
@@ -562,7 +561,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               </>
             ) : (
               <ContextMenuItem
-                onClick={() => onPrepareTmm(!allEnabled)}
+                onClick={() => handleTmmToggle(!allEnabled)}
                 disabled={isPending}
               >
                 {allEnabled ? (

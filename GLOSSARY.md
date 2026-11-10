@@ -33,6 +33,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
 - **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. _Avoid_: Action scope, selection payload.
+- **Bulk action**: One action that the user applies to the Action target, for example Pause, Set category, or Delete.
+- **Action surface**: A place in the torrent list where the user picks a Bulk action: the context menu, the header bar, and the mobile action bar. _Avoid_: host.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
 - **Sidebar count**: The number beside a sidebar filter. It equals the rows that filter shows with no other filter or search. A merged tracker shows the largest count of its domains. _Avoid_: Filter total.
