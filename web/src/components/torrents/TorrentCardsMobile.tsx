@@ -517,11 +517,11 @@ function SwipeableCard({
             {groupPill}
           </div>
 
-          {/* Tracker, Size and Ratio on the left, state badge on the right */}
+          {/* Tracker, Size and Ratio on the left, state badge on the right. On a full line, the tracker name gets shorter first, then the size. */}
           <div className="flex h-[22px] items-center gap-2 text-xs">
-            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+            <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
               {trackerDisplayName && (
-                <span className="flex items-center gap-1 min-w-0" title={trackerTitle}>
+                <span className="flex items-center gap-1 min-w-0 shrink-[9999]" title={trackerTitle}>
                   <TrackerIcon
                     title={trackerTitle}
                     fallback={trackerMeta.fallback}
@@ -532,7 +532,7 @@ function SwipeableCard({
                   <span className="truncate">{trackerDisplayName}</span>
                 </span>
               )}
-              <span className="flex-shrink-0">
+              <span className="min-w-0 truncate">
                 {isComplete ? formatBytes(torrent.size) : `${formatBytes(torrent.downloaded)} / ${formatBytes(torrent.size)}`}
               </span>
               <span className="flex items-center gap-1 flex-shrink-0">
