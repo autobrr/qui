@@ -19,6 +19,7 @@ import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlo
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { actionRefetchDelay, failedActionCount, getActionErrorMessage, removeDeletedTorrents, scheduleTorrentListRefetches, showSuccessToast } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { EMPTY_ACTION_TARGET } from "@/lib/torrent-selection"
 import { anyTorrentHasTag, getTorrentHashesWithTag } from "@/lib/torrent-utils"
@@ -123,6 +124,12 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
           toast.error(getActionErrorMessage(t, "delete", failedActionCount(body)), {
             description: (error instanceof Error && error.message) || t("actionToasts.unexpectedError"),
           })
+          // The server deletes on one instance after another, so a failure can follow deletes on other
+          // instances. A retry would resolve the filter again and delete torrents that joined it since.
+          if (scope === ALL_INSTANCES_ID && body.selectAll) {
+            dispatch({ type: "close" })
+            dispatchSelection({ type: "clear" })
+          }
           throw error
         }
         removeDeletedTorrents(queryClient, instanceId, { ...body, clientHashes, clientCount: count })

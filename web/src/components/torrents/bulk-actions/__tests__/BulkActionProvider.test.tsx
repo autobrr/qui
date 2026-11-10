@@ -32,6 +32,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useBulkActions } from "../bulk-actions-context"
 import { TorrentSelectionProvider, useTorrentSelectionContext, type TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { resetPendingListRefetchesForTests } from "@/hooks/useTorrentActions"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { EMPTY_ACTION_TARGET, hasSelection, type ActionTarget, type SelectAllTarget } from "@/lib/torrent-selection"
@@ -598,6 +599,21 @@ describe("bulk action module - delete", () => {
 
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
     expect(mockedToast.error).toHaveBeenCalledTimes(1)
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.delete/1", { description: "boom" })
+    expect(hasSelection(result.current.selection)).toBe(false)
+    expect(deleteTitle()).toBeNull()
+  })
+
+  // regression: #3989
+  it("closes the dialog and clears the selection when a Select all delete fails in the Unified view", async () => {
+    mockedApi.bulkAction.mockRejectedValueOnce(new Error("boom"))
+    const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: selectAll(50, {}, ["a"]) })
+    act(() => result.current.dispatchSelection({ type: "selectAll" }))
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete("deleteDialog.deleteCount/50")
+
+    expect(mockedApi.bulkAction.mock.calls[0][0]).toBe(ALL_INSTANCES_ID)
     expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.delete/1", { description: "boom" })
     expect(hasSelection(result.current.selection)).toBe(false)
     expect(deleteTitle()).toBeNull()
