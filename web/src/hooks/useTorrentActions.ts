@@ -282,21 +282,20 @@ export function showTagUpdateError(t: Translate, error: Error, count: number) {
   })
 }
 
+export async function invalidateInstanceCaches(queryClient: QueryClient, instanceId: number) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false }),
+    queryClient.invalidateQueries({ queryKey: ["instance-metadata", instanceId], exact: false }),
+  ])
+}
+
 export function useTorrentActions({ instanceId, instanceIds, onActionComplete }: UseTorrentActionsProps) {
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
-  const invalidateTorrentCaches = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["torrents-list", instanceId],
-        exact: false,
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ["instance-metadata", instanceId],
-        exact: false,
-      }),
-    ])
-  }, [instanceId, queryClient])
+  const invalidateTorrentCaches = useCallback(
+    () => invalidateInstanceCaches(queryClient, instanceId),
+    [instanceId, queryClient]
+  )
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)

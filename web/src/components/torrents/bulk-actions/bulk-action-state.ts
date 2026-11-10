@@ -14,7 +14,8 @@ import { getTotalSize } from "@/lib/torrent-utils"
 import type { Category } from "@/types"
 
 type QueueAction = "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority"
-type ValueDialogAction = "setTags" | "setShareLimit" | "setSpeedLimits" | "setComment" | "renameTorrent"
+const VALUE_DIALOG_ACTIONS = ["setTags", "setShareLimit", "setSpeedLimits", "setComment", "renameTorrent"] as const
+type ValueDialogAction = (typeof VALUE_DIALOG_ACTIONS)[number]
 
 // A pick that runs its request at once.
 export type RequestPick =
@@ -40,7 +41,16 @@ export type BulkDialog =
   | { name: "setLocation" | "setCategory" | ValueDialogAction }
 
 type OpenBulkDialog = Exclude<BulkDialog, { name: "closed" }>
-type ConfirmationDialog = Extract<OpenBulkDialog, { name: "recheck" | "reannounce" | "toggleAutoTMM" }>
+const CONFIRMATION_DIALOGS = ["recheck", "reannounce", "toggleAutoTMM"] as const
+type ConfirmationDialog = Extract<OpenBulkDialog, { name: (typeof CONFIRMATION_DIALOGS)[number] }>
+
+export function isConfirmationDialog(dialog: BulkDialog): dialog is ConfirmationDialog {
+  return (CONFIRMATION_DIALOGS as readonly string[]).includes(dialog.name)
+}
+
+function isValueDialogAction(action: string): action is ValueDialogAction {
+  return (VALUE_DIALOG_ACTIONS as readonly string[]).includes(action)
+}
 
 export type BulkDialogEvent =
   | { type: "open"; dialog: OpenBulkDialog }
@@ -70,6 +80,7 @@ export type PickOutcome = { kind: "run"; pick: RequestPick } | { kind: "open"; d
 
 // count is the count of the Action target. One torrent needs no confirmation.
 export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
+  if (isValueDialogAction(pick.action)) return { kind: "open", dialog: { name: pick.action } }
   switch (pick.action) {
     case "recheck":
     case "reannounce":
@@ -82,12 +93,6 @@ export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
       return { kind: "open", dialog: { name: "locationWarning" } }
     case "setCategory":
       return pick.category === undefined ? { kind: "open", dialog: { name: pick.action } } : { kind: "run", pick }
-    case "setTags":
-    case "setShareLimit":
-    case "setSpeedLimits":
-    case "setComment":
-    case "renameTorrent":
-      return { kind: "open", dialog: { name: pick.action } }
     case "export":
       return { kind: "export" }
     default:

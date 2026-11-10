@@ -18,7 +18,7 @@ import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
-import { actionRefetchDelay, failedActionCount, getActionErrorMessage, removeDeletedTorrents, scheduleTorrentListRefetches, showSuccessToast, showTagUpdateError, updateTags } from "@/hooks/useTorrentActions"
+import { actionRefetchDelay, failedActionCount, getActionErrorMessage, invalidateInstanceCaches, removeDeletedTorrents, scheduleTorrentListRefetches, showSuccessToast, showTagUpdateError, updateTags } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
@@ -46,7 +46,7 @@ import {
   TmmConfirmDialog
 } from "../TorrentDialogs"
 import { BulkActionCategoriesContext, BulkActionsContext } from "./bulk-actions-context"
-import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, deleteRequests, deleteSize, dialogLists, dialogPick, requestInstanceId, resolvePick, type BulkActionPick, type BulkRequestValues, type DeleteRequest } from "./bulk-action-state"
+import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, deleteRequests, deleteSize, dialogLists, dialogPick, isConfirmationDialog, requestInstanceId, resolvePick, type BulkActionPick, type BulkRequestValues, type DeleteRequest } from "./bulk-action-state"
 
 type BulkRequest = ReturnType<typeof bulkRequest>
 
@@ -199,10 +199,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
       try {
         await updateTags(scope, plan, request)
       } catch (error) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["torrents-list", scope], exact: false }),
-          queryClient.invalidateQueries({ queryKey: ["instance-metadata", scope], exact: false }),
-        ])
+        await invalidateInstanceCaches(queryClient, scope)
         throw error
       }
     },
@@ -259,7 +256,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     if (!open) dispatch({ type: "close" })
   }, [])
   const confirm = () => {
-    if (dialog.name === "recheck" || dialog.name === "reannounce" || dialog.name === "toggleAutoTMM") send(dialogPick(dialog))
+    if (isConfirmationDialog(dialog)) send(dialogPick(dialog))
   }
 
   const confirmTags = (plan: TagUpdatePlan) => {
@@ -272,7 +269,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     mutateTags({ scope: requestInstanceId(published), count: published.actionTarget.count, plan, request })
   }
 
-  // The dialog closes when both requests succeed.
   const confirmSpeedLimits = async (uploadLimit: number, downloadLimit: number) => {
     if (!published) return
     const requests: BulkRequestValues[] = []
