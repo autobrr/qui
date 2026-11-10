@@ -53,17 +53,21 @@ export function ThemeLayoutSettings() {
   return (
     <div className="space-y-3">
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
+          <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
+        </div>
         {/* Turning the split on writes this browser's theme, which a local-only browser must not send. */}
         <Switch id="theme-mobile-split" checked={split} disabled={!data || localOnly} onCheckedChange={(on) => void setSplit(on)} />
-        <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
-        <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
       </div>
       {split && <p className="text-xs text-muted-foreground">{t("themes.layout.mobileSplitOffWarning")}</p>}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="theme-local-only" className="cursor-pointer">{t("themes.layout.localOnly")}</Label>
+          <FieldHelp>{t("themes.layout.localOnlyHelp")}</FieldHelp>
+        </div>
         <Switch id="theme-local-only" checked={localOnly} onCheckedChange={setThemeLocalOnly} />
-        <Label htmlFor="theme-local-only" className="cursor-pointer">{t("themes.layout.localOnly")}</Label>
-        <FieldHelp>{t("themes.layout.localOnlyHelp")}</FieldHelp>
       </div>
     </div>
   )

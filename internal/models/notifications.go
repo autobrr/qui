@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -45,8 +46,13 @@ type NotificationTargetUpdate struct {
 }
 
 // NotificationTargetStore manages persistence for notification targets.
+// It caches ListEnabled, because each event reads it; its writes clear the cache.
 type NotificationTargetStore struct {
 	db dbinterface.Querier
+
+	mu      sync.Mutex
+	enabled []*NotificationTarget
+	loaded  bool
 }
 
 func NewNotificationTargetStore(db dbinterface.Querier) *NotificationTargetStore {
@@ -97,6 +103,27 @@ func (s *NotificationTargetStore) List(ctx context.Context) ([]*NotificationTarg
 }
 
 func (s *NotificationTargetStore) ListEnabled(ctx context.Context) ([]*NotificationTarget, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.loaded {
+		return s.enabled, nil
+	}
+	targets, err := s.listEnabled(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.enabled, s.loaded = targets, true
+	return s.enabled, nil
+}
+
+func (s *NotificationTargetStore) forgetEnabled() {
+	s.mu.Lock()
+	s.enabled, s.loaded = nil, false
+	s.mu.Unlock()
+}
+
+func (s *NotificationTargetStore) listEnabled(ctx context.Context) ([]*NotificationTarget, error) {
 	query := `
 		SELECT id, name, url, enabled, event_types, created_at, updated_at
 		FROM notification_targets
@@ -152,6 +179,8 @@ func (s *NotificationTargetStore) GetByID(ctx context.Context, id int) (*Notific
 }
 
 func (s *NotificationTargetStore) Create(ctx context.Context, create *NotificationTargetCreate) (*NotificationTarget, error) {
+	defer s.forgetEnabled()
+
 	if create == nil {
 		return nil, errors.New("create payload required")
 	}
@@ -177,6 +206,8 @@ func (s *NotificationTargetStore) Create(ctx context.Context, create *Notificati
 }
 
 func (s *NotificationTargetStore) Update(ctx context.Context, id int, update *NotificationTargetUpdate) (*NotificationTarget, error) {
+	defer s.forgetEnabled()
+
 	if update == nil {
 		return nil, errors.New("update payload required")
 	}
@@ -214,6 +245,8 @@ func (s *NotificationTargetStore) Update(ctx context.Context, id int, update *No
 }
 
 func (s *NotificationTargetStore) Delete(ctx context.Context, id int) error {
+	defer s.forgetEnabled()
+
 	query := `DELETE FROM notification_targets WHERE id = ?`
 
 	result, err := s.db.ExecContext(ctx, query, id)

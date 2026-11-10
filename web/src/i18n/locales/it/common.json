@@ -46,7 +46,7 @@
     "tasksForInstance": "Attività per l'istanza",
     "settingsForInstance": "Impostazioni per l'istanza",
     "clearSearch": "Svuota ricerca",
-    "searchTorrents": "Cerca torrent... ({{shortcutKey}})",
+    "searchTorrents": "Cerca torrent...",
     "globPattern": "Pattern glob...",
     "smartSearchTitle": "Funzionalità di ricerca intelligente:",
     "smartSearchGlob": "Pattern glob:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Cerca nel nome, nella categoria e nei tag",
     "smartSearchEnter": "Premi Invio per la ricerca istantanea",
     "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
+    "smartSearchShortcut": "Premi {{shortcutKey}} per andare alla ricerca",
     "torrentCreationTasksTitle": "Attività di creazione torrent",
     "updateAvailable": "Aggiornamento disponibile",
     "updateVersion": "Versione {{version}}",
@@ -100,17 +101,19 @@
     "cancel": "Annulla",
     "close": "Chiudi",
     "create": "Crea",
-    "copyPath": "Copia percorso",
     "scrollToTop": "Scorri in alto",
     "search": "Cerca",
-    "select": "Seleziona"
+    "select": "Seleziona",
+    "copyValue": "Copia {{label}}"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Seleziona elementi..."
   },
   "feedback": {
-    "noResultsFound": "Nessun risultato trovato."
+    "noResultsFound": "Nessun risultato trovato.",
+    "copied": "{{label}} copiato negli appunti",
+    "copyFailed": "Impossibile copiare negli appunti"
   },
   "errors": {
     "unknown": "Errore sconosciuto",
@@ -149,11 +152,10 @@
     "dark": "Scuro",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "Passato alla modalità {{mode}}",
     "switchedToTheme": "Passato al tema {{theme}}",
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
+    "premiumThemeError": "Questo tema richiede una licenza. Apri Impostazioni → Temi per attivare una licenza."
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",
@@ -191,8 +193,7 @@
     "trigger": "Maggiori informazioni"
   },
   "numberInput": {
-    "unlimited": "Illimitato",
-    "useUnlimited": " (usa -1 per illimitato)"
+    "unlimited": "Illimitato"
   },
   "dateTime": {
     "na": "N/D",
@@ -244,6 +245,9 @@
     "perkSuffix": "su Discord e la nostra eterna gratitudine.",
     "yearly": "{{price}} / anno",
     "monthly": "{{price}} / mese",
-    "notLicense": "I temi premium sono un acquisto unico separato."
+    "notLicense": "La licenza dei temi è un acquisto unico separato."
+  },
+  "labels": {
+    "path": "Percorso"
   }
 }

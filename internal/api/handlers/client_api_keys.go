@@ -98,8 +98,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		ProxyURL:     proxyURL,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // ListClientAPIKeys handles GET /api/client-api-keys
@@ -135,8 +134,7 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(enrichedKeys)
+	RespondJSON(w, http.StatusOK, enrichedKeys)
 }
 
 // DeleteClientAPIKey handles DELETE /api/client-api-keys/{id}

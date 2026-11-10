@@ -46,7 +46,7 @@
     "tasksForInstance": "Завдання екземпляра",
     "settingsForInstance": "Налаштування екземпляра",
     "clearSearch": "Очистити пошук",
-    "searchTorrents": "Пошук торентів... ({{shortcutKey}})",
+    "searchTorrents": "Пошук торентів...",
     "globPattern": "Glob шаблон...",
     "smartSearchTitle": "Можливості розумного пошуку:",
     "smartSearchGlob": "Glob шаблони:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Пошук за назвою, категорією та тегами",
     "smartSearchEnter": "Натисніть Enter для миттєвого пошуку",
     "smartSearchAuto": "Автопошук після паузи 500 мс",
+    "smartSearchShortcut": "Натисніть {{shortcutKey}}, щоб перейти до пошуку",
     "torrentCreationTasksTitle": "Завдання створення торента",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
@@ -100,17 +101,19 @@
     "cancel": "Скасувати",
     "close": "Закрити",
     "create": "Створити",
-    "copyPath": "Копіювати шлях",
     "scrollToTop": "Прокрутити вгору",
     "search": "Пошук",
-    "select": "Вибрати"
+    "select": "Вибрати",
+    "copyValue": "Копіювати {{label}}"
   },
   "placeholders": {
     "search": "Пошук...",
     "selectItems": "Вибрати елементи..."
   },
   "feedback": {
-    "noResultsFound": "Результатів не знайдено."
+    "noResultsFound": "Результатів не знайдено.",
+    "copied": "{{label}} скопійовано в буфер обміну",
+    "copyFailed": "Не вдалося скопіювати в буфер обміну"
   },
   "errors": {
     "unknown": "Невідома помилка",
@@ -149,11 +152,10 @@
     "dark": "Темна",
     "system": "Системна",
     "theme": "Тема",
-    "premium": "Преміум",
     "switchedToMode": "Перемкнуто на {{mode}} режим",
     "switchedToTheme": "Перемкнуто на тему {{theme}}",
     "switchedToThemeVariation": "Перемкнуто на тему {{theme}} ({{variation}})",
-    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії."
+    "premiumThemeError": "Ця тема потребує ліцензії. Відкрийте Налаштування → Теми для активації ліцензії."
   },
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",
@@ -191,8 +193,7 @@
     "trigger": "Докладніше"
   },
   "numberInput": {
-    "unlimited": "Без обмежень",
-    "useUnlimited": " (використовуйте -1 для необмеженого)"
+    "unlimited": "Без обмежень"
   },
   "dateTime": {
     "na": "Н/Д",
@@ -258,6 +259,9 @@
     "perkSuffix": "у Discord і нашу вічну вдячність.",
     "yearly": "{{price}} / рік",
     "monthly": "{{price}} / місяць",
-    "notLicense": "Преміум-теми є окремою одноразовою покупкою."
+    "notLicense": "Ліцензія на теми є окремою одноразовою покупкою."
+  },
+  "labels": {
+    "path": "Шлях"
   }
 }

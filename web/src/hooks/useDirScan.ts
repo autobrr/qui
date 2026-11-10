@@ -146,13 +146,7 @@ export function useDirScanStatus(directoryId: number, options?: { enabled?: bool
     queryKey: ["dir-scan", "directory", directoryId, "status"],
     queryFn: () => api.getDirScanStatus(directoryId),
     enabled: shouldEnable,
-    refetchInterval: (query) => {
-      const data = query.state.data
-      if (!data || ("status" in data && data.status === "idle")) {
-        return false
-      }
-      return isRunActive(data as DirScanRun) ? 1_000 : false
-    },
+    refetchInterval: (query) => (query.state.data?.runs.some(isRunActive) ? 1_000 : false),
   })
 }
 

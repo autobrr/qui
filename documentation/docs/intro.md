@@ -13,16 +13,16 @@ Most people run qui with one qBittorrent instance. Multi-instance support is opt
 
 ## Where to run qui
 
-qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
+qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk. For those, qui needs access to the files of the instance. With [local filesystem access](./features/instance-settings.md#local-filesystem-access), qui runs on the same host as qBittorrent, or sees the same files through a shared mount. With [SSH access](./features/ssh-access.md), qui reaches the files on another machine over SSH.
 
-If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no way to run qui, run qui on another machine and add the seedbox as an instance. Everything that uses the Web API works: the interface, the automations that do not read the disk, and cross-seed in default mode. If the provider gives you an SSH login, set up [SSH access](./features/ssh-access.md) for the features that read files, such as orphan scan and cross-seed hardlink mode.
 
 ## Features
 
 - **Single Binary**: No dependencies. Download and run.
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
 - **Large Collections**: Handles thousands of torrents
-- **Themeable**: Multiple built-in color themes, plus sideloadable [custom themes](./features/custom-themes.md) (premium), with a shared collection in [qui-community-themes](https://github.com/autobrr/qui-community-themes)
+- **Themeable**: Multiple built-in color themes, including the themes from [qui-community-themes](https://github.com/autobrr/qui-community-themes) (license required), plus sideloadable [custom themes](./features/custom-themes.md) (license required)
 - **Base URL Support**: Serve from a subdirectory (for example `/qui/`) behind a reverse proxy
 - **OIDC Single Sign-On**: Authenticate through your [OpenID Connect provider](./configuration/oidc.md)
 - **External Programs**: Launch [custom scripts](./features/external-programs.md) from the torrent context menu
@@ -57,7 +57,7 @@ Sizes and speeds follow the language: French shows `1,5 Gio` where English shows
 
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 
-Community members contribute translations. To add or improve a language, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
+The team does not take new translations at this time. To report a wrong translation, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
 
 ## Quick start
 
@@ -76,6 +76,6 @@ GPL-2.0-or-later
 
 ## Supported torrent clients
 
-qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, or Transmission, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
+qui supports qBittorrent only. It communicates directly with the qBittorrent Web API. If you use Deluge, rTorrent, Transmission, or uTorrent, use the qui CLI to [migrate your torrents](./features/client-migration.md) to qBittorrent. The migration keeps their history.
 
 For compatible qBittorrent versions, see the [qBittorrent Version Compatibility](./advanced/compatibility.md) page.

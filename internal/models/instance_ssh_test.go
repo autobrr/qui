@@ -538,3 +538,50 @@ func flipLastByte(t *testing.T, stored string) string {
 	raw[len(raw)-1] ^= 0xFF
 	return credentialCipherPrefix + base64.StdEncoding.EncodeToString(raw)
 }
+
+// A new host or key, or no key at all, is a host whose tier is unknown: the
+// tier goes back to sftp with the credentials so the capabilities stay
+// honest until a connect probes again.
+func TestSSHCredentialChangesResetTheTier(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	for name, change := range map[string]func() error{
+		"new credentials": func() error {
+			return store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, "other", testSSHKey)
+		},
+		"cleared credentials": func() error { return store.ClearSSHCredentials(ctx, instance.ID) },
+		"replaced host key": func() error {
+			return store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
+		},
+	} {
+		probed, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		require.NoError(t, store.SetSSHProbe(ctx, probed, SSHTierExec, true))
+		got, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got.SSHHardlink, name)
+		require.NoError(t, change(), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, name)
+		assert.Nil(t, got.SSHHardlink, "%s: the hardlink flag is unknown again", name)
+
+		// A probe that dialed with the old settings answers for them, not for
+		// the row as it is now.
+		require.NoError(t, store.SetSSHProbe(ctx, probed, SSHTierExec, true), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: a stale probe must not restore the tier", name)
+		assert.Nil(t, got.SSHHardlink, "%s: a stale probe must not restore the flag", name)
+
+		// A probe whose exec half got no answer writes the flag only.
+		require.NoError(t, store.SetSSHProbe(ctx, got, "", false), name)
+		got, err = store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: an empty tier keeps the stored tier", name)
+		require.NotNil(t, got.SSHHardlink, name)
+		assert.False(t, *got.SSHHardlink, name)
+	}
+}

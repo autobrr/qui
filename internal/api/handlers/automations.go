@@ -10,12 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
 )
@@ -39,20 +41,20 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name            string                   `json:"name"`
-	TrackerPattern  string                   `json:"trackerPattern"`
-	TrackerDomains  []string                 `json:"trackerDomains"`
-	Enabled         *bool                    `json:"enabled"`
-	DryRun          *bool                    `json:"dryRun"`
-	Notify          *bool                    `json:"notify"`
-	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
-	Conditions      *models.ActionConditions `json:"conditions"`
-	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
-	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default (oldest first)
-	PreviewLimit    *int                     `json:"previewLimit"`
-	PreviewOffset   *int                     `json:"previewOffset"`
-	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
+	Name            string                   `json:"name" doc:"Rule name. Required."`
+	TrackerPattern  string                   `json:"trackerPattern" doc:"Tracker domains that the rule applies to, separated by commas. '*' matches all trackers. 'tracker.example.com' matches one domain, '*.example.com' its subdomains, and '.example.com' the domain and its subdomains. A leading '!' excludes a domain."`
+	TrackerDomains  []string                 `json:"trackerDomains" doc:"-"`
+	Enabled         *bool                    `json:"enabled" doc:"Whether the rule runs. Import always sets it to 'false'. Edit as JSON keeps the current value."`
+	DryRun          *bool                    `json:"dryRun" doc:"When 'true', the rule logs what it would do and changes nothing. Default 'false'."`
+	Notify          *bool                    `json:"notify" doc:"When 'true', qui sends a notification when the rule acts. Default 'true'."`
+	SortOrder       *int                     `json:"sortOrder" doc:"Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value."`
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty" doc:"How often the rule runs, in seconds. At least '60'. Default '900' (15 minutes)."`
+	Conditions      *models.ActionConditions `json:"conditions" doc:"The actions of the rule, each with its condition. Required."`
+	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty" doc:"Where the 'FREE_SPACE' condition field reads free space. Default: the free space that qBittorrent reports."`
+	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty" doc:"The order in which the rule processes torrents. Default: oldest first."`
+	PreviewLimit    *int                     `json:"previewLimit" doc:"-"`
+	PreviewOffset   *int                     `json:"previewOffset" doc:"-"`
+	PreviewView     string                   `json:"previewView,omitempty" doc:"-"` // "needed" (default) or "eligible"
 }
 
 type AutomationDryRunResult struct {
@@ -235,12 +237,29 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rules, err := h.store.ListByInstance(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to list rules for manual apply")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
+		return
+	}
+	// The run skips a disabled rule.
+	rules = slices.DeleteFunc(rules, func(rule *models.Automation) bool { return !rule.Enabled })
+	if !canReachExportTargets(w, r, rules...) {
+		return
+	}
+
 	if h.service == nil {
 		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
-	if err := h.service.ApplyOnceForInstance(r.Context(), instanceID); err != nil {
+	err = h.service.ApplyOnceForInstance(r.Context(), instanceID)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual apply failed")
 		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
 		return
@@ -249,9 +268,30 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
 }
 
-func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
+// ApplyRuleNow runs one saved rule immediately and applies its actions. A rule with DryRun set stays a simulation.
+func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
+		return
+	}
+
+	ruleID, err := strconv.Atoi(chi.URLParam(r, "ruleID"))
+	if err != nil || ruleID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
+		return
+	}
+
+	rule, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for manual run")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+	if !canReachExportTargets(w, r, rule) {
 		return
 	}
 
@@ -260,9 +300,42 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activities, err := h.service.ApplyRuleNow(r.Context(), instanceID, rule)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automations: manual run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+
+	status := "applied"
+	if rule.DryRun {
+		status = "dry-run-completed"
+	}
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      status,
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
+}
+
+func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
 	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
 	if payload == nil {
 		RespondError(w, status, msg)
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
@@ -277,19 +350,34 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activityIDs := make([]int, 0, len(activities))
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      "dry-run-completed",
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
+}
+
+// canReachExportTargets refuses the request when a rule exports to an instance
+// outside the Instance limit of the API key.
+func canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
+	for _, rule := range rules {
+		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && !middleware.ReachesInstance(r, export.TargetInstanceID) {
+			RespondError(w, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID))
+			return false
+		}
+	}
+	return true
+}
+
+func activityIDs(activities []*models.AutomationActivity) []int {
+	ids := make([]int, 0, len(activities))
 	for _, activity := range activities {
 		if activity == nil || activity.ID <= 0 {
 			continue
 		}
-		activityIDs = append(activityIDs, activity.ID)
+		ids = append(ids, activity.ID)
 	}
-
-	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
-		Status:      "dry-run-completed",
-		ActivityIDs: activityIDs,
-		Activities:  activities,
-	})
+	return ids
 }
 
 func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
@@ -326,6 +414,9 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 	}
 
 	if export := payload.Conditions.ExportToInstance; export != nil && export.Enabled {
+		if !middleware.ReachesInstance(r, export.TargetInstanceID) {
+			return nil, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID)
+		}
 		if h.instanceStore == nil {
 			return nil, http.StatusInternalServerError, "Instance store not configured"
 		}
@@ -473,13 +564,23 @@ const (
 	previewActionNone previewActionType = iota
 	previewActionDelete
 	previewActionCategory
+	previewActionTag
 	previewActionBoth // error case
 )
 
 // detectPreviewAction determines which preview action is enabled in the payload.
+// Tag preview is detected only when neither delete nor category is enabled, so
+// combined rules keep their existing dispatch behavior.
 func detectPreviewAction(conditions *models.ActionConditions) previewActionType {
 	hasDelete := conditions != nil && conditions.Delete != nil && conditions.Delete.Enabled
 	hasCategory := conditions != nil && conditions.Category != nil && conditions.Category.Enabled
+	hasTag := false
+	for _, tagAction := range conditions.TagActions() {
+		if tagAction != nil && tagAction.Enabled {
+			hasTag = true
+			break
+		}
+	}
 
 	switch {
 	case hasDelete && hasCategory:
@@ -488,6 +589,8 @@ func detectPreviewAction(conditions *models.ActionConditions) previewActionType 
 		return previewActionCategory
 	case hasDelete:
 		return previewActionDelete
+	case hasTag:
+		return previewActionTag
 	default:
 		return previewActionNone
 	}
@@ -517,9 +620,9 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusBadRequest, "Cannot preview rule with both delete and category actions enabled")
 		return
 	case previewActionNone:
-		RespondError(w, http.StatusBadRequest, "Preview requires either delete or category action to be enabled")
+		RespondError(w, http.StatusBadRequest, "Preview requires a delete, category, or tag action to be enabled")
 		return
-	case previewActionDelete, previewActionCategory:
+	case previewActionDelete, previewActionCategory, previewActionTag:
 		// Valid actions - continue processing
 	}
 
@@ -528,6 +631,11 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 
 	if action == previewActionCategory {
 		h.handleCategoryPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		return
+	}
+
+	if action == previewActionTag {
+		h.handleTagPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
 		return
 	}
 
@@ -549,6 +657,16 @@ func (h *AutomationHandler) handleCategoryPreview(ctx context.Context, w http.Re
 	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) handleTagPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewTagRule(ctx, instanceID, automation, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview tag rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}

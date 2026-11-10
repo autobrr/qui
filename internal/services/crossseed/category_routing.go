@@ -106,7 +106,13 @@ func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category stri
 	if err != nil || settings == nil {
 		return ContentTypeInfo{}, false
 	}
-	contentType, matched := matchCategoryMappingRule(settings.CategoryMappingRules, category)
+	return categoryRuleContentType(settings.CategoryMappingRules, category)
+}
+
+// categoryRuleContentType returns the content classification of the rule that
+// matches category. Returns false when no rule matches.
+func categoryRuleContentType(rules []models.CategoryMappingRule, category string) (ContentTypeInfo, bool) {
+	contentType, matched := matchCategoryMappingRule(rules, category)
 	if !matched {
 		return ContentTypeInfo{}, false
 	}

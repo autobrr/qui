@@ -3,58 +3,75 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
 import { createInstance, type TFunction } from "i18next"
-import { CONTENT_TYPE_VALUES, FIELD_REQUIREMENTS, getCapabilityReason } from "./constants"
+import { FIELD_REQUIREMENTS, getCapabilityReason, getDisabledFields, type Capabilities } from "./constants"
 import * as constants from "./constants"
 
 afterEach(async () => {
   await changeLanguage("en")
 })
 
-// The drop-down's values are a copy of releases.ContentTypes, so read the Go
-// source and fail when the two lists drift.
-describe("CONTENT_TYPE_VALUES", () => {
-  it("matches releases.ContentTypes in pkg/releases/content_type.go", () => {
-    const source = readFileSync(resolve(import.meta.dirname, "../../../../pkg/releases/content_type.go"), "utf8")
-
-    const constants = new Map(
-      [...source.matchAll(/^\t(ContentType\w+)\s+ContentType\s*=\s*"([^"]+)"$/gm)].map(m => [m[1], m[2]])
-    )
-    const slice = source.match(/var ContentTypes = \[\]ContentType\{([^}]*)\}/)
-    expect(slice).not.toBeNull()
-
-    const goValues = [...slice![1].matchAll(/^\t(ContentType\w+),$/gm)].map(m => {
-      const value = constants.get(m[1])
-      expect(value, `${m[1]} has no string constant`).toBeDefined()
-      return value
-    })
-
-    expect(goValues.length).toBeGreaterThan(0)
-    expect(CONTENT_TYPE_VALUES.map(contentType => contentType.value)).toEqual(goValues)
-  })
-})
-
 describe("getCapabilityReason", () => {
   it("renders the automations translation, not the English constant", async () => {
     await changeLanguage("de")
 
-    expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
-    expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
-    // Until #2726 gives a remote instance file identity, it shares the local access reason.
-    expect(getCapabilityReason("fileIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("supportsListFieldsV5", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent50)
+    expect(getCapabilityReason("supportsTrackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
+    expect(getCapabilityReason("supportsListCreatedBy", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent52)
+    // An instance without Read has no filesystem access, local or remote.
+    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.filesystemAccess)
+    // Trusted identity needs local access, so a remote instance can never get it.
+    expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
   })
 })
 
 describe("FIELD_REQUIREMENTS", () => {
-  it("gates the hardlink scope fields on file identity, not local access", () => {
-    expect(FIELD_REQUIREMENTS.HARDLINK_SCOPE).toBe("fileIdentity")
-    expect(FIELD_REQUIREMENTS.HARDLINK_SCOPE_CROSS).toBe("fileIdentity")
+  it("takes the capability of each field from the Go table", () => {
+    expect(FIELD_REQUIREMENTS).toEqual({
+      PRIVATE: "supportsListFieldsV5",
+      POPULARITY: "supportsListFieldsV5",
+      COMMENT: "supportsListFieldsV5",
+      REANNOUNCE: "supportsLiveReannounce",
+      IS_UNREGISTERED: "supportsTrackerHealth",
+      TRACKER_STATUS: "supportsTrackerHealth",
+      TRACKER_MESSAGE: "supportsTrackerHealth",
+      CREATED_BY: "supportsListCreatedBy",
+      HAS_MISSING_FILES: "read",
+      HARDLINK_SCOPE: "trustedIdentity",
+      HARDLINK_SCOPE_CROSS: "trustedIdentity",
+    })
+  })
+})
+
+describe("getDisabledFields", () => {
+  const en = i18n.getFixedT("en", "automations")
+  const access = { read: true, trustedIdentity: true }
+  const disabled = (capabilities: Capabilities) =>
+    Object.fromEntries(getDisabledFields(capabilities, false, en).map(({ field, reason }) => [field, reason]))
+
+  it("greys out the qBittorrent 5.0 and 5.2 fields at Web API 2.9.3", () => {
+    const v5 = "Requires qBittorrent 5.0+"
+    expect(disabled({ ...access, supportsLiveReannounce: false, supportsListFieldsV5: false, supportsTrackerHealth: false, supportsListCreatedBy: false })).toEqual({
+      PRIVATE: v5,
+      POPULARITY: v5,
+      COMMENT: v5,
+      REANNOUNCE: v5,
+      IS_UNREGISTERED: "Requires qBittorrent 5.1+",
+      TRACKER_STATUS: "Requires qBittorrent 5.1+",
+      TRACKER_MESSAGE: "Requires qBittorrent 5.1+",
+      CREATED_BY: "Requires qBittorrent 5.2+",
+    })
+  })
+
+  it("greys out only Created By at Web API 2.11.4", () => {
+    expect(disabled({ ...access, supportsLiveReannounce: true, supportsListFieldsV5: true, supportsTrackerHealth: true, supportsListCreatedBy: false })).toEqual({
+      CREATED_BY: "Requires qBittorrent 5.2+",
+    })
   })
 })
 
@@ -63,20 +80,22 @@ describe("FIELD_REQUIREMENTS", () => {
 describe("query-builder translation keys", () => {
   it("every label the helpers look up has an English key", () => {
     const requested = new Set<string>()
-    const recordingT = ((key: string, options?: { defaultValue?: string }) => {
+    const recordingT = ((key: string) => {
       requested.add(key)
-      return options?.defaultValue ?? key
+      return key
     }) as TFunction
 
-    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
+    const fields = Object.keys(constants.CONDITION_FIELDS)
     for (const field of fields) {
       constants.getFieldLabel(field, recordingT)
     }
     for (const group of constants.FIELD_GROUPS) {
       constants.getFieldGroupLabel(group.label, recordingT)
     }
-    for (const capability of Object.keys(constants.CAPABILITY_REASONS) as (keyof typeof constants.CAPABILITY_REASONS)[]) {
+    const capabilities = new Set([...Object.values(constants.FIELD_REQUIREMENTS), ...Object.values(constants.STATE_VALUE_REQUIREMENTS)])
+    for (const capability of capabilities) {
       constants.getCapabilityReason(capability, recordingT)
+      constants.getCapabilityReason(capability, recordingT, true)
     }
 
     const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>
@@ -103,7 +122,7 @@ describe("query-builder translation keys", () => {
 
 describe("getFieldLabel", () => {
   it("has no fallback of its own when the key is missing", async () => {
-    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
+    const fields = Object.keys(constants.CONDITION_FIELDS)
     const empty = createInstance()
     await empty.init({ lng: "en", resources: {} })
     expect(fields.map((field) => constants.getFieldLabel(field, empty.t))).toEqual(fields.map((field) => `queryBuilder.fields.${field}`))
@@ -119,12 +138,55 @@ describe("getFieldLabel", () => {
 describe("getFieldType", () => {
   it.each([
     ["HARDLINK_SCOPE", "hardlinkScope"],
+    ["STATE", "state"],
     ["SAVE_PATH", "string"],
+    ["SIZE", "bytes"],
+    ["ADDED_ON", "duration"],
+    ["DL_SPEED", "speed"],
+    ["PROGRESS", "percentage"],
+    ["RATIO", "float"],
     ["NOT_A_FIELD", "string"],
     ["__proto__", "string"],
     ["constructor", "string"],
     ["toString", "string"],
   ])("returns the type of %s, and string for an id with no entry", (field, type) => {
     expect(constants.getFieldType(field)).toBe(type)
+  })
+})
+
+describe("getTranslatedOperatorsForField", () => {
+  const labels = (field: string) => constants.getTranslatedOperatorsForField(field, i18n.getFixedT("en", "automations")).map((op) => op.label)
+
+  it("shows symbols for a numeric field, words for a string field, and is or is not for a value list", () => {
+    expect(labels("SIZE")).toEqual(["=", "!=", ">", ">=", "<", "<=", "between"])
+    expect(labels("NAME")).toEqual(["equals", "not equals", "contains", "not contains", "starts with", "ends with", "matches regex", "exists in", "similar exists in"])
+    expect(labels("STATE")).toEqual(["is", "is not"])
+    expect(labels("PRIVATE")).toEqual(["is", "is not"])
+    expect(labels("NOT_A_FIELD")).toEqual(labels("SAVE_PATH"))
+  })
+})
+
+describe("getTranslatedHardlinkScopes", () => {
+  it("leaves out the \"both\" scope", () => {
+    expect(constants.getTranslatedHardlinkScopes(i18n.getFixedT("en", "automations")).map((scope) => scope.value)).toEqual(["none", "torrents_only", "inside_qbittorrent", "outside_qbittorrent"])
+  })
+})
+
+describe("SORT_FIELDS and SCORE_FIELDS", () => {
+  const scoreFields = [
+    "SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT", "FREE_SPACE",
+    "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEDING_TIME", "TIME_ACTIVE",
+    "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE",
+    "RATIO", "PROGRESS", "AVAILABILITY", "DL_SPEED", "UP_SPEED",
+    "NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE", "TRACKERS_COUNT",
+  ]
+  const textFields = ["NAME", "CATEGORY", "TAGS", "TRACKER", "STATE", "SAVE_PATH", "CONTENT_PATH", "COMMENT"]
+
+  it("offers each field with a Sort value except the clock fields for sort", () => {
+    expect([...constants.SORT_FIELDS].sort()).toEqual([...scoreFields, ...textFields].sort())
+  })
+
+  it("offers each field with a number Sort value except the clock fields for score", () => {
+    expect([...constants.SCORE_FIELDS].sort()).toEqual([...scoreFields].sort())
   })
 })

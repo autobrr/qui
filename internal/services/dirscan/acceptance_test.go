@@ -407,3 +407,103 @@ func TestDescribeDirScanDecisionHints_FlexibleCorroborationFailure(t *testing.T)
 		t.Fatal("expected at least one hint")
 	}
 }
+
+// A flexible size-only match of one file needs a second proof. Two names share
+// a title when they pass the title rule of the Match verdict, as on every
+// cross-seed Match path.
+func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		searchee   string
+		candidate  string
+		wantAccept bool
+	}{
+		{
+			name:       "an AKA title on the candidate",
+			searchee:   "Kaiju Harbor (2020)",
+			candidate:  "Neon Tide AKA Kaiju Harbor 2020 1080p WEB-DL x264-GRP",
+			wantAccept: true,
+		},
+		{
+			name:       "each side of a slash title",
+			searchee:   "Neon strange Tide S01E01",
+			candidate:  "Neon/strange Tide S01E01 1080p WEB-DL x264-GRP",
+			wantAccept: true,
+		},
+		{
+			name:       "the title without a Season numeral that equals the season",
+			searchee:   "Kaiju Squad 100 III S03E01",
+			candidate:  "Kaiju Squad 100 S03E01 1080p WEB-DL x264-GRP",
+			wantAccept: true,
+		},
+		{
+			name:       "a title numeral that names the season",
+			searchee:   "Kaiju Squad 100 S02E01",
+			candidate:  "Kaiju Squad 100 II 1080p WEB-DL x264-GRP",
+			wantAccept: true,
+		},
+		{
+			name:       "an apostrophe only on one name",
+			searchee:   "Bob's Burgers S01E01",
+			candidate:  "Bobs.Burgers.S01E01.1080p.WEB-DL.x264-GRP",
+			wantAccept: true,
+		},
+		{
+			name:      "an AKA title of another year",
+			searchee:  "Kaiju Harbor (2020)",
+			candidate: "Neon Tide AKA Kaiju Harbor 2019 1080p WEB-DL x264-GRP",
+		},
+		{
+			name:      "no shared title",
+			searchee:  "Kaiju Harbor (2020)",
+			candidate: "Neon Tide 2020 1080p WEB-DL x264-GRP",
+		},
+		{
+			name:      "names without a parsed title",
+			searchee:  "Season 2 {imdb-tt1234567}",
+			candidate: "Season 2 [tvdb-123]",
+		},
+		{
+			name:      "two yearless sequels",
+			searchee:  "Neon Tide II",
+			candidate: "Neon Tide III 1080p WEB-DL x264-GRP",
+		},
+		{
+			name:      "a title numeral of another season",
+			searchee:  "Kaiju Squad 100 S03E01",
+			candidate: "Kaiju Squad 100 II 1080p WEB-DL x264-GRP",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			searchee := &Searchee{
+				Name:  tt.searchee,
+				Files: []*ScannedFile{{Path: "/media/" + tt.searchee + ".mkv", RelPath: tt.searchee + ".mkv", Size: 1000}},
+			}
+			parsed := &ParsedTorrent{
+				Name:        tt.candidate,
+				InfoHash:    "deadbeef",
+				PieceLength: 4,
+				Files:       []TorrentFile{{Path: "candidate.mkv", Size: 1000}},
+				TotalSize:   1000,
+			}
+			match := &MatchResult{
+				MatchedFiles:   []MatchedFilePair{{SearcheeFile: searchee.Files[0], TorrentFile: parsed.Files[0]}},
+				IsPerfectMatch: true,
+				IsMatch:        true,
+			}
+			settings := &models.DirScanSettings{MatchMode: models.MatchModeFlexible}
+			decision := refineDirScanMatchDecision(searchee, NewParser(nil).Parse(tt.searchee), parsed,
+				&jackett.SearchResult{Title: tt.candidate}, settings, match, shouldAcceptDirScanMatch(match, parsed, settings))
+
+			if decision.Accept != tt.wantAccept {
+				t.Fatalf("accept = %v, want %v (reason %q)", decision.Accept, tt.wantAccept, decision.Reason)
+			}
+		})
+	}
+}

@@ -17,6 +17,15 @@ export interface Instance {
   hasLocalFilesystemAccess: boolean
   capabilities: FilesystemCapabilities
   filesystemMode: FilesystemMode
+  // SSH access; the key itself never reaches the browser.
+  sshHost?: string
+  sshPort?: number
+  sshUsername?: string
+  sshHostKeyPinned?: boolean
+  // What the key lets qui run on the host, as the last probe found. Absent without credentials.
+  sshTier?: SSHTier
+  // Whether the host advertises hardlink@openssh.com. Absent until a probe answers.
+  sshHardlink?: boolean
   // Hardlink mode settings (per-instance)
   useHardlinks: boolean
   hardlinkBaseDir: string
@@ -30,10 +39,43 @@ export interface Instance {
   reannounceSettings: InstanceReannounceSettings
 }
 
+export type SSHTier = "sftp" | "exec"
+
+export interface SSHCredentials {
+  host: string
+  port: number
+  username: string
+  privateKey: string
+}
+
+export type SSHTestStatus = "unpinned" | "pinned" | "mismatch" | "pin_unreadable" | "error"
+
+// POST /instances/{id}/ssh-test. hostKey is echoed back to pin it.
+export interface SSHTestResponse {
+  status: SSHTestStatus
+  hostKey?: string
+  fingerprint?: string
+  keyType?: string
+  pinnedFingerprint?: string
+  pinnedKeyType?: string
+  capabilities?: SSHProbe
+  error?: string
+}
+
+export interface SSHProbe {
+  sftp: boolean
+  statvfs: boolean
+  hardlink: boolean
+  limits: boolean
+  exec: boolean
+  gnuUserland: boolean
+}
+
 // What qui can do with an instance's files, from models.FilesystemCapabilitiesOf.
 export interface FilesystemCapabilities {
   read: boolean
   identity: boolean
+  trustedIdentity: boolean
   write: boolean
   content: boolean
 }
@@ -117,6 +159,14 @@ export interface LocalCrossSeedMatch {
   matchType: "content_path" | "hardlink" | "reflink" | "name" | "release"
 }
 
+/** An instance with local filesystem access that the delete check did not read. */
+export interface UncheckedInstance {
+  instanceId: number
+  instanceName: string
+  /** offline: qui cannot read its torrents. disabled: it is turned off in qui. */
+  reason: "offline" | "disabled"
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string
@@ -170,9 +220,13 @@ export interface InstanceCapabilities {
   subcategoriesAlwaysEnabled: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsTestEmail: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
   supportsShareLimitsAction: boolean
   supportsShareLimitsMode?: boolean
+  supportsLiveReannounce: boolean
+  supportsListFieldsV5: boolean
+  supportsListCreatedBy: boolean
   webAPIVersion?: string
 }

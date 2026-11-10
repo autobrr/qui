@@ -143,7 +143,7 @@ func TestSearchWithRetries(t *testing.T) {
 			meta := svc.parser.Parse(tt.searcheeName)
 			searchee := &Searchee{Name: tt.searcheeName}
 
-			resp, err := svc.searchWithRetries(context.Background(), searchee, meta, []int{1, 2}, nil, tt.arrTitles, minSize, maxSize, &l)
+			resp, err := svc.searchWithRetries(context.Background(), searchee, meta, []int{1, 2}, nil, tt.arrTitles, minSize, maxSize, nil, &l)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 

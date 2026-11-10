@@ -5,79 +5,14 @@ package orphanscan
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
-
-// categoryPaths returns the on-disk destination of every qBittorrent category,
-// resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
-	categories, err := s.sync.GetCategories(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
-	}
-
-	seen := make(map[string]struct{}, len(categories))
-	for name := range categories {
-		addAbsoluteScanRoot(d, seen, resolveCategoryPath(d, name, categories, defaultSavePath, useSubcategories))
-	}
-
-	return sortedRoots(seen), nil
-}
-
-// qbtInvalidPathChars is the regex from Utils::Fs::toValidPath; slashes are
-// absent there because they separate path segments.
-var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
-
-// toValidPath converts a category name into the relative path qBittorrent
-// creates for it, so a category called "movies:hd" is protected at "movies hd".
-func toValidPath(name string) string {
-	return qbtInvalidPathChars.ReplaceAllString(name, " ")
-}
-
-// resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
-// destination cannot be determined; a depth cap here would silently drop
-// protection for a deeply nested category.
-func resolveCategoryPath(d fsops.PathDialect, name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
-	savePath := categories[name].SavePath
-	if savePath != "" {
-		savePath = d.Clean(savePath)
-		if d.IsAbs(savePath) {
-			return savePath
-		}
-		if defaultSavePath == "" {
-			return ""
-		}
-		return d.Join(defaultSavePath, savePath)
-	}
-
-	// Category names are slash-delimited whatever the host separator is.
-	if useSubcategories {
-		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(d, name[:i], categories, defaultSavePath, useSubcategories)
-			if parent == "" {
-				return ""
-			}
-			// qBittorrent converts only the last segment and resolves the rest
-			// through the parent category.
-			return d.Join(parent, d.FromSlash(toValidPath(name[i+1:])))
-		}
-	}
-
-	if defaultSavePath == "" {
-		return ""
-	}
-	return d.Join(defaultSavePath, d.FromSlash(toValidPath(name)))
-}
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
 // before its parent.
@@ -101,7 +36,8 @@ func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
 	deleted []OrphanFile,
-	scanRoots, ignorePaths, categoryPaths []string,
+	scanRoots, categoryPaths []string,
+	protected *protectedPaths,
 	gracePeriod time.Duration,
 	backend fsops.Backend,
 ) []OrphanFile {
@@ -128,11 +64,11 @@ func abandonedDirCandidates(
 		if underDeletedPath(d, dir.Path, deletedPaths) {
 			continue
 		}
-		normDir := normalizePath(d, dir.Path)
+		normDir := fsops.NormalizePath(d, dir.Path)
 		if slices.Contains(normRoots, normDir) {
 			continue
 		}
-		if isIgnoredPath(d, dir.Path, ignorePaths) {
+		if protected.ignored(dir.Path) {
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategories) {
@@ -207,7 +143,7 @@ func underDeletedPath(d fsops.PathDialect, dir string, deletedPaths map[string]s
 func normalizePaths(d fsops.PathDialect, paths []string) []string {
 	normalized := make([]string, len(paths))
 	for i, p := range paths {
-		normalized[i] = normalizePath(d, p)
+		normalized[i] = fsops.NormalizePath(d, p)
 	}
 	return normalized
 }
@@ -222,4 +158,86 @@ func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normC
 		}
 	}
 	return false
+}
+
+// torrentDirs returns every folder above the torrent files, and each of
+// saveRoots and the folders above it, up to the filesystem root, once each.
+// A torrent can reach a folder under another spelling before it writes
+// anything, and an unwritten subfolder is reached only by its file's path, so
+// each level counts. saveRoots are the save paths of torrents with no file
+// list yet, which say where they will write. A file whose folder is in
+// fileDirs is on disk, so that folder and those above it hold it and can never
+// be emptied: they need no identity read.
+func torrentDirs(d fsops.PathDialect, files []string, fileDirs map[string]struct{}, saveRoots ...string) []string {
+	seen := make(map[string]struct{})
+	var dirs []string
+	for _, file := range files {
+		dir := d.Dir(file)
+		if _, onDisk := fileDirs[dir]; onDisk {
+			continue
+		}
+		dirs = addUpToRoot(d, dir, seen, dirs)
+	}
+	for _, root := range saveRoots {
+		dirs = addUpToRoot(d, root, seen, dirs)
+	}
+	return dirs
+}
+
+// reachedDirs is torrentDirs for a file map result.
+func reachedDirs(d fsops.PathDialect, result *buildFileMapResult, fileDirs map[string]struct{}) []string {
+	return torrentDirs(d, result.torrentPaths, fileDirs, slices.Concat(result.metadataRoots, result.skippedRoots)...)
+}
+
+// addUpToRoot stops at the first folder already seen, so a shared prefix costs once.
+func addUpToRoot(d fsops.PathDialect, dir string, seen map[string]struct{}, added []string) []string {
+	for {
+		if _, ok := seen[dir]; ok {
+			return added
+		}
+		seen[dir] = struct{}{}
+		added = append(added, dir)
+		parent := d.Dir(dir)
+		if parent == dir {
+			return added
+		}
+		dir = parent
+	}
+}
+
+// dropDirsTorrentsReach removes each listed folder a torrent reaches under
+// another spelling, such as a symlink, a bind mount or a junction, along with
+// the listed folders that hold it, which can no longer be emptied. A folder
+// whose identity cannot be read could be one of them, so it goes too.
+func dropDirsTorrentsReach(ctx context.Context, dirs []OrphanFile, reached *inUseIDs, backend fsops.Backend) []OrphanFile {
+	paths := make([]string, len(dirs))
+	for i := range dirs {
+		paths[i] = dirs[i].Path
+	}
+	infos, errs := fsops.LstatAll(ctx, backend, paths)
+
+	d := backend.Paths()
+	kept := make(map[string]struct{})
+	for i, p := range paths {
+		err := errs[i]
+		if err == nil {
+			var ok bool
+			if ok, err = reached.reaches(infos[i]); err == nil && !ok {
+				continue
+			}
+		}
+		log.Debug().Err(err).Str("dir", p).Msg("orphanscan: a torrent may use this directory under another path, not treating it as abandoned")
+		addUpToRoot(d, p, kept, nil)
+	}
+	if len(kept) == 0 {
+		return dirs
+	}
+
+	out := make([]OrphanFile, 0, len(dirs))
+	for _, dir := range dirs {
+		if _, ok := kept[dir.Path]; !ok {
+			out = append(out, dir)
+		}
+	}
+	return out
 }

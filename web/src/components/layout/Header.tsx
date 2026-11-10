@@ -41,11 +41,12 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
+import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -58,8 +59,9 @@ import {
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { hasSelection } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
-import type { InstanceCapabilities, TorrentStreamPayload } from "@/types"
+import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -137,18 +139,8 @@ export function Header({
   const { state: layoutRouteState } = useLayoutRoute()
   const spreadsheetDisguise = useSpreadsheetDisguise()
 
-  // Get selection state from context
-  const {
-    selectedHashes,
-    selectedTorrents,
-    isAllSelected,
-    totalSelectionCount,
-    selectedTotalSize,
-    excludeHashes,
-    excludeTargets,
-    filters,
-    clearSelection,
-  } = useTorrentSelection()
+  const { selection } = useTorrentSelectionContext()
+  const selectionSummary = useTorrentSelectionSummary()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -184,9 +176,7 @@ export function Header({
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
+      ...instanceCapabilitiesQuery(instance.id),
       enabled: isAllInstancesRoute,
     })),
   })
@@ -285,67 +275,7 @@ export function Header({
   )
   const { theme } = useTheme()
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    setStreamActiveTaskCount(null)
-  }, [selectedInstanceId])
-
-  const activeTaskStreamParams = useMemo(() => {
-    // The torrent stream is keyed to a single concrete instance; the all-instances
-    // scope (selectedInstanceId <= 0) must not open a stream or the backend rejects
-    // the whole multiplexed batch and the shared EventSource reconnects forever.
-    if (!shouldShowInstanceControls || selectedInstanceId === null || selectedInstanceId <= 0) {
-      return null
-    }
-
-    return {
-      instanceId: selectedInstanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-    }
-  }, [selectedInstanceId, shouldShowInstanceControls])
-
-  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
-    const value = payload.data?.activeTaskCount
-    if (typeof value === "number") {
-      setStreamActiveTaskCount(value)
-    }
-  }, [])
-
-  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: Boolean(activeTaskStreamParams),
-    onMessage: handleActiveTaskStreamMessage,
-  })
-
-  // Drop the streamed value when the stream is not live so the count reflects the
-  // fresh REST fallback instead of a stale snapshot from before the disconnect.
-  useEffect(() => {
-    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
-      setStreamActiveTaskCount(null)
-    }
-  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
-
-  const shouldUseActiveTaskFallback =
-    canManageSelectedInstance &&
-    selectedInstanceId !== null &&
-    (
-      !activeTaskStreamState.connected ||
-      !!activeTaskStreamState.error ||
-      streamActiveTaskCount === null
-    )
-
-  // Active task count is streamed via SSE; REST polling only runs as fallback.
-  const { data: polledActiveTaskCount = 0 } = useQuery({
-    queryKey: ["active-task-count", selectedInstanceId],
-    queryFn: () => canManageSelectedInstance && selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: shouldUseActiveTaskFallback,
-    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check) when stream is unavailable
-    refetchIntervalInBackground: true,
-  })
-  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
+  const activeTaskCount = useActiveTaskCount(selectedInstanceId, canManageSelectedInstance && shouldShowInstanceControls)
 
   // Query for available updates
   const { data: updateInfo } = useQuery({
@@ -649,21 +579,11 @@ export function Header({
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
-          {(selectedHashes.length > 0 || isAllSelected) && (
+          {selectionSummary && hasSelection(selection) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
-                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
-                selectedHashes={selectedHashes}
-                selectedTorrents={selectedTorrents}
-                isAllSelected={isAllSelected}
-                totalSelectionCount={totalSelectionCount}
-                totalSelectionSize={selectedTotalSize}
-                filters={filters}
-                search={routeSearch?.q}
-                excludeHashes={excludeHashes}
-                excludeTargets={excludeTargets}
-                onComplete={clearSelection}
+                actionTarget={selectionSummary.actionTarget}
               />
             </div>
           )}
@@ -680,7 +600,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents", { shortcutKey })}
+                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents")}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -703,7 +623,7 @@ export function Header({
                     }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
+                className={`w-full pl-9 ${searchValue ? "pr-16" : "pr-9"} transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
                 } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -748,6 +668,7 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey })}</li>
                       </ul>
                     </div>
                   </TooltipContent>

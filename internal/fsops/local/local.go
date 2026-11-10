@@ -36,7 +36,7 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToLstat(fi, path), nil
+	return osFileInfoToLstat(fi, path, true), nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
@@ -47,7 +47,7 @@ func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, err
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToLstat(fi, path), nil
+	return osFileInfoToLstat(fi, path, false), nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
@@ -61,10 +61,15 @@ func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, e
 
 	result := make([]fsops.DirEntry, 0, len(entries))
 	for _, e := range entries {
+		mode := e.Type()
+		if mode&fs.ModeIrregular != 0 {
+			mode = localFileMode(filepath.Join(path, e.Name()), mode, false)
+		}
 		result = append(result, fsops.DirEntry{
 			Name:      e.Name(),
 			IsDir:     e.IsDir(),
 			IsSymlink: e.Type()&os.ModeSymlink != 0,
+			Mode:      mode,
 		})
 	}
 	return result, nil
@@ -79,10 +84,21 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		return nil, err
 	}
 
+	// filepath.WalkDir does not descend a root that is a symlink, so a followed
+	// root walks its target and reports each entry under root.
+	walked := root
+	if opts.FollowRoot {
+		if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if walked, err = filepath.EvalSymlinks(root); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		walkErr := filepath.WalkDir(walked, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
 				return fs.SkipAll
 			}
@@ -91,6 +107,14 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			// between our pre-check and the walk's internal stat).
 			if d == nil {
 				return walkErr
+			}
+
+			if walked != root {
+				rel, err := filepath.Rel(walked, path)
+				if err != nil {
+					return err
+				}
+				path = filepath.Join(root, rel)
 			}
 
 			if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
@@ -125,11 +149,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			} else {
 				entry.Size = fi.Size()
 				entry.ModTime = fi.ModTime()
-				entry.Mode = fi.Mode()
+				entry.Mode = localFileMode(path, fi.Mode(), false)
 				entry.IsDir = fi.IsDir()
 				entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
 
-				if opts.WantFileID && fi.Mode().IsRegular() {
+				if opts.WantFileID && entry.Mode.IsRegular() {
 					fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
 					if fidErr != nil {
 						// Identity failure must not read as an unreadable
@@ -181,6 +205,13 @@ func (b *Backend) MkdirAll(ctx context.Context, path string, perm fs.FileMode) e
 		return err
 	}
 	return os.MkdirAll(path, perm)
+}
+
+func (b *Backend) Mkdir(ctx context.Context, path string, perm fs.FileMode) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return os.Mkdir(path, perm)
 }
 
 func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
@@ -244,26 +275,26 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 }
 
 // osFileInfoToFsops converts an os.FileInfo to an fsops.FileInfo.
-func osFileInfoToFsops(fi os.FileInfo, path string) *fsops.FileInfo {
+func osFileInfoToFsops(fi os.FileInfo, path string, follow bool) *fsops.FileInfo {
 	return &fsops.FileInfo{
 		Path:      path,
 		Size:      fi.Size(),
 		ModTime:   fi.ModTime(),
 		IsDir:     fi.IsDir(),
 		IsSymlink: fi.Mode()&os.ModeSymlink != 0,
-		Mode:      fi.Mode(),
+		Mode:      localFileMode(path, fi.Mode(), follow),
 	}
 }
 
-// osFileInfoToLstat converts an os.FileInfo from Lstat to an fsops.LstatInfo.
+// osFileInfoToLstat converts host metadata, following tags only for Stat results.
 // Identity failure degrades to FileIDErr rather than failing the conversion:
 // callers that only want size/mtime keep working, callers that need identity
 // check FileIDErr.
-func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
+func osFileInfoToLstat(fi os.FileInfo, path string, follow bool) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
-		FileInfo: *osFileInfoToFsops(fi, path),
+		FileInfo: *osFileInfoToFsops(fi, path, follow),
 	}
-	if fi.Mode().IsRegular() || fi.IsDir() {
+	if info.Mode.IsRegular() || fi.IsDir() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
 			info.FileIDErr = err

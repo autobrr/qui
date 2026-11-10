@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { Torrent } from "@/types"
-import { getToggleSelectionState, resolveStreamRow } from "./torrent-utils"
+import { getToggleSelectionState, getTorrentFullPaths, resolveStreamRow } from "./torrent-utils"
 
 describe("getToggleSelectionState", () => {
   const cases: Array<{ name: string; values: boolean[]; stateUnknown: boolean; allEnabled: boolean; mixed: boolean }> = [
@@ -43,4 +43,15 @@ describe("resolveStreamRow", () => {
       expect(resolveStreamRow(previous, data)).toEqual(want)
     })
   }
+})
+
+describe("getTorrentFullPaths", () => {
+  it("uses content_path for a renamed torrent and skips an empty one", () => {
+    const torrents = [
+      { hash: "aa11", name: "Renamed Show", save_path: "/data/tv", content_path: "/data/tv/Show.S01.1080p.WEB-GRP" },
+      { hash: "bb22", name: "Pending", save_path: "/data/tv", content_path: "" },
+    ] as Torrent[]
+
+    expect(getTorrentFullPaths(torrents, false)).toEqual(["/data/tv/Show.S01.1080p.WEB-GRP"])
+  })
 })

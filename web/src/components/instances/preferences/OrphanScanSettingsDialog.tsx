@@ -23,6 +23,7 @@ interface OrphanScanSettingsDialogProps {
   instanceId: number
   instanceName?: string
   isRemote?: boolean
+  hasIdentity?: boolean
 }
 
 export function OrphanScanSettingsDialog({
@@ -31,6 +32,7 @@ export function OrphanScanSettingsDialog({
   instanceId,
   instanceName,
   isRemote,
+  hasIdentity,
 }: OrphanScanSettingsDialogProps) {
   const { t } = useTranslation("instances")
 
@@ -46,6 +48,7 @@ export function OrphanScanSettingsDialog({
           <OrphanScanSettingsForm
             instanceId={instanceId}
             isRemote={isRemote}
+            hasIdentity={hasIdentity}
             formId={FORM_ID}
             onSuccess={() => onOpenChange(false)}
           />

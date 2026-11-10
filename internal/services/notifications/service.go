@@ -118,12 +118,26 @@ func (s *Service) Start(ctx context.Context) {
 	})
 }
 
+// Listens reports whether an enabled target listens for the event type. On a
+// read error it reports true, so the event is queued and dispatch reads again.
+func (s *Service) Listens(ctx context.Context, eventType EventType) bool {
+	targets, err := s.store.ListEnabled(ctx)
+	return err != nil || slices.ContainsFunc(targets, func(target *models.NotificationTarget) bool {
+		return allowsEvent(target.EventTypes, eventType)
+	})
+}
+
 func (s *Service) Notify(ctx context.Context, event Event) {
 	if s == nil || s.store == nil {
 		return
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	// An event that no target listens for would only fill the queue.
+	if !s.Listens(ctx, event.Type) {
+		return
 	}
 
 	if s.queue == nil {

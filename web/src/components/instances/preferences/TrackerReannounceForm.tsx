@@ -5,6 +5,7 @@
 
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { ReannounceEnableWarningAlert, ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -22,15 +23,15 @@ import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { DEFAULT_REANNOUNCE_SETTINGS } from "@/lib/instance-validation"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { cn, copyTextToClipboard, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
+import { cn, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
+import { HardDrive, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -126,18 +127,16 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = Object.keys(trackersQuery.data)
     const processed: Option[] = []
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
 
     for (const tracker of trackers) {
-      const lowerTracker = tracker.toLowerCase()
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      if (seenGroups.has(groupKey)) continue
+      seenGroups.add(groupKey)
 
-      const customization = domainToCustomization.get(lowerTracker)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        const displayKey = customization.displayName.toLowerCase()
-        if (seenDisplayNames.has(displayKey)) continue
-        seenDisplayNames.add(displayKey)
-
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
           label: customization.displayName,
@@ -145,9 +144,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
         })
       } else {
-        if (seenDisplayNames.has(lowerTracker)) continue
-        seenDisplayNames.add(lowerTracker)
-
         processed.push({
           label: tracker,
           value: tracker,
@@ -715,17 +711,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                           <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                          <button
-                            type="button"
-                            className="hover:text-foreground transition-colors"
-                            onClick={() => {
-                              copyTextToClipboard(event.hash)
-                              toast.success(t("preferences.reannounceOverview.hashCopied"))
-                            }}
-                            title={t("preferences.reannounceOverview.copyHash")}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </button>
+                          <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                         </div>
                         <span className="text-muted-foreground/40">•</span>
                         <span>{formatISOTimestamp(event.timestamp)}</span>

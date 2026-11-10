@@ -6,6 +6,44 @@
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import type { Torrent } from "@/types"
 import type { TFunction } from "i18next"
+import { AlertCircle, XCircle, type LucideIcon } from "lucide-react"
+
+// i18n-namespace: torrents
+
+export type TrackerHealth = NonNullable<Torrent["tracker_health"]>
+
+export type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
+
+// One entry per tracker health. Every view that shows tracker health reads its colors and icon here.
+export const TRACKER_HEALTH_DISPLAY: Record<TrackerHealth, {
+  labelKey: string
+  className: string
+  iconClass: string
+  hoverClass: string
+  icon: LucideIcon
+}> = {
+  unregistered: {
+    labelKey: "tableColumns.unregistered",
+    className: "text-destructive border-destructive/40 bg-destructive/10",
+    iconClass: "text-destructive",
+    hoverClass: "hover:bg-destructive/10",
+    icon: XCircle,
+  },
+  tracker_down: {
+    labelKey: "tableColumns.trackerDown",
+    className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10",
+    iconClass: "text-yellow-500",
+    hoverClass: "hover:bg-yellow-500/10",
+    icon: AlertCircle,
+  },
+  tracker_error: {
+    labelKey: "tableColumns.trackerError",
+    className: "text-orange-500 border-orange-500/40 bg-orange-500/10",
+    iconClass: "text-orange-500",
+    hoverClass: "hover:bg-orange-500/10",
+    icon: XCircle,
+  },
+}
 
 // Returns the background class for a row based on selection state and zebra striping
 export function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
@@ -14,18 +52,34 @@ export function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolea
   return ""
 }
 
-export function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
+export const SELECT_COLUMN_WIDTH = 40
+// With the Name column hidden, the select column of a grouped list also holds
+// the Copy group pill, so the pill never takes room from a data value.
+export const GROUPED_SELECT_COLUMN_WIDTH = 112
+
+// A widened select column also holds the Copy group pill, so its checkbox
+// aligns left in the header and in every row instead of in the center.
+export function centersSelectCheckbox(columnWidth: number): boolean {
+  return columnWidth <= SELECT_COLUMN_WIDTH
+}
+
+// The left bar on every row of an open Copy group. On the top row the bar
+// starts 8px down, so two open groups next to each other stay apart.
+export function getCopyGroupAccentClass(isTopRow: boolean): string {
+  return `before:pointer-events-none before:absolute before:left-0 before:bottom-0 before:w-0.5 before:bg-primary before:content-[''] ${isTopRow ? "before:top-2 before:rounded-t-full" : "before:top-0"}`
+}
+
+export function getStatusBadgeVariant(state: string): StatusBadgeVariant {
   switch (state) {
     case "downloading":
-      return "default"
-    case "stalledDL":
-      return "secondary"
     case "uploading":
       return "default"
+    case "stalledDL":
     case "stalledUP":
-      return "secondary"
     case "pausedDL":
     case "pausedUP":
+    case "queuedDL":
+    case "queuedUP":
       return "secondary"
     case "error":
     case "missingFiles":
@@ -35,32 +89,28 @@ export function getStatusBadgeVariant(state: string): "default" | "secondary" | 
   }
 }
 
-export function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
-  variant: "default" | "secondary" | "destructive" | "outline"
+const VARIANT_ICON_CLASS: Record<StatusBadgeVariant, string> = {
+  default: "text-primary",
+  secondary: "text-secondary-foreground",
+  destructive: "text-destructive",
+  outline: "text-muted-foreground",
+}
+
+export function getStatusBadgeProps(
+  torrent: Pick<Torrent, "state" | "tracker_health">,
+  supportsTrackerHealth: boolean,
+  t: TFunction
+): {
+  variant: StatusBadgeVariant
   label: string
   className: string
+  iconClass: string
 } {
-  const baseVariant = getStatusBadgeVariant(torrent.state)
-  let variant = baseVariant
-  let label = getStateLabel(torrent.state, t)
-  let className = ""
-
-  if (supportsTrackerHealth) {
-    const trackerHealth = torrent.tracker_health ?? null
-    if (trackerHealth === "tracker_down") {
-      label = t("tableColumns.trackerDown")
-      variant = "outline"
-      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-    } else if (trackerHealth === "tracker_error") {
-      label = t("tableColumns.trackerError")
-      variant = "outline"
-      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-    } else if (trackerHealth === "unregistered") {
-      label = t("tableColumns.unregistered")
-      variant = "outline"
-      className = "text-destructive border-destructive/40 bg-destructive/10"
-    }
+  const health = supportsTrackerHealth && torrent.tracker_health ? TRACKER_HEALTH_DISPLAY[torrent.tracker_health] : undefined
+  if (health) {
+    return { variant: "outline", label: t(health.labelKey), className: health.className, iconClass: health.iconClass }
   }
 
-  return { variant, label, className }
+  const variant = getStatusBadgeVariant(torrent.state)
+  return { variant, label: getStateLabel(torrent.state, t), className: "", iconClass: VARIANT_ICON_CLASS[variant] }
 }

@@ -14,9 +14,24 @@ import (
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+// createUsedAPIKey creates an API key that was used just now, so that
+// ValidateAPIKey starts no background write of the last-used time. On Windows,
+// a write that still runs when the test ends keeps the database file open, and
+// the TempDir cleanup fails.
+func createUsedAPIKey(t *testing.T, db *database.DB) string {
+	t.Helper()
+	store := models.NewAPIKeyStore(db)
+	rawKey, apiKey, err := store.Create(t.Context(), "test-key", models.AllPermissions(), nil)
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateLastUsed(t.Context(), apiKey.ID))
+	return rawKey
+}
 
 func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	ctx := t.Context()
@@ -26,9 +41,7 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
 
-	// Create an API key for testing
-	apiKeyValue, _, err := authService.CreateAPIKey(ctx, "test-key")
-	require.NoError(t, err)
+	apiKeyValue := createUsedAPIKey(t, db)
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -177,8 +190,7 @@ func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "auth-middleware")
 	authService := auth.NewService(db)
-	rawKey, _, err := authService.CreateAPIKey(t.Context(), "test")
-	require.NoError(t, err)
+	rawKey := createUsedAPIKey(t, db)
 
 	sessionManager := scs.New()
 	handler := sessionManager.LoadAndSave(
@@ -236,6 +248,60 @@ func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
 				// The frontend treats a bare 403 "Unauthorized" as an expired
 				// session and bounces to login; a missing header must not.
 				assert.Contains(t, rec.Body.String(), "X-Requested-With")
+			}
+		})
+	}
+}
+
+func TestIsAuthenticatedRechecksOIDCAllowedUser(t *testing.T) {
+	tests := []struct {
+		name           string
+		authMethod     string
+		subject        string
+		email          string
+		allowedSubject string
+		allowedEmail   string
+		wantStatus     int
+	}{
+		{name: "unset allows existing session", authMethod: "oidc", subject: "someone", wantStatus: http.StatusOK},
+		{name: "subject still allowed", authMethod: "oidc", subject: "abc-123", allowedSubject: "abc-123", wantStatus: http.StatusOK},
+		{name: "verified email still allowed", authMethod: "oidc", subject: "abc-123", email: "me@example.com", allowedEmail: "ME@example.com", wantStatus: http.StatusOK},
+		{name: "allowed subject changed", authMethod: "oidc", subject: "abc-123", allowedSubject: "other", wantStatus: http.StatusForbidden},
+		{name: "switched from subject to email", authMethod: "oidc", subject: "abc-123", allowedEmail: "me@example.com", wantStatus: http.StatusForbidden},
+		{name: "session from before the setting existed", authMethod: "oidc", allowedSubject: "abc-123", wantStatus: http.StatusForbidden},
+		{name: "password session unaffected", authMethod: "password", allowedSubject: "abc-123", wantStatus: http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := scs.New()
+			cfg := &domain.Config{OIDCAllowedSubject: tt.allowedSubject, OIDCAllowedEmail: tt.allowedEmail}
+
+			ctx, err := sm.Load(t.Context(), "")
+			require.NoError(t, err)
+			sm.Put(ctx, "authenticated", true)
+			sm.Put(ctx, "auth_method", tt.authMethod)
+			if tt.subject != "" {
+				sm.Put(ctx, "oidc_subject", tt.subject)
+			}
+			if tt.email != "" {
+				sm.Put(ctx, "oidc_verified_email", tt.email)
+			}
+			token, _, err := sm.Commit(ctx)
+			require.NoError(t, err)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
+			req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
+			rec := httptest.NewRecorder()
+			okHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+			sm.LoadAndSave(IsAuthenticated(nil, sm, cfg)(okHandler)).ServeHTTP(rec, req)
+
+			require.Equal(t, tt.wantStatus, rec.Code)
+			if tt.wantStatus == http.StatusForbidden {
+				// The web UI logs out only on a 403 with this message.
+				assert.Equal(t, "Unauthorized\n", rec.Body.String())
+				ctx, err := sm.Load(t.Context(), token)
+				require.NoError(t, err)
+				assert.False(t, sm.GetBool(ctx, "authenticated"))
 			}
 		})
 	}

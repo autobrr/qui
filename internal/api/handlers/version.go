@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	"github.com/autobrr/qui/internal/update"
@@ -91,7 +90,5 @@ func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request
 		response.Name = *release.Name
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	RespondJSON(w, http.StatusOK, response)
 }

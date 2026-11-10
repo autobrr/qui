@@ -54,8 +54,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test automation docs JSON examples
-        run: go test -count=1 -run '^TestAutomationDocsExamples$' ./internal/api/handlers
+      - name: Test automation docs JSON examples and generated files
+        run: go test -count=1 -run '^(TestAutomationDocsExamples|TestGeneratedFilesAreCurrent)$' ./internal/api/handlers ./internal/automationsgen
 
   migration-parity:
     runs-on: ubuntu-latest

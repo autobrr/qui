@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 func TestResolveLocalTorrentFile(t *testing.T) {
@@ -52,7 +54,7 @@ func TestResolveLocalTorrentFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := resolveLocalTorrentFile(base, tt.input)
+			got, ok := resolveLocalTorrentFile(fsops.HostPaths, base, tt.input)
 
 			require.Equal(t, tt.ok, ok)
 			assert.Equal(t, tt.want, got)

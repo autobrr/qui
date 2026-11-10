@@ -201,6 +201,24 @@ func TestAutomationStrictDecode(t *testing.T) {
 			want: []string{`conditions.exportToInstance.contentLayout: contentLayout does not allow "Create subfolder"; it allows Original, Subfolder, NoSubfolder`},
 		},
 		{
+			name: "unknown tag mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"tags":[{"enabled":true,"tags":["x"],"mode":"ful"}]}}`,
+			want: []string{`conditions.tags[0].mode: mode does not allow "ful"; it allows full, add, remove`},
+		},
+		{
+			name: "unknown delete mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"delete":{"enabled":false,"mode":"deleteFiles"}}}`,
+			want: []string{`conditions.delete.mode: mode does not allow "deleteFiles"; it allows delete, deleteWithFiles, deleteWithFilesPreserveCrossSeeds, deleteWithFilesIncludeCrossSeeds`},
+		},
+		{
+			name: "unknown share limit action, default mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"shareLimits":{"enabled":true,"shareLimitAction":"Remov","shareLimitsMode":"default"}}}`,
+			want: []string{`conditions.shareLimits.shareLimitAction: shareLimitAction does not allow "Remov"; it allows Stop, Remove, RemoveWithContent, EnableSuperSeeding`},
+		},
+		{
 			name: "condition in a score rule",
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
 				"sortingConfig":{"schemaVersion":"1","type":"score","direction":"DESC","scoreRules":[
@@ -313,6 +331,84 @@ func TestAutomationStrictDecode(t *testing.T) {
 		require.Equal(t, []string{
 			"sortingConfig.scoreRules[0].conditional.condition.operator: RATIO does not allow CONTAINS; it allows EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, BETWEEN",
 		}, errorLines(t, rec))
+	})
+
+	t.Run("update skips the group ID checks when the conditions and sorting did not change", func(t *testing.T) {
+		// A rule saved before the group ID checks, with a misspelled group in an action and in a score rule.
+		bad, err := store.Create(t.Context(), &models.Automation{
+			InstanceID:     instance.ID,
+			Name:           "bad group",
+			TrackerPattern: "*",
+			Conditions:     &models.ActionConditions{SchemaVersion: "1", Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "relase_item"}},
+			SortingConfig: &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{Score: 1, Condition: &models.RuleCondition{
+					Field: models.FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "relase_item", Value: "1",
+				}},
+			}}},
+		})
+		require.NoError(t, err)
+		stored, err := json.Marshal(bad)
+		require.NoError(t, err)
+		edit := func(change func(body map[string]any)) string {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(stored, &body))
+			change(body)
+			out, err := json.Marshal(body)
+			require.NoError(t, err)
+			return string(out)
+		}
+
+		rec := serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["enabled"] = false
+			body["name"] = "renamed"
+		}))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["conditions"].(map[string]any)["move"].(map[string]any)["path"] = "/other"
+		}))
+		require.Equal(t, []string{"Unknown grouping ID 'relase_item' in move.groupId"}, errorLines(t, rec))
+
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["sortingConfig"].(map[string]any)["direction"] = "ASC"
+		}))
+		require.Equal(t, []string{"Unknown grouping ID 'relase_item' in grouped condition"}, errorLines(t, rec))
+	})
+
+	t.Run("update checks the score group IDs when the custom groups change", func(t *testing.T) {
+		rule, err := store.Create(t.Context(), &models.Automation{
+			InstanceID:     instance.ID,
+			Name:           "custom score group",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				Pause:         &models.PauseAction{Enabled: true},
+				Grouping:      &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "my_group", Keys: []string{"savePath"}}}},
+			},
+			SortingConfig: &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{Score: 1, Condition: &models.RuleCondition{
+					Field: models.FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "my_group", Value: "1",
+				}},
+			}}},
+		})
+		require.NoError(t, err)
+		stored, err := json.Marshal(rule)
+		require.NoError(t, err)
+		edit := func(change func(conditions map[string]any)) string {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(stored, &body))
+			change(body["conditions"].(map[string]any))
+			out, err := json.Marshal(body)
+			require.NoError(t, err)
+			return string(out)
+		}
+
+		rec := serveRule(handler.Update, rule.ID, edit(func(conditions map[string]any) {
+			delete(conditions, "grouping")
+		}))
+		require.Equal(t, []string{"Unknown grouping ID 'my_group' in grouped condition"}, errorLines(t, rec))
 	})
 
 	t.Run("rule check runs after decode", func(t *testing.T) {

@@ -21,7 +21,6 @@ import {
   Regex,
   Rss,
   Search,
-  Settings,
   Tag,
   Trash2
 } from "lucide-react"
@@ -29,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PageHeader } from "@/components/layout/PageHeader"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,7 +52,6 @@ import {
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -78,6 +77,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useRSSPreferences } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { resolveInstanceSelection, usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import {
@@ -99,7 +99,6 @@ import {
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import type {
-  AppPreferences,
   Category,
   RSSArticle,
   RSSAutoDownloadRule,
@@ -110,6 +109,7 @@ import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { useVirtualizer } from "@tanstack/react-virtual"
 
+import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
 interface RSSPageProps {
@@ -179,14 +179,15 @@ export function RSSPage({
   } = useRSSRules(instanceId, {
     enabled: instanceId > 0,
   })
-  const { preferences, updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
+  const { updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
     enabled: instanceId > 0,
   })
+  const rssPreferences = useRSSPreferences(instanceId, { enabled: instanceId > 0 })
   const { data: metadata } = useInstanceMetadata(instanceId)
 
   // Derived state
-  const isRSSProcessingEnabled = preferences?.rss_processing_enabled ?? true
-  const isRSSAutoDownloadingEnabled = preferences?.rss_auto_downloading_enabled ?? true
+  const isRSSProcessingEnabled = rssPreferences.processingEnabled
+  const isRSSAutoDownloadingEnabled = rssPreferences.autoDownloadingEnabled
 
   // SSE status notifications (only on permanent disconnect)
   const sseDisconnectToastShownRef = useRef(false)
@@ -240,16 +241,19 @@ export function RSSPage({
   // No instances view
   if (!hasInstances) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-            <CardTitle>{t("noInstances.title")}</CardTitle>
-            <CardDescription>
-              {t("noInstances.description")}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader title={t("pageTitle")} description={t("pageDescription")} />
+        <div className="flex flex-1 items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+              <CardTitle>{t("noInstances.title")}</CardTitle>
+              <CardDescription>
+                {t("noInstances.description")}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -257,14 +261,8 @@ export function RSSPage({
   // No instance selected view
   if (!instanceId) {
     return (
-      <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Rss className="h-6 w-6" />
-            <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
-          </div>
-          {renderInstanceSelector()}
-        </div>
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader title={t("pageTitle")} description={t("pageDescription")} actions={renderInstanceSelector()} />
         <div className="flex flex-1 items-center justify-center">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
@@ -281,23 +279,23 @@ export function RSSPage({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] p-6 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("pageDescription")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {renderInstanceSelector()}
-          <RssSettingsPopover
-            preferences={preferences}
-            updatePreferences={updatePreferences}
-            isUpdating={isUpdatingPreferences}
-          />
-        </div>
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-4 lg:p-6 overflow-hidden">
+      <div className="mb-4 shrink-0">
+        <PageHeader
+          title={t("pageTitle")}
+          description={t("pageDescription")}
+          actions={
+            <>
+              {renderInstanceSelector()}
+              <InstanceSettingsButton
+                instanceId={instanceId}
+                instanceName={instances?.find(inst => inst.id === instanceId)?.name ?? ""}
+                defaultTab="rss"
+                asButton
+              />
+            </>
+          }
+        />
       </div>
 
       {/* Warning Banners */}
@@ -2325,106 +2323,4 @@ function getFeedInfos(items: RSSItems | undefined): FeedInfo[] {
     }
   }
   return infos
-}
-
-// ============================================================================
-// RSS Settings Popover
-// ============================================================================
-
-function RssSettingsPopover({
-  preferences,
-  updatePreferences,
-  isUpdating,
-}: {
-  preferences: AppPreferences | undefined
-  updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
-  isUpdating: boolean
-}) {
-  const { t } = useTranslation("rss")
-  const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
-  const [maxArticles, setMaxArticles] = useState(preferences?.rss_max_articles_per_feed ?? 50)
-  const [downloadRepack, setDownloadRepack] = useState(preferences?.rss_download_repack_proper_episodes ?? false)
-
-  // Sync local state when preferences change
-  useEffect(() => {
-    setRefreshInterval(preferences?.rss_refresh_interval ?? 30)
-    setMaxArticles(preferences?.rss_max_articles_per_feed ?? 50)
-    setDownloadRepack(preferences?.rss_download_repack_proper_episodes ?? false)
-  }, [preferences])
-
-  const handleSave = () => {
-    updatePreferences({
-      rss_refresh_interval: refreshInterval,
-      rss_max_articles_per_feed: maxArticles,
-      rss_download_repack_proper_episodes: downloadRepack,
-    }).then(
-      () => toast.success(t("toast.rssSettingsSaved")),
-      () => toast.error(t("toast.failedToSaveRssSettings"))
-    )
-  }
-
-  return (
-    <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t("settingsPopover.title")}</TooltipContent>
-      </Tooltip>
-      <PopoverContent className="w-72" align="end">
-        <div className="space-y-4">
-          <h4 className="font-medium">{t("settingsPopover.title")}</h4>
-
-          <div className="space-y-3">
-            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">{t("settingsPopover.refreshInterval")}</Label>
-              <Input
-                type="number"
-                className="w-16 h-8 text-center"
-                min={1}
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(parseInt(e.target.value) || 30)}
-              />
-              <span className="text-xs text-muted-foreground w-6">{t("settingsPopover.min")}</span>
-            </div>
-
-            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">{t("settingsPopover.maxArticles")}</Label>
-              <Input
-                type="number"
-                className="w-16 h-8 text-center"
-                min={1}
-                value={maxArticles}
-                onChange={(e) => setMaxArticles(parseInt(e.target.value) || 50)}
-              />
-              <span className="w-6" />
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Auto-Download Settings */}
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">{t("settingsPopover.autoDownload")}</p>
-
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">{t("settingsPopover.downloadRepack")}</Label>
-              <Switch
-                checked={downloadRepack}
-                onCheckedChange={setDownloadRepack}
-              />
-            </div>
-          </div>
-
-          <Button onClick={handleSave} disabled={isUpdating} className="w-full">
-            {isUpdating ? t("settingsPopover.saving") : t("settingsPopover.save")}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
 }

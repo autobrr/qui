@@ -4,6 +4,7 @@
  */
 
 import type { Torrent, TorrentResponse } from "@/types"
+import { getLinuxIsoName, getLinuxSavePath } from "./incognito"
 
 type HashSource = {
   hash?: string | null
@@ -72,6 +73,13 @@ export function resolveTorrentHashes(primary?: HashSource | null, fallback?: Has
 
 export function getTorrentDisplayHash(primary?: HashSource | null, fallback?: HashSource | null): string {
   return resolveTorrentHashes(primary, fallback).canonicalHash
+}
+
+// content_path is the root folder or single file, which can differ from save_path + name.
+export function getTorrentFullPaths(torrents: Torrent[], incognitoMode: boolean): string[] {
+  return torrents
+    .map(t => incognitoMode ? `${getLinuxSavePath(t.hash)}/${getLinuxIsoName(t.hash)}` : t.content_path.trim())
+    .filter(Boolean)
 }
 
 export function parseTorrentTags(tags?: string | null): string[] {

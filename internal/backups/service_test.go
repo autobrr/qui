@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -149,7 +150,7 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 		close(started)
 	}()
 
-	timer := time.NewTimer(250 * time.Millisecond)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	select {
@@ -294,6 +295,27 @@ func TestShouldSkipLiveExportForBackup(t *testing.T) {
 			require.Equal(t, tt.want, shouldSkipLiveExportForBackup(tt.torrent, tt.hasCachedBlob, tt.cacheErr))
 		})
 	}
+}
+
+// Without the version, qui cannot tell if qBittorrent 4.6 left out the
+// trackers, so it saves no backup.
+// regression: #3765
+func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "version-unknown")
+	store := models.NewBackupStore(db)
+	sm := &stubBackupSyncManager{
+		torrents:   []qbt.Torrent{{Hash: "abc", Name: "Show.S01E01-GRP", TotalSize: 123}},
+		versionErr: errors.New("read the qBittorrent version: 502"),
+	}
+	svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+
+	_, err := svc.executeBackup(ctx, job{runID: 44, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.ErrorContains(t, err, "502")
+	require.Equal(t, 0, sm.exportCalls)
 }
 
 func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
@@ -834,6 +856,54 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
+// regression: #3875
+func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "disabled-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    0, // needs normalizing
+	}))
+
+	_, err := db.ExecContext(ctx, "UPDATE instances SET is_active = 0 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+	require.NoError(t, svc.checkMissedBackups(ctx))
+
+	runs, err := store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Empty(t, runs)
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.True(t, saved.Enabled)
+	require.True(t, saved.HourlyEnabled)
+	require.Equal(t, 0, saved.KeepHourly)
+
+	_, err = db.ExecContext(ctx, "UPDATE instances SET is_active = 1 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+
+	runs, err = store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, "scheduler", runs[0].RequestedBy)
+
+	saved, err = store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+}
+
 func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
@@ -1119,34 +1189,38 @@ func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
 }
 
 func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
-	start := time.Now()
-	// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
-	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
-	elapsed := time.Since(start)
-
-	require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
+		start := time.Now()
+		// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+		require.Equal(t, 200*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
 
-	err := adaptiveExportDelay(ctx, time.Second, 0)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+		start := time.Now()
+		err := adaptiveExportDelay(ctx, time.Second, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
 }
 
 func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
@@ -1559,12 +1633,12 @@ type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent
 	categories  map[string]qbt.Category
 	tags        []string
-	webAPIVer   string
 	exportData  []byte
 	exportName  string
 	exportTrack string
 	exportErr   error
 	exportCalls int
+	versionErr  error
 }
 
 func (s *stubBackupSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
@@ -1585,8 +1659,8 @@ func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) 
 	return append([]string(nil), s.tags...), nil
 }
 
-func (s *stubBackupSyncManager) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
-	return s.webAPIVer, nil
+func (s *stubBackupSyncManager) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, s.versionErr
 }
 
 func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {

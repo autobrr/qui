@@ -36,6 +36,7 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // that automations.ConditionFields does not allow, each with its JSON path.
 // stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
 // when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
+// The group ID checks skip them the same way, but check the score conditions also when conditions.grouping changed.
 // It does not check that a referenced instance or external program exists.
 func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
@@ -53,6 +54,8 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	var payload AutomationPayload
 	unmarshalErr := json.Unmarshal(data, &payload)
 	var unchanged []string
+	// The score conditions name groups from conditions.grouping, so their group IDs need a check when either changes.
+	scoreGroupsUnchanged := false
 	if stored != nil && unmarshalErr == nil {
 		payload.Conditions.Normalize()
 		stored.Conditions.Normalize()
@@ -61,6 +64,8 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 		}
 		if sameJSON(payload.SortingConfig, stored.SortingConfig) {
 			unchanged = append(unchanged, "sortingConfig")
+			scoreGroupsUnchanged = payload.Conditions != nil && stored.Conditions != nil &&
+				sameJSON(payload.Conditions.Grouping, stored.Conditions.Grouping)
 		}
 	}
 	if problems := checkJSONShape(nil, "", raw, reflect.TypeFor[AutomationPayload](), unchanged); len(problems) > 0 {
@@ -71,6 +76,16 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	}
 	if err := automations.ValidateRule(payload.toModel(instanceID, 0), instance); err != nil {
 		return nil, ruleErrors{err.Error()}
+	}
+	if !slices.Contains(unchanged, "conditions") {
+		if err := automations.ConditionGroupIDsError(payload.Conditions); err != nil {
+			return nil, ruleErrors{err.Error()}
+		}
+	}
+	if !scoreGroupsUnchanged && payload.Conditions != nil {
+		if err := automations.ScoreRuleGroupIDsError(payload.Conditions.Grouping, payload.SortingConfig); err != nil {
+			return nil, ruleErrors{err.Error()}
+		}
 	}
 	return &payload, nil
 }
@@ -83,7 +98,8 @@ func sameJSON(a, b any) bool {
 
 // checkJSONShape compares a value decoded with UseNumber against the Go type that it decodes into.
 // Like encoding/json, it accepts null for every type. It also runs checkCondition on each condition
-// and checks exportToInstance.contentLayout, except under the top-level keys in unchanged.
+// and checks the action enums (contentLayout, tag and delete mode, share limit action and mode),
+// except under the top-level keys in unchanged.
 func checkJSONShape(problems []string, path string, v any, t reflect.Type, unchanged []string) []string {
 	if v == nil {
 		return problems
@@ -105,32 +121,7 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, uncha
 		if !ok {
 			return wrongType("an object")
 		}
-		fields := jsonFields(t)
-		for _, key := range slices.Sorted(maps.Keys(obj)) {
-			keyPath := key
-			if path != "" {
-				keyPath = path + "." + key
-			}
-			field, ok := fields[key]
-			switch {
-			case ok:
-				problems = checkJSONShape(problems, keyPath, obj[key], field.Type, unchanged)
-			case !slices.Contains(ignoredRuleKeys[t], key):
-				problems = append(problems, keyPath+": unknown key")
-			}
-		}
-		if top, _, _ := strings.Cut(path, "."); slices.Contains(unchanged, top) {
-			break
-		}
-		switch t {
-		case reflect.TypeFor[models.RuleCondition]():
-			problems = checkCondition(problems, path, obj)
-		case reflect.TypeFor[models.ExportToInstanceAction]():
-			if layout, _ := obj["contentLayout"].(string); layout != "" && !slices.Contains(automations.ContentLayouts, layout) {
-				problems = append(problems, fmt.Sprintf("%s.contentLayout: contentLayout does not allow %q; it allows %s",
-					path, layout, strings.Join(automations.ContentLayouts, ", ")))
-			}
-		}
+		problems = checkJSONObject(problems, path, obj, t, unchanged)
 	case reflect.Slice:
 		arr, ok := v.([]any)
 		if !ok {
@@ -161,6 +152,61 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, uncha
 		}
 	default:
 		// No rule struct has a field of another kind. json.Unmarshal still checks it.
+	}
+	return problems
+}
+
+// checkJSONObject checks each key of obj against the struct type t, then runs the rule checks for t
+// unless the top-level key of path is in unchanged.
+func checkJSONObject(problems []string, path string, obj map[string]any, t reflect.Type, unchanged []string) []string {
+	fields := jsonFields(t)
+	for _, key := range slices.Sorted(maps.Keys(obj)) {
+		keyPath := key
+		if path != "" {
+			keyPath = path + "." + key
+		}
+		field, ok := fields[key]
+		switch {
+		case ok:
+			problems = checkJSONShape(problems, keyPath, obj[key], field.Type, unchanged)
+		case !slices.Contains(ignoredRuleKeys[t], key):
+			problems = append(problems, keyPath+": unknown key")
+		}
+	}
+	if top, _, _ := strings.Cut(path, "."); slices.Contains(unchanged, top) {
+		return problems
+	}
+	return checkRuleValues(problems, path, obj, t)
+}
+
+// checkRuleValues runs checkCondition on a condition and checks the enums of an action.
+func checkRuleValues(problems []string, path string, obj map[string]any, t reflect.Type) []string {
+	switch t {
+	case reflect.TypeFor[models.RuleCondition]():
+		problems = checkCondition(problems, path, obj)
+	case reflect.TypeFor[models.ExportToInstanceAction]():
+		problems = checkEnumKey(problems, path, obj, "contentLayout", automations.ContentLayouts)
+	case reflect.TypeFor[models.TagAction]():
+		problems = checkEnumKey(problems, path, obj, "mode", automations.TagModes)
+	case reflect.TypeFor[models.DeleteAction]():
+		problems = checkEnumKey(problems, path, obj, "mode", automations.DeleteModes)
+	case reflect.TypeFor[models.ShareLimitsAction]():
+		// 'Default' in any case uses the global setting, the same as an empty value.
+		if value, _ := obj["shareLimitAction"].(string); !strings.EqualFold(value, "Default") {
+			problems = checkEnumKey(problems, path, obj, "shareLimitAction", automations.ShareLimitActions)
+		}
+		if value, _ := obj["shareLimitsMode"].(string); !strings.EqualFold(value, "Default") {
+			problems = checkEnumKey(problems, path, obj, "shareLimitsMode", automations.ShareLimitsModes)
+		}
+	}
+	return problems
+}
+
+// checkEnumKey reports a non-empty string at obj[key] that is not one of allowed.
+func checkEnumKey(problems []string, path string, obj map[string]any, key string, allowed []string) []string {
+	if value, _ := obj[key].(string); value != "" && !slices.Contains(allowed, value) {
+		problems = append(problems, fmt.Sprintf("%s.%s: %s does not allow %q; it allows %s",
+			path, key, key, value, strings.Join(allowed, ", ")))
 	}
 	return problems
 }

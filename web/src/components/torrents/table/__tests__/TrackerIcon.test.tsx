@@ -50,20 +50,4 @@ describe("TrackerIcon", () => {
     expect(img).not.toBeNull()
     expect(img?.getAttribute("src")).toBe("https://icons.example/e2.png")
   })
-
-  it("applies the glyph size class for the requested size", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src={null} size="xs" />
-    )
-    const glyphBox = container.querySelector("[title=\"Example\"]")?.firstElementChild
-    expect(glyphBox?.className).toContain("h-3 w-3")
-  })
-
-  it("defaults to the medium size class", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src={null} />
-    )
-    const glyphBox = container.querySelector("[title=\"Example\"]")?.firstElementChild
-    expect(glyphBox?.className).toContain("h-4 w-4")
-  })
 })

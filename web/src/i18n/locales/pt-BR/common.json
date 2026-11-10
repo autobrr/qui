@@ -46,7 +46,7 @@
     "tasksForInstance": "Tarefas para a instância",
     "settingsForInstance": "Configurações para a instância",
     "clearSearch": "Limpar busca",
-    "searchTorrents": "Buscar torrents... ({{shortcutKey}})",
+    "searchTorrents": "Buscar torrents...",
     "globPattern": "Padrão Glob...",
     "smartSearchTitle": "Recursos de Busca Inteligente:",
     "smartSearchGlob": "Padrões Glob:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Busca no nome, categoria e tags",
     "smartSearchEnter": "Pressione Enter para busca instantânea",
     "smartSearchAuto": "Busca automaticamente após pausa de 500ms",
+    "smartSearchShortcut": "Pressione {{shortcutKey}} para ir à busca",
     "torrentCreationTasksTitle": "Tarefas de Criação de Torrent",
     "updateAvailable": "Atualização Disponível",
     "updateVersion": "Versão {{version}}",
@@ -100,17 +101,19 @@
     "cancel": "Cancelar",
     "close": "Fechar",
     "create": "Criar",
-    "copyPath": "Copiar caminho",
     "scrollToTop": "Rolar para o topo",
     "search": "Buscar",
-    "select": "Selecionar"
+    "select": "Selecionar",
+    "copyValue": "Copiar {{label}}"
   },
   "placeholders": {
     "search": "Buscar...",
     "selectItems": "Selecionar itens..."
   },
   "feedback": {
-    "noResultsFound": "Nenhum resultado encontrado."
+    "noResultsFound": "Nenhum resultado encontrado.",
+    "copied": "{{label}} copiado para a área de transferência",
+    "copyFailed": "Falha ao copiar para a área de transferência"
   },
   "errors": {
     "unknown": "Erro desconhecido",
@@ -149,11 +152,10 @@
     "dark": "Escuro",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "Alterado para o modo {{mode}}",
     "switchedToTheme": "Alterado para o tema {{theme}}",
     "switchedToThemeVariation": "Alterado para o tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Este é um tema premium. Abra Configurações → Temas para ativar uma licença."
+    "premiumThemeError": "Este tema precisa de uma licença. Abra Configurações → Temas para ativar uma licença."
   },
   "updateBanner": {
     "updateAvailable": "Atualização Disponível",
@@ -191,8 +193,7 @@
     "trigger": "Mais informações"
   },
   "numberInput": {
-    "unlimited": "Ilimitado",
-    "useUnlimited": " (use -1 para ilimitado)"
+    "unlimited": "Ilimitado"
   },
   "dateTime": {
     "na": "N/D",
@@ -244,6 +245,9 @@
     "perkSuffix": "no Discord e nossa eterna gratidão.",
     "yearly": "{{price}} / ano",
     "monthly": "{{price}} / mês",
-    "notLicense": "Os temas premium são uma compra única à parte."
+    "notLicense": "A licença dos temas é uma compra única à parte."
+  },
+  "labels": {
+    "path": "Caminho"
   }
 }

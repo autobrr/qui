@@ -65,49 +65,158 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
-func TestValidateLicenses_OfflineBeyondGraceDoesNotInvalidate(t *testing.T) {
+func TestValidateLicenses_OfflineGrace(t *testing.T) {
+	tests := []struct {
+		name          string
+		lastValidated time.Duration
+		wantErr       error
+		wantValid     bool
+		wantStatus    string
+	}{
+		{
+			name:          "beyond grace revokes premium",
+			lastValidated: offlineGracePeriod + time.Hour,
+			wantStatus:    models.LicenseStatusOffline,
+		},
+		{
+			name:          "within grace keeps status",
+			lastValidated: offlineGracePeriod - time.Hour,
+			wantErr:       context.DeadlineExceeded,
+			wantValid:     true,
+			wantStatus:    models.LicenseStatusActive,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+
+			repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+			license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-tt.lastValidated))
+
+			service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
+
+			valid, err := service.ValidateLicenses(ctx)
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, tt.wantValid, valid)
+
+			stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, stored.Status)
+
+			hasPremium, err := service.HasPremiumAccess(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantValid, hasPremium)
+		})
+	}
+}
+
+func TestValidateLicenses_OfflineLicenseRecoversWhenServerAnswers(t *testing.T) {
 	ctx := t.Context()
 
-	db := testdb.NewMigratedSQLite(t, "license-validation")
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
 
-	repo := database.NewLicenseRepo(db)
+	serverUp := false
+	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return serverUp }), t.TempDir())
+
+	_, err := service.ValidateLicenses(ctx)
+	require.NoError(t, err)
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	require.Equal(t, models.LicenseStatusOffline, stored.Status)
+
+	serverUp = true
+	valid, err := service.ValidateLicenses(ctx)
+	require.NoError(t, err)
+	assert.True(t, valid)
+
+	stored, err = repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
+	assert.WithinDuration(t, time.Now(), stored.LastValidated, time.Minute)
+
+	hasPremium, err := service.HasPremiumAccess(ctx)
+	require.NoError(t, err)
+	assert.True(t, hasPremium)
+}
+
+func TestRefreshAllLicenses_RestoresOfflineLicense(t *testing.T) {
+	ctx := t.Context()
+
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+	license := storeLicense(t, repo, models.LicenseStatusOffline, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+
+	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return true }), t.TempDir())
+
+	require.NoError(t, service.RefreshAllLicenses(ctx))
+
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
+}
+
+func TestRefreshAllLicenses_RestoresLicenseRightAfterItWentOffline(t *testing.T) {
+	ctx := t.Context()
+
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+
+	serverUp := false
+	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return serverUp }), t.TempDir())
+
+	_, err := service.ValidateLicenses(ctx)
+	require.NoError(t, err)
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	require.Equal(t, models.LicenseStatusOffline, stored.Status)
+
+	serverUp = true
+	require.NoError(t, service.RefreshAllLicenses(ctx))
+
+	stored, err = repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
+}
+
+// storeLicense stores a Dodo license with the given status that the server last confirmed at lastValidated.
+func storeLicense(t *testing.T, repo *database.LicenseRepo, status string, lastValidated time.Time) *models.ProductLicense {
+	t.Helper()
 
 	now := time.Now()
 	license := &models.ProductLicense{
 		LicenseKey:     "QUI-TEST-KEY",
 		ProductName:    ProductNamePremium,
-		Status:         models.LicenseStatusActive,
-		ActivatedAt:    now.Add(-time.Hour),
-		LastValidated:  now.Add(-(offlineGracePeriod + time.Hour)),
+		Status:         status,
+		ActivatedAt:    lastValidated,
+		LastValidated:  lastValidated,
 		Provider:       models.LicenseProviderDodo,
 		DodoInstanceID: "inst-id",
 		Username:       "tester",
-		CreatedAt:      now.Add(-time.Hour),
-		UpdatedAt:      now.Add(-time.Hour),
+		CreatedAt:      lastValidated,
+		UpdatedAt:      now,
 	}
+	require.NoError(t, repo.StoreLicense(t.Context(), license))
+	return license
+}
 
-	require.NoError(t, repo.StoreLicense(ctx, license))
-
-	timeoutErr := context.DeadlineExceeded
-	client := dodo.NewClient(
+// newFakeDodoClient returns a client whose server answers valid while serverUp returns true, and times out otherwise.
+func newFakeDodoClient(serverUp func() bool) *dodo.Client {
+	return dodo.NewClient(
 		dodo.WithBaseURL("http://dodo.test"),
 		dodo.WithHTTPClient(&http.Client{
 			Transport: roundTripper(func(*http.Request) (*http.Response, error) {
-				return nil, timeoutErr
+				if !serverUp() {
+					return nil, context.DeadlineExceeded
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"valid":true}`)),
+					Header:     make(http.Header),
+				}, nil
 			}),
 		}),
 	)
-
-	service := NewLicenseService(repo, client, t.TempDir())
-
-	valid, err := service.ValidateLicenses(ctx)
-	require.Error(t, err)
-	require.ErrorIs(t, err, timeoutErr)
-	assert.True(t, valid, "transient errors should not mark the license invalid, regardless of last validation time")
-
-	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
-	require.NoError(t, err)
-	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
 func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) {

@@ -131,10 +131,9 @@ export function applyStreamDelta(
 ): { data: TorrentResponse; changed: boolean } {
   const order = payload.delta?.order
   const frame = payload.data ?? ({} as TorrentResponse)
-  // Only counts and preferences use omission to mean "unchanged".
+  // Only counts use omission to mean "unchanged".
   const snapshot = {
     counts: prev.counts,
-    ...(prev.preferences !== undefined && { preferences: prev.preferences }),
     ...frame,
   }
 

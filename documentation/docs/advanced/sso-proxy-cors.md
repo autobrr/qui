@@ -30,7 +30,7 @@ QUI__CORS_ALLOWED_ORIGINS=https://panel.example.com
 
 qui accepts only explicit origins (`http(s)://host[:port]`). qui rejects wildcards and values with a path, query, or fragment.
 
-If you still get CORS errors after you configure the proxy, capture the browser console error and open an issue.
+If you still get CORS errors after you configure the proxy, capture the browser console error and post it in the [Issue Triage](https://github.com/autobrr/qui/discussions/new?category=issue-triage) form.
 
 ## Real-time updates and reverse-proxy buffering
 

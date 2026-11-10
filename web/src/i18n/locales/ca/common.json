@@ -46,7 +46,7 @@
     "tasksForInstance": "Tasques de la instància",
     "settingsForInstance": "Configuració per a la instància",
     "clearSearch": "Neteja la cerca",
-    "searchTorrents": "Cerca torrents... ({{shortcutKey}})",
+    "searchTorrents": "Cerca torrents...",
     "globPattern": "Patró glob...",
     "smartSearchTitle": "Funcions de cerca intel·ligent:",
     "smartSearchGlob": "Patrons glob:",
@@ -57,6 +57,7 @@
     "smartSearchFields": "Cerca al nom, la categoria i les etiquetes",
     "smartSearchEnter": "Prem Retorn per cercar a l'instant",
     "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
+    "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
     "torrentCreationTasksTitle": "Tasques de creació de torrents",
     "updateAvailable": "Actualització disponible",
     "updateVersion": "Versió {{version}}",
@@ -100,17 +101,19 @@
     "cancel": "Cancel·la",
     "close": "Tanca",
     "create": "Crea",
-    "copyPath": "Copia el camí",
     "scrollToTop": "Vés a dalt de tot",
     "search": "Cerca",
-    "select": "Selecciona"
+    "select": "Selecciona",
+    "copyValue": "Copia {{label}}"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Selecciona elements..."
   },
   "feedback": {
-    "noResultsFound": "No s'ha trobat cap resultat."
+    "noResultsFound": "No s'ha trobat cap resultat.",
+    "copied": "S'ha copiat {{label}} al porta-retalls",
+    "copyFailed": "No s'ha pogut copiar al porta-retalls"
   },
   "errors": {
     "unknown": "Error desconegut",
@@ -149,11 +152,10 @@
     "dark": "Fosc",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència."
+    "premiumThemeError": "Aquest tema necessita una llicència. Obre Configuració → Temes per activar-ne una."
   },
   "updateBanner": {
     "updateAvailable": "Actualització disponible",
@@ -191,8 +193,7 @@
     "trigger": "Més informació"
   },
   "numberInput": {
-    "unlimited": "Il·limitat",
-    "useUnlimited": " (fes servir -1 per a il·limitat)"
+    "unlimited": "Il·limitat"
   },
   "dateTime": {
     "na": "N/D",
@@ -244,6 +245,9 @@
     "perkSuffix": "a Discord i el nostre agraïment etern.",
     "yearly": "{{price}} / any",
     "monthly": "{{price}} / mes",
-    "notLicense": "Els temes premium són una compra única a part."
+    "notLicense": "La llicència dels temes és una compra única a part."
+  },
+  "labels": {
+    "path": "Camí"
   }
 }

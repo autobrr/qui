@@ -28,8 +28,10 @@ export function releaseBody(markdown: string): string {
   let sectionNodes: Node[] = [];
   const flush = () => {
     const notice = section.match(/breaking|important/i)?.[0];
-    if (notice && sectionNodes.length > 0) {
-      const label = notice.toLowerCase() === "breaking" ? "Breaking" : "Important";
+    const label = notice?.toLowerCase() === "breaking" ? "Breaking" : "Important";
+    // The first notice of each kind wins. GoReleaser's "Breaking Changes"
+    // commit list comes after the written Breaking changes section.
+    if (notice && sectionNodes.length > 0 && !notices.some((n) => n.startsWith(`**${label}:**`))) {
       const first = sectionNodes[0];
       const text = leadingBold(first.type === "list" ? first.children[0]?.children[0] : first) ?? toString(first).trim().split(/(?<=[.!?])\s/)[0];
       notices.push(`**${label}:** ${text}`);

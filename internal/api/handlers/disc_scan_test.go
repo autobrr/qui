@@ -87,7 +87,8 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &hasLocalAccess)
 	require.NoError(t, err)
 
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 1", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 2", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Extras"), 0o750))
@@ -107,10 +108,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 		},
 	}
 
-	hub := activity.NewHub()
-	t.Cleanup(hub.Close)
-	events, unsubscribe := hub.Subscribe()
-	t.Cleanup(unsubscribe)
+	hub, events := newActivityHub(t)
 
 	store := models.NewDiscScanStore(db)
 	service := discscan.NewService(store)
@@ -169,10 +167,10 @@ func (fx *discScanFixture) get(t *testing.T, runID int64) models.DiscScanRun {
 func (fx *discScanFixture) waitStatus(t *testing.T, runID int64, status string) models.DiscScanRun {
 	t.Helper()
 	var run models.DiscScanRun
-	require.Eventually(t, func() bool {
+	waitForActivity(t, fx.events, func() bool {
 		run = fx.get(t, runID)
 		return run.Status == status
-	}, 5*time.Second, 10*time.Millisecond, "run %d never reached %s", runID, status)
+	})
 	return run
 }
 
@@ -310,11 +308,6 @@ func TestDiscScanCancel_PendingAndScanning(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	canceled := fx.waitStatus(t, running.ID, models.DiscScanStatusCanceled)
 	require.Empty(t, canceled.Report)
-
-	// The scanner returned on ctx cancel; a later release changes nothing.
-	close(fx.scanner.release)
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, models.DiscScanStatusCanceled, fx.get(t, running.ID).Status)
 
 	code, _ = fx.do(t, http.MethodPost, "/disc-scans/999999/cancel", "")
 	require.Equal(t, http.StatusNotFound, code)

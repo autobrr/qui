@@ -80,6 +80,8 @@ For an episode to count toward coverage, it must:
 - Pass the same release-compatibility checks used by normal cross-seeding
 - Belong to the same episode in the season pack
 
+A plain `WEB` source matches both `WEB-DL` and `WEBRip`. If the check has the torrent data, a `WEB-DL` episode also matches a `WEBRip` pack, and the reverse, when the size of the episode torrent is within 5% of the episode file in the pack. Trackers often give the same web release a different label. At apply, qui compares the exact file sizes.
+
 Mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
 The default threshold is **75%**. Change it in **Cross-Seed > Season packs** in the qui UI.
@@ -94,7 +96,7 @@ The defaults match common seasonpackarr expectations.
 | --- | --- | --- | --- |
 | Ignore REPACK/PROPER differences | On | Treat REPACK and PROPER episodes as compatible with the season pack. | `Show.S01E01.REPACK` matches `Show.S01E01.PROPER` |
 | Simplify HDR matching | Off | Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching. | `HDR10+` matches `HDR10` |
-| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
+| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. A WEB-DL episode then also matches a WEBRip pack at any size. | `WEB-DL` matches `WEBRip` |
 | Ignore year differences | Off | Allow matches when release dates differ or when one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
 ### Alternate titles
@@ -104,6 +106,10 @@ If Sonarr resolves the show, qui pulls its series-wide alternate titles and uses
 ### Anime absolute numbering
 
 If both sides use the same absolute numbering, qui matches absolute-numbered anime episodes (for example `Show - 1140`, with no season number) against a season pack. qui keys the local episode to the pack season and uses the absolute episode number to identify it.
+
+If a pack file has no season in its name, qui reads its number as an absolute episode, with one exception. If the pack is season 2 or later and the lowest episode number of these files is 1, the files use season numbering. For example, in a `Show S02` pack, the files `Show - 01` to `Show - 12` are `S02E01` to `S02E12`. In the same pack, the files `Show - 13` to `Show - 24` are absolute episodes 13 to 24.
+
+Some pack names have no season number, but the title ends with a Roman numeral from II to X, such as `Show II [Batch]`. qui reads the numeral as the season of the pack, so `Show II [Batch]` is season 2 of `Show`.
 
 Season-pack matching does not translate between numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation needs per-episode data for every file in the pack. Single episodes are different: with Sonarr linked, qui maps one episode between schemes. See [Manual Search](./overview.md#manual-search) in the overview.
 
@@ -129,11 +135,11 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- You must enable **Local filesystem access** on the target instance
-- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees.
+- The target instance must have **Local filesystem access** enabled, or be a [remote instance](../ssh-access.md)
+- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
-During eligibility checks, qui skips instances that lack local filesystem access or a link mode.
+During eligibility checks, qui skips instances that lack filesystem access or a link mode.
 
 See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
@@ -169,6 +175,8 @@ If you do not already have an API key for autobrr:
 
 - Go to **Settings > API Keys**
 - Click **Create API Key**
+- Under **Permissions**, pick **Cross-seed: run** for check and apply. To read the run list with this key, also pick **Cross-seed: read**.
+- Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).
 - Copy the generated key
 
 ### 3. Configure the autobrr external filter
@@ -280,7 +288,7 @@ If `/check` returns `200 OK`, send the torrent to `/api/cross-seed/season-pack/a
 | POST   | `/api/cross-seed/season-pack/apply`   | Assemble and add the pack  |
 | GET    | `/api/cross-seed/season-pack/runs`    | List recent activity       |
 
-The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 200). qui stores the most recent 200 season-pack runs and prunes older rows when it records new check or apply activity.
+The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 400). qui keeps the newest 200 applied runs. Runs with another status share a second limit of 200. qui deletes older runs when it records a new run.
 
 `/check` returns `404 Not Found` for expected skips, such as below-threshold coverage, disabled season packs, non-season-pack releases, or missing eligible instances. `/apply` returns `500 Internal Server Error` if qui cannot apply the pack. Reasons include skipped recheck-required packs, layout mismatches, torrent add failures, or operational errors while qui reads qBittorrent state.
 
@@ -297,18 +305,34 @@ When qui applies a season pack, it:
   - The global cross-seed category rules (custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise the category of the matched episode).
 - Creates the resolved category on the target instance if the category does not exist.
 
+## Episode torrents after the pack
+
+qui does not remove or change the episode torrents when it adds a season pack. The pack has its own linked tree, so it does not use the paths of the episode torrents. If the tracker removes the episodes after the pack arrives, qBittorrent reports them as unregistered.
+
+To remove these episode torrents automatically, make an [automation](../automations.md) with these conditions and this action:
+
+- Condition: `Unregistered` is `true`. This condition needs qBittorrent 5.1 or newer.
+- Condition: `Season pack status` is `packed`. This matches only when a pack of the same release is in the client. See [Season pack status](../automations.md#season-pack-status).
+- Action: Remove with files (preserve cross-seeds).
+
+The action deletes only the files of the episode torrent. The pack keeps its data. qui makes the hardlinks or reflinks of the pack before it adds the pack, and a pack that you downloaded has its own copy. With hardlinks or reflinks, the rule frees little or no disk space.
+
+:::warning
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
+:::
+
 ## Instance selection
 
 If `instanceIds` is omitted or contains multiple instances:
 
-1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
+1. qui filters the list to instances with a link mode qui can use: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode
 2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID
 
 ## Activity
 
-Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+Each check request, apply request, and automatic assembly attempt records a season-pack run. qui keeps the newest 200 applied runs, and the newest 200 runs with another status. Recent runs appear in **Cross-Seed > Season packs**. The list shows only applied runs by default. To show other runs, turn on the **Ready**, **Skipped**, or **Failed** chip. Each chip shows the number of runs with that status. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
 
 You can also query recent runs directly:
 
@@ -326,7 +350,7 @@ Start with autobrr:
 
 Then check qui:
 
-- Open **Cross-Seed > Season packs** and locate the row for the torrent name.
+- Open **Cross-Seed > Season packs**, turn on all status chips, and find the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
 - If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 

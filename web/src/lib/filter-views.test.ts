@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { filterViewsEqual, toViewFilters } from "./filter-views"
+import { EMPTY_SIDEBAR_FILTERS, filterViewsEqual, hasSidebarFilters, toViewFilters } from "./filter-views"
 import { makeFilters } from "@/test/mockFilters"
 
 describe("toViewFilters", () => {
@@ -41,5 +41,30 @@ describe("filterViewsEqual", () => {
     expect(filterViewsEqual({ status: ["downloading"] }, { status: ["seeding"] })).toBe(false)
     expect(filterViewsEqual({ status: ["downloading"] }, { excludeStatus: ["downloading"] })).toBe(false)
     expect(filterViewsEqual({ expr: "size > 1" }, {})).toBe(false)
+  })
+})
+
+describe("hasSidebarFilters", () => {
+  it.each([
+    ["status", { status: ["unregistered"] }],
+    ["excludeStatus", { excludeStatus: ["seeding"] }],
+    ["categories", { categories: ["movies"] }],
+    ["excludeCategories", { excludeCategories: ["tv"] }],
+    ["tags", { tags: ["keep"] }],
+    ["excludeTags", { excludeTags: ["keep"] }],
+    ["trackers", { trackers: ["tracker.example.invalid"] }],
+    ["excludeTrackers", { excludeTrackers: ["tracker.example.invalid"] }],
+    ["expr", { expr: "Ratio < 1" }],
+  ])("reports a set %s filter", (_, overrides) => {
+    expect(hasSidebarFilters(makeFilters(overrides))).toBe(true)
+  })
+
+  it("reports no filter for an empty or blank selection", () => {
+    expect(hasSidebarFilters(makeFilters())).toBe(false)
+    expect(hasSidebarFilters(makeFilters({ expr: "  " }))).toBe(false)
+  })
+
+  it("reports no filter after a clear", () => {
+    expect(hasSidebarFilters(EMPTY_SIDEBAR_FILTERS)).toBe(false)
   })
 })

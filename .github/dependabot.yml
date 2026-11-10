@@ -58,3 +58,14 @@ updates:
       semver-patch-days: 3
       semver-minor-days: 7
       semver-major-days: 14
+
+  - package-ecosystem: npm
+    directory: /.github/scripts/triage
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      # A new Claude model needs a newer SDK, so the SDK does not wait.
+      # Change the model in run.mjs in the same pull request.
+      exclude:
+        - "@anthropic-ai/*"

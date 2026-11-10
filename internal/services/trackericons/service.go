@@ -21,20 +21,25 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
+	"code.dny.dev/ssrf"
 	// Same again for .ico, which browsers still serve as a favicon.
 	_ "github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
+	"golang.org/x/net/http/httpproxy"
+	"golang.org/x/net/idna"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
 
@@ -125,7 +130,7 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 
 	svc := &Service{
 		iconDir:           iconDir,
-		client:            &http.Client{Timeout: fetchTimeout},
+		client:            &http.Client{Timeout: fetchTimeout, Transport: newPublicOnlyTransport()},
 		failures:          make(map[string]failureState),
 		activityPublisher: activity.NopPublisher{},
 	}
@@ -145,6 +150,101 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	return svc, nil
+}
+
+// publicOnly refuses the addresses that IANA reserves for special use. Trackers
+// serve their sites on any port, so it allows every port. It allows NAT64, so
+// IPv6-only hosts with DNS64 can still reach IPv4 trackers, and checkNAT64
+// checks the IPv4 address inside a NAT64 address.
+var publicOnly = ssrf.New(
+	ssrf.WithAnyPort(),
+	ssrf.WithAllowedV6Prefixes(ssrf.IPv6NAT64Prefix),
+)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// newPublicOnlyTransport returns a transport that connects only to public
+// addresses. The torrent author chooses the tracker host, and the tracker page
+// chooses the icon URLs and redirects, so without this check a torrent could
+// make qui send requests into the local network.
+//
+// A request that goes through HTTP_PROXY or HTTPS_PROXY uses a transport that
+// dials only the proxy, which the operator configured and which is often on
+// the local network. The proxy connects to the target, so qui first resolves
+// the target host and refuses a private address. A DNS server that gives qui
+// and the proxy different answers can still get past this check. Every other
+// request uses the checked dialer, also when it targets the proxy address.
+func newPublicOnlyTransport() http.RoundTripper {
+	proxyFunc := httpproxy.FromEnvironment().ProxyFunc()
+
+	direct := http.DefaultTransport.(*http.Transport).Clone()
+	direct.Proxy = nil
+	direct.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: safeDial}).DialContext
+
+	proxied := http.DefaultTransport.(*http.Transport).Clone()
+	proxied.Proxy = func(r *http.Request) (*url.URL, error) { return proxyFunc(r.URL) }
+
+	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		proxyURL, err := proxyFunc(r.URL)
+		if err != nil {
+			return nil, err
+		}
+		if proxyURL == nil {
+			return direct.RoundTrip(r)
+		}
+		if err := checkPublicHost(r.Context(), r.URL.Hostname()); err != nil {
+			return nil, err
+		}
+		return proxied.RoundTrip(r)
+	})
+}
+
+// checkPublicHost resolves host and refuses it if any of its addresses is not
+// public. A host that does not resolve is refused too.
+func checkPublicHost(ctx context.Context, host string) error {
+	// net/http sends the ASCII form of a Unicode host name, and the Go resolver
+	// refuses a Unicode name. Like net/http, keep the host as it is when the
+	// conversion fails, for example for an IPv6 literal.
+	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
+		host = ascii
+	}
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return err
+	}
+	for _, ip := range ips {
+		// LookupNetIP returns an IPv4 literal or hosts-file entry as
+		// ::ffff:a.b.c.d, and the guard refuses every IPv4-mapped address.
+		ip = ip.Unmap()
+		if err := publicOnly.SafeAddr(ip); err != nil {
+			return err
+		}
+		if err := checkNAT64(ip); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// safeDial is the dialer Control function for direct requests.
+func safeDial(network, address string, c syscall.RawConn) error {
+	if err := publicOnly.Safe(network, address, c); err != nil {
+		return err
+	}
+	return checkNAT64(netip.MustParseAddrPort(address).Addr())
+}
+
+// checkNAT64 refuses a NAT64 address that carries an IPv4 address that is not
+// public. The NAT64 gateway connects to that IPv4 address, and not every
+// gateway refuses a private one.
+func checkNAT64(ip netip.Addr) error {
+	if !ssrf.IPv6NAT64Prefix.Contains(ip) {
+		return nil
+	}
+	b := ip.As16()
+	return publicOnly.SafeAddr(netip.AddrFrom4([4]byte(b[12:])))
 }
 
 // SetActivityPublisher wires the qui server-event hub so newly cached tracker

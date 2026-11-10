@@ -76,7 +76,7 @@ describe("applyStreamDelta", () => {
 })
 
 describe("applyStreamDelta", () => {
-  it.each([false, true])("retains only counts and preferences on an aggregate-only delta, cross-instance: %s", isCrossInstance => {
+  it.each([false, true])("retains only counts on an aggregate-only delta, cross-instance: %s", isCrossInstance => {
     const torrents = ["a", "b"].map(hash => ({
       hash,
       name: `${hash}.iso`,
@@ -86,7 +86,6 @@ describe("applyStreamDelta", () => {
       crossInstanceTorrents: torrents.map(torrent => ({ ...torrent, instanceId: 1, instanceName: "Field" })),
       total: torrents.length,
       counts: { status: { all: 2 }, categories: {}, tags: {}, trackers: {}, total: 2 },
-      preferences: { max_ratio: 2 },
       categories: { FieldCategory: { name: "FieldCategory", savePath: "/synthetic/" } },
       tags: ["FieldTag"],
     } as unknown as TorrentResponse
@@ -104,19 +103,7 @@ describe("applyStreamDelta", () => {
     expect(changed).toBe(false)
     expect(isCrossInstance ? data.crossInstanceTorrents : data.torrents).toBe(isCrossInstance ? base.crossInstanceTorrents : torrents)
     expect(data.counts).toBe(base.counts)
-    expect(data.preferences).toBe(base.preferences)
     expect(data.categories).toBeUndefined()
     expect(data.tags).toBeUndefined()
-  })
-
-  it.each([false, true])("preserves omitted and explicit null preferences, cross-instance: %s", isCrossInstance => {
-    const base: TorrentResponse = { torrents: [], total: 0 }
-    const payload = { type: "delta" as const, data: base }
-
-    expect(applyStreamDelta(base, payload, isCrossInstance).data).not.toHaveProperty("preferences")
-
-    const cleared = applyStreamDelta(base, { ...payload, data: { ...base, preferences: null } }, isCrossInstance).data
-    expect(cleared.preferences).toBeNull()
-    expect(applyStreamDelta(cleared, payload, isCrossInstance).data.preferences).toBeNull()
   })
 })

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
+	"testing/synctest"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
@@ -100,27 +100,29 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 
 	require.NotNil(t, server.streamManager, "expected stream manager to be initialized")
 
-	sink := getClientPoolSyncEventSink(t, clientPool)
-	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
-	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
+	sinks := getClientPoolSyncEventSinks(t, clientPool)
+	require.Len(t, sinks, 1, "expected client pool to have one sync sink registered")
+	require.Same(t, server.streamManager, sinks[0], "stream manager should be registered as sync sink")
 }
 
 func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
-	server := NewServer(&Dependencies{
-		Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+	synctest.Test(t, func(t *testing.T) {
+		server := NewServer(&Dependencies{
+			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		})
+
+		// http.Server.Shutdown starts the registered callbacks on every call.
+		require.NoError(t, server.Shutdown(t.Context()))
+		require.NoError(t, server.Shutdown(t.Context()))
+
+		// Each callback runs in its own goroutine; wait for both so a double close panics here.
+		synctest.Wait()
+		select {
+		case <-server.shuttingDown:
+		default:
+			t.Fatal("shutdown signal was not sent")
+		}
 	})
-
-	// http.Server.Shutdown starts the registered callbacks on every call.
-	require.NoError(t, server.Shutdown(t.Context()))
-	require.NoError(t, server.Shutdown(t.Context()))
-
-	select {
-	case <-server.shuttingDown:
-	case <-time.After(time.Second):
-		t.Fatal("shutdown signal was not sent")
-	}
-	// The second callback runs in its own goroutine; let it run so a double close panics here.
-	time.Sleep(50 * time.Millisecond)
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -170,7 +172,6 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		&models.InstanceStore{},
 		&qbittorrent.SyncManager{},
 		nil,
 		nil,
@@ -190,7 +191,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AuthService:               authService,
 		SessionManager:            sessionManager,
 		InstanceStore:             &models.InstanceStore{},
-		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
+		ClientAPIKeyStore:         models.NewClientAPIKeyStore(db),
 		ClientPool:                &qbittorrent.ClientPool{},
 		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
 		WebHandler:                &web.Handler{},
@@ -339,22 +340,22 @@ func formatRoutes(routes []routeKey) string {
 	return strings.Join(lines, "\n")
 }
 
-func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbittorrent.SyncEventSink {
+func getClientPoolSyncEventSinks(t *testing.T, pool *qbittorrent.ClientPool) []qbittorrent.SyncEventSink {
 	t.Helper()
 
-	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSink")
+	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSinks")
 	if !value.IsValid() {
-		t.Fatalf("client pool does not expose syncEventSink field")
+		t.Fatalf("client pool does not expose syncEventSinks field")
 	}
 
 	exposed := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Elem()
-	if exposed.IsNil() {
-		return nil
+	sinks := make([]qbittorrent.SyncEventSink, exposed.Len())
+	for i := range sinks {
+		sink, ok := exposed.Index(i).Interface().(qbittorrent.SyncEventSink)
+		require.True(t, ok, "unexpected sink type stored on client pool")
+		sinks[i] = sink
 	}
-
-	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
-	require.True(t, ok, "unexpected sink type stored on client pool")
-	return sink
+	return sinks
 }
 
 func TestOpenStopsWhenPortIsInUse(t *testing.T) {

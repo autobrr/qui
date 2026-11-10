@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AppPreferences, QBittorrentAppInfo } from "./app"
+import type { QBittorrentAppInfo } from "./app"
 import type { InstanceError } from "./instances"
 
 export interface TorrentTracker {
@@ -106,8 +106,10 @@ export interface Torrent {
   hash: string
   infohash_v1: string
   infohash_v2: string
-  popularity: number
-  private: boolean
+  // The server leaves out popularity and private before qBittorrent 5.0, which
+  // does not send them in the torrent list, and private for a torrent without metadata.
+  popularity?: number
+  private?: boolean
   last_activity: number
   max_ratio: number
   max_seeding_time: number
@@ -117,11 +119,15 @@ export interface Torrent {
   num_incomplete: number
   num_leechs: number
   num_seeds: number
+  // qBittorrent 5.2 and later. Before 5.2 the server sends 0.
+  pieces_have?: number
+  pieces_num?: number
   priority: number
   progress: number
   ratio: number
   ratio_limit: number
-  reannounce: number
+  // The server leaves it out before qBittorrent 5.0, which does not send it in the torrent list.
+  reannounce?: number
   save_path: string
   seeding_time: number
   seeding_time_limit: number
@@ -144,6 +150,14 @@ export interface Torrent {
   uploaded: number
   uploaded_session: number
   upspeed: number
+  /** Only on a row of a Copy group with two or more matching torrents, when the request asked for groups. */
+  copy_group?: CopyGroupRow
+}
+
+export interface CopyGroupRow {
+  id: string
+  /** Only on the Group representative: the torrent whose place the group takes in the sort. */
+  first_sorted?: { instance_id: number; hash: string }
 }
 
 export interface DuplicateTorrentMatch {
@@ -253,9 +267,6 @@ export interface InstanceMeta {
 
 /**
  * Torrent list response shared by REST and stream snapshots.
- *
- * `preferences` is tri-state: omitted leaves existing frontend preference caches
- * unchanged, a value replaces them, and `null` clears stale cached preferences.
  */
 export interface TorrentResponse {
   torrents: Torrent[]
@@ -269,16 +280,20 @@ export interface TorrentResponse {
   tags?: string[]
   serverState?: ServerState
   appInfo?: QBittorrentAppInfo
-  /** qBittorrent preferences for this instance; `null` explicitly clears cached preferences. */
-  preferences?: AppPreferences | null
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  // Some instances in the Unified view did not answer.
+  partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta  // Real-time instance health from SSE
+  /** Web API version of each instance in the response, keyed by instance ID; "" while unknown. */
+  webAPIVersions?: Record<number, string>
   /** Frontend-assembled only: number of pages combined into this loaded-window response. */
   windowPageCount?: number
+  /** Only when the request asked for groups. False while the server has no Copy groups yet; the rows are then flat. */
+  copyGroupsReady?: boolean
 }
 
 export interface AddTorrentFailedURL {

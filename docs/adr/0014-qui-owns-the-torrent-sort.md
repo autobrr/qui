@@ -22,3 +22,4 @@ For a state sort, the Unified view asks each instance for live tracker health wi
 - A new sort column gets one rule in `torrentOrder`, and both views use it.
 - `TestSingleInstanceSortGolden` holds the order of each column. A change to the order updates `testdata/single_instance_sort.golden` in the same pull request.
 - `TestUnifiedSortMatchesSingleInstance` fails when a view gets its own sort again.
+- A `forbidigo` rule in `.golangci.yml` reports the `Sort` and `Reverse` fields of go-qbittorrent's `TorrentFilterOptions`, also in test code. The linter reports a torrent list that asks the library or qBittorrent to sort its rows.

@@ -47,7 +47,7 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 		return nil, err
 	}
 
-	sqliteDB, err := openSQLiteDB(sqlitePath)
+	sqliteDB, err := openSQLiteReader(sqlitePath)
 	if err != nil {
 		return nil, err
 	}
@@ -218,26 +218,6 @@ func validateMigrationOptions(opts SQLiteToPostgresMigrationOptions) (string, st
 		return "", "", fmt.Errorf("stat sqlite file: %w", err)
 	}
 	return sqlitePath, pgDSN, nil
-}
-
-func openSQLiteDB(sqlitePath string) (*sql.DB, error) {
-	sqliteDB, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", sqlitePath))
-	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
-	}
-	return sqliteDB, nil
-}
-
-func openPostgresPool(ctx context.Context, pgDSN string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, pgDSN)
-	if err != nil {
-		return nil, fmt.Errorf("open postgres pool: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping postgres: %w", err)
-	}
-	return pool, nil
 }
 
 func runDryRunReport(ctx context.Context, pool *pgxpool.Pool, tables []string, sqliteCounts map[string]int64) (*SQLiteToPostgresMigrationReport, error) {

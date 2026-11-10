@@ -157,9 +157,9 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 				},
 			}
 			sync.resolved = tt.resolved
-			service := &Service{automationStore: store, syncManager: sync}
+			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
 
-			_, member, err := service.registerPartialPoolAdmission(
+			_, member, err := service.join(
 				t.Context(),
 				CrossSeedCandidate{InstanceID: instanceID},
 				torrentBytes,
@@ -180,6 +180,56 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 			require.Len(t, member.Files, len(descriptors))
 		})
 	}
+}
+
+func TestLinkModeWithoutPartialPoolCoordinatorAddsWithoutPool(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	torrentBytes, memberKey, descriptors := syntheticPartialPoolTorrent(t)
+	responseID := "add-response-hash"
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	sourcePath := filepath.Join(downloadsDir, "Matched", "video.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(sourcePath), 0o755))
+	require.NoError(t, os.WriteFile(sourcePath, bytes.Repeat([]byte("x"), 1000), 0o600))
+	sync := &partialPoolAdmissionSync{
+		rootlessSavePathSyncManager: &rootlessSavePathSyncManager{
+			files: map[string]qbt.TorrentFiles{responseID: partialPoolFetchedFiles(descriptors)},
+		},
+		addResponse: &qbt.TorrentAddResponse{AddedTorrentIds: []string{responseID}},
+		store:       store,
+		memberKey:   memberKey,
+	}
+	instance := &models.Instance{
+		ID: instanceID, Name: "partial-pool", HasLocalFilesystemAccess: true,
+		HardlinkBaseDir: filepath.Join(tempDir, "hardlink"), UseHardlinks: true,
+	}
+	service := &Service{
+		instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		automationStore: store,
+		syncManager:     sync,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	service.settler = idleSettler(sync)
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+
+	candidate := CrossSeedCandidate{InstanceID: instanceID, InstanceName: "partial-pool"}
+	matched := &qbt.Torrent{Hash: "source-hash", ContentPath: filepath.Dir(sourcePath)}
+	sourceFiles := qbt.TorrentFiles{{Name: descriptors[0].RelativePath, Size: 1000}, {Name: descriptors[1].RelativePath, Size: 10}}
+	candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
+	props := &qbt.TorrentProperties{SavePath: downloadsDir}
+
+	adds := withLinkAdder(service)
+	adds.addedIDs = []string{responseID}
+	result := service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", &CrossSeedRequest{}, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+
+	require.True(t, result.Success, result.Message)
+	require.False(t, result.partialPoolPending)
+	require.NotContains(t, result.Message, "pooled completion pending")
+	_, member, err := store.ResolvePartialPoolMember(t.Context(), instanceID, memberKey)
+	require.NoError(t, err)
+	require.Nil(t, member, "an add without a coordinator must not join a pool")
 }
 
 func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testing.T) {
@@ -214,10 +264,15 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 				automationStore: store,
 				syncManager:     sync,
-				partialPoolWake: make(chan partialPoolWake, 1),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
+			}
+			service.partialPool = &partialPoolCoordinator{
+				automationStore: store,
+				syncManager:     sync,
+				settings:        service.GetAutomationSettings,
+				partialPoolWake: make(chan partialPoolWake, 1),
 			}
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
@@ -240,11 +295,13 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
+			adds := withLinkAdder(service)
+			adds.addedIDs = []string{responseID}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				result = service.processHardlinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			} else {
-				result = service.processReflinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			}
 
 			require.True(t, result.Success, result.Message)
@@ -252,17 +309,17 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			require.Equal(t, "added_"+mode, result.Status)
 			require.Contains(t, result.Message, "pooled completion pending")
 			require.Equal(t, []string{responseID}, sync.fetchedHashes)
-			require.Empty(t, sync.bulkActions, "admission must leave the initial recheck to the coordinator")
+			require.Empty(t, adds.actions, "admission must leave the initial recheck to the coordinator")
 
 			pool, member, err := store.ResolvePartialPoolMember(t.Context(), instanceID, memberKey)
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
 			require.Equal(t, partialPoolRecheckPending, member.LastError)
-			wake := <-service.partialPoolWake
+			wake := <-service.partialPool.partialPoolWake
 			require.Equal(t, pool.ID, wake.poolID, "registration must be durable before its wake is consumed")
 
 			now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-			service.reconcilePartialPoolVerifying(t.Context(), now, pool, member, &partialPoolMemberSnapshot{
+			service.partialPool.reconcilePartialPoolVerifying(t.Context(), now, pool, member, &partialPoolMemberSnapshot{
 				torrent: qbt.Torrent{State: qbt.TorrentStateStoppedDl},
 			}, 0)
 			require.Equal(t, 1, sync.recheckCalls)
@@ -286,7 +343,7 @@ func TestPartialPoolCoordinatorAdoptsRunningRecheck(t *testing.T) {
 			pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 			require.NoError(t, err)
 			sync := &rootlessSavePathSyncManager{}
-			service := &Service{automationStore: store, syncManager: sync}
+			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
 			now := time.Date(2026, 8, 23, 13, 0, 0, 0, time.UTC)
 			state := qbt.TorrentStateCheckingUp
 			if status == models.CrossSeedPartialPoolMemberStatusRechecking {
@@ -319,10 +376,10 @@ func TestPartialPoolCoordinatorKeepsResumeDataPendingUntilStopped(t *testing.T) 
 			pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 			require.NoError(t, err)
 			sync := &rootlessSavePathSyncManager{}
-			service := &Service{
+			service := &partialPoolCoordinator{
 				automationStore: store,
 				syncManager:     sync,
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
@@ -384,10 +441,10 @@ func TestPartialPoolWakePreservesNewAdmissionUntilInventoryVisible(t *testing.T)
 			}},
 		},
 	}
-	service := &Service{
+	service := &partialPoolCoordinator{
 		automationStore: store,
 		syncManager:     sync,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
@@ -443,13 +500,14 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 				automationStore: store,
 				syncManager:     sync,
-				postInjectionHook: func(context.Context, int, string) {
+				postInjectionHook: func(context.Context, int, []string) {
 					hookCalls++
 				},
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
+			service.partialPool = &partialPoolCoordinator{automationStore: store, syncManager: sync, settings: service.GetAutomationSettings}
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
 				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
@@ -476,13 +534,15 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
+			adds := withLinkAdder(service)
+			adds.addedIDs = []string{"accepted-hash"}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				modeResult := service.processHardlinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			} else {
-				modeResult := service.processReflinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			}
@@ -494,12 +554,10 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			require.Contains(t, result.Message, "pooled registration failed")
 			require.Contains(t, result.Message, "remains stopped for manual intervention")
 			require.Contains(t, result.Message, fetchErr.Error())
-			require.Equal(t, 1, hookCalls)
-			require.NotNil(t, sync.addedOptions, "qBittorrent add must remain intact")
-			require.Equal(t, "true", sync.addedOptions["stopped"])
-			require.Equal(t, "true", sync.addedOptions["paused"])
-			require.Empty(t, sync.bulkActions, "terminal registration failure must not recheck or resume")
-			_, statErr := os.Stat(filepath.Join(sync.addedOptions["savepath"], descriptors[0].RelativePath))
+			require.Zero(t, hookCalls, "a failed add runs no External Program")
+			require.Len(t, adds.added, 1, "qBittorrent add must remain intact")
+			require.Empty(t, adds.actions, "terminal registration failure must not recheck or resume")
+			_, statErr := os.Stat(filepath.Join(adds.added[0]["savepath"], descriptors[0].RelativePath))
 			require.NoError(t, statErr, "materialized tree must remain intact")
 
 			logText := logs.String()
@@ -531,7 +589,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
-		t.Context(), &searchRunState{opts: SearchRunOptions{InstanceID: 1}},
+		t.Context(), 1, triggerDefaults{},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/synthetic.torrent"},
 		time.Now(),

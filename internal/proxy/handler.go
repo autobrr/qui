@@ -41,6 +41,7 @@ type Handler struct {
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
 	syncManager       *qbittorrent.SyncManager
+	writeNoter        writeNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -61,6 +62,11 @@ var missingProxyContextSampler = &zerolog.BasicSampler{N: 100}
 type basicAuthCredentials struct {
 	username string
 	password string
+}
+
+// writeNoter learns of each proxied request that can change the torrent list.
+type writeNoter interface {
+	NoteWrite(instanceID int)
 }
 
 type sessionRefresher interface {
@@ -116,6 +122,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
 		syncManager:       syncManager,
+		writeNoter:        syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
@@ -170,6 +177,11 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	}
 
 	proxyCtx.applyAuthHeaders(pr.Out)
+
+	// qBittorrent's CSRF check rejects a Referer or Origin that does not match its own host
+	// with 401. The values come from the calling app, not the instance, so drop them.
+	pr.Out.Header.Del("Referer")
+	pr.Out.Header.Del("Origin")
 
 	// Strip the proxy prefix from the path
 	apiKey := chi.URLParam(pr.In, "api-key")
@@ -397,6 +409,16 @@ func (h *Handler) prepareProxyContextMiddleware(next http.Handler) http.Handler 
 	})
 }
 
+func (h *Handler) noteTorrentWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		path := h.stripProxyPrefix(r.URL.Path, chi.URLParam(r, "api-key"))
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/api/v2/torrents/") {
+			h.writeNoter.NoteWrite(GetInstanceIDFromContext(r.Context()))
+		}
+	})
+}
+
 // Routes sets up the proxy routes
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
@@ -406,7 +428,7 @@ func (h *Handler) Routes(r chi.Router) {
 	// Scoped proxy routes retain API key middleware and prepare proxy context
 	proxyRouter.Route(proxyRoute, func(pr chi.Router) {
 		// Apply proxy context middleware (adds instance info to context)
-		pr.Use(h.prepareProxyContextMiddleware)
+		pr.Use(h.prepareProxyContextMiddleware, h.noteTorrentWrites)
 
 		pr.Post("/api/v2/torrents/reannounce", h.handleReannounce)
 
@@ -427,6 +449,13 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+
+		// Intercepted only to clean up the folders a move leaves behind
+		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
+		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
+		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
+		pr.Post("/api/v2/torrents/setSavePath", h.handleSetSavePath)
+		pr.Post("/api/v2/torrents/setDownloadPath", h.handleSetDownloadPath)
 
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
@@ -1144,9 +1173,20 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 	return filters
 }
 
+// parseInfoQueryValues reads a category or tag parameter of torrents/info. As
+// in qBittorrent, a present parameter with no value (category=) asks for the
+// torrents with no category or no tag, which the value "" selects.
+func parseInfoQueryValues(queryParams url.Values, key string) []string {
+	values := parseCSVQueryValues(queryParams, key)
+	if _, present := queryParams[key]; present && len(values) == 0 {
+		return []string{""}
+	}
+	return values
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -1167,8 +1207,8 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	queryParams := r.URL.Query()
 	filterValues := parseCSVQueryValues(queryParams, "filter")
-	categoryValues := parseCSVQueryValues(queryParams, "category")
-	tagValues := parseCSVQueryValues(queryParams, "tag")
+	categoryValues := parseInfoQueryValues(queryParams, "category")
+	tagValues := parseInfoQueryValues(queryParams, "tag")
 	statusFilters, excludeStatusFilters := splitStatusFilters(filterValues)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"
@@ -1236,7 +1276,15 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/info request via qui sync manager")
 
 	// Use qui's sync manager
-	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, "", filters)
+	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
+		InstanceID:        instanceID,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Filters:           filters,
+		FullPasskeyAccess: true,
+	})
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -1351,7 +1399,17 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/qui request with qui sync manager")
 
 	// Use qui's sync manager to get filtered torrents
-	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
+		InstanceID:        instanceID,
+		Limit:             limit,
+		Offset:            offset,
+		Sort:              sort,
+		Order:             order,
+		Search:            search,
+		Filters:           filters,
+		SidebarCounts:     true,
+		FullPasskeyAccess: true,
+	})
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -1783,11 +1841,10 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
+			Path: strings.TrimSpace(form.get("location"))}, true
+	})
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -2036,9 +2093,8 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+			strings.EqualFold(form.get("deleteFiles"), "true")
+	})
 }

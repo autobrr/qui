@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -123,7 +124,7 @@ func TestWorkItemHasPendingFiles_ReopensNoMatchForNewIndexer(t *testing.T) {
 				SearchedIndexerIDs: []int{1},
 			},
 		},
-		byFileID: map[string]*models.DirScanFile{},
+		byFileID: map[fsops.FileKey]*models.DirScanFile{},
 	}
 
 	require.False(t, workItemHasPendingFiles(item, trackedFiles, map[int]struct{}{1: {}}))

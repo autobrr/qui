@@ -175,6 +175,7 @@ func TestSeasonPackStatus_PreviewScoreRuleGate(t *testing.T) {
 		}},
 	}}
 	s := &Service{releaseParser: releases.NewDefaultParser()}
-	evalCtx, _ := s.buildEvalContext(t.Context(), 1, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, previewNeeds(rule))
+	evalCtx, _, err := s.buildEvalContext(t.Context(), 1, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, previewNeeds(rule))
+	require.NoError(t, err)
 	require.Len(t, evalCtx.SeasonPackSet, 1)
 }

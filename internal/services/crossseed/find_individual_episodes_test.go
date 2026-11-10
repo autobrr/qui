@@ -134,10 +134,9 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:        "guid-2",
 		Size:        2048,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         []string{"ARR Alias"},
+			Class:        searchCandidateClassExactSizeFallback,
+			Relaxed:      differencesOf(differenceCollection),
+			SourceTitles: []string{"ARR Alias"},
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
@@ -172,6 +171,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		FindIndividualEpisodes: true,
 	}
 
+	withAdder(service)
 	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
@@ -179,8 +179,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
-	require.Equal(t, cached.SearchDecision.StrictMismatchReason, captured.SearchDecision.StrictMismatchReason)
-	require.Equal(t, cached.SearchDecision.RelaxedDifferences, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
 
@@ -332,4 +331,8 @@ func (f *episodeSyncManager) GetCategories(_ context.Context, _ int) (map[string
 
 func (f *episodeSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
+}
+
+func (*episodeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

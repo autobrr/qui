@@ -81,6 +81,9 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 	return existingLicense, nil
 }
 
+// activateWithDodo stores each key that activates as premium access, because the
+// Dodo response does not name the product. A Dodo product that issues a key thus
+// unlocks premium themes, so the supporter subscription must stay keyless.
 func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.dodoClient == nil {
 		return nil, ErrDodoClientNotConfigured
@@ -258,14 +261,12 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	}
 
 	for _, license := range licenses {
-		// Only refresh active licenses. Invalid licenses require an explicit user
-		// action (re-activate) and should not be auto-activated in the background.
-		if license.Status != models.LicenseStatusActive {
+		if !revalidates(license.Status) {
 			continue
 		}
 
-		// Skip recently validated licenses (within 1 hour)
-		if time.Since(license.LastValidated) < time.Hour {
+		// Going offline also sets last_validated, so skip only active licenses.
+		if license.Status == models.LicenseStatusActive && time.Since(license.LastValidated) < time.Hour {
 			continue
 		}
 
@@ -335,6 +336,12 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	return refreshErr
 }
 
+// revalidates reports whether the background check and the manual refresh validate a license with this status.
+// An invalid license needs an explicit re-activation by the user, so they skip it.
+func revalidates(status string) bool {
+	return status == models.LicenseStatusActive || status == models.LicenseStatusOffline
+}
+
 // ValidateLicenses validates all stored licenses against the Dodo API
 func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
@@ -351,6 +358,21 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	allValid := true
 	var transientErr error
 	handleTransient := func(license *models.ProductLicense, err error) {
+		if license.Status == models.LicenseStatusActive && time.Since(license.LastValidated) > offlineGracePeriod {
+			log.Warn().
+				Err(err).
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Time("lastValidated", license.LastValidated).
+				Msg("License server unreachable beyond the offline grace period, marking license offline")
+			if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusOffline); updateErr != nil {
+				log.Error().
+					Err(updateErr).
+					Int("licenseId", license.ID).
+					Msg("Failed to update license status to offline")
+			}
+			allValid = false
+			return
+		}
 		log.Warn().
 			Err(err).
 			Str("licenseKey", maskLicenseKey(license.LicenseKey)).
@@ -364,10 +386,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	}
 
 	for _, license := range licenses {
-		// Only validate active licenses in the background. Invalid licenses
-		// require an explicit user action (re-activate) and should not be
-		// auto-activated in the checker.
-		if license.Status != models.LicenseStatusActive {
+		if !revalidates(license.Status) {
 			allValid = false
 			continue
 		}
@@ -448,7 +467,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	// Invalid state has priority over transient backend failures: report
 	// deterministic invalid result and suppress soft-fail errors.
 	if !allValid && transientErr != nil {
-		return allValid, nil
+		return allValid, nil //nolint:nilerr // an invalid license has priority over a transient error
 	}
 
 	return allValid, transientErr

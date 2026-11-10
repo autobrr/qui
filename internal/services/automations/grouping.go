@@ -11,7 +11,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 const (
@@ -35,6 +34,16 @@ const (
 	groupAmbiguousSkip          = "skip"
 )
 
+// GroupKeys are the values of a group definition's keys. buildGroupKey reads each one.
+var GroupKeys = []string{
+	groupKeyContentPath, groupKeySavePath, groupKeyEffectiveName, groupKeyContentType, groupKeyTrackerDomain,
+	groupKeyRlsSource, groupKeyRlsResolution, groupKeyRlsCodec, groupKeyRlsHDR, groupKeyRlsAudio,
+	groupKeyRlsChannels, groupKeyRlsGroup, groupKeyHardlinkSignature,
+}
+
+// GroupAmbiguousPolicies are the values of a group definition's ambiguousPolicy.
+var GroupAmbiguousPolicies = []string{groupAmbiguousVerifyOverlap, groupAmbiguousSkip}
+
 // Built-in group IDs.
 const (
 	GroupCrossSeedContentPath     = "cross_seed_content_path"
@@ -43,6 +52,11 @@ const (
 	GroupTrackerReleaseItem       = "tracker_release_item"
 	GroupHardlinkSignature        = "hardlink_signature"
 )
+
+// BuiltinGroupIDs are the group IDs that a rule can use without a group definition.
+var BuiltinGroupIDs = []string{
+	GroupCrossSeedContentPath, GroupCrossSeedContentSavePath, GroupReleaseItem, GroupTrackerReleaseItem, GroupHardlinkSignature,
+}
 
 type groupIndex struct {
 	groupID string
@@ -95,7 +109,7 @@ type groupingConditionUsage struct {
 	hasUnscoped bool
 }
 
-func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrents []qbt.Torrent, sm *qbittorrent.SyncManager) {
+func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrents []qbt.Torrent, scope *ruleScope) {
 	if evalCtx == nil {
 		return
 	}
@@ -127,7 +141,7 @@ func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrent
 	}
 
 	for _, groupID := range groupIDs {
-		getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+		getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, scope)
 	}
 
 	if defaultGroupID != "" {
@@ -135,7 +149,7 @@ func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrent
 	}
 }
 
-func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, groupID string, torrents []qbt.Torrent, sm *qbittorrent.SyncManager) *groupIndex {
+func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, groupID string, torrents []qbt.Torrent, scope *ruleScope) *groupIndex {
 	if evalCtx == nil || rule == nil || groupID == "" {
 		return nil
 	}
@@ -149,18 +163,16 @@ func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, 
 		return cached
 	}
 
-	var def *models.GroupDefinition
-	if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-		def = findGroupDefinition(rule.Conditions.Grouping, groupID)
+	var grouping *models.GroupingConfig
+	if rule.Conditions != nil {
+		grouping = rule.Conditions.Grouping
 	}
-	if def == nil {
-		def = builtinGroupDefinition(groupID)
-	}
+	def := groupDefinition(grouping, groupID)
 	if def == nil {
 		return nil
 	}
 
-	idx := buildGroupIndex(groupID, def, torrents, sm, evalCtx)
+	idx := buildGroupIndex(groupID, def, torrents, scope, evalCtx)
 	evalCtx.groupIndexCache[rule.ID][groupID] = idx
 	return idx
 }
@@ -374,6 +386,14 @@ func appendUniqueGroupID(groupIDs []string, groupID string) []string {
 	return append(groupIDs, groupID)
 }
 
+// groupDefinition returns the custom group with this id, else the built-in group. It returns nil for an unknown id.
+func groupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {
+	if def := findGroupDefinition(cfg, id); def != nil {
+		return def
+	}
+	return builtinGroupDefinition(id)
+}
+
 func findGroupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {
 	if cfg == nil || id == "" {
 		return nil
@@ -422,7 +442,7 @@ func builtinGroupDefinition(id string) *models.GroupDefinition {
 	}
 }
 
-func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt.Torrent, sm *qbittorrent.SyncManager, evalCtx *EvalContext) *groupIndex {
+func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt.Torrent, scope *ruleScope, evalCtx *EvalContext) *groupIndex {
 	idx := &groupIndex{
 		groupID:       groupID,
 		keyByHash:     make(map[string]string),
@@ -434,7 +454,7 @@ func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt
 	keys := def.Keys
 	for i := range torrents {
 		t := torrents[i]
-		key, ok := buildGroupKey(keys, t, sm, evalCtx)
+		key, ok := buildGroupKey(keys, t, scope, evalCtx)
 		if !ok || key == "" {
 			continue
 		}
@@ -459,7 +479,7 @@ func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt
 	return idx
 }
 
-func buildGroupKey(keys []string, t qbt.Torrent, sm *qbittorrent.SyncManager, evalCtx *EvalContext) (string, bool) {
+func buildGroupKey(keys []string, t qbt.Torrent, scope *ruleScope, evalCtx *EvalContext) (string, bool) {
 	if len(keys) == 0 {
 		return "", false
 	}
@@ -492,10 +512,7 @@ func buildGroupKey(keys []string, t qbt.Torrent, sm *qbittorrent.SyncManager, ev
 			}
 			parts = append(parts, strings.ToLower(v))
 		case groupKeyTrackerDomain:
-			if sm == nil {
-				return "", false
-			}
-			domains := collectTrackerDomains(t, sm)
+			domains := scope.trackerDomains(&t)
 			if len(domains) == 0 {
 				return "", false
 			}

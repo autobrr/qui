@@ -105,7 +105,21 @@
     "totalSize": "Загальний розмір: {{size}}",
     "blockCrossSeeds": "Блокувати інфохеші крос-сідів (запобігти повторному додаванню)",
     "cancel": "Скасувати",
-    "delete": "Видалити"
+    "delete": "Видалити",
+    "titleSelectAll_one": "Видалити {{count}} торент, що відповідає фільтру?",
+    "titleSelectAll_few": "Видалити {{count}} торенти, що відповідають фільтру?",
+    "titleSelectAll_many": "Видалити {{count}} торентів, що відповідають фільтру?",
+    "titleSelectAll_other": "Видалити {{count}} торента, що відповідають фільтру?",
+    "selectAllNotice": "Вибір усіх увімкнено. Це видалить вибрані торенти, що відповідають поточному фільтру.",
+    "notLoaded_one": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_few": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_many": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_other": "{{count}} з них не завантажено в таблицю.",
+    "andMore": "і ще {{more}}",
+    "deleteCount_one": "Видалити {{count}} торент",
+    "deleteCount_few": "Видалити {{count}} торенти",
+    "deleteCount_many": "Видалити {{count}} торентів",
+    "deleteCount_other": "Видалити {{count}} торента"
   },
   "deleteFilesPreference": {
     "label": "Також видалити файли з диска",
@@ -125,10 +139,11 @@
       "check": "Перевірити"
     },
     "searching": "Перевірка на крос-сіди",
-    "searchingProgress": "Перевірка на крос-сіди ({{checked}}/{{total}})",
     "error": "Не вдалося перевірити наявність крос-сідів",
     "retry": "Повторити",
     "noCrossSeeds": "Крос-сідів не знайдено",
+    "uncheckedOffline": "Не вдалося перевірити {{instance}}: qui не може з нею з'єднатися.",
+    "uncheckedDisabled": "{{instance}} не перевірено: її вимкнено в qui.",
     "deleteCrossSeeds": "Ці крос-сіди також буде видалено",
     "deletingFilesBreaks": "Видалення файлів порушить ці крос-сіди",
     "dataPreserved": "Виявлено крос-сіди: дані буде збережено",
@@ -527,6 +542,9 @@
       "description": "Встановити обмеження швидкості завантаження та завантаження в KB/s. Вимкніть, щоб використовувати глобальні обмеження.",
       "uploadLimit": "Встановити ліміт вивантаження (KB/s)",
       "downloadLimit": "Встановити ліміт завантаження (KB/s)",
+      "selectValue": "Виберіть значення",
+      "wasMixed": "(був змішаний)",
+      "unresolvedMixed": "Виберіть значення для всіх змішаних полів перед застосуванням",
       "cancel": "Скасувати",
       "setting": "Налаштування...",
       "confirm": "Застосувати обмеження"
@@ -829,21 +847,20 @@
     "partialResults": "Часткові результати - деякі індексатори не відповіли",
     "arrLookupFailed": "Не вдалося знайти ідентифікатори метаданих - пошук лише за назвою, результати можуть бути неповними",
     "arrNoIds": "Ідентифікатори метаданих для цього релізу не знайдено - пошук лише за назвою",
+    "gazelleTimedOut": "RED/OPS не відповів вчасно",
+    "torznabFailed": "Пошук Torznab не вдався - показано лише результати RED/OPS",
     "searchScope": "Область пошуку",
     "noIndexers": "Немає доступних індексаторів Torznab",
     "noIndexersHelp": "Додайте або ввімкніть індексатори Torznab у налаштуваннях для пошуку крос-сідів.",
+    "gazelleOnlySearch": "Пошук звертається лише до сайтів RED/OPS, для яких задано ключ API.",
     "capabilityNote": "Примітка про можливості",
     "capabilityDescription": "Цим індексаторам бракує потрібних можливостей/категорій для цього торента, тому сервер їх пропустить:",
-    "contentFilteringInProgress": "Виконується фільтрація вмісту",
-    "analyzingContent": "Аналіз наявного вмісту...",
     "smartFilteringActive": "Інтелектуальна фільтрація активна",
     "indexersFiltered_one": "{{count}} індексатор відфільтровано",
     "indexersFiltered_few": "{{count}} індексатори відфільтровано",
     "indexersFiltered_many": "{{count}} індексаторів відфільтровано",
     "indexersFiltered_other": "{{count}} індексатора відфільтровано",
-    "contentFilteringDescription": "Перевірка існуючих торентів на пошук дублікатів і виключення зайвих трекерів. Це допомагає уникнути завантаження того самого вмісту кілька разів.",
     "excludedDescription": "Ви вже роздаєте цей реліз із цих трекерів, тому їх виключено з пошуку.",
-    "noContentDuplicates": "Фільтрування вмісту завершено. На ваших увімкнених трекерах не знайдено дубльованого вмісту.",
     "searchingIndexers": "Пошук індексаторів...",
     "noMatchesFound": "У вашому пошуку не знайдено збігів.",
     "selectReleasesToAdd": "Виберіть випуски, які ви хочете додати",
@@ -892,7 +909,6 @@
       "selectAllIndexers": "Вибрати все",
       "clearSelection": "Очистити вибір",
       "search": "Пошук",
-      "filtering": "Фільтрування...",
       "searching": "Пошук",
       "noneSelected": "Не вибрано",
       "enabledIndexers": "{{count}} увімкнено {{suffix}}",
@@ -925,7 +941,8 @@
       "fewerIndexers": "Спробуйте шукати з меншою кількістю вибраних індексаторів",
       "useRss": "Використовуйте функцію автоматизації RSS для поточного перехресного роздавання",
       "checkIndexers": "Перевірте сторінку індексаторів, щоб дізнатися, які з них обмежені"
-    }
+    },
+    "routedTo": "Крос-сіди йдуть до екземпляра для крос-сідів {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Фільтр {{column}}",
@@ -991,6 +1008,11 @@
       "checking": "Перевірка",
       "moving": "Переміщення"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Торенти не знайдено",
+    "noFilterMatches": "Жоден торент не відповідає поточним фільтрам",
+    "noSearchMatches": "Жоден торент не відповідає поточному пошуку"
   },
   "filterSidebar": {
     "views": {
@@ -1117,7 +1139,6 @@
     "torrentCount_other": "{{count}} торенти",
     "torrentsLoaded": "Завантажено торенти {{loaded}} з {{total}}",
     "scrollForMore": "(прокрутіть, щоб дізнатися більше)",
-    "loading": "Завантаження...",
     "freeSpace": "Вільний простір",
     "switchToBits": "Перейти на біт в секунду (біт/с)",
     "switchToBytes": "Перейти до байтів за секунду (B/s)",
@@ -1185,7 +1206,6 @@
     "closePanel": "Закрити панель деталей",
     "unknownError": "Невідома помилка",
     "toast": {
-      "copied": "{{type}} скопійовано в буфер обміну",
       "copyFailed": "Не вдалося скопіювати в буфер обміну",
       "peersAdded": "Піри успішно додано",
       "peersFailed": "Не вдалося додати піри: {{error}}",
@@ -1243,24 +1263,18 @@
       "loadedSummary_other": "{{count}} відповідні торенти знайдено в усіх екземплярах",
       "deleteMatches": "Видалити збіги ({{count}})",
       "deleteThisTorrent": "Видалити цей торент",
-      "checkingMoreInstances": "Перевірка інших випадків...",
-      "infoHashMatch": "Інфохеш",
-      "infoHashDescription": "Точно той самий торент (той самий інфохеш)",
-      "savePathMatch": "Шлях збереження",
-      "savePathDescription": "Той самий каталог збереження та ім’я файлу",
       "selectTorrent": "Виберіть {{name}}",
       "loadingSummary_few": "{{count}} відповідні торенти знайдено, перевірка інших випадків...",
       "loadingSummary_many": "{{count}} відповідні торентів знайдено, перевірка інших випадків...",
       "loadedSummary_few": "{{count}} відповідні торенти знайдено в усіх екземплярах",
-      "loadedSummary_many": "{{count}} відповідні торентів знайдено в усіх екземплярах"
+      "loadedSummary_many": "{{count}} відповідні торентів знайдено в усіх екземплярах",
+      "openTorrent": "Відкрити {{name}}"
     },
     "sections": {
       "generalInformation": "Загальна інформація",
       "transferStatistics": "Статистика трансферів",
-      "speed": "Швидкість",
       "queueManagement": "Управління чергами",
       "timeInformation": "Інформація про час",
-      "timestamps": "Мітки часу",
       "activeTrackers": "Активні трекери",
       "connectedPeers": "Підключені піри",
       "fileContents": "Вміст файлу"
@@ -1287,18 +1301,13 @@
       "added": "Додано",
       "completed": "Виконано",
       "created": "Створено",
-      "leechers": "Лічі",
-      "peerProgress": "Прогрес піра",
-      "connection": "Підключення:",
-      "flags": "Прапори:"
+      "leechers": "Лічі"
     },
     "counts": {
       "trackers_one": "{{count}} трекер",
       "trackers_other": "{{count}} трекерів",
       "connectedPeers_one": "{{count}} пір підключено",
       "connectedPeers_other": "{{count}} пірів підключено",
-      "httpSources_one": "{{count}} джерело",
-      "httpSources_other": "{{count}} джерел",
       "selectedFiles": "Вибрано {{selected}} з {{total}}",
       "files_one": "{{count}} файл",
       "files_other": "{{count}} файлів",
@@ -1306,15 +1315,12 @@
       "trackers_many": "{{count}} трекерів",
       "connectedPeers_few": "{{count}} піри підключено",
       "connectedPeers_many": "{{count}} пірів підключено",
-      "httpSources_few": "{{count}} джерела",
-      "httpSources_many": "{{count}} джерел",
       "files_few": "{{count}} файли",
       "files_many": "{{count}} файлів"
     },
     "values": {
       "normal": "Звичайний",
       "queued": "У черзі {{state}}",
-      "seeder": "Сідер",
       "unknownClient": "Невідомий клієнт"
     },
     "actions": {
@@ -1323,14 +1329,12 @@
       "selectAll": "Усі",
       "selectNone": "Жодного"
     },
-    "peer": {
-      "flagLabel": "Прапор {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Файли не знайдено"
     },
     "selectAll": "Виберіть усі",
-    "deselectAll": "Зняти вибір із усіх"
+    "deselectAll": "Зняти вибір із усіх",
+    "trackerMessageHidden": "Повідомлення трекера приховано в режимі інкогніто"
   },
   "generalTab": {
     "name": "Ім'я:",
@@ -1375,6 +1379,7 @@
     "status": "Стан",
     "tracker": "Трекер",
     "seeds": "Сіди",
+    "peers": "Піри",
     "leeches": "Лічі",
     "downloaded": "DLs",
     "message": "Повідомлення",
@@ -1463,11 +1468,6 @@
     "matchCount_other": "{{count}} збігів",
     "deleteSelected": "Видалити ({{count}})",
     "deleteThis": "Видалити це",
-    "statusLabels": {
-      "trackerDown": "Трекер вимкнено",
-      "unregistered": "Незареєстрований",
-      "trackerError": "Помилка трекера"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Зміст",
@@ -1491,10 +1491,7 @@
       }
     },
     "noMatches": "В інших екземплярах відповідних торентів не знайдено",
-    "toast": {
-      "savePathCopied": "Шлях збереження скопійовано",
-      "copyFailed": "Не вдалося скопіювати"
-    },
+    "loadFailed": "Не вдалося перевірити збіги cross-seed. Перезавантажте сторінку, щоб спробувати ще раз.",
     "matchCount_few": "{{count}} збіги",
     "matchCount_many": "{{count}} збігів"
   },
@@ -1650,26 +1647,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Автоматичний пошук після введення"
     },
-    "shareLimit": {
-      "title": "Встановити ліміти роздачі для {{count}} торент(ів)",
-      "description": "Налаштуйте ліміти роздачі. Використовуйте -1 або вимкніть, щоб зняти обмеження.",
-      "setRatioLimit": "Встановити ліміт співвідношення",
-      "setSeedingTimeLimit": "Встановити ліміт часу роздавання (хвилини)",
-      "setInactiveSeedingLimit": "Встановити ліміт неактивної роздачі (хвилини)",
-      "cancel": "Скасувати",
-      "setting": "Налаштування...",
-      "applyLimits": "Застосувати обмеження"
-    },
-    "speedLimit": {
-      "title": "Встановити ліміти швидкості для {{count}} торент(ів)",
-      "description": "Встановіть ліміти швидкості вивантаження та завантаження в KB/s. Використовуйте -1 або вимкніть, щоб зняти обмеження.",
-      "setUploadLimit": "Встановити ліміт вивантаження (KB/s)",
-      "setDownloadLimit": "Встановити ліміт завантаження (KB/s)",
-      "cancel": "Скасувати",
-      "setting": "Налаштування...",
-      "applyLimits": "Застосувати обмеження"
-    },
-    "ratio": "Співвідношення:"
+    "ratio": "Співвідношення:",
+    "added": "Додано {{time}}"
   },
   "tableView": {
     "ascending": "висхідний",
@@ -1736,7 +1715,7 @@
     "savePath": "Зберегти шлях",
     "completed": "Виконано",
     "ratioLimit": "Ліміт співвідношення",
-    "seenComplete": "Виконано",
+    "seenComplete": "Востаннє бачено повним",
     "lastActivity": "Остання активність",
     "availability": "Доступність",
     "infohashV1": "Хеш інформації v1",
@@ -1812,6 +1791,7 @@
     "tags": "Теги",
     "newTagPlaceholder": "Введіть тег і натисніть Enter",
     "savePath": "Шлях збереження (фактичне призначення)",
+    "routedTo": "Крос-сід іде до екземпляра для крос-сідів {{instance}}.",
     "cancel": "Скасувати",
     "apply": "Додати крос-сід",
     "applying": "Додавання...",
@@ -1833,12 +1813,14 @@
       "dropped": "Пакет додано. Пропущені цілі: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Для складання пакета цьому екземпляру потрібен доступ до локальної файлової системи.",
+        "no_filesystem_access": "Цьому екземпляру потрібен доступ до файлової системи на запис, щоб зібрати пакет. Увімкніть «Доступ до локальної файлової системи» або налаштуйте доступ через SSH у налаштуваннях екземпляра.",
         "no_link_mode": "Увімкніть жорсткі посилання або reflink для цього екземпляра, щоб вибрати кілька цілей.",
         "no_base_directory": "Налаштуйте базовий каталог посилань для цього екземпляра.",
         "no_episode_files": "У пакеті не знайдено відтворюваних файлів епізодів.",
         "target_not_found": "Ціль не знайдено в цьому екземплярі.",
         "incomplete": "Завантаження цілі не завершене.",
+        "not_settled": "Цей торрент ще переміщується або перевіряється. Спробуйте знову, коли це завершиться.",
+        "errored": "Цей торрент має помилку або відсутні файли. Виправте це та спробуйте знову.",
         "no_episode_identity": "Не вдалося розпізнати номер епізоду.",
         "file_list_unavailable": "Список файлів цілі недоступний.",
         "episode_file_invalid": "Ціль має містити один відтворюваний файл з ідентифікатором вибраного епізоду.",
@@ -1853,5 +1835,29 @@
         "add_failed": "Не вдалося додати торрент."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "Ще {{count}} копія торрента {{name}}",
+    "copies_few": "Ще {{count}} копії торрента {{name}}",
+    "copies_many": "Ще {{count}} копій торрента {{name}}",
+    "copies_other": "Ще {{count}} копії торрента {{name}}",
+    "copiesWithProblem_one": "Ще {{count}} копія торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_few": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_many": "Ще {{count}} копій торрента {{name}}. Прихована копія має проблему",
+    "copiesWithProblem_other": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_few": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_many": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_other": "+{{hidden}} · вибрано {{count}}",
+    "hiddenTicked_one": "Вибрано {{count}} приховану копію",
+    "hiddenTicked_few": "Вибрано {{count}} приховані копії",
+    "hiddenTicked_many": "Вибрано {{count}} прихованих копій",
+    "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Групувати копії",
+    "expandAll": "Розгорнути все",
+    "collapseAll": "Згорнути все",
+    "grouping": "Групування…"
   }
 }

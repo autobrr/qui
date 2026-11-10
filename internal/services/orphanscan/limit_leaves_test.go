@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -57,13 +58,7 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 			{Name: "claimed/unwritten.mkv", Size: 1},
 		}}, nil
 	}
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: root}, nil
-	}
-	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
 	// MaxFilesPerRun = 1 is the reported trigger.
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -144,13 +139,7 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 			"gone": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	stubSync(svc).subcategoriesEnabled = func(context.Context, int) (bool, error) { return false, nil }
-	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: parent}, nil
-	}
-	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
+	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: parent})
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},

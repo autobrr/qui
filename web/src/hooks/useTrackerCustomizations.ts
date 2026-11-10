@@ -130,3 +130,15 @@ export function buildTrackerCustomizationMaps(customizations?: TrackerCustomizat
 
   return { domainToCustomization, secondaryDomains }
 }
+
+/**
+ * Returns the key that groups a tracker domain in tracker lists. Domains under one
+ * customization share its id, so a merged tracker lists once. Two customizations
+ * stay separate even when their display names match, and an uncustomized domain
+ * groups case-insensitively.
+ */
+export function trackerGroupKey(tracker: string, domainToCustomization: Map<string, TrackerCustomizationEntry>): string {
+  const lowerTracker = tracker.toLowerCase()
+  const customization = domainToCustomization.get(lowerTracker)
+  return customization ? `custom:${customization.id}` : lowerTracker
+}

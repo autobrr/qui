@@ -234,9 +234,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		// Use GetTorrentsWithFilters with no filters to get all torrents, counts and global stats
-		// This uses the same data source as the UI for consistency
-		response, err := c.syncManager.GetTorrentsWithFilters(ctx, instance.ID, 100000, 0, "", "", "", qbittorrent.FilterOptions{})
+		response, err := c.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, NoRows: true, SidebarCounts: true})
 		if err != nil {
 			log.Warn().
 				Err(err).

@@ -233,18 +233,6 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/components/instances/preferences/FileManagementForm.tsx",
-    literals: [
-      "\"Default Save Path\"",
-      "\"Temporary Download Path\"",
-      "\"Default Content Layout\"",
-      "\"Create subfolder\"",
-      "\"Don't create subfolder\"",
-      "\"Run External Program\"",
-      "\"Supported Placeholders (case sensitive)\"",
-    ],
-  },
-  {
     file: "src/components/instances/preferences/OrphanScanSettingsForm.tsx",
     patterns: [
       /Files flagged as orphans will be deleted automatically without manual review\./,
@@ -390,64 +378,6 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/components/instances/preferences/NetworkDiscoveryForm.tsx",
-    literals: [
-      "\"Peer Discovery\"",
-      "\"Enable DHT (decentralized network)\"",
-      "\"Tracker Settings\"",
-      "\"Protocol Encryption\"",
-      "\"Resolve peer countries\"",
-    ],
-  },
-  {
-    file: "src/components/instances/preferences/AdvancedNetworkForm.tsx",
-    literals: [
-      "\"Showing all advanced options\"",
-      "\"Tracker Settings\"",
-      "\"Apply rate limit to μTP protocol\"",
-      "\"Disk I/O & Memory\"",
-      "\"Security & IP Filtering\"",
-      "\"Coalesce reads & writes\"",
-      "\"Async I/O Threads\"",
-      "\"Peer Management\"",
-      "\"Block peers on privileged ports\"",
-    ],
-  },
-  {
-    file: "src/components/instances/preferences/ConnectionSettingsForm.tsx",
-    literals: [
-      "\"Limited version details\"",
-      "\"Listening Port\"",
-      "\"Port for incoming connections\"",
-      "\"Protocol Settings\"",
-      "\"BitTorrent Protocol\"",
-      "\"IP Filtering\"",
-      "\"Network Interface\"",
-      "\"Global maximum connections\"",
-      "\"Outgoing Ports\"",
-      "\"Apply IP filter to trackers\"",
-    ],
-  },
-  {
-    file: "src/components/instances/preferences/QueueManagementForm.tsx",
-    literals: [
-      "\"Enable Queueing\"",
-      "\"Max Active Downloads\"",
-      "\"Max Active Uploads\"",
-      "\"Max Active Torrents\"",
-      "\"Max Checking Torrents\"",
-    ],
-  },
-  {
-    file: "src/components/instances/preferences/SeedingLimitsForm.tsx",
-    literals: [
-      "\"Enable Share Ratio Limit\"",
-      "\"Maximum Share Ratio\"",
-      "\"Enable Seeding Time Limit\"",
-      "\"Maximum Seeding Time (minutes)\"",
-    ],
-  },
-  {
     file: "src/components/instances/preferences/InstanceSettingsPanel.tsx",
     literals: [
       "\"Skip TLS Verification\"",
@@ -458,20 +388,6 @@ const hardcodedStringChecks = [
       "\"Username\"",
       "\"Password\"",
       "\"Password required\"",
-    ],
-  },
-  {
-    file: "src/components/instances/preferences/SpeedLimitsForm.tsx",
-    literals: [
-      "\"Download Limit\"",
-      "\"Upload Limit\"",
-      "\"Alternative Download Limit\"",
-      "\"Alternative Upload Limit\"",
-      "\"Schedule the use of alternative rate limits\"",
-      "\"Every day\"",
-      "\"From:\"",
-      "\"When:\"",
-      "\"0 (Unlimited)\"",
     ],
   },
 ]

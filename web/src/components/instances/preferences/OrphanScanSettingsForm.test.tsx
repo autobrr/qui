@@ -54,10 +54,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderForm(isRemote: boolean) {
+function renderForm(isRemote: boolean, hasIdentity = false) {
   return render(
     <TooltipProvider>
-      <OrphanScanSettingsForm instanceId={1} isRemote={isRemote} />
+      <OrphanScanSettingsForm instanceId={1} isRemote={isRemote} hasIdentity={hasIdentity} />
     </TooltipProvider>
   )
 }
@@ -67,6 +67,16 @@ it("notes beside auto-cleanup that it does not run on a remote instance", () => 
 
   expect(container.textContent).toContain("preferences.orphanScanOverview.remoteLimits")
   expect(container.querySelector("#auto-cleanup-enabled")).not.toBeNull()
+})
+
+it.each([
+  { hasIdentity: false, shown: true },
+  { hasIdentity: true, shown: false },
+])("says a second path can be listed only when the remote instance has no identity ($hasIdentity)", ({ hasIdentity, shown }) => {
+  const { container } = renderForm(true, hasIdentity)
+
+  expect(container.textContent?.includes("preferences.orphanScanOverview.remoteNoIdentity")).toBe(shown)
+  expect(container.textContent).toContain("preferences.orphanScanOverview.remoteLimits")
 })
 
 it("shows no remote note for a local instance", () => {

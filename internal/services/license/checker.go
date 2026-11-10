@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/rs/zerolog/log"
 )
 
 type ValidationChecker interface {
@@ -21,7 +19,6 @@ type Checker struct {
 	lastCheck     time.Time
 	isValid       atomic.Bool
 	checkInterval time.Duration
-	graceUntil    time.Time
 	mu            sync.RWMutex
 }
 
@@ -61,15 +58,4 @@ func (lc *Checker) validateLicense(ctx context.Context) {
 
 	lc.lastCheck = time.Now()
 	lc.isValid.Store(isValid)
-
-	if !isValid {
-		// Set grace period
-		if lc.graceUntil.IsZero() {
-			lc.graceUntil = time.Now().Add(offlineGracePeriod)
-			log.Warn().Time("grace_until", lc.graceUntil).Msg("License invalid - grace period started")
-		}
-	} else {
-		// Reset grace period on valid license
-		lc.graceUntil = time.Time{}
-	}
 }

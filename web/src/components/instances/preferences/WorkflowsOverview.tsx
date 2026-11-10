@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { getRuleSkipReason } from "@/components/query-builder/constants"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
   AlertDialog,
@@ -56,6 +58,7 @@ import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
+  getRuleTagActions,
   parseImportJSON,
   toDuplicateInput,
   toExportFormat,
@@ -80,7 +83,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
@@ -88,6 +91,7 @@ import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
+import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 /**
@@ -149,16 +153,6 @@ function formatSpeedLimitCompact(kiB: number): string {
   return String(kiB)
 }
 
-function getRuleTagActions(rule: Automation) {
-  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
-    return rule.conditions.tags
-  }
-  if (rule.conditions?.tag) {
-    return [rule.conditions.tag]
-  }
-  return []
-}
-
 function formatAction(action: AutomationActivity["action"]): string {
   const actionKeys: Record<string, string> = {
     deleted_ratio: "ratioLimit",
@@ -180,6 +174,7 @@ function formatAction(action: AutomationActivity["action"]): string {
     external_program: "externalProgram",
     exported_to_instance: "exportToInstance",
     dry_run_no_match: "dryRun",
+    rule_skipped: "ruleSkipped",
   }
   const key = actionKeys[action]
   return key ? i18n.t(`preferences.workflowsOverview.actions.${key}`, { ns: "instances" }) : action
@@ -189,6 +184,7 @@ function getOutcomeBadgeText(event: AutomationActivity): string {
   const s = "preferences.workflowsOverview"
   const ns = "instances"
   if (event.outcome === "dry-run") return i18n.t(`${s}.dryRun`, { ns })
+  if (event.outcome === "skipped") return i18n.t(`${s}.skipped`, { ns })
   if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
   if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
   return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
@@ -312,21 +308,13 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
-  if (event.action === "dry_run_no_match") return false
+  if (event.action === "dry_run_no_match" || event.action === "rule_skipped") return false
   if (event.hash !== "") return false
   return event.outcome === "dry-run"
     || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
-interface WorkflowsOverviewProps {
-  expandedInstances?: string[]
-  onExpandedInstancesChange?: (values: string[]) => void
-}
-
-export function WorkflowsOverview({
-  expandedInstances: controlledExpanded,
-  onExpandedInstancesChange,
-}: WorkflowsOverviewProps) {
+export function WorkflowsOverview() {
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
@@ -349,16 +337,12 @@ export function WorkflowsOverview({
     })
   )
 
-  // Internal state for standalone usage
-  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
-
-  // Use controlled props if provided, otherwise internal state
-  const expandedInstances = controlledExpanded ?? internalExpanded
-  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
+  const [runNowTarget, setRunNowTarget] = useState<RunWorkflowNowTarget | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{
     instanceId: number
     rule: Automation
@@ -489,6 +473,7 @@ export function WorkflowsOverview({
         trackerPattern: rule.trackerPattern,
         conditions: rule.conditions,
         freeSpaceSource: rule.freeSpaceSource,
+        sortingConfig: rule.sortingConfig,
         enabled: true,
         dryRun: true,
         sortOrder: rule.sortOrder,
@@ -496,8 +481,12 @@ export function WorkflowsOverview({
       }
       return api.dryRunAutomation(instanceId, payload)
     },
-    onSuccess: (_, { instanceId, rule }) => {
-      toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
+    onSuccess: (result, { instanceId, rule }) => {
+      if (result.activities?.some(activity => activity.action === "rule_skipped")) {
+        toast.warning(t("preferences.runWorkflowNow.toast.skipped", { name: rule.name }))
+      } else {
+        toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
+      }
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     },
     onError: (error) => {
@@ -662,10 +651,23 @@ export function WorkflowsOverview({
     return rule.conditions?.category?.enabled === true
   }
 
-  // Handle toggle - show preview when enabling delete or category rules
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
+  const isTagRule = (rule: Automation): boolean => {
+    if (isDeleteRule(rule) || isCategoryRule(rule)) return false
+    return getRuleTagActions(rule).some(action => action?.enabled)
+  }
+
+  // The condition of the action that the preview runs, for its columns
+  const previewCondition = (rule: Automation) => {
+    if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
+    if (isCategoryRule(rule)) return rule.conditions?.category?.condition
+    return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
+  }
+
+  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
-    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
-      // Enabling a delete or category rule - show preview first
+    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
+      // Enabling a delete, category, or tag rule - show preview first
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
@@ -811,6 +813,7 @@ export function WorkflowsOverview({
     success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     "dry-run": "bg-sky-500/10 text-sky-500 border-sky-500/20",
+    skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
@@ -833,6 +836,7 @@ export function WorkflowsOverview({
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
+    rule_skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -851,7 +855,7 @@ export function WorkflowsOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.workflowsOverview.noInstancesDescription")}
           </CardDescription>
@@ -864,7 +868,7 @@ export function WorkflowsOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1021,6 +1025,7 @@ export function WorkflowsOverview({
                                     onEdit={() => openEditDialog(instance.id, rule)}
                                     onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
                                     onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
+                                    onRunNow={() => setRunNowTarget({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
                                     onEditJson={() => setJsonEdit(rule)}
@@ -1269,6 +1274,10 @@ export function WorkflowsOverview({
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.noDryRunMatches")}
                                           </span>
+                                        ) : event.action === "rule_skipped" ? (
+                                          <span className="font-medium text-sm block">
+                                            {getRuleSkipReason(event.details, t)}
+                                          </span>
                                         ) : (
                                           <TruncatedText className="font-medium text-sm block cursor-default">
                                             {event.torrentName || event.hash}
@@ -1303,18 +1312,7 @@ export function WorkflowsOverview({
                                       {event.hash && (
                                         <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                           <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                          <button
-                                            type="button"
-                                            className="hover:text-foreground transition-colors"
-                                            onClick={(clickEvent) => {
-                                              clickEvent.stopPropagation()
-                                              copyTextToClipboard(event.hash)
-                                              toast.success(t("preferences.workflowsOverview.toast.hashCopied"))
-                                            }}
-                                            title={t("preferences.workflowsOverview.copyHash")}
-                                          >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
+                                          <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                                         </div>
                                       )}
                                       {event.trackerDomain && (() => {
@@ -1557,6 +1555,8 @@ export function WorkflowsOverview({
         />
       )}
 
+      <RunWorkflowNowDialog target={runNowTarget} onClose={() => setRunNowTarget(null)} />
+
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1586,7 +1586,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): t("preferences.workflowsOverview.enableDeleteRule")
+          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): enableConfirm && isTagRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableTagRule"): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1599,6 +1599,17 @@ export function WorkflowsOverview({
                     <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
                   ) : null}
                   {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
+              </>
+            ) : enableConfirm && isTagRule(enableConfirm.rule) ? (
+              <>
+                <p>
+                  {t("preferences.workflowDialog.preview.tagPrefix")}{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
+                  {enableConfirm.preview.crossSeedCount ? (
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
+                  ) : null}.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
@@ -1618,7 +1629,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
+        condition={enableConfirm ? previewCondition(enableConfirm.rule) : null}
         onConfirm={confirmEnableRule}
         previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}
@@ -1698,6 +1709,7 @@ interface RulePreviewProps {
   onEdit: () => void
   onDelete: () => void
   onRunDryRun: () => void
+  onRunNow: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
   onEditJson: () => void
@@ -1716,6 +1728,7 @@ function SortableRulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1751,6 +1764,7 @@ function SortableRulePreview({
         onEdit={onEdit}
         onDelete={onDelete}
         onRunDryRun={onRunDryRun}
+        onRunNow={onRunNow}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
         onEditJson={onEditJson}
@@ -1787,6 +1801,7 @@ function RulePreview({
   onEdit,
   onDelete,
   onRunDryRun,
+  onRunNow,
   onDuplicate,
   onCopyToInstance,
   onEditJson,
@@ -1948,6 +1963,10 @@ function RulePreview({
             <DropdownMenuItem onClick={onRunDryRun}>
               <RefreshCcw className="h-4 w-4 mr-2" />
               {t("preferences.workflowsOverview.runDryRunNow")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRunNow}>
+              <Zap className="h-4 w-4 mr-2" />
+              {t("preferences.runWorkflowNow.action")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>

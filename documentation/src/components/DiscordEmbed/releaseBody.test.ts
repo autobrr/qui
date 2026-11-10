@@ -41,6 +41,20 @@ ${changelog}`;
   assert.equal(releaseBody(md), "**Breaking:** Enter your key again.\n2 new features · 1 bug fix · 2 other changes");
 });
 
+test("the commit list's Breaking Changes group adds no second notice", () => {
+  const md = `## Breaking changes
+- **Start paused moved.** Set it in qBittorrent.
+
+## Changelog
+### Breaking Changes
+* feat(a)!: one (#1) (@a)
+* fix(b)!: two (#2) (@b)
+### New Features
+* feat(c): three
+`;
+  assert.equal(releaseBody(md), "**Breaking:** Start paused moved.\n1 new feature");
+});
+
 test("a section heading that is not exactly Highlights is ignored", () => {
   assert.equal(releaseBody(`## Release Highlights\n- **Ignored.** Text.\n${changelog}`), "2 new features · 1 bug fix · 2 other changes");
 });

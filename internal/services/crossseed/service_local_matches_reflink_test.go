@@ -25,24 +25,21 @@ import (
 	"github.com/autobrr/qui/pkg/sharedextents"
 )
 
-func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
+func TestFindCrossSeeds_ReflinkCandidates(t *testing.T) {
 	tests := []struct {
 		name          string
 		sourceName    string
 		candidateName string
-		wantInitial   string
 	}{
 		{
 			name:          "name match",
 			sourceName:    "Movie.2023.1080p.WEB-GROUP",
 			candidateName: "Movie.2023.1080p.WEB-GROUP",
-			wantInitial:   matchTypeName,
 		},
 		{
 			name:          "release match",
 			sourceName:    "Show.S01E05.1080p.WEB-DL-GROUP",
 			candidateName: "Show S01E05 1080p WEB-DL-GROUP",
-			wantInitial:   matchTypeRelease,
 		},
 	}
 
@@ -54,10 +51,18 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 				qbt.TorrentFiles{{Name: fileName, Size: 4}},
 				qbt.TorrentFiles{{Name: fileName, Size: 4}},
 			)
-			service := hardlinkTestService(map[string]qbt.TorrentFiles{
+			source := qbt.Torrent{
+				Hash:        hlSourceHash,
+				Name:        tt.sourceName,
+				SavePath:    sourceDir,
+				ContentPath: filepath.Join(sourceDir, fileName),
+			}
+			candidate := hardlinkTestCandidate(candidateDir)
+			candidate.Name = tt.candidateName
+			service := pairService(map[string]qbt.TorrentFiles{
 				normalizeHash(hlSourceHash):    {{Name: fileName, Size: 4}},
 				normalizeHash(hlCandidateHash): {{Name: fileName, Size: 4}},
-			})
+			}, source, *candidate)
 			var queries int
 			service.filesShareAllocation = func(sourcePath, candidatePath string) (bool, error) {
 				queries++
@@ -66,38 +71,10 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 				return true, nil
 			}
 
-			source := &qbt.Torrent{
-				Hash:        hlSourceHash,
-				Name:        tt.sourceName,
-				SavePath:    sourceDir,
-				ContentPath: filepath.Join(sourceDir, fileName),
-			}
-			candidate := hardlinkTestCandidate(candidateDir)
-			candidate.Name = tt.candidateName
-			initial := service.determineLocalMatchType(
-				source,
-				service.releaseCache.Parse(source.Name),
-				candidate,
-				normalizePathForComparison(source.ContentPath),
-				hardlinkTestMatchCtx(service, sourceDir),
-			)
-			require.Equal(t, tt.wantInitial, initial)
-
-			matches := service.matchTorrentsInInstance(
-				context.Background(),
-				nil,
-				&models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true},
-				[]qbittorrent.CrossInstanceTorrentView{*candidate},
-				1,
-				normalizeHash(source.Hash),
-				source,
-				service.releaseCache.Parse(source.Name),
-				normalizePathForComparison(source.ContentPath),
-				hardlinkTestMatchCtx(service, sourceDir),
-			)
-
-			require.Len(t, matches, 1)
-			require.Equal(t, matchTypeReflink, matches[0].MatchType)
+			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+			require.NoError(t, err)
+			require.Len(t, response.Matches, 1)
+			require.Equal(t, matchTypeReflink, response.Matches[0].MatchType)
 			require.Equal(t, 1, queries)
 		})
 	}
@@ -126,7 +103,7 @@ func TestLocalLinkedMatchType_HardlinkPrecedesReflink(t *testing.T) {
 	require.Zero(t, queries)
 }
 
-func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.T) {
+func TestFindCrossSeeds_MetadataLessIsNotACrossSeed(t *testing.T) {
 	tests := []struct {
 		name                 string
 		sourceHasContentPath bool
@@ -147,17 +124,8 @@ func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.
 			fileName := "shared.mkv"
 			files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 			sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
-			service := hardlinkTestService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    files,
-				normalizeHash(hlCandidateHash): files,
-			})
-			var queries int
-			service.filesShareAllocation = func(string, string) (bool, error) {
-				queries++
-				return true, nil
-			}
 
-			source := &qbt.Torrent{
+			source := qbt.Torrent{
 				Hash:     hlSourceHash,
 				Name:     "Movie.2023.1080p.WEB-GROUP",
 				SavePath: sourceDir,
@@ -170,27 +138,21 @@ func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.
 			if !tt.candidateHasContent {
 				candidate.ContentPath = ""
 			}
-			matchCtx := hardlinkTestMatchCtx(service, sourceDir)
+			service := pairService(map[string]qbt.TorrentFiles{
+				normalizeHash(hlSourceHash):    files,
+				normalizeHash(hlCandidateHash): files,
+			}, source, *candidate)
+			var queries int
+			service.filesShareAllocation = func(string, string) (bool, error) {
+				queries++
+				return true, nil
+			}
 
-			matches := service.matchTorrentsInInstance(
-				context.Background(),
-				nil,
-				&models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true},
-				[]qbittorrent.CrossInstanceTorrentView{*candidate},
-				1,
-				normalizeHash(source.Hash),
-				source,
-				service.releaseCache.Parse(source.Name),
-				normalizePathForComparison(source.ContentPath),
-				matchCtx,
-			)
-
-			require.Len(t, matches, 1)
-			require.Equal(t, matchTypeName, matches[0].MatchType)
+			// A torrent without metadata holds no data, so it is not a cross-seed.
+			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+			require.NoError(t, err)
+			require.Empty(t, response.Matches)
 			require.Zero(t, queries)
-			require.NoError(t, matchCtx.sourceFilesErr)
-			require.NoError(t, matchCtx.candidateFilesErr)
-			require.NoError(t, matchCtx.verificationErr)
 		})
 	}
 }
@@ -442,29 +404,80 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 	})
 }
 
-type reflinkFindLocalMatchesSyncManager struct {
+// The allocation check is a host syscall, so a source qui reaches through a
+// remote backend must never feed it paths. Identity is local-only today, so
+// FindCrossSeeds cannot build a non-local source yet; the context is built by hand.
+func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
+	files := qbt.TorrentFiles{{Name: "shared.mkv", Size: 4}}
+	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
+
+	for _, tt := range []struct {
+		name           string
+		sourceLocal    bool
+		candidateLocal bool
+		wantType       string
+		wantQueries    bool
+	}{
+		{name: "local source", sourceLocal: true, candidateLocal: true, wantType: matchTypeReflink, wantQueries: true},
+		{name: "non-local source", sourceLocal: false, candidateLocal: true, wantType: ""},
+		{name: "non-local candidate", sourceLocal: true, candidateLocal: false, wantType: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			service := hardlinkTestService(map[string]qbt.TorrentFiles{
+				normalizeHash(hlSourceHash):    files,
+				normalizeHash(hlCandidateHash): files,
+			})
+			var queries int
+			service.filesShareAllocation = func(string, string) (bool, error) {
+				queries++
+				return true, nil
+			}
+			matchCtx := hardlinkTestMatchCtx(service, sourceDir)
+			matchCtx.sourceLocal = tt.sourceLocal
+
+			matchType := service.localLinkedMatchType(
+				matchCtx,
+				&models.Instance{ID: 1, HasLocalFilesystemAccess: tt.candidateLocal},
+				hardlinkTestCandidate(candidateDir),
+			)
+			require.Equal(t, tt.wantType, matchType)
+			require.Equal(t, tt.wantQueries, queries > 0)
+			require.NoError(t, matchCtx.verificationErr)
+		})
+	}
+}
+
+// pairSyncManager serves one source and one candidate torrent on instance 1.
+type pairSyncManager struct {
 	localMatchSyncManager
 	source    qbt.Torrent
 	candidate qbittorrent.CrossInstanceTorrentView
 }
 
-//nolint:gocritic // Interface requires value type for TorrentFilterOptions.
-func (m *reflinkFindLocalMatchesSyncManager) GetTorrents(
-	_ context.Context,
-	_ int,
-	_ qbt.TorrentFilterOptions,
-) ([]qbt.Torrent, error) {
-	return []qbt.Torrent{m.source}, nil
+func (m *pairSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	source := m.source
+	return []qbittorrent.CrossInstanceTorrentView{
+		{TorrentView: &qbittorrent.TorrentView{Torrent: &source}, InstanceID: 1},
+		m.candidate,
+	}, nil
 }
 
-func (m *reflinkFindLocalMatchesSyncManager) GetCachedInstanceTorrents(
-	_ context.Context,
-	_ int,
-) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	return []qbittorrent.CrossInstanceTorrentView{m.candidate}, nil
+// pairService serves the source and the candidate on one local instance.
+func pairService(files map[string]qbt.TorrentFiles, source qbt.Torrent, candidate qbittorrent.CrossInstanceTorrentView) *Service {
+	service := &Service{
+		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),
+		syncManager: &pairSyncManager{
+			files:     files,
+			source:    source,
+			candidate: candidate,
+		},
+		releaseCache: NewReleaseCache(),
+	}
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	return service
 }
 
-func TestFindLocalMatches_ReflinkVerificationErrorPolicy(t *testing.T) {
+func TestFindCrossSeeds_ReflinkVerificationError(t *testing.T) {
 	fileName := "shared.mkv"
 	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
@@ -474,32 +487,16 @@ func TestFindLocalMatches_ReflinkVerificationErrorPolicy(t *testing.T) {
 		SavePath:    sourceDir,
 		ContentPath: filepath.Join(sourceDir, fileName),
 	}
-	candidate := *hardlinkTestCandidate(candidateDir)
-	syncManager := &reflinkFindLocalMatchesSyncManager{
-		files: map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
-		},
-		source:    source,
-		candidate: candidate,
-	}
+	service := pairService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    files,
+		normalizeHash(hlCandidateHash): files,
+	}, source, *hardlinkTestCandidate(candidateDir))
 	queryErr := errors.New("retrieval pointer failure")
-	service := &Service{
-		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),
-		syncManager:   syncManager,
-		releaseCache:  NewReleaseCache(),
-		filesShareAllocation: func(string, string) (bool, error) {
-			return false, queryErr
-		},
+	service.filesShareAllocation = func(string, string) (bool, error) {
+		return false, queryErr
 	}
-	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
-	response, err := service.FindLocalMatches(context.Background(), 1, source.Hash, false)
-	require.NoError(t, err)
-	require.Len(t, response.Matches, 1)
-	require.Equal(t, matchTypeName, response.Matches[0].MatchType)
-
-	response, err = service.FindLocalMatches(context.Background(), 1, source.Hash, true)
+	response, err := service.FindCrossSeeds(t.Context(), 1, source.Hash)
 	require.Nil(t, response)
 	require.ErrorIs(t, err, queryErr)
 }
@@ -624,7 +621,7 @@ func writeLocalMatchFiles(t *testing.T, base string, files qbt.TorrentFiles) {
 	t.Helper()
 
 	for _, file := range files {
-		if _, ok := resolveLocalTorrentFile(base, file.Name); !ok {
+		if _, ok := resolveLocalTorrentFile(fsops.HostPaths, base, file.Name); !ok {
 			continue
 		}
 		fullPath := filepath.Join(base, filepath.FromSlash(strings.ReplaceAll(file.Name, `\`, "/")))

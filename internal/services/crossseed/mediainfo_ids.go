@@ -138,7 +138,7 @@ func mediaIDsToExternalIDs(idType, idValue string) *models.ExternalIDs {
 // .mkv file, or "" when none resolves. qBittorrent returns files in stable
 // index order, so the pick is deterministic.
 func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) string {
-	// Filter first: forEachLocalTorrentFile stats every file it visits.
+	// Filter first: forEachLocalTorrentFile stats every file it is given.
 	// Skip deselected/partial files: a stub can sit on disk at the declared
 	// size and would cache a wrong "no tags" row over the complete file.
 	var mkvs qbt.TorrentFiles

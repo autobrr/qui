@@ -111,82 +111,39 @@ func TestSanitizePathSegment(t *testing.T) {
 	}
 }
 
-func TestIsolationFolderName(t *testing.T) {
+func TestIsolationFolder(t *testing.T) {
 	tests := []struct {
-		name     string
-		infohash string
-		torrent  string
-		expected string
+		name    string
+		torrent string
+		want    string
 	}{
-		{
-			name:     "normal torrent name",
-			infohash: "abcdef1234567890abcdef1234567890abcdef12",
-			torrent:  "My.Movie.2024.1080p.BluRay",
-			expected: "My.Movie.2024.1080p.BluRay--abcdef12",
-		},
-		{
-			name:     "short infohash",
-			infohash: "abcd",
-			torrent:  "Movie",
-			expected: "Movie--abcd",
-		},
-		{
-			name:     "empty infohash",
-			infohash: "",
-			torrent:  "Movie",
-			expected: "Movie",
-		},
-		{
-			name:     "name with illegal characters",
-			infohash: "abcdef1234567890",
-			torrent:  "Movie: The <Sequel>",
-			expected: "Movie The Sequel--abcdef12",
-		},
-		{
-			name:     "lowercase hash",
-			infohash: "ABCDEF1234567890",
-			torrent:  "Movie",
-			expected: "Movie--abcdef12",
-		},
+		{name: "normal name", torrent: "My.Movie.2024.1080p.BluRay", want: "My.Movie.2024.1080p.BluRay"},
+		{name: "illegal characters", torrent: "Movie: The <Sequel>", want: "Movie The Sequel"},
+		{name: "longer than 80 bytes is kept", torrent: strings.Repeat("a", 200), want: strings.Repeat("a", 200)},
+		{name: "cut to 245 bytes", torrent: strings.Repeat("a", 300), want: strings.Repeat("a", 245)},
+		{name: "cut never splits a character", torrent: strings.Repeat("a", 244) + "é" + "bbb", want: strings.Repeat("a", 244)},
+		{name: "name over 255 bytes of 2-byte characters", torrent: strings.Repeat("é", 200), want: strings.Repeat("é", 122)},
+		{name: "cut never splits a 4-byte character", torrent: strings.Repeat("a", 243) + "😀" + "bbb", want: strings.Repeat("a", 243)},
+		{name: "trailing dots and spaces after the cut", torrent: strings.Repeat("a", 241) + ". .." + "tail", want: strings.Repeat("a", 241)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsolationFolderName(tt.infohash, tt.torrent)
-			if result != tt.expected {
-				t.Errorf("IsolationFolderName(%q, %q) = %q, want %q",
-					tt.infohash, tt.torrent, result, tt.expected)
+			if got := IsolationFolder(tt.torrent); got != tt.want {
+				t.Errorf("IsolationFolder(%q) = %q, want %q", tt.torrent, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestIsolationFolderName_Truncation(t *testing.T) {
-	// Test that very long names are truncated
-	longName := "This.Is.A.Very.Long.Torrent.Name.That.Should.Be.Truncated.Because.It.Exceeds.The.Maximum.Length.Allowed.For.Folder.Names"
-	infohash := "abcdef1234567890"
-
-	result := IsolationFolderName(infohash, longName)
-
-	// Should be truncated to ~80 chars + "--" + 8 char hash
-	if len(result) > 100 {
-		t.Errorf("IsolationFolderName result too long: %d chars", len(result))
+func TestHashedIsolationFolder(t *testing.T) {
+	if got := HashedIsolationFolder("ABCDEF1234567890", "Movie"); got != "Movie--abcdef12" {
+		t.Errorf("HashedIsolationFolder = %q, want %q", got, "Movie--abcdef12")
 	}
 
-	// Should still end with short hash
-	if !strings.HasSuffix(result, "--abcdef12") {
-		t.Errorf("IsolationFolderName should end with --abcdef12, got %q", result)
-	}
-}
-
-func TestIsolationFolderName_Uniqueness(t *testing.T) {
-	// Same name but different hashes should produce different results
-	name := "Same.Movie.Name"
-
-	result1 := IsolationFolderName("abcdef1234567890", name)
-	result2 := IsolationFolderName("1234567890abcdef", name)
-
-	if result1 == result2 {
-		t.Errorf("IsolationFolderName should be unique for different hashes, both got %q", result1)
+	// A cut name keeps room for the hash inside the 255-byte limit.
+	got := HashedIsolationFolder("abcdef1234567890", strings.Repeat("é", 200))
+	if want := strings.Repeat("é", 122) + "--abcdef12"; got != want {
+		t.Errorf("HashedIsolationFolder = %q (%d bytes), want %q", got, len(got), want)
 	}
 }

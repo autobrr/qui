@@ -180,7 +180,8 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil)
+	withAdder(service)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)
 	require.Contains(t, result.Message, "alignment failed")
@@ -245,7 +246,8 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
+	withAdder(service)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "pause_failed", result.Status)
 	require.Contains(t, result.Message, "failed to pause torrent")
@@ -254,4 +256,8 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	require.NotNil(t, result.MatchedTorrent)
 	require.Equal(t, matchedHash, result.MatchedTorrent.Hash)
 	require.Contains(t, sync.bulkActions, "pause:"+newHash)
+}
+
+func (*alignmentFailureSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

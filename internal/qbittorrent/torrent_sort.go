@@ -33,9 +33,9 @@ var torrentSortFields = func() map[string]int {
 	return fields
 }()
 
-// sortTorrents sorts the rows of one instance in place. cachedHealth fills in
-// the tracker health of rows whose trackers were not fetched.
-func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) {
+// sortTorrents sorts the rows of one instance in place. The state sort reads
+// the tracker health from cachedHealth.
+func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		rows[i] = &torrents[i]
@@ -44,36 +44,30 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc 
 		if !trackerHealthSupported {
 			return ""
 		}
-		return sm.resolveTrackerHealth(rows[i], cachedHealth)
+		return cachedHealth.Health(rows[i].Hash)
 	}
 	sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, func(a, b int) int { return a - b }))
 }
 
 // sortCrossInstanceTorrents sorts Unified rows in place. Rows that compare
 // equal sort by instance, ascending in each direction.
-func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, column string, desc bool, skipTrackerHydration bool) {
+func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, column string, desc bool) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		rows[i] = torrents[i].Torrent
 	}
-	// Each instance's own state sort reads the fetched trackers, and reads the
-	// cached health only when the request skipped the fetch. The shown health
-	// always falls back to the cache, so it can differ.
-	var cachedByInstance map[int]*TrackerHealthCounts
+	var cachedByInstance map[int]*TrackerHealthSnapshot
 	health := func(i int) TrackerHealth {
-		var cached *TrackerHealthCounts
-		if skipTrackerHydration {
-			id := torrents[i].InstanceID
-			var ok bool
-			if cached, ok = cachedByInstance[id]; !ok {
-				if cachedByInstance == nil {
-					cachedByInstance = make(map[int]*TrackerHealthCounts)
-				}
-				cached = sm.GetTrackerHealthCounts(id)
-				cachedByInstance[id] = cached
+		id := torrents[i].InstanceID
+		cached, ok := cachedByInstance[id]
+		if !ok {
+			if cachedByInstance == nil {
+				cachedByInstance = make(map[int]*TrackerHealthSnapshot)
 			}
+			cached = sm.GetTrackerHealthSnapshot(id)
+			cachedByInstance[id] = cached
 		}
-		return sm.resolveTrackerHealth(rows[i], cached)
+		return cached.Health(rows[i].Hash)
 	}
 	compareInstance := func(a, b int) int {
 		return cmp.Or(

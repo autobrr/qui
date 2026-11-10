@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -31,11 +30,11 @@ type fileMatchInstruction struct {
 	candidatePath string
 }
 
-// alignCrossSeedContentPaths renames the incoming cross-seed torrent (display name, folders, files)
+// alignCrossSeed renames the incoming cross-seed torrent (display name, folders, files)
 // so that it matches the layout of the already-seeded torrent we're borrowing data from.
 // Returns true if alignment succeeded (or wasn't needed), false if alignment failed,
 // along with the active hash that qBittorrent exposes for the torrent.
-func (s *Service) alignCrossSeedContentPaths(
+func (s *Service) alignCrossSeed(
 	ctx context.Context,
 	instanceID int,
 	torrentHash string,
@@ -53,7 +52,7 @@ func (s *Service) alignCrossSeedContentPaths(
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("torrentHash", hashLabel).
-			Msg("alignCrossSeedContentPaths called with nil add plan")
+			Msg("alignCrossSeed called with nil add plan")
 		return false, ""
 	}
 
@@ -80,9 +79,10 @@ func (s *Service) alignCrossSeedContentPaths(
 	needsFileRename := len(planPreview) > 0
 	alignmentNeeded := shouldAlignFilesWithCandidate(sourceRelease, matchedRelease) && (needsRootRename || needsFileRename)
 
-	// Wait for torrent to become visible in qBittorrent before attempting renames
-	activeHash := s.waitForTorrentAvailability(ctx, instanceID, hashes, crossSeedRenameWaitTimeout)
-	if activeHash == "" {
+	// Wait for the torrent and read the file names that qBittorrent stored: the
+	// content layout can change them from the names in the torrent file.
+	activeHash, sourceFiles, visible := s.aligner.WaitForFiles(ctx, instanceID, hashes)
+	if !visible {
 		if !alignmentNeeded {
 			log.Debug().
 				Int("instanceID", instanceID).
@@ -96,8 +96,6 @@ func (s *Service) alignCrossSeedContentPaths(
 			Msg("Cross-seed torrent not visible yet, skipping rename alignment")
 		return false, ""
 	}
-
-	canonicalHash := normalizeHash(activeHash)
 
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
@@ -142,61 +140,9 @@ func (s *Service) alignCrossSeedContentPaths(
 		return true, activeHash // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
-	// Try to get current files from qBittorrent with a few retries for slow clients.
-	// On slow clients, the torrent may be visible but files not yet populated.
-	var sourceFiles qbt.TorrentFiles
-	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	for attempt := range 3 {
-		if ctx.Err() != nil {
-			break
-		}
-		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{activeHash})
-		if err != nil {
-			log.Debug().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Int("attempt", attempt+1).
-				Msg("Failed to get torrent files, retrying")
-		} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
-			sourceFiles = currentFiles
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Int("fileCount", len(currentFiles)).
-				Msg("Got torrent files from qBittorrent")
-			break
-		} else {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Int("attempt", attempt+1).
-				Msg("Torrent files not yet available, retrying")
-		}
-		if attempt < 2 {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-
-	// Fallback to expected files if we couldn't get them from qBittorrent
-	if len(sourceFiles) == 0 {
-		if ctx.Err() != nil {
-			log.Debug().
-				Err(ctx.Err()).
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Msg("Context cancelled while getting torrent files, using expected source files")
-		} else {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Msg("Could not get torrent files after retries, using expected source files")
-		}
-		sourceFiles = expectedSourceFiles
-	}
-
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
+	rootDiffers := sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot
 
 	// Build file rename plan using original source paths (before any folder rename).
 	// The plan maps source files to candidate files based on size matching.
@@ -208,11 +154,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	// (from the matched torrent), qBittorrent will fail with "newPath already in use".
 	// By renaming files first within the original folder, we're just updating metadata
 	// (the original folder doesn't exist on disk anyway for a fresh cross-seed add).
-	//
-	// IMPORTANT: qBittorrent's file rename API is async - it returns 200 OK immediately
-	// but the actual rename happens later via libtorrent. We must verify renames worked
-	// and retry if needed, as the API can silently fail.
-	renamed := 0
+	var alignPlan AlignmentPlan
 	for _, instr := range plan {
 		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
 			continue
@@ -224,7 +166,7 @@ func (s *Service) alignCrossSeedContentPaths(
 		// Then folder rename "FolderA" -> "FolderB" will produce "FolderB/file2.mkv"
 		actualOldPath := instr.oldPath
 		actualNewPath := instr.newPath
-		if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+		if rootDiffers {
 			// Adjust newPath to stay in source folder (file rename only changes the filename)
 			actualNewPath = adjustPathForRootRename(instr.newPath, targetRoot, sourceRoot)
 		} else if sourceRoot == "" && targetRoot != "" {
@@ -236,56 +178,26 @@ func (s *Service) alignCrossSeedContentPaths(
 		if actualOldPath == actualNewPath {
 			continue
 		}
-
-		// Attempt rename with verification and retry (qBittorrent rename is async and can silently fail)
-		if !s.renameFileWithVerification(ctx, instanceID, activeHash, actualOldPath, actualNewPath) {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Str("from", actualOldPath).
-				Str("to", actualNewPath).
-				Msg("Failed to rename cross-seed file after retries, aborting alignment")
-			return false, activeHash
-		}
-		renamed++
+		alignPlan.Files = append(alignPlan.Files, FileRename{OldPath: actualOldPath, NewPath: actualNewPath})
 	}
 
 	// Rename folder AFTER file renames are complete.
 	// Now that files have their target names within the source folder, renaming the
 	// folder will update all paths to match the candidate torrent's layout, pointing
 	// to the existing files on disk (from the matched torrent).
-	rootRenamed := false
-	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
-		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, activeHash, sourceRoot, targetRoot); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Str("from", sourceRoot).
-				Str("to", targetRoot).
-				Msg("Failed to rename cross-seed root folder")
-			return false, activeHash
-		}
-		// The folder rename API is as async as the file rename one: 200 OK does not
-		// mean libtorrent applied it. A silently dropped folder rename would leave the
-		// torrent pointing at a nonexistent folder, so verify before reporting success.
-		if !s.verifyFolderRenameCompleted(ctx, instanceID, activeHash, sourceRoot, targetRoot) {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("torrentHash", activeHash).
-				Str("from", sourceRoot).
-				Str("to", targetRoot).
-				Msg("Cross-seed root folder rename did not materialize, aborting alignment")
-			return false, activeHash
-		}
-		rootRenamed = true
-		log.Debug().
+	if rootDiffers {
+		alignPlan.FolderFrom, alignPlan.FolderTo = sourceRoot, targetRoot
+	}
+
+	if !s.aligner.Align(ctx, instanceID, activeHash, alignPlan) {
+		log.Warn().
 			Int("instanceID", instanceID).
 			Str("torrentHash", activeHash).
-			Str("from", sourceRoot).
-			Str("to", targetRoot).
-			Msg("Renamed cross-seed root folder to match existing torrent")
+			Msg("Failed to align cross-seed files, aborting alignment")
+		return false, activeHash
 	}
+	renamed := len(alignPlan.Files)
+	rootRenamed := alignPlan.FolderFrom != ""
 
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
@@ -506,23 +418,7 @@ func matchSourceFilesToCandidatesWithPolicy(
 }
 
 func allowMaterializedSizeOnlyMatch(sourcePath, candidatePath string) bool {
-	return !isIgnoredMaterializedSizeOnlyFile(sourcePath) && !isIgnoredMaterializedSizeOnlyFile(candidatePath)
-}
-
-func isIgnoredMaterializedSizeOnlyFile(name string) bool {
-	lower := strings.ToLower(name)
-	ext := strings.ToLower(path.Ext(fileBaseName(name)))
-	if slices.Contains(DefaultIgnoredExtensions, ext) {
-		return true
-	}
-
-	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
-			return true
-		}
-	}
-
-	return false
+	return !shouldIgnoreFile(sourcePath, stringutils.DefaultNormalizer) && !shouldIgnoreFile(candidatePath, stringutils.DefaultNormalizer)
 }
 
 func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {
@@ -647,7 +543,7 @@ func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
 	}
 	// Keep season pack torrents named as season packs; never rename a season pack to an episode.
 	// This is the forbidden pairing (season pack from episode) - also reject rename.
-	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease, true); reject {
+	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease); reject {
 		return false
 	}
 	return true
@@ -997,262 +893,4 @@ func planRequiresRenames(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 		}
 	}
 	return false
-}
-
-// verifyFolderRenameCompleted polls the torrent's file list until paths live
-// under the new root and none remain under the old one — the folder analogue of
-// the file verification's newPathExists && !oldPathExists. qBittorrent's rename
-// APIs return 200 before libtorrent applies the change and can silently drop it.
-// Like the file verification, an unverifiable state (file list never available)
-// accepts the rename — the API call itself succeeded and absence of evidence is
-// not evidence the rename was dropped.
-func (s *Service) verifyFolderRenameCompleted(ctx context.Context, instanceID int, hash, oldRoot, newRoot string) bool {
-	const verifyTimeout = 2 * time.Second
-	const verifyInterval = 150 * time.Millisecond
-
-	canonicalHash := normalizeHash(hash)
-	oldPrefix := oldRoot + "/"
-	newPrefix := newRoot + "/"
-	deadline := time.Now().Add(verifyTimeout)
-	everVerifiable := false
-	// Force fresh file lists: the pre-rename fetch at the top of alignment has
-	// already primed the cache, and polling that snapshot would never see the
-	// rename land (same reason verifyFileRenameCompleted forces refresh).
-	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	for {
-		filesByHash, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{hash})
-		if err == nil {
-			if files, ok := filesByHash[canonicalHash]; ok && len(files) > 0 {
-				everVerifiable = true
-				oldPathExists := false
-				newPathExists := false
-				for _, f := range files {
-					if strings.HasPrefix(f.Name, oldPrefix) {
-						oldPathExists = true
-					}
-					if strings.HasPrefix(f.Name, newPrefix) {
-						newPathExists = true
-					}
-				}
-				if newPathExists && !oldPathExists {
-					return true
-				}
-			}
-		}
-		if time.Now().After(deadline) || ctx.Err() != nil {
-			return !everVerifiable
-		}
-		time.Sleep(verifyInterval)
-	}
-}
-
-// renameFileWithVerification attempts to rename a file and verifies the rename actually worked.
-// qBittorrent's rename API is async (libtorrent processes it in the background) and can silently
-// fail even when returning 200 OK. This function retries with verification to handle such cases.
-//
-// Timing constants may need adjustment for systems with slow storage or high qBittorrent load.
-func (s *Service) renameFileWithVerification(ctx context.Context, instanceID int, hash, oldPath, newPath string) bool {
-	const maxAttempts = 3
-	const verifyTimeout = 2 * time.Second
-	const verifyInterval = 150 * time.Millisecond
-	const retryDelay = 300 * time.Millisecond // Delay between retry attempts
-
-	canonicalHash := normalizeHash(hash)
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if ctx.Err() != nil {
-			log.Debug().
-				Err(ctx.Err()).
-				Int("instanceID", instanceID).
-				Str("torrentHash", hash).
-				Msg("Context cancelled before file rename attempt")
-			return false
-		}
-
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Str("from", oldPath).
-			Str("to", newPath).
-			Int("attempt", attempt).
-			Msg("Renaming cross-seed file")
-
-		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, hash, oldPath, newPath); err != nil {
-			if s.verifyFileRenameCompleted(ctx, instanceID, hash, canonicalHash, oldPath, newPath, attempt) == fileRenameVerified {
-				log.Debug().
-					Err(err).
-					Int("instanceID", instanceID).
-					Str("torrentHash", hash).
-					Str("from", oldPath).
-					Str("to", newPath).
-					Int("attempt", attempt).
-					Msg("File rename already reflected in qBittorrent after API error")
-				return true
-			}
-
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("torrentHash", hash).
-				Str("from", oldPath).
-				Str("to", newPath).
-				Int("attempt", attempt).
-				Msg("RenameTorrentFile API call failed")
-
-			if attempt < maxAttempts {
-				time.Sleep(retryDelay)
-				if ctx.Err() != nil {
-					log.Debug().
-						Err(ctx.Err()).
-						Int("instanceID", instanceID).
-						Str("torrentHash", hash).
-						Msg("Context cancelled during rename retry delay")
-					return false
-				}
-				continue
-			}
-			return false
-		}
-
-		deadline := time.Now().Add(verifyTimeout)
-		for {
-			switch s.verifyFileRenameCompleted(ctx, instanceID, hash, canonicalHash, oldPath, newPath, attempt) {
-			case fileRenameVerified, fileRenameUnverifiable:
-				return true
-			case fileRenameNotComplete:
-			}
-			if ctx.Err() != nil {
-				log.Debug().
-					Err(ctx.Err()).
-					Int("instanceID", instanceID).
-					Str("torrentHash", hash).
-					Msg("Context cancelled during rename verification")
-				return false
-			}
-			if time.Now().After(deadline) {
-				break
-			}
-			time.Sleep(verifyInterval)
-		}
-
-		if attempt < maxAttempts {
-			time.Sleep(retryDelay)
-			if ctx.Err() != nil {
-				log.Debug().
-					Err(ctx.Err()).
-					Int("instanceID", instanceID).
-					Str("torrentHash", hash).
-					Msg("Context cancelled during rename retry delay")
-				return false
-			}
-			continue
-		}
-
-		log.Warn().
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Str("oldPath", oldPath).
-			Str("newPath", newPath).
-			Int("attempts", maxAttempts).
-			Msg("File rename failed after all retry attempts (old path still exists)")
-		return false
-	}
-
-	return false
-}
-
-type fileRenameVerificationStatus int
-
-const (
-	fileRenameNotComplete fileRenameVerificationStatus = iota
-	fileRenameVerified
-	fileRenameUnverifiable
-)
-
-func (s *Service) verifyFileRenameCompleted(
-	ctx context.Context,
-	instanceID int,
-	hash,
-	canonicalHash,
-	oldPath,
-	newPath string,
-	attempt int,
-) fileRenameVerificationStatus {
-	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{hash})
-	if err != nil {
-		log.Debug().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Int("attempt", attempt).
-			Msg("Failed to get files for rename verification")
-		return fileRenameUnverifiable
-	}
-
-	currentFiles, ok := filesMap[canonicalHash]
-	if !ok || len(currentFiles) == 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Int("attempt", attempt).
-			Msg("No files returned for rename verification")
-		return fileRenameUnverifiable
-	}
-
-	oldPathExists := false
-	newPathExists := false
-	for _, f := range currentFiles {
-		if f.Name == oldPath {
-			oldPathExists = true
-		}
-		if f.Name == newPath {
-			newPathExists = true
-		}
-	}
-
-	if newPathExists && !oldPathExists {
-		if attempt > 1 {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", hash).
-				Str("newPath", newPath).
-				Int("attempt", attempt).
-				Msg("File rename verified successful after retry")
-		}
-		return fileRenameVerified
-	}
-
-	if oldPathExists && !newPathExists {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Str("oldPath", oldPath).
-			Str("newPath", newPath).
-			Int("attempt", attempt).
-			Msg("File rename not reflected yet")
-		return fileRenameNotComplete
-	}
-
-	if oldPathExists && newPathExists {
-		log.Warn().
-			Int("instanceID", instanceID).
-			Str("torrentHash", hash).
-			Str("oldPath", oldPath).
-			Str("newPath", newPath).
-			Int("attempt", attempt).
-			Msg("Both old and new paths found after rename - possible path collision")
-		return fileRenameNotComplete
-	}
-
-	// Neither path found - unexpected state. Could be path normalization differences,
-	// folder structure changes, or qBittorrent internal state issues.
-	log.Warn().
-		Int("instanceID", instanceID).
-		Str("torrentHash", hash).
-		Str("oldPath", oldPath).
-		Str("newPath", newPath).
-		Int("attempt", attempt).
-		Msg("Neither old nor new path found after rename - unexpected state")
-	return fileRenameUnverifiable
 }

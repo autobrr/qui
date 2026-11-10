@@ -41,7 +41,7 @@ const { instances, runsQuery, firstPage, secondPage, setFilesFound, idleQuery, i
     },
   }
   return {
-    instances: [{ id: 1, name: "Seedbox", isActive: true, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, write: true, content: true } }],
+    instances: [{ id: 1, name: "Seedbox", isActive: true, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true } }],
     runsQuery: { data: [run], isLoading: false },
     firstPage,
     secondPage,
@@ -60,6 +60,7 @@ vi.mock("@/hooks/useInstances", () => ({
 vi.mock("@/hooks/useOrphanScan", () => ({
   useOrphanScanSettings: () => idleQuery,
   useOrphanScanRuns: () => runsQuery,
+  useOrphanScanRunPaths: () => ({ data: undefined, isError: false }),
   useOrphanScanRun: (_instanceId: number, _runId: number, options?: { offset?: number }) =>
     options?.offset ? secondPage : firstPage,
   useTriggerOrphanScan: () => idleMutation,

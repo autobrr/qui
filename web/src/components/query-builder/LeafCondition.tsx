@@ -195,8 +195,7 @@ export function LeafCondition({
 
   const handleFieldChange = (field: string) => {
     const newFieldType = getFieldType(field);
-    const newOperators = getOperatorsForField(field);
-    const defaultOperator = newOperators[0]?.value ?? "EQUAL";
+    const defaultOperator = getOperatorsForField(field)[0] ?? "EQUAL";
 
     // Determine default value based on field type
     let defaultValue = "";
@@ -211,7 +210,7 @@ export function LeafCondition({
     onChange({
       ...condition,
       field: field as ConditionField,
-      operator: defaultOperator as ConditionOperator,
+      operator: defaultOperator,
       groupId: isGroupingConditionField(field as ConditionField) ? (condition.groupId || DEFAULT_GROUP_ID) : undefined,
       value: defaultValue,
       minValue: undefined,
@@ -725,18 +724,36 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         ) : fieldType === "hardlinkScope" ? (
-          <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
-            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
-              <SelectValue placeholder={t("queryBuilder.selectScope")} />
-            </SelectTrigger>
-            <SelectContent>
-              {getTranslatedHardlinkScopes(t).map((scope) => (
-                <SelectItem key={scope.value} value={scope.value}>
-                  {scope.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
+              <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+                <SelectValue placeholder={t("queryBuilder.selectScope")} />
+              </SelectTrigger>
+              <SelectContent>
+                {getTranslatedHardlinkScopes(t).map((scope) => (
+                  <SelectItem key={scope.value} value={scope.value}>
+                    {scope.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                  aria-label={t("queryBuilder.aboutHardlinkScopeAriaLabel")}
+                >
+                  <Info className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[320px]">
+                <p>
+                  {t("queryBuilder.hardlinkScopeTooltip")}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </>
         ) : isContentTypeEqualityOperator ? (
           <Select value={contentTypeValue} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -27,14 +28,11 @@ func normalizeLower(value string) string {
 }
 
 func normalizePathInner(p string) string {
-	if p == "" {
-		return ""
+	// qBittorrent cleans the path it stores, so compare cleaned paths or a move repeats every run.
+	p = pathcmp.NormalizePath(p)
+	// pathcmp keeps a UNC share as //server/share, but a POSIX qBittorrent reports //x as /x.
+	if strings.HasPrefix(p, "//") {
+		p = p[1:]
 	}
-	// Lowercase for case-insensitive comparison
-	p = strings.ToLower(p)
-	// Normalize path separators (Windows backslashes to forward slashes)
-	p = strings.ReplaceAll(p, "\\", "/")
-	// Remove trailing slash
-	p = strings.TrimSuffix(p, "/")
-	return p
+	return strings.ToLower(p)
 }

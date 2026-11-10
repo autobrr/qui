@@ -631,3 +631,12 @@ func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
 	assert.Equal(t, "Release/_/file.mkv", files[0].Name)
 	assert.Equal(t, "Release/sub/_/other.mkv", files[1].Name)
 }
+
+// The cached parser turns an episode range into a pack. A music name with an
+// episode token must still read as music, or the music query loses its artist.
+func TestParseMusicReleaseFromTorrentName_EpisodeRangeKeepsArtist(t *testing.T) {
+	m := matcher{releaseCache: NewReleaseCache()}
+	release := m.parseMusicReleaseFromTorrentName(&rls.Release{Type: rls.Music}, "Some.Band-Podcast.Series.E05.E06-FLAC-2021-GRP")
+	require.Equal(t, "Some Band", release.Artist)
+	require.Equal(t, "Podcast Series", release.Title)
+}

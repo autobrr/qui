@@ -79,6 +79,23 @@ If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-see
 
 The reverse proxy works with any application that supports qBittorrent's Web API.
 
+## Behind nginx or another proxy with basic auth
+
+If a reverse proxy in front of qui asks for basic auth, turn off basic auth for the `/proxy/` path. The proxy otherwise rejects requests from external applications before they reach qui.
+
+If you use nginx, add this location block. The example uses the base URL `/qui/` and the upstream name that swizzin creates. On swizzin, put the block in `/etc/nginx/apps/qui-proxy.conf` and replace `USERNAME` with your swizzin user.
+
+```nginx
+location /qui/proxy/ {
+    proxy_pass              http://USERNAME.qui;
+    proxy_set_header        Host $host;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    auth_basic off;
+}
+```
+
+On the server that runs nginx, run `nginx -t && systemctl reload nginx`.
+
 ## Security features
 
 - **API key authentication**: each client needs its own key.
@@ -97,7 +114,7 @@ qui serves these endpoints from its sync manager for faster responses:
 
 | Endpoint | Description |
 |----------|-------------|
-| `/api/v2/torrents/info` | Torrent list with standard qBittorrent filtering |
+| `/api/v2/torrents/info` | Torrent list with the filters of qui. See [How qui filters torrents/info](#how-qui-filters-torrentsinfo) |
 | `/api/v2/torrents/search` | Torrent list with fuzzy search (qui-specific) |
 | `/api/v2/torrents/categories` | Category list from synchronized data |
 | `/api/v2/torrents/tags` | Tag list from synchronized data |
@@ -105,6 +122,23 @@ qui serves these endpoints from its sync manager for faster responses:
 | `/api/v2/torrents/trackers` | Torrent trackers, with icon discovery |
 | `/api/v2/torrents/files` | Torrent file list |
 | `/api/v2/torrents/mediainfo` | MediaInfo report for a file on disk (qui-specific, needs **Local Filesystem Access**) |
+
+#### How qui filters torrents/info
+
+qui decides the rows of `torrents/info` with the same rule as the torrent list and the sidebar counts. The result is the same on each qBittorrent version. It differs from a direct connection to qBittorrent in these cases:
+
+- A `filter` value that qui does not know gives no rows. qBittorrent returns every torrent.
+- Each filter name works on each version. For example, `running` and `resumed` mean the same thing on qBittorrent 4.x and 5.x.
+- `uploading` means the same as `seeding`.
+- A qBittorrent state name, such as `stalledUP`, matches that state in any letter case. `stalled_seeding` and the tracker health names `unregistered`, `tracker_down`, and `tracker_error` also narrow the list.
+- `filter=unregistered` and `filter=tracker_down` remove those torrents from the list.
+- Stopped torrents are not in `downloading`.
+- `active` and `inactive` use one list of states on each version. qBittorrent 5.2 and later use the transfer rate.
+- `tag=` works on qBittorrent 4.3.9, which has no tag parameter.
+- qui splits a `category` value at each comma. qBittorrent reads the whole value as one category name.
+- Below qBittorrent 4.6, the API cannot report the subcategories setting. qui then matches a category exactly.
+
+`category=` gives the torrents with no category, and `tag=` gives the torrents with no tag, as in qBittorrent.
 
 These endpoints proxy to qBittorrent and update qui's local state:
 
@@ -119,9 +153,16 @@ These endpoints proxy to qBittorrent and update qui's local state:
 |----------|----------|
 | `/api/v2/auth/login` | If the instance is healthy, returns success as a no-op |
 | `/api/v2/torrents/reannounce` | If tracker monitoring is enabled, routes to qui's reannounce service |
-| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders |
 | `/api/v2/torrents/renameFile` | Forwards to qBittorrent, invalidates the file cache |
 | `/api/v2/torrents/renameFolder` | Forwards to qBittorrent, invalidates the file cache |
-| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders when files are deleted |
+| `/api/v2/torrents/setCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setAutoManagement` | Forwards to qBittorrent unchanged, removes leftover folders when it turns ATM on |
+| `/api/v2/torrents/editCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setSavePath` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setDownloadPath` | Forwards to qBittorrent unchanged, removes leftover folders |
+
+qui removes leftover folders only after qBittorrent answers with success, only on an instance with **Local Filesystem Access** or on a [remote instance](./ssh-access.md), and only for a request sent as a URL-encoded form. See [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents).
 
 qui forwards all other endpoints unchanged to qBittorrent.

@@ -121,13 +121,17 @@ func sortGoldenColumns() []string {
 	return columns
 }
 
-// newSortTestClient starts a fake qBittorrent that serves the generated
-// library, the tracker lists that trackers gives each torrent, and a Web API
-// version with tracker health.
 func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.TorrentTracker) *Client {
 	t.Helper()
+	return newListTestClient(t, instanceID, sortGoldenTorrents(), trackers)
+}
 
-	torrents := sortGoldenTorrents()
+// newListTestClient starts a fake qBittorrent that serves torrents, the tracker
+// lists that trackers gives each torrent, and a Web API version with tracker
+// health.
+func newListTestClient(t testing.TB, instanceID int, torrents []qbt.Torrent, trackers func(i int) []qbt.TorrentTracker) *Client {
+	t.Helper()
+
 	trackersByHash := make(map[string][]qbt.TorrentTracker, len(torrents))
 	mainTorrents := make(map[string]qbt.Torrent, len(torrents))
 	for i, torrent := range torrents {
@@ -147,8 +151,16 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 			_, _ = w.Write(mainData)
 		case "/api/v2/torrents/info":
 			var out []qbt.Torrent
+			if r.URL.Query().Get("hashes") == "" {
+				// The health pass of qBittorrent 5.1 fetches the whole library.
+				for hash, trackers := range trackersByHash {
+					out = append(out, qbt.Torrent{Hash: hash, Trackers: trackers})
+				}
+			}
 			for hash := range strings.SplitSeq(r.URL.Query().Get("hashes"), "|") {
-				out = append(out, qbt.Torrent{Hash: hash, Trackers: trackersByHash[hash]})
+				if hash != "" {
+					out = append(out, qbt.Torrent{Hash: hash, Trackers: trackersByHash[hash]})
+				}
 			}
 			_ = json.MarshalWrite(w, out)
 		default:
@@ -161,11 +173,11 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
-	require.True(t, client.supportsTrackerInclude(), "state sort must see tracker health")
+	require.True(t, client.Supports(CapTrackerHealth), "state sort must see tracker health")
 	return client
 }
 
-// TestSingleInstanceSortGolden pins the order GetTorrentsWithFilters gives each
+// TestSingleInstanceSortGolden pins the order ListTorrents gives each
 // sort column. Rewrite the golden file with:
 //
 //	go test ./internal/qbittorrent -run TestSingleInstanceSortGolden -update
@@ -173,12 +185,14 @@ func TestSingleInstanceSortGolden(t *testing.T) {
 	t.Parallel()
 
 	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: newSortTestClient(t, 1, sortGoldenTrackers)}}, nil)
+	// The state sort reads the health that the background pass stores.
+	sm.refreshTrackerHealthCounts(t.Context(), 1)
 	torrents := sortGoldenTorrents()
 
 	var got strings.Builder
 	for _, column := range sortGoldenColumns() {
 		for _, order := range []string{"asc", "desc"} {
-			resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, column, order, "", FilterOptions{})
+			resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1, Sort: column, Order: order})
 			require.NoError(t, err, "%s %s", column, order)
 			require.Len(t, resp.Torrents, len(torrents), "%s %s", column, order)
 

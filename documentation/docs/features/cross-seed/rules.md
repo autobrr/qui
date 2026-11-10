@@ -36,7 +36,9 @@ Reported size does not prove that two torrents contain the same bytes. qui still
 
 If torrents have title, season, episode, or split release-group differences, qui requires a full piece check. qui adds these torrents paused and resumes them only at 100%.
 
-Soft descriptive differences keep the normal fast path. These differences include codec, source, HDR, edition, and one-sided checksum data.
+Soft descriptive differences keep the normal fast path. These differences include codec, source, HDR, and edition.
+
+A checksum tag, such as `[ABCD1234]`, on one name only is not a difference. Indexer titles often leave it out. The file check after the download decides. Two checksum tags that differ prevent a match.
 
 **Skip recheck** removes only matches that need verification. RSS and autobrr reject those matches before the planned torrent download.
 
@@ -158,6 +160,8 @@ This limit applies to new cross-seed additions from RSS, seeded search, completi
 ## External Program
 
 In **After injection**, qui can run an external program after it injects a cross-seed torrent.
+
+If you select a program, each cross-seed add sends one execution request (a request to run the program for one torrent). This includes season-pack adds, manual assemblies, and Dir Scan adds. A Dir Scan full scan sends one execution request for each torrent that it adds. A refused add or a failed add sends no execution request.
 
 ## Category Behavior Details
 

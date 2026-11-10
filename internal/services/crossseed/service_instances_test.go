@@ -17,6 +17,7 @@ import (
 type orderedInstanceStore struct {
 	ordered []*models.Instance
 	byID    map[int]*models.Instance
+	listErr error
 }
 
 func newOrderedInstanceStore(instances ...*models.Instance) *orderedInstanceStore {
@@ -39,6 +40,9 @@ func (s *orderedInstanceStore) Get(_ context.Context, id int) (*models.Instance,
 }
 
 func (s *orderedInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
 	instances := make([]*models.Instance, len(s.ordered))
 	copy(instances, s.ordered)
 	return instances, nil
@@ -72,26 +76,21 @@ func TestResolveInstances_SkipsDisabledInstances(t *testing.T) {
 	}
 }
 
-type findLocalMatchesSyncManager struct {
+type findCrossSeedsSyncManager struct {
 	localMatchSyncManager
 	sourceTorrent     qbt.Torrent
 	cachedInstanceIDs []int
 }
 
-//nolint:gocritic // Interface requires value type for TorrentFilterOptions
-func (m *findLocalMatchesSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	if instanceID == 1 && len(filter.Hashes) == 1 && normalizeHash(filter.Hashes[0]) == normalizeHash(m.sourceTorrent.Hash) {
-		return []qbt.Torrent{m.sourceTorrent}, nil
+func (m *findCrossSeedsSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
+	m.cachedInstanceIDs = append(m.cachedInstanceIDs, instanceID)
+	if instanceID == 1 {
+		return []internalqb.CrossInstanceTorrentView{{TorrentView: &internalqb.TorrentView{Torrent: &m.sourceTorrent}, InstanceID: 1}}, nil
 	}
 	return nil, nil
 }
 
-func (m *findLocalMatchesSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
-	m.cachedInstanceIDs = append(m.cachedInstanceIDs, instanceID)
-	return nil, nil
-}
-
-func TestFindLocalMatches_SkipsDisabledInstances(t *testing.T) {
+func TestFindCrossSeeds_SkipsDisabledInstances(t *testing.T) {
 	t.Parallel()
 
 	active := &models.Instance{ID: 1, Name: "active", IsActive: true}
@@ -103,7 +102,7 @@ func TestFindLocalMatches_SkipsDisabledInstances(t *testing.T) {
 		ContentPath: "/downloads/Movie.2025.1080p.BluRay.x264-GRP.mkv",
 	}
 
-	syncManager := &findLocalMatchesSyncManager{
+	syncManager := &findCrossSeedsSyncManager{
 		sourceTorrent: source,
 	}
 
@@ -113,7 +112,7 @@ func TestFindLocalMatches_SkipsDisabledInstances(t *testing.T) {
 		releaseCache:  NewReleaseCache(),
 	}
 
-	resp, err := svc.FindLocalMatches(context.Background(), active.ID, source.Hash, false)
+	resp, err := svc.FindCrossSeeds(context.Background(), active.ID, source.Hash)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, []int{active.ID}, syncManager.cachedInstanceIDs)

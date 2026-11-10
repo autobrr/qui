@@ -11,5 +11,5 @@ type ReleaseCache = releases.Parser
 
 // NewReleaseCache creates a cached parser for release metadata.
 func NewReleaseCache() *ReleaseCache {
-	return releases.NewDefaultParser()
+	return releases.NewDefaultParser() //nolint:forbidigo // the release cache is the one parser that cross-seed code builds (ADR 0008)
 }

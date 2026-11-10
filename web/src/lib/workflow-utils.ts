@@ -5,7 +5,52 @@
 
 import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
 
+// i18n-namespace: instances
+
 export type TrackerMatchMode = "include" | "exclude" | "mixed"
+
+export type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
+
+export const ACTION_LABEL_KEYS: Record<ActionType, string> = {
+  speedLimits: "preferences.workflowDialog.actions.speedLimits",
+  shareLimits: "preferences.workflowDialog.actions.shareLimits",
+  pause: "preferences.workflowDialog.actions.pause",
+  resume: "preferences.workflowDialog.actions.resume",
+  recheck: "preferences.workflowDialog.actions.recheck",
+  reannounce: "preferences.workflowDialog.actions.reannounce",
+  autoManagement: "preferences.workflowDialog.actions.autoManagement",
+  delete: "preferences.workflowDialog.actions.delete",
+  tag: "preferences.workflowDialog.actions.tag",
+  category: "preferences.workflowDialog.actions.category",
+  move: "preferences.workflowDialog.actions.move",
+  externalProgram: "preferences.workflowDialog.actions.externalProgram",
+  exportToInstance: "preferences.workflowDialog.actions.exportToInstance",
+}
+
+// The backend reads the same way: the tags list wins over the legacy single tag.
+export function getRuleTagActions(rule: Automation) {
+  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
+    return rule.conditions.tags
+  }
+  if (rule.conditions?.tag) {
+    return [rule.conditions.tag]
+  }
+  return []
+}
+
+/** Returns the actions that a saved workflow has turned on, in the order of the action picker. */
+export function getRuleActions(rule: Automation): ActionType[] {
+  return (Object.keys(ACTION_LABEL_KEYS) as ActionType[]).filter(action => {
+    if (action === "tag") {
+      return getRuleTagActions(rule).some(tag => tag.enabled)
+    }
+    if (action === "autoManagement") {
+      // enabled is the value that the action sets, so a saved action with enabled false still runs.
+      return rule.conditions?.autoManagement != null
+    }
+    return Boolean(rule.conditions?.[action]?.enabled)
+  })
+}
 
 /**
  * Export format for workflows. This is the clipboard JSON format.
@@ -25,6 +70,23 @@ export interface WorkflowExport {
 
 /** Parsed import JSON, with every key as written. The backend checks the keys and lists each problem. */
 export type WorkflowImport = WorkflowExport & Record<string, unknown>
+
+// The order one automation run applies actions in; a test holds it equal to the backend's actionRunOrder.
+export const ACTION_RUN_ORDER = [
+  "speedLimits",
+  "shareLimits",
+  "pause",
+  "resume",
+  "recheck",
+  "reannounce",
+  "autoManagement",
+  "tag",
+  "category",
+  "move",
+  "externalProgram",
+  "exportToInstance",
+  "delete",
+] as const satisfies readonly ActionType[]
 
 const DEFAULT_INTERVAL_SECONDS = 900
 

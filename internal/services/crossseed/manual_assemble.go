@@ -67,6 +67,8 @@ type manualAssemblePlan struct {
 	response *ManualAssembleResponse
 	prep     *seasonPackPrep
 	instance *models.Instance
+	// route sends the add to the Cross-seed instance (ADR 0035), or nil.
+	route    *candidateRoute
 	build    *seasonPackPlanBuild
 	episodes map[episodeIdentity]episodeMatch
 }
@@ -89,23 +91,28 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		return nil, err
 	}
 	resp, prep, inst := planned.response, planned.prep, planned.instance
+	receiverID := planned.route.receiverOf(inst.ID)
 	if !resp.Ready {
-		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
+		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, collectHashes(prep.meta)); err != nil {
-		return nil, err
-	} else if found {
+	check, refusal := s.adder.Check(ctx, receiverID, AddFacts{ManualAssembly: true}, collectHashes(prep.meta)...)
+	if refusal != nil {
+		if refusal.Status != StatusExists {
+			return nil, refusal.Err
+		}
 		resp.Ready, resp.Reason = false, "already_exists"
-		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
+		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planned.build, resp.LinkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
-		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
-		return resp, nil
+		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
+		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
-	result, err := s.addSeasonPack(ctx, prep, inst, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
+	// A cross-device retry may have moved the tree to another base dir.
+	resp.Destination, _ = seasonPackSavePath(planned.route, planned.build)
+	result, err := s.addSeasonPack(ctx, prep, inst, planned.route, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +132,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid torrent: %w", ErrInvalidRequest, err)
 	}
-	packRelease := s.releaseCache.Parse(meta.Name)
+	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	if !isTVSeasonPack(packRelease) {
 		return nil, fmt.Errorf("%w: upload is not a season pack", ErrInvalidRequest)
 	}
@@ -140,19 +147,39 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, err
 	}
+	// A route sends the add to the Cross-seed instance (ADR 0035). Its rule
+	// check, the availability check, and the Source instance row come before
+	// the plan, so the plan and its destination use them.
+	route, routeErr := s.routeOf(ctx, inst.ID)
+	var routeStatus, routeMessage string
+	switch {
+	case routeErr != nil && route == nil:
+		// A failed read, not a broken route.
+		return nil, routeErr
+	case routeErr != nil:
+		routeStatus, routeMessage = routeFailure(routeErr)
+	case route != nil:
+		if routeStatus, routeMessage = s.loadSource(ctx, route, inst.ID); routeStatus == "" {
+			inst = route.source
+		}
+	}
 	prep := &seasonPackPrep{
 		manual: true, rejected: make(map[string]string), settings: settings,
 		meta: meta, torrentBytes: torrentBytes, packName: meta.Name, packRelease: packRelease,
-		packEpisodes: extractPackEpisodes(meta.Files, packRelease),
+		packEpisodes: s.matcher().extractPackEpisodes(meta.Files, packRelease),
 	}
 	prep.totalEpisodes = len(prep.packEpisodes)
 	resp := &ManualAssembleResponse{
 		Targets: []ManualAssembleTarget{}, TotalEpisodes: prep.totalEpisodes,
 		LinkMode: determineLinkMode([]*models.Instance{inst}, inst.ID),
 	}
-	planned := &manualAssemblePlan{response: resp, prep: prep, instance: inst}
+	planned := &manualAssemblePlan{response: resp, prep: prep, instance: inst, route: route}
 	for _, file := range meta.Files {
 		resp.MissingBytes += file.Size
+	}
+	if routeStatus != "" {
+		resp.Reason, resp.Message = seasonPackRouteReason(routeStatus), routeMessage
+		return planned, nil
 	}
 	if prep.totalEpisodes == 0 {
 		resp.Reason = "no_episode_files"
@@ -204,9 +231,17 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				prep.rejected[hash] = "target_not_found"
 				continue
 			}
-			if torrent.Progress < 1 {
+			switch s.sourceGate().check(&torrent, sourceFilter{}) {
+			case sourceIncomplete:
 				prep.rejected[hash] = "incomplete"
 				continue
+			case sourceErrored:
+				prep.rejected[hash] = "errored"
+				continue
+			case sourceMovingOrChecking:
+				prep.rejected[hash] = "not_settled"
+				continue
+			default:
 			}
 			parsed := s.releaseCache.Parse(torrent.Name)
 			if parsed == nil {
@@ -234,7 +269,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 		resp.Reason = reason
 		return planned, nil
 	}
-	plan, episodes, planErr := s.planSeasonPack(ctx, prep, inst, candidates, resp.LinkMode, "")
+	plan, episodes, planErr := s.planSeasonPack(ctx, prep, inst, route, candidates, resp.LinkMode, "")
 	if planErr != nil && !errors.Is(planErr, errLayoutMismatch) {
 		return nil, planErr
 	}
@@ -258,7 +293,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if plan != nil {
 		resp.LinkedBytes = plan.linkedBytes
 		resp.MissingBytes = plan.totalBytes - plan.linkedBytes
-		resp.Destination = plan.plan.RootDir
+		resp.Destination, _ = seasonPackSavePath(route, plan)
 	}
 	if planErr != nil {
 		resp.Reason, resp.Message = "layout_mismatch", planErr.Error()

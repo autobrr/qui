@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -32,12 +33,10 @@ func buildLinkFallbackBoundaryTorrent(t *testing.T, mainSize int) ([]byte, Torre
 
 func newLinkFallbackBoundaryService(sync *discPolicySyncManager, instanceStore *discPolicyInstanceStore) *Service {
 	return &Service{
-		syncManager:       sync,
-		instanceStore:     instanceStore,
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 10),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      sync,
+		instanceStore:    instanceStore,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			settings.SkipPieceBoundarySafetyCheck = true
@@ -87,17 +86,56 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
 	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
+	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
 		Torrents:     []qbt.Torrent{matchedTorrent},
-	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info)
+	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 	require.False(t, result.Success)
 	require.Equal(t, "skipped_unsafe_pieces", result.Status)
 	require.Contains(t, result.Message, "link-mode fallback")
 	require.Nil(t, sync.addedOptions, "unsafe link-mode fallback must skip before AddTorrent")
 	require.Empty(t, sync.bulkActions)
+}
+
+func TestRegularAddPieceBoundaryCheckRefusesUnsafePieces(t *testing.T) {
+	t.Parallel()
+
+	instanceID := 1
+	matchedHash := "matchedhash"
+	torrentBytes, meta := buildLinkFallbackBoundaryTorrent(t, 53)
+	candidateFiles := qbt.TorrentFiles{meta.Files[0]}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        meta.Name,
+		Progress:    1.0,
+		ContentPath: "/downloads/" + meta.Name,
+		Size:        candidateFiles[0].Size,
+	}
+	sync := &discPolicySyncManager{
+		files:          map[string]qbt.TorrentFiles{matchedHash: candidateFiles},
+		props:          map[string]*qbt.TorrentProperties{matchedHash: {SavePath: "/downloads"}},
+		matchedTorrent: &matchedTorrent,
+		bulkActions:    make([]string, 0),
+	}
+	instanceStore := &discPolicyInstanceStore{
+		instances: map[int]*models.Instance{instanceID: {ID: instanceID}},
+	}
+	service := newLinkFallbackBoundaryService(sync, instanceStore)
+
+	withAdder(service)
+	result := service.processCrossSeedCandidate(t.Context(), CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "test-instance",
+		Torrents:     []qbt.Torrent{matchedTorrent},
+	}, torrentBytes, "newhash", meta.HashV2, meta.Name, &CrossSeedRequest{}, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
+
+	require.Equal(t, "skipped_unsafe_pieces", result.Status)
+	require.Equal(t, unsafePiecesMessage, result.Message)
+	require.Nil(t, sync.addedOptions)
 }
 
 func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
@@ -140,30 +178,24 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 		},
 	}
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, completeScript(newHash)...)
 
-	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
-	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
-		InstanceID:   instanceID,
-		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
-	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info)
+		req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
+		withAdder(service)
+		result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
+			InstanceID:   instanceID,
+			InstanceName: "test-instance",
+			Torrents:     []qbt.Torrent{matchedTorrent},
+		}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
-	require.True(t, result.Success, result.Message)
-	require.Equal(t, "added", result.Status)
-	require.NotNil(t, sync.addedOptions)
-	require.Equal(t, "true", sync.addedOptions["paused"])
-	require.Equal(t, "true", sync.addedOptions["stopped"])
-	require.NotContains(t, sync.addedOptions, "skip_checking")
-	require.Equal(t, "false", sync.addedOptions["useDownloadPath"])
-	require.Contains(t, sync.bulkActions, "recheck:"+newHash)
+		require.True(t, result.Success, result.Message)
+		require.Equal(t, "added", result.Status)
+		require.NotNil(t, sync.addedOptions)
+		require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.Equal(t, instanceID, pending.instanceID)
-		require.Equal(t, newHash, pending.hash)
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
-	default:
-		require.Fail(t, "expected safe link-mode fallback to queue full recheck resume")
-	}
+		actions, polled := script.wait()
+		require.Equal(t, []string{"recheck:" + newHash}, actions, "a full-recheck fallback 1 MiB short of complete stays paused")
+		require.Equal(t, 2, polled, "the fallback torrent is watched until its recheck ends")
+	})
 }

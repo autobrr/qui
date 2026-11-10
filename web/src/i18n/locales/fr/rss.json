@@ -141,14 +141,10 @@
     "saveChanges": "Sauvegarder les modifications"
   },
   "settingsPopover": {
-    "title": "Paramètres RSS",
     "refreshInterval": "Intervalle de rafraîchissement",
-    "min": "min",
     "maxArticles": "Max articles par flux",
     "autoDownload": "Téléchargement automatique",
-    "downloadRepack": "Télécharger REPACK/PROPER",
-    "saving": "Sauvegarde...",
-    "save": "Sauvegarder"
+    "downloadRepack": "Télécharger REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE En direct",
@@ -194,8 +190,6 @@
     "ruleCreated": "Règle créée avec succès",
     "failedToCreateRule": "Échec de la création de la règle",
     "ruleUpdated": "Règle mise à jour avec succès",
-    "failedToUpdateRuleEdit": "Échec de la mise à jour de la règle",
-    "rssSettingsSaved": "Paramètres RSS sauvegardés",
-    "failedToSaveRssSettings": "Échec de la sauvegarde des paramètres RSS"
+    "failedToUpdateRuleEdit": "Échec de la mise à jour de la règle"
   }
 }
