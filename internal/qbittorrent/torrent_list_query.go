@@ -504,6 +504,7 @@ func addSubcategoriesToParents(counts *TorrentCounts) {
 func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *torrentCountsResult) {
 	torrents := in.torrents
 	stats := make(map[string]*trackerDomainStats)
+	domainsOf := make([][]string, len(torrents))
 	add := func(domain string, i int) {
 		s := stats[domain]
 		if s == nil {
@@ -511,6 +512,7 @@ func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *tor
 			stats[domain] = s
 		}
 		s.add(&torrents[i], sharedContentPaths[i])
+		domainsOf[i] = append(domainsOf[i], domain)
 	}
 
 	placed := placeMappedTorrents(in, add)
@@ -546,7 +548,43 @@ func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *tor
 		result.counts.Trackers[domain] = s.sum.Count
 		result.counts.TrackerTransfers[domain] = s.totals()
 	}
+	result.counts.trackerSets = groupTrackerSets(torrents, domainsOf, sharedContentPaths)
 	reportEmptiedDomains(in, stats, result)
+}
+
+// trackerSet holds the totals of the torrents that share one set of tracker
+// domains. Public torrents share one set whatever their domains are.
+type trackerSet struct {
+	domains []string
+	public  bool
+	stats   trackerDomainStats
+}
+
+// groupTrackerSets sums the torrents by their set of tracker domains, so a
+// Tracker group can be found later with the customizations of that time.
+func groupTrackerSets(torrents []qbt.Torrent, domainsOf [][]string, sharedContentPaths []bool) []*trackerSet {
+	byKey := make(map[string]*trackerSet)
+	var sets []*trackerSet
+	for i := range torrents {
+		t := &torrents[i]
+		public := !PrivateUnknown(t) && !t.Private
+		domains := domainsOf[i]
+		key := "\x00public"
+		if public {
+			domains = nil
+		} else {
+			slices.Sort(domains)
+			key = strings.Join(domains, "\x00")
+		}
+		set := byKey[key]
+		if set == nil {
+			set = &trackerSet{domains: domains, public: public}
+			byKey[key] = set
+			sets = append(sets, set)
+		}
+		set.stats.add(t, sharedContentPaths[i])
+	}
+	return sets
 }
 
 // placeMappedTorrents runs step 1 for each domain of the mapping, and reports

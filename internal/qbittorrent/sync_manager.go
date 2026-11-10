@@ -35,6 +35,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/trackergroup"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -3400,6 +3401,34 @@ type TorrentCounts struct {
 	Trackers         map[string]int                  `json:"trackers"`
 	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
 	Total            int                             `json:"total"`
+
+	// trackerSets feeds TrackerGroups. It stays out of the JSON, because the
+	// Tracker group depends on the customizations of the moment of the read.
+	trackerSets []*trackerSet
+}
+
+// TrackerGroups returns the totals of each Tracker group, where a torrent
+// counts toward exactly one group.
+func (c *TorrentCounts) TrackerGroups(mapper *trackergroup.Mapper) map[trackergroup.Group]TrackerTransferStats {
+	merged := make(map[trackergroup.Group]*trackerDomainStats)
+	for _, set := range c.trackerSets {
+		var private *bool
+		if set.public {
+			private = new(false)
+		}
+		group := mapper.Of(set.domains, private)
+		total := merged[group]
+		if total == nil {
+			total = &trackerDomainStats{}
+			merged[group] = total
+		}
+		total.merge(&set.stats)
+	}
+	groups := make(map[trackergroup.Group]TrackerTransferStats, len(merged))
+	for group, total := range merged {
+		groups[group] = total.totals()
+	}
+	return groups
 }
 
 // ExtractDomainFromURL calls the package-level ExtractDomainFromURL.
@@ -4734,6 +4763,23 @@ func (t *trackerDomainStats) add(torrent *qbt.Torrent, sharedPath bool) {
 	t.sum.DownloadedSession += torrent.DownloadedSession
 
 	t.size.add(torrent, sharedPath && torrent.ContentPath != "")
+}
+
+// merge adds the totals of o. The sizes merge exactly, because the shared
+// content paths come from the whole library, not from one tracker.
+func (t *trackerDomainStats) merge(o *trackerDomainStats) {
+	t.sum.Count += o.sum.Count
+	t.sum.Uploaded += o.sum.Uploaded
+	t.sum.Downloaded += o.sum.Downloaded
+	t.sum.UploadedSession += o.sum.UploadedSession
+	t.sum.DownloadedSession += o.sum.DownloadedSession
+	t.size.unshared += o.size.unshared
+	for path, size := range o.size.sizeByPath {
+		if t.size.sizeByPath == nil {
+			t.size.sizeByPath = make(map[string]int64)
+		}
+		t.size.sizeByPath[path] = max(t.size.sizeByPath[path], size)
+	}
 }
 
 func (t *trackerDomainStats) totals() TrackerTransferStats {

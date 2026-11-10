@@ -57,7 +57,7 @@
     "internal/database/dialect.go": 1,
     "internal/dbinterface/string_pool.go": 1,
     "internal/fsops/local/local.go": 1,
-    "internal/metrics/collector/torrent.go": 2,
+    "internal/metrics/collector/torrent.go": 1,
     "internal/models/automation.go": 2,
     "internal/models/backups.go": 1,
     "internal/models/crossseed.go": 1,
