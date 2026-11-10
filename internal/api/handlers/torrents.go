@@ -1108,7 +1108,6 @@ func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, sco
 		Order:             order,
 		Search:            search,
 		Filters:           filters,
-		SidebarCounts:     true,
 		CacheOnly:         cacheOnly,
 		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
 	}
