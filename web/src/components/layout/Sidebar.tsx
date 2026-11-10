@@ -46,7 +46,8 @@ import {
   Search,
   SearchCode,
   Settings,
-  Zap
+  Zap,
+  ChartColumn
 } from "lucide-react"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -68,6 +69,8 @@ const navigation: NavItem[] = [
     href: "/dashboard",
     icon: Home,
   },
+  // PROTOTYPE: dev-only entry for the Statistics page variants (issue #3991).
+  ...(import.meta.env.DEV ? [{ id: "prototype-statistics", titleKey: "nav.statistics", href: "/prototype/statistics", icon: ChartColumn }] : []),
   {
     id: "search",
     titleKey: "nav.search",
