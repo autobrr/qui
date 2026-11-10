@@ -287,6 +287,7 @@ describe("bulk action module - confirmations", () => {
     expect(dialogTitle()).toBeNull()
   })
 
+  // regression: #3983
   it("closes an open confirmation when the selection becomes empty", () => {
     const { result, publish } = renderModule({ actionTarget: ticks("h1", "h2") })
 
