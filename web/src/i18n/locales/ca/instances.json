@@ -2097,7 +2097,6 @@
     "remote": "Per SSH",
     "none": "Cap",
     "localFull": "qui llegeix i escriu els fitxers d'aquesta instància en aquesta màquina.",
-    "remoteFull": "qui llegeix i escriu els fitxers d'aquesta instància per SSH, amb identitat dels fitxers.",
     "limits": {
       "noIdentity": "Sense identitat dels fitxers: qui no pot saber quan dos camins són el mateix fitxer. L'exploració d'orfes no pot suprimir aquí, i una destinació de hardlink existent atura una addició per hardlink.",
       "noReflinks": "Sense reflinks en una instància remota.",

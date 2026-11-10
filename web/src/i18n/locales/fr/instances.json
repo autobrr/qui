@@ -2097,7 +2097,6 @@
     "remote": "Via SSH",
     "none": "Aucun",
     "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
-    "remoteFull": "L'application lit et écrit les fichiers de cette instance via SSH, avec l'identité des fichiers.",
     "limits": {
       "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
       "noReflinks": "Pas de reflinks sur une instance distante.",

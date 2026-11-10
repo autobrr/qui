@@ -2097,7 +2097,6 @@
     "remote": "Über SSH",
     "none": "Keiner",
     "localFull": "qui liest und schreibt die Dateien dieser Instanz auf diesem Rechner.",
-    "remoteFull": "qui liest und schreibt die Dateien dieser Instanz über SSH, mit Dateiidentität.",
     "limits": {
       "noIdentity": "Keine Dateiidentität: qui erkennt nicht, wenn zwei Pfade dieselbe Datei sind. Der Orphan-Scan kann hier nicht löschen, und ein vorhandenes Hardlink-Ziel stoppt ein Hinzufügen per Hardlink.",
       "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",

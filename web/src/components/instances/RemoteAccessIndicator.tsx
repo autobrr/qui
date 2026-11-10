@@ -56,7 +56,6 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
         {variant === "icon" && <p className="font-medium">{label}</p>}
-        {mode === "remote" && limits.length === 0 && <p>{t("access.remoteFull")}</p>}
         {mode === "local" && <p>{t("access.localFull")}</p>}
         <LimitList limits={limits} />
       </TooltipContent>
