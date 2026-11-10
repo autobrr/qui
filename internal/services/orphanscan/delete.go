@@ -186,9 +186,8 @@ func checkEntryInUse(ctx context.Context, entry *fsops.WalkEntry, protected *pro
 // followSymlink returns what the symlink at p points to. A dangling link, or a
 // loop reported as ELOOP, returns nil, since no torrent can use a file through it.
 // Any other failure is returned, as for a regular entry whose identity cannot
-// be read, because the target could be a torrent's file. That includes the code
-// Windows reports for a link it cannot resolve, loop or not, because keeping one
-// unit costs far less here than stopping the run does in collectInUseIDs.
+// be read, because the target could be a torrent's file. Unlike collectInUseIDs,
+// that includes the code Windows reports for a link it cannot resolve.
 func followSymlink(ctx context.Context, p string, backend fsops.Backend) (*fsops.LstatInfo, error) {
 	info, err := backend.Stat(ctx, p)
 	if err != nil {
@@ -227,13 +226,12 @@ type inUseIDs struct {
 // collectInUseIDs reads the identity of each torrent file or folder through
 // backend, following links, as qBittorrent does. A path that is not on disk
 // protects nothing, since qBittorrent cannot read it either. A path whose link
-// cannot be resolved is treated like a missing one, because qBittorrent on the
-// same host reads the same path, and is logged because that is assumed, not
-// known. A path qui may not look up is skipped, as the scan skips a denied
-// subtree, unless failDenied is set. Any other failure is returned, a denied
-// identity read included, because a file the run cannot identify could be one
-// of the targets. Set failDenied for torrent folders: a denied one could be an
-// alias that qBittorrent can follow to a listed folder.
+// cannot be resolved is skipped too, on the assumption that qBittorrent on the
+// same host cannot read it either. A path qui may not look up is skipped, as
+// the scan skips a denied subtree, unless failDenied is set. Any other failure
+// is returned, a denied identity read included, because a file the run cannot
+// identify could be one of the targets. Set failDenied for torrent folders: a
+// denied one could be an alias that qBittorrent can follow to a listed folder.
 func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *models.Instance, paths []string, failDenied bool) (*inUseIDs, error) {
 	// Cross-seeds share files, so the same path comes once per torrent.
 	seen := make(map[string]struct{}, len(paths))
@@ -254,6 +252,7 @@ func collectInUseIDs(ctx context.Context, backend fsops.Backend, instance *model
 	var denied, unresolvable skippedPaths
 	for i := range unique {
 		if err := errs[i]; err != nil {
+			// Before pathGone, which also matches ELOOP and would skip it unlogged.
 			if isUnresolvableLinkError(err) {
 				unresolvable.add(unique[i])
 				continue

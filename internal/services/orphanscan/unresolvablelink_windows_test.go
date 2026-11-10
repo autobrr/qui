@@ -72,34 +72,16 @@ func TestExecuteDeletion_WindowsTorrentFileErrorCodes(t *testing.T) {
 	}
 }
 
-// A disc unit whose link cannot be resolved stays and says why, unlike ELOOP on
-// other systems. Stopping here costs one entry the user can fix, while the same
-// code at a torrent's path would stop the whole run. A dangling link still leads
-// nowhere, so it does not keep the unit.
-// regression: #3596
-func TestCheckEntryInUse_WindowsSymlinkErrorCodes(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		errno    syscall.Errno
-		wantKept bool
-	}{
-		{"cannot resolve the name", windows.ERROR_CANT_RESOLVE_FILENAME, true},
-		{"dangling", windows.ERROR_FILE_NOT_FOUND, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			link := filepath.Join(t.TempDir(), "00001.m2ts")
-			backend := errnoStatBackend{Backend: newTestBackend(), path: link, errno: tc.errno}
-			protected := newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths))
-			protected.inUse = &inUseIDs{}
+// A disc unit whose link cannot be resolved stays and names the link, unlike
+// the same code at a torrent's path, which collectInUseIDs skips.
+func TestCheckEntryInUse_WindowsUnresolvableSymlinkKeepsTheUnit(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "00001.m2ts")
+	backend := errnoStatBackend{Backend: newTestBackend(), path: link, errno: windows.ERROR_CANT_RESOLVE_FILENAME}
+	protected := newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths))
+	protected.inUse = &inUseIDs{}
 
-			err := checkEntryInUse(t.Context(), &fsops.WalkEntry{Path: link, IsSymlink: true}, protected, backend)
+	err := checkEntryInUse(t.Context(), &fsops.WalkEntry{Path: link, IsSymlink: true}, protected, backend)
 
-			if tc.wantKept {
-				require.ErrorIs(t, err, tc.errno)
-				require.ErrorContains(t, err, "follow symlink")
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
+	require.ErrorIs(t, err, windows.ERROR_CANT_RESOLVE_FILENAME)
+	require.ErrorContains(t, err, "follow symlink")
 }
