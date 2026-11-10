@@ -416,6 +416,38 @@ export function getGroupTorrents(stats: Stats, row: GroupRow, dimension: Dimensi
   return [...own, ...filler].slice(0, count)
 }
 
+export type DeleteCause = "automation" | "user" | "proxy" | "restore" | "external"
+
+export interface DeleteRow {
+  t: number
+  name: string
+  group: string
+  cause: DeleteCause
+  /** The rule name or the API key name. Empty for the other causes. */
+  causeName: string
+  finalUploaded: number
+  finalRatio: number
+  seededDays: number
+}
+
+const DELETE_DEFS: (Omit<DeleteRow, "t"> & { at: number })[] = [
+  { at: 0.01, name: "Night.Ferry.S03E04.2160p.WEB.H265-WREN", group: "Aurora", cause: "automation", causeName: "Ratio 2.0 reached", finalUploaded: 18.4 * GiB, finalRatio: 2.71, seededDays: 12 },
+  { at: 0.05, name: "Orbit.Season.S04E01.1080p.WEB.H264-WREN", group: "Aurora", cause: "proxy", causeName: "Sonarr", finalUploaded: 9.6 * GiB, finalRatio: 3.1, seededDays: 31 },
+  { at: 0.11, name: "Cold.Meridian.S01.1080p.WEB-DL.DDP5.1.H.264-EMBER", group: "Aurora", cause: "user", causeName: "", finalUploaded: 211 * GiB, finalRatio: 8.58, seededDays: 164 },
+  { at: 0.19, name: "Hollow.Pines.2021.720p.WEB.H264-LOOM", group: "Public", cause: "automation", causeName: "Unregistered", finalUploaded: 0.4 * GiB, finalRatio: 0.12, seededDays: 3 },
+  { at: 0.3, name: "Salt.And.Iron.2024.1080p.BluRay.x264-TARN", group: "Northwind", cause: "automation", causeName: "Seeded 30 days", finalUploaded: 46.2 * GiB, finalRatio: 4.02, seededDays: 30 },
+  { at: 0.44, name: "Glass.Harbor.S02E07.1080p.WEB.H264-KITE", group: "Tidepool", cause: "external", causeName: "", finalUploaded: 3.1 * GiB, finalRatio: 0.94, seededDays: 6 },
+  { at: 0.61, name: "The.Long.Field.2022.2160p.UHD.BluRay.x265-NOVA", group: "Lanternfish", cause: "automation", causeName: "Ratio 2.0 reached", finalUploaded: 128.7 * GiB, finalRatio: 2.04, seededDays: 58 },
+  { at: 0.83, name: "Winter.Atlas.2025.1080p.WEB-DL.DDP5.1.H.264-EMBER", group: "Quillbox", cause: "restore", causeName: "", finalUploaded: 12.9 * GiB, finalRatio: 1.37, seededDays: 21 },
+]
+
+/** The latest deletes of the period, newest first. */
+export function getDeletes(stats: Stats): DeleteRow[] {
+  const end = stats.buckets[stats.buckets.length - 1].t
+  const span = end - stats.buckets[0].t
+  return DELETE_DEFS.map(({ at, ...d }) => ({ ...d, t: end - span * at }))
+}
+
 export interface HeatDay {
   t: number
   value: number

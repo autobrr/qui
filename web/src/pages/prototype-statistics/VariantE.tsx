@@ -3,16 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// PROTOTYPE variant E, "Combined": the page of A, the table and inspector of B, the torrent table of C, and the calendar of D for a year.
+// PROTOTYPE variant E, "Combined": the page of A, the table and inspector of B, the torrent table of C, the delete list of C, and the calendar of D for a year.
 
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatBytes } from "@/lib/utils"
+import { ArchiveRestore, KeyRound, Unplug, User, Zap } from "lucide-react"
 import { useState } from "react"
-import { ChurnBars, LibrarySizeChart, SeriesLegend, Spark, StackedBars } from "./charts"
+import { ChurnBars, LibrarySizeChart, SeriesLegend, Spark, StackedBars, formatBucket } from "./charts"
 import type { VariantProps } from "./controls"
 import { Delta, InstanceFilter, PeriodPicker, RecordingNote, Segmented, formatDay, formatRatio } from "./controls"
-import { getHeatmap, getMonths, sumOf } from "./mock-data"
+import type { DeleteCause, DeleteRow, Stats } from "./mock-data"
+import { getDeletes, getHeatmap, getMonths, sumOf } from "./mock-data"
 import { Ledger } from "./VariantB"
 import { TorrentsTable } from "./VariantC"
 import { Calendar, MonthBars, Record } from "./VariantD"
@@ -28,6 +31,88 @@ function Tile({ label, value, hint, spark }: { label: string; value: string; hin
           {spark && <Spark values={spark} className="w-16 shrink-0" />}
         </div>
       </CardContent>
+    </Card>
+  )
+}
+
+const CAUSES: Record<DeleteCause, { label: string; icon: typeof Zap }> = {
+  automation: { label: "Automation", icon: Zap },
+  user: { label: "You", icon: User },
+  proxy: { label: "API key", icon: KeyRound },
+  restore: { label: "Backup restore", icon: ArchiveRestore },
+  external: { label: "Outside qui", icon: Unplug },
+}
+
+type CauseFilter = "all" | "automation" | "user" | "other"
+
+/** Who deleted each torrent, and the numbers it ended with (user stories 26 and 27 of the spec). */
+function DeletesCard({ stats }: { stats: Stats }) {
+  const [filter, setFilter] = useState<CauseFilter>("all")
+  const deletes = getDeletes(stats)
+  const matches = (d: DeleteRow, f: CauseFilter) => f === "all" || (f === "other" ? d.cause !== "automation" && d.cause !== "user" : d.cause === f)
+  // The mock has a few rows only, so the counts scale to the deletes of the period.
+  const count = (f: CauseFilter) => Math.round((deletes.filter(d => matches(d, f)).length / deletes.length) * stats.counts.deleted)
+  const rows = deletes.filter(d => matches(d, filter))
+  const longPeriod = stats.buckets.length > 7 && stats.unit === "day"
+
+  return (
+    <Card className="gap-0 overflow-hidden pb-0">
+      <CardHeader className="pb-4">
+        <CardTitle>Deleted torrents</CardTitle>
+        <CardDescription>{stats.counts.deleted.toLocaleString()} deleted in the period. Who deleted each torrent, and the numbers it ended with.</CardDescription>
+        <CardAction>
+          <Segmented
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { key: "all", label: "All" },
+              { key: "automation", label: `Automations ${count("automation")}` },
+              { key: "user", label: `You ${count("user")}` },
+              { key: "other", label: `Other ${count("other")}` },
+            ]}
+          />
+        </CardAction>
+      </CardHeader>
+      <div className="overflow-x-auto border-t">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="pl-6">Deleted</TableHead>
+              <TableHead>Torrent</TableHead>
+              <TableHead>Tracker</TableHead>
+              <TableHead>Deleted by</TableHead>
+              <TableHead className="text-right">Final upload</TableHead>
+              <TableHead className="text-right">Final ratio</TableHead>
+              <TableHead className="pr-6 text-right">Seeded</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(d => {
+              const cause = CAUSES[d.cause]
+              return (
+                <TableRow key={d.name}>
+                  <TableCell className="whitespace-nowrap pl-6 text-muted-foreground">{longPeriod ? formatDay(d.t) : formatBucket(d.t, "hour", 48)}</TableCell>
+                  <TableCell className="max-w-[360px] truncate" title={d.name}>{d.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{d.group}</TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <cause.icon className="size-3.5 text-muted-foreground" />
+                      {cause.label}
+                      {d.causeName && <span className="text-muted-foreground">· {d.causeName}</span>}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{formatBytes(d.finalUploaded)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatRatio(d.finalRatio)}</TableCell>
+                  <TableCell className="pr-6 text-right tabular-nums">{d.seededDays} d</TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="border-t px-6 py-3 text-xs text-muted-foreground">
+        The latest {rows.length} of {count(filter).toLocaleString()}. The real page loads more on request.
+      </div>
     </Card>
   )
 }
@@ -134,6 +219,8 @@ export function VariantE({ stats, period, setPeriod, instance, setInstance }: Va
           </CardContent>
         </Card>
       </div>
+
+      <DeletesCard stats={stats} />
     </div>
   )
 }
