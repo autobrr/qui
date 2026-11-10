@@ -100,9 +100,9 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 
 	require.NotNil(t, server.streamManager, "expected stream manager to be initialized")
 
-	sink := getClientPoolSyncEventSink(t, clientPool)
-	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
-	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
+	sinks := getClientPoolSyncEventSinks(t, clientPool)
+	require.Len(t, sinks, 1, "expected client pool to have one sync sink registered")
+	require.Same(t, server.streamManager, sinks[0], "stream manager should be registered as sync sink")
 }
 
 func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
@@ -340,22 +340,22 @@ func formatRoutes(routes []routeKey) string {
 	return strings.Join(lines, "\n")
 }
 
-func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbittorrent.SyncEventSink {
+func getClientPoolSyncEventSinks(t *testing.T, pool *qbittorrent.ClientPool) []qbittorrent.SyncEventSink {
 	t.Helper()
 
-	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSink")
+	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSinks")
 	if !value.IsValid() {
-		t.Fatalf("client pool does not expose syncEventSink field")
+		t.Fatalf("client pool does not expose syncEventSinks field")
 	}
 
 	exposed := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Elem()
-	if exposed.IsNil() {
-		return nil
+	sinks := make([]qbittorrent.SyncEventSink, exposed.Len())
+	for i := range sinks {
+		sink, ok := exposed.Index(i).Interface().(qbittorrent.SyncEventSink)
+		require.True(t, ok, "unexpected sink type stored on client pool")
+		sinks[i] = sink
 	}
-
-	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
-	require.True(t, ok, "unexpected sink type stored on client pool")
-	return sink
+	return sinks
 }
 
 func TestOpenStopsWhenPortIsInUse(t *testing.T) {

@@ -17,6 +17,28 @@ type SyncEventSink interface {
 	HandleSyncError(instanceID int, err error)
 }
 
+// syncEventSinks passes each notification to every sink, in registration order.
+// The pool never changes a slice that it gave out; it builds a new one.
+type syncEventSinks []SyncEventSink
+
+func (s syncEventSinks) HandleMainData(instanceID int, data *qbt.MainData) {
+	for _, sink := range s {
+		sink.HandleMainData(instanceID, data)
+	}
+}
+
+func (s syncEventSinks) HandleTrackerHealthUpdated(instanceID int) {
+	for _, sink := range s {
+		sink.HandleTrackerHealthUpdated(instanceID)
+	}
+}
+
+func (s syncEventSinks) HandleSyncError(instanceID int, err error) {
+	for _, sink := range s {
+		sink.HandleSyncError(instanceID, err)
+	}
+}
+
 // ServerStateOnly reports whether a sync changed the server state and nothing
 // else. Such a sync changes no torrent row and no sidebar count.
 func ServerStateOnly(c qbt.MainDataChanges) bool {

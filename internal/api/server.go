@@ -169,7 +169,7 @@ type Dependencies struct {
 func NewServer(deps *Dependencies) *Server {
 	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.SyncManager, deps.SyncManager, deps.InstanceStore)
 	if deps.ClientPool != nil {
-		deps.ClientPool.SetSyncEventSink(streamManager)
+		deps.ClientPool.AddSyncEventSink(streamManager)
 	}
 	if deps.ActivityHub != nil {
 		streamManager.SetActivityHub(deps.ActivityHub)
