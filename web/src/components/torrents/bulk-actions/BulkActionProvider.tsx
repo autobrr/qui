@@ -29,7 +29,8 @@ type BulkRequest = ReturnType<typeof bulkRequest>
  * The bulk action module (ADR 0049). It acts on the Action target that the
  * Layout publishes, opens the confirmation that a pick needs, and sends the
  * request. An open confirmation follows the live selection, and it closes when
- * the Layout publishes nothing. A failed request leaves it open.
+ * the selection becomes empty or the Layout publishes nothing. A failed request
+ * leaves it open.
  */
 export function BulkActionProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("torrents")
@@ -41,7 +42,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
   const publishedRef = useRef(published)
   publishedRef.current = published
 
-  if (!published && dialog !== CLOSED_DIALOG) {
+  if (!published?.actionTarget.count && dialog !== CLOSED_DIALOG) {
     dispatch({ type: "close" })
   }
 

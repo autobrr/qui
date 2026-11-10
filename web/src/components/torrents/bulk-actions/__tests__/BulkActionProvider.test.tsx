@@ -29,7 +29,7 @@ import { TorrentSelectionProvider, useTorrentSelectionContext, type TorrentSelec
 import { api } from "@/lib/api"
 import { resetPendingListRefetchesForTests } from "@/hooks/useTorrentActions"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import type { ActionTarget } from "@/lib/torrent-selection"
+import { EMPTY_ACTION_TARGET, type ActionTarget } from "@/lib/torrent-selection"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
 import { toast } from "sonner"
@@ -284,6 +284,16 @@ describe("bulk action module - confirmations", () => {
     expect(dialogTitle()).toBe("recheckDialog.title/2")
 
     act(() => result.current.publish(null))
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("closes an open confirmation when the selection becomes empty", () => {
+    const { result, publish } = renderModule({ actionTarget: ticks("h1", "h2") })
+
+    act(() => result.current.pick({ action: "recheck" }))
+    expect(dialogTitle()).toBe("recheckDialog.title/2")
+
+    publish({ actionTarget: EMPTY_ACTION_TARGET })
     expect(dialogTitle()).toBeNull()
   })
 
