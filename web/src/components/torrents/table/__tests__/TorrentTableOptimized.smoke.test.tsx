@@ -47,7 +47,6 @@ const scenario = vi.hoisted(() => ({
   // The loaded rows; undefined means `torrents`.
   rows: undefined as Torrent[] | undefined,
   renameDialogOpen: false,
-  deleteDialogOpen: false,
   totalSize: 0,
   copyGroupsReady: undefined as boolean | undefined,
   // The options that the table last gave the list hook.
@@ -230,10 +229,6 @@ vi.mock("@/hooks/useTorrentActions", async (importOriginal) => {
   const noop = vi.fn()
   const actions = new Proxy(
     {
-      blockCrossSeeds: false,
-      deleteCrossSeeds: false,
-      deleteFiles: false,
-      isDeleteFilesLocked: false,
       pendingTmmEnable: false,
       isPending: false,
     } as Record<string, unknown>,
@@ -242,7 +237,6 @@ vi.mock("@/hooks/useTorrentActions", async (importOriginal) => {
       get(target, prop: string) {
         if (prop in target) return target[prop]
         if (prop === "showRenameTorrentDialog") return scenario.renameDialogOpen
-        if (prop === "showDeleteDialog") return scenario.deleteDialogOpen
         if (prop.startsWith("show")) return false
         return noop
       },
@@ -290,12 +284,14 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TorrentSelectionProvider>
-        <BulkActionProvider>
-          <PublishedTargetProbe />
-          <TooltipProvider>{children}</TooltipProvider>
-        </BulkActionProvider>
-      </TorrentSelectionProvider>
+      <TooltipProvider>
+        <TorrentSelectionProvider>
+          <BulkActionProvider>
+            <PublishedTargetProbe />
+            {children}
+          </BulkActionProvider>
+        </TorrentSelectionProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   )
   return render(<TorrentTableOptimized instanceId={1} filters={makeFilters()} {...props} />, { wrapper })
@@ -543,7 +539,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     scenario.isCrossSeedFiltering = false
     scenario.rows = undefined
     scenario.renameDialogOpen = false
-    scenario.deleteDialogOpen = false
     scenario.totalSize = 0
     scenario.copyGroupsReady = undefined
   })
@@ -877,8 +872,8 @@ describe("TorrentTableOptimized Copy groups", () => {
       })
       const view = renderGroups(copyGroupRows())
       fireEvent.click(within(view.container).getByText("Delta Release"), { ctrlKey: true })
-      scenario.deleteDialogOpen = true
-      view.showRows(copyGroupRows())
+      fireEvent.contextMenu(within(view.container).getByText("Delta Release"))
+      fireEvent.click(await view.findByRole("menuitem", { name: /^contextMenu\.delete/ }))
 
       fireEvent.click(await view.findByRole("button", { name: "crossSeedWarning.idle.check" }))
       fireEvent.click(await view.findByText("crossSeedWarning.showAffected"))

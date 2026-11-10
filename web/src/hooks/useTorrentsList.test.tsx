@@ -2488,7 +2488,7 @@ describe("useTorrentsList categories and tags", () => {
         allowSubcategories: false,
         supportsTrackerHealth: false,
         actionTarget: EMPTY_ACTION_TARGET,
-        selectedTotalSize: 0,
+        totalSize: 0, excludedSize: 0,
       })
       return list
     }, { wrapper: makeWrapper() })

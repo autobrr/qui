@@ -139,9 +139,8 @@ export function Header({
   const { state: layoutRouteState } = useLayoutRoute()
   const spreadsheetDisguise = useSpreadsheetDisguise()
 
-  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection } = useTorrentSelectionContext()
   const selectionSummary = useTorrentSelectionSummary()
-  const clearSelection = useCallback(() => dispatchSelection({ type: "clear" }), [dispatchSelection])
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -586,8 +585,6 @@ export function Header({
                 instanceId={selectedInstanceId ?? undefined}
                 instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
                 actionTarget={selectionSummary.actionTarget}
-                totalSelectionSize={selectionSummary.selectedTotalSize}
-                onComplete={clearSelection}
               />
             </div>
           )}

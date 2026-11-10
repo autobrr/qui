@@ -25,7 +25,6 @@ function stub(name: string) {
   )
 }
 
-vi.mock("@/components/torrents/DeleteTorrentDialog", () => ({ DeleteTorrentDialog: stub("DeleteTorrentDialog") }))
 vi.mock("@/components/torrents/TorrentDialogs", () => ({
   CreateAndAssignCategoryDialog: stub("CreateAndAssignCategoryDialog"),
   LocationWarningDialog: stub("LocationWarningDialog"),
@@ -46,11 +45,10 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
   const noop = vi.fn()
   const falses = Object.fromEntries(
     [
-      "showDeleteDialog", "showCommentDialog", "showTagsDialog", "showCategoryDialog", "showCreateCategoryDialog",
+      "showCommentDialog", "showTagsDialog", "showCategoryDialog", "showCreateCategoryDialog",
       "showShareLimitDialog", "showSpeedLimitDialog", "showLocationDialog", "showRenameTorrentDialog",
       "showRenameFileDialog", "showRenameFolderDialog",
-      "showLocationWarningDialog", "deleteFiles", "isDeleteFilesLocked", "blockCrossSeeds",
-      "deleteCrossSeeds", "isPending", "hasCrossSeedTag", "isLoadingTags", "isLoadingCategories",
+      "showLocationWarningDialog", "isPending", "isLoadingTags", "isLoadingCategories",
       "allowSubcategories",
     ].map(k => [k, false])
   )
@@ -58,18 +56,14 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
     instanceId: 1,
     actionTarget: { kind: "ticks", hashes: ["h0"], count: 1, previewTorrents: [] },
     renameHash: "h0",
-    closeDeleteDialog: noop,
     setShowCommentDialog: noop, setShowTagsDialog: noop, setShowCategoryDialog: noop, setShowCreateCategoryDialog: noop,
     setShowShareLimitDialog: noop, setShowSpeedLimitDialog: noop, setShowLocationDialog: noop,
     setShowRenameTorrentDialog: noop, setShowRenameFileDialog: noop, setShowRenameFolderDialog: noop,
     setShowLocationWarningDialog: noop,
-    setDeleteFiles: noop, toggleDeleteFilesLock: noop, setBlockCrossSeeds: noop, setDeleteCrossSeeds: noop,
-    handleDeleteWrapper: vi.fn(), handleSetCommentWrapper: vi.fn(), handleTagsWrapper: vi.fn(),
+    handleSetCommentWrapper: vi.fn(), handleTagsWrapper: vi.fn(),
     handleSetCategoryWrapper: vi.fn(), handleSetShareLimitWrapper: vi.fn(), handleSetSpeedLimitsWrapper: vi.fn(),
     handleSetLocationWrapper: vi.fn(), handleRenameTorrentWrapper: vi.fn(), handleRenameFileWrapper: vi.fn(),
     handleRenameFolderWrapper: vi.fn(), proceedToLocationDialog: vi.fn(),
-    deleteDialogTotalSize: 0, deleteDialogFormattedSize: "0 B",
-    crossSeedWarning: { affectedTorrents: [], reset: vi.fn() } as unknown as TorrentTableDialogsProps["crossSeedWarning"],
     availableTags: [], availableCategories: {}, capabilities: undefined,
     ...(falses as Record<string, boolean>),
     ...overrides,
@@ -85,19 +79,6 @@ function renderDialogs(props: TorrentTableDialogsProps) {
 }
 
 describe("TorrentTableDialogs", () => {
-  it("opens the delete dialog, fires the wrapper on confirm, and chains close + crossSeedWarning.reset", () => {
-    const props = makeProps({ showDeleteDialog: true })
-    const { getByTestId } = renderDialogs(props)
-    expect(getByTestId("DeleteTorrentDialog").getAttribute("data-open")).toBe("true")
-
-    fireEvent.click(getByTestId("DeleteTorrentDialog-confirm"))
-    expect(vi.mocked(props.handleDeleteWrapper)).toHaveBeenCalled()
-
-    fireEvent.click(getByTestId("DeleteTorrentDialog-close"))
-    expect(vi.mocked(props.closeDeleteDialog)).toHaveBeenCalled()
-    expect(vi.mocked(props.crossSeedWarning.reset)).toHaveBeenCalled()
-  })
-
   it("wires a standard setter dialog (comment) to its wrapper", () => {
     const props = makeProps({ showCommentDialog: true })
     const { getByTestId } = renderDialogs(props)

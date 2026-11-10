@@ -28,7 +28,7 @@ function makeParams(overrides: Partial<UseTorrentTableNotificationsParams> = {})
     supportsTrackerHealth: false,
     onSelectionChange: vi.fn(),
     actionTarget: EMPTY_ACTION_TARGET,
-    selectedTotalSize: 0,
+    totalSize: 0, excludedSize: 0,
     ...overrides,
   }
 }
@@ -97,11 +97,11 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
 })
 
 describe("useTorrentTableNotifications — onSelectionChange", () => {
-  it("publishes the Action target with the size", () => {
+  it("publishes the Action target with the size facts", () => {
     const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a" })] }
-    const params = makeParams({ actionTarget, selectedTotalSize: 100 })
+    const params = makeParams({ actionTarget, totalSize: 600, excludedSize: 100 })
     renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, selectedTotalSize: 100, instanceId: 1, instanceIds: undefined })
+    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, totalSize: 600, excludedSize: 100, instanceId: 1, instanceIds: undefined })
   })
 
   it("publishes the instance subset of the Unified view", () => {

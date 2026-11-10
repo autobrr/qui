@@ -36,7 +36,8 @@ export interface UseTorrentTableNotificationsParams {
   // onSelectionChange effect inputs. The table publishes null when it unmounts.
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
   actionTarget: ActionTarget
-  selectedTotalSize: number
+  totalSize: number
+  excludedSize: number
   // The instance subset of the Unified view, published with the instance.
   instanceIds?: number[]
 }
@@ -67,7 +68,8 @@ export function useTorrentTableNotifications({
   supportsTrackerHealth,
   onSelectionChange,
   actionTarget,
-  selectedTotalSize,
+  totalSize,
+  excludedSize,
   instanceIds,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
@@ -151,8 +153,8 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    onSelectionChange?.({ actionTarget, selectedTotalSize, instanceId, instanceIds })
-  }, [onSelectionChange, actionTarget, selectedTotalSize, instanceId, instanceIds])
+    onSelectionChange?.({ actionTarget, totalSize, excludedSize, instanceId, instanceIds })
+  }, [onSelectionChange, actionTarget, totalSize, excludedSize, instanceId, instanceIds])
 
   useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

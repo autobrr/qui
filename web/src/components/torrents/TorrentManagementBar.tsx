@@ -11,16 +11,12 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
-import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { actionTargetInstanceIds, actionTargetRequest, type ActionTarget } from "@/lib/torrent-selection"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
-import { formatBytes } from "@/lib/utils"
+import { getCommonCategory, getCommonSavePath, parseTorrentTags } from "@/lib/torrent-utils"
 import type { Category } from "@/types"
 import {
   ArrowDown,
@@ -45,7 +41,6 @@ import {
 import { memo, useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   LocationWarningDialog,
   SetCategoryDialog,
@@ -60,16 +55,12 @@ interface TorrentManagementBarProps {
   instanceIds?: number[]
   // The Action target that the desktop table publishes (ADR 0034).
   actionTarget: ActionTarget
-  totalSelectionSize?: number
-  onComplete?: () => void
 }
 
 export const TorrentManagementBar = memo(function TorrentManagementBar({
   instanceId,
   instanceIds,
   actionTarget,
-  totalSelectionSize = 0,
-  onComplete,
 }: TorrentManagementBarProps) {
   const { t } = useTranslation("torrents")
   const { count: selectionCount, previewTorrents: selectedTorrents } = actionTarget
@@ -77,8 +68,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasActionScope = typeof instanceId === "number" && instanceId >= 0
   const actionInstanceId = hasActionScope ? instanceId : -1
   const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
-  const supportsCrossSeedDeleteTools = actionInstanceId >= 0
-  const supportsCrossSeedBlocklist = actionInstanceId >= 0
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, actionInstanceId), [actionTarget, actionInstanceId])
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
@@ -124,16 +113,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   // Use the shared torrent actions hook
   const {
-    showDeleteDialog,
-    closeDeleteDialog,
-    deleteFiles,
-    setDeleteFiles,
-    isDeleteFilesLocked,
-    toggleDeleteFilesLock,
-    blockCrossSeeds,
-    setBlockCrossSeeds,
-    deleteCrossSeeds,
-    setDeleteCrossSeeds,
     showTagsDialog,
     setShowTagsDialog,
     showCategoryDialog,
@@ -147,14 +126,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     showLocationWarningDialog,
     setShowLocationWarningDialog,
     isPending: isActionPending,
-    handleDelete,
     handleUpdateTags,
     handleSetCategory,
     handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
     proceedToLocationDialog,
-    prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
     prepareShareLimitAction,
@@ -163,68 +140,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   } = useTorrentActions({
     instanceId: actionInstanceId,
     instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        onComplete?.()
-      }
-    },
   })
 
   // Until the other Bulk actions move to the module, a request of either one keeps every action busy.
   const { pick, isPending: isBulkPending } = useBulkActions()
   const isPending = isActionPending || isBulkPending
-
-  // Cross-seed warning for delete dialog
-  const crossSeedWarning = useCrossSeedWarning({
-    instanceId: actionInstanceId,
-    torrents: selectedTorrents,
-    selectAll: isAllSelected ? actionTarget.selectAll : undefined,
-  })
-  const crossSeedAffectedTorrents = useMemo(
-    () => (supportsCrossSeedDeleteTools ? crossSeedWarning.affectedTorrents : []),
-    [supportsCrossSeedDeleteTools, crossSeedWarning.affectedTorrents]
-  )
-
-  const hasCrossSeedTag = useMemo(
-    () => supportsCrossSeedBlocklist
-      && (anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedAffectedTorrents, "cross-seed")),
-    [supportsCrossSeedBlocklist, selectedTorrents, crossSeedAffectedTorrents]
-  )
-  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(actionInstanceId)
-
-  const deleteDialogTotalSize = useMemo(() => {
-    if (totalSelectionSize > 0) {
-      return totalSelectionSize
-    }
-
-    if (selectedTorrents.length > 0) {
-      return getTotalSize(selectedTorrents)
-    }
-
-    return 0
-  }, [totalSelectionSize, selectedTorrents])
-  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
-
-  const handleDeleteWrapper = useCallback(async () => {
-    const crossSeedTargets = deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : []
-    if (shouldBlockCrossSeeds) {
-      const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
-      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedAffectedTorrents, "cross-seed") : []
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], [...buildTorrentActionTargets(selectedTorrents, actionInstanceId), ...crossSeedTargets])
-    }
-
-    await handleDelete(actionTarget, crossSeedTargets)
-  }, [
-    actionInstanceId,
-    actionTarget,
-    blockCrossSeedHashes,
-    crossSeedAffectedTorrents,
-    deleteCrossSeeds,
-    handleDelete,
-    selectedTorrents,
-    shouldBlockCrossSeeds,
-  ])
 
   const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
     void handleUpdateTags(plan, actionTarget)
@@ -505,7 +425,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => prepareDeleteAction()}
+                onClick={() => pick({ action: TORRENT_ACTIONS.DELETE })}
                 disabled={isPending || isDisabled}
                 className="text-destructive hover:text-destructive"
               >
@@ -516,32 +436,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           </Tooltip>
         </div>
       </div>
-
-      <DeleteTorrentDialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeDeleteDialog()
-            crossSeedWarning.reset()
-          }
-        }}
-        count={selectionCount}
-        totalSize={deleteDialogTotalSize}
-        formattedSize={deleteDialogFormattedSize}
-        deleteFiles={deleteFiles}
-        onDeleteFilesChange={setDeleteFiles}
-        isDeleteFilesLocked={isDeleteFilesLocked}
-        onToggleDeleteFilesLock={toggleDeleteFilesLock}
-        deleteCrossSeeds={deleteCrossSeeds}
-        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-        showBlockCrossSeeds={hasCrossSeedTag}
-        blockCrossSeeds={blockCrossSeeds}
-        onBlockCrossSeedsChange={setBlockCrossSeeds}
-        crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
-        onConfirm={handleDeleteWrapper}
-        isAllSelected={isAllSelected}
-        previewTorrents={selectedTorrents}
-      />
 
       <TagEditorDialog
         open={showTagsDialog}

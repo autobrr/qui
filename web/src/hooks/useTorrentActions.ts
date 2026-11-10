@@ -154,6 +154,53 @@ export function resetPendingListRefetchesForTests() {
   pendingFinalRefetchAt = 0
 }
 
+// Removes the deleted rows from the cached lists of the instance at once, before the refetch.
+export function removeDeletedTorrents(queryClient: QueryClient, instanceId: number, variables: {
+  hashes: string[]
+  targets?: TorrentActionTarget[]
+  excludeTargets?: TorrentActionTarget[]
+  clientHashes?: string[]
+  clientCount?: number
+}) {
+  const cache = queryClient.getQueryCache()
+  const queries = cache.findAll({
+    queryKey: ["torrents-list", instanceId],
+    exact: false,
+  })
+
+  let hashesToRemove = variables.hashes
+  if (variables.clientHashes && variables.clientHashes.length > 0) {
+    hashesToRemove = variables.clientHashes
+  }
+  // A target on another instance is not in the list of this instance.
+  const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
+  const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
+  // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
+  const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
+  const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
+  const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
+
+  queries.forEach((query) => {
+    queryClient.setQueryData(query.queryKey, (oldData: {
+      torrents?: Torrent[]
+      total?: number
+      totalCount?: number
+    }) => {
+      if (!oldData) return oldData
+      return {
+        ...oldData,
+        torrents: oldData.torrents?.filter((t: Torrent) => {
+          const key = `${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`
+          if (excludedKeys.has(key)) return true
+          return targetKeys ? !targetKeys.has(key) : !hashesToRemove.includes(t.hash)
+        }) || [],
+        total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
+        totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
+      }
+    })
+  })
+}
+
 class TagBulkActionError extends Error {
   results: TagBulkActionResult[]
 
@@ -248,45 +295,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     onSuccess: async (_, variables) => {
       // Handle delete operations with optimistic updates
       if (variables.action === "delete") {
-
-        // Optimistically remove torrents from cached queries
-        const cache = queryClient.getQueryCache()
-        const queries = cache.findAll({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-        })
-
-        let hashesToRemove = variables.hashes
-        if (variables.clientHashes && variables.clientHashes.length > 0) {
-          hashesToRemove = variables.clientHashes
-        }
-        // A target on another instance is not in the list of this instance.
-        const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
-        const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
-        // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
-        const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
-        const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
-        const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
-
-        queries.forEach((query) => {
-          queryClient.setQueryData(query.queryKey, (oldData: {
-            torrents?: Torrent[]
-            total?: number
-            totalCount?: number
-          }) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              torrents: oldData.torrents?.filter((t: Torrent) => {
-                const key = `${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`
-                if (excludedKeys.has(key)) return true
-                return targetKeys ? !targetKeys.has(key) : !hashesToRemove.includes(t.hash)
-              }) || [],
-              total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
-              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
-            }
-          })
-        })
+        removeDeletedTorrents(queryClient, instanceId, variables)
 
         // Refetch later to sync with server
         scheduleListRefetches(variables.deleteFiles ? 5000 : 2000)

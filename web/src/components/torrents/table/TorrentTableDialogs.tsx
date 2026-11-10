@@ -11,7 +11,6 @@ import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
 import type { Category, CrossInstanceTorrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { type Dispatch, type SetStateAction, useMemo } from "react"
-import { DeleteTorrentDialog } from "../DeleteTorrentDialog"
 import {
   CreateAndAssignCategoryDialog,
   LocationWarningDialog,
@@ -35,8 +34,6 @@ export interface TorrentTableDialogsProps {
   isPending: boolean
 
   // Dialog open/close state
-  showDeleteDialog: boolean
-  closeDeleteDialog: () => void
   showCommentDialog: boolean
   setShowCommentDialog: Dispatch<SetStateAction<boolean>>
   showTagsDialog: boolean
@@ -60,18 +57,7 @@ export interface TorrentTableDialogsProps {
   showLocationWarningDialog: boolean
   setShowLocationWarningDialog: Dispatch<SetStateAction<boolean>>
 
-  // Delete-dialog options
-  deleteFiles: boolean
-  setDeleteFiles: Dispatch<SetStateAction<boolean>>
-  isDeleteFilesLocked: boolean
-  toggleDeleteFilesLock: () => void
-  blockCrossSeeds: boolean
-  setBlockCrossSeeds: Dispatch<SetStateAction<boolean>>
-  deleteCrossSeeds: boolean
-  setDeleteCrossSeeds: Dispatch<SetStateAction<boolean>>
-
   // Submit wrappers
-  handleDeleteWrapper: Wrappers["handleDeleteWrapper"]
   handleSetCommentWrapper: Wrappers["handleSetCommentWrapper"]
   handleTagsWrapper: Wrappers["handleTagsWrapper"]
   handleSetCategoryWrapper: Wrappers["handleSetCategoryWrapper"]
@@ -84,13 +70,6 @@ export interface TorrentTableDialogsProps {
   handleRenameFolderWrapper: Wrappers["handleRenameFolderWrapper"]
   proceedToLocationDialog: () => void
 
-  deleteDialogTotalSize: number
-  deleteDialogFormattedSize: string
-
-  // Cross-seed
-  crossSeedWarning: Wrappers["crossSeedWarning"]
-  hasCrossSeedTag: boolean
-
   // Metadata / capabilities
   availableTags: string[]
   availableCategories: Record<string, Category>
@@ -101,7 +80,7 @@ export interface TorrentTableDialogsProps {
 }
 
 /**
- * Renders the torrent-table action dialogs (delete, tags, category, locations,
+ * Renders the torrent-table action dialogs (tags, category, locations,
  * renames, share/speed limits, the location warning, …). All
  * open/close state and submit handlers are threaded in from the orchestrator's
  * hooks; this component owns only the rename-entry query that exclusively feeds
@@ -111,8 +90,6 @@ export function TorrentTableDialogs({
   instanceId,
   actionTarget,
   isPending,
-  showDeleteDialog,
-  closeDeleteDialog,
   showCommentDialog,
   setShowCommentDialog,
   showTagsDialog,
@@ -135,15 +112,6 @@ export function TorrentTableDialogs({
   setShowRenameFolderDialog,
   showLocationWarningDialog,
   setShowLocationWarningDialog,
-  deleteFiles,
-  setDeleteFiles,
-  isDeleteFilesLocked,
-  toggleDeleteFilesLock,
-  blockCrossSeeds,
-  setBlockCrossSeeds,
-  deleteCrossSeeds,
-  setDeleteCrossSeeds,
-  handleDeleteWrapper,
   handleSetCommentWrapper,
   handleTagsWrapper,
   handleSetCategoryWrapper,
@@ -155,10 +123,6 @@ export function TorrentTableDialogs({
   handleRenameFileWrapper,
   handleRenameFolderWrapper,
   proceedToLocationDialog,
-  deleteDialogTotalSize,
-  deleteDialogFormattedSize,
-  crossSeedWarning,
-  hasCrossSeedTag,
   availableTags,
   availableCategories,
   isLoadingTags,
@@ -167,7 +131,6 @@ export function TorrentTableDialogs({
   capabilities,
 }: TorrentTableDialogsProps) {
   const { count, previewTorrents } = actionTarget
-  const isAllSelected = actionTarget.kind === "selectAll"
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
 
   const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(renameHash)
@@ -209,32 +172,6 @@ export function TorrentTableDialogs({
 
   return (
     <>
-      <DeleteTorrentDialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeDeleteDialog()
-            crossSeedWarning.reset()
-          }
-        }}
-        count={count}
-        totalSize={deleteDialogTotalSize}
-        formattedSize={deleteDialogFormattedSize}
-        deleteFiles={deleteFiles}
-        onDeleteFilesChange={setDeleteFiles}
-        isDeleteFilesLocked={isDeleteFilesLocked}
-        onToggleDeleteFilesLock={toggleDeleteFilesLock}
-        showBlockCrossSeeds={hasCrossSeedTag}
-        blockCrossSeeds={blockCrossSeeds}
-        onBlockCrossSeedsChange={setBlockCrossSeeds}
-        deleteCrossSeeds={deleteCrossSeeds}
-        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-        crossSeedWarning={crossSeedWarning}
-        onConfirm={handleDeleteWrapper}
-        isAllSelected={isAllSelected}
-        previewTorrents={previewTorrents}
-      />
-
       <SetCommentDialog
         open={showCommentDialog}
         onOpenChange={setShowCommentDialog}

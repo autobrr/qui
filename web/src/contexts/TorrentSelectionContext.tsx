@@ -10,7 +10,10 @@ import { createContext, useContext, useMemo, useReducer, useState } from "react"
 // What the desktop table publishes for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
   actionTarget: ActionTarget
-  selectedTotalSize: number
+  // In Select all mode, the total size of the filter and the size of the loaded Exclusions.
+  // totalSize is 0 outside Select all mode, when qui has no total, and when the table filters in the browser.
+  totalSize: number
+  excludedSize: number
   // The instance of the page, and the instance subset of the Unified view.
   instanceId: number
   instanceIds?: number[]

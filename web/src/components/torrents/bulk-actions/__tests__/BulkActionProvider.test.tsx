@@ -9,29 +9,36 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api", () => ({
-  api: { bulkAction: vi.fn() },
+  api: { bulkAction: vi.fn(), getDeleteCrossSeeds: vi.fn(), addCrossSeedBlocklist: vi.fn() },
 }))
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-// Keeps the count in the text, so a test can read the count of a toast or a dialog title.
-vi.mock("react-i18next", () => ({
+// Keeps the count and the size in the text, so a test can read them in a toast or a dialog.
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => opts && "count" in opts ? `${key}/${opts.count}` : key,
+    t: (key: string, opts?: Record<string, unknown>) => opts && "count" in opts ? `${key}/${opts.count}` : opts && "size" in opts ? `${key}/${opts.size}` : key,
   }),
 }))
 
+// The size formatter of the delete dialog reads its unit labels from the i18n resources.
+import "@/i18n"
+
 import { BulkActionProvider } from "../BulkActionProvider"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useBulkActions } from "../bulk-actions-context"
 import { TorrentSelectionProvider, useTorrentSelectionContext, type TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
 import { resetPendingListRefetchesForTests } from "@/hooks/useTorrentActions"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import { EMPTY_ACTION_TARGET, type ActionTarget } from "@/lib/torrent-selection"
+import { EMPTY_ACTION_TARGET, hasSelection, type ActionTarget, type SelectAllTarget } from "@/lib/torrent-selection"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
+import { formatBytes } from "@/lib/utils"
+import type { LocalCrossSeedMatch, Torrent } from "@/types"
 import { toast } from "sonner"
 
 const mockedApi = vi.mocked(api, true)
@@ -47,20 +54,25 @@ function makeHarness() {
   const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue(undefined)
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TorrentSelectionProvider>
-        <BulkActionProvider>{children}</BulkActionProvider>
-      </TorrentSelectionProvider>
+      <TooltipProvider>
+        <TorrentSelectionProvider>
+          <BulkActionProvider>{children}</BulkActionProvider>
+        </TorrentSelectionProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   )
-  return { wrapper, refetchSpy, invalidateSpy }
+  return { queryClient, wrapper, refetchSpy, invalidateSpy }
 }
 
 // A Layout that publishes, and an Action surface that picks.
 function renderModule(published?: Partial<TorrentSelectionSummary> & { actionTarget: ActionTarget }) {
   const harness = makeHarness()
-  const { result } = renderHook(() => ({ ...useBulkActions(), publish: useTorrentSelectionContext().publishSummary }), { wrapper: harness.wrapper })
+  const { result } = renderHook(() => {
+    const { selection, dispatch, publishSummary } = useTorrentSelectionContext()
+    return { ...useBulkActions(), publish: publishSummary, selection, dispatchSelection: dispatch }
+  }, { wrapper: harness.wrapper })
   const publish = (value: Partial<TorrentSelectionSummary> & { actionTarget: ActionTarget }) => act(() => {
-    result.current.publish({ instanceId: INSTANCE_ID, selectedTotalSize: 0, ...value })
+    result.current.publish({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, ...value })
   })
   if (published) publish(published)
   return { ...harness, result, publish }
@@ -70,8 +82,12 @@ function ticks(...hashes: string[]): ActionTarget {
   return { kind: "ticks", hashes, count: hashes.length, previewTorrents: hashes.map(hash => makeTorrent({ hash })) }
 }
 
-function pairs(targets: TorrentActionTarget[]): ActionTarget {
-  return { kind: "ticks", hashes: [], targets, count: targets.length, previewTorrents: [] }
+function pairs(targets: TorrentActionTarget[], previewTorrents: Torrent[] = []): ActionTarget {
+  return { kind: "ticks", hashes: [], targets, count: targets.length, previewTorrents }
+}
+
+function selectAll(count: number, part: Partial<SelectAllTarget> = {}, loaded: string[] = []): ActionTarget {
+  return { kind: "selectAll", selectAll: { filters: makeFilters(), search: "", ...part }, count, previewTorrents: loaded.map(hash => makeTorrent({ hash })) }
 }
 
 async function flush() {
@@ -99,6 +115,7 @@ const countListRefetches = (refetchSpy: ReturnType<typeof makeHarness>["refetchS
 beforeEach(() => {
   vi.useFakeTimers()
   resetPendingListRefetchesForTests()
+  localStorage.clear()
   mockedApi.bulkAction.mockResolvedValue(undefined as never)
 })
 
@@ -313,6 +330,317 @@ describe("bulk action module - confirmations", () => {
   })
 })
 
+function deleteTitle() {
+  return document.body.querySelector("[role=\"alertdialog\"] h2")?.textContent ?? null
+}
+
+function checkbox(id: string) {
+  const box = document.getElementById(id)
+  if (!box) throw new Error(`no checkbox ${id}`)
+  return box
+}
+
+function crossSeedMatch(overrides: Partial<LocalCrossSeedMatch>): LocalCrossSeedMatch {
+  return {
+    instanceId: INSTANCE_ID,
+    instanceName: "qb",
+    hash: "match",
+    name: "Example.Release.2024.1080p-GRP",
+    size: 1,
+    progress: 1,
+    savePath: "/data",
+    contentPath: "/data/x",
+    category: "",
+    tags: "",
+    state: "uploading",
+    tracker: "",
+    matchType: "content_path",
+    ...overrides,
+  } as LocalCrossSeedMatch
+}
+
+// Checks for cross-seeds in the open delete dialog, and ticks "also delete cross-seeds" when asked.
+async function findCrossSeeds(matches: LocalCrossSeedMatch[], { tick = true } = {}) {
+  mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches, uncheckedInstances: [] })
+  clickButton("crossSeedWarning.idle.check")
+  await flush()
+  if (tick) fireEvent.click(checkbox("deleteCrossSeeds"))
+}
+
+async function confirmDelete(label = "deleteDialog.delete") {
+  clickButton(label)
+  await flush()
+  await flush()
+}
+
+const TORRENTS_LIST_KEY = ["torrents-list", INSTANCE_ID, "page-1"]
+
+type CachedList = { torrents: { hash: string }[]; total: number; totalCount: number }
+
+describe("bulk action module - delete", () => {
+  it("deletes the Action target, removes its rows from the cached list, clears the selection, and closes the dialog", async () => {
+    const { result, queryClient } = renderModule({ actionTarget: ticks("h1", "h2") })
+    act(() => result.current.dispatchSelection({ type: "tick", keys: ["h1", "h2"], checked: true }))
+    queryClient.setQueryData(TORRENTS_LIST_KEY, {
+      torrents: [makeTorrent({ hash: "h1" }), makeTorrent({ hash: "h2" }), makeTorrent({ hash: "h3" })],
+      total: 3,
+      totalCount: 10,
+    })
+
+    act(() => result.current.pick({ action: "delete" }))
+    expect(deleteTitle()).toBe("deleteDialog.title/2")
+    await confirmDelete()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "delete", hashes: ["h1", "h2"], selectAll: false, deleteFiles: false })]])
+    const cache = queryClient.getQueryData(TORRENTS_LIST_KEY) as CachedList
+    expect(cache.torrents.map(t => t.hash)).toEqual(["h3"])
+    expect(cache.total).toBe(1)
+    expect(cache.totalCount).toBe(8)
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
+    expect(hasSelection(result.current.selection)).toBe(false)
+    expect(deleteTitle()).toBeNull()
+  })
+
+  it("sends the Select all scope with the filters, and removes the loaded rows of the target", async () => {
+    const filters = makeFilters({ categories: ["raw"] })
+    const { result, queryClient } = renderModule({ actionTarget: selectAll(100, { filters, search: "ubuntu", excludeHashes: ["zz"] }, ["a", "b"]) })
+    queryClient.setQueryData(TORRENTS_LIST_KEY, {
+      torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" }), makeTorrent({ hash: "c" })],
+      total: 100,
+      totalCount: 100,
+    })
+
+    act(() => result.current.pick({ action: "delete" }))
+    expect(deleteTitle()).toBe("deleteDialog.titleSelectAll/100")
+    await confirmDelete("deleteDialog.deleteCount/100")
+
+    const [, body] = mockedApi.bulkAction.mock.calls[0]
+    expect(body).toMatchObject({ hashes: [], selectAll: true, search: "ubuntu", excludeHashes: ["zz"] })
+    expect(body.filters).toBe(filters)
+    const cache = queryClient.getQueryData(TORRENTS_LIST_KEY) as CachedList
+    expect(cache.torrents.map(t => t.hash)).toEqual(["c"])
+    expect(cache.totalCount).toBe(0)
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/100")
+  })
+
+  it("shows the size of the filter minus the loaded Exclusions", () => {
+    const { result } = renderModule({ actionTarget: selectAll(100), totalSize: 3 * 1024 ** 3, excludedSize: 1024 ** 3 })
+
+    act(() => result.current.pick({ action: "delete" }))
+
+    expect(document.body.textContent).toContain(`deleteDialog.totalSize/${formatBytes(2 * 1024 ** 3)}`)
+  })
+
+  it("uses the deleteWithFiles toast and the 5000ms refetch when the delete-files preference is locked on", async () => {
+    localStorage.setItem("qui-delete-files-lock", JSON.stringify(true))
+    localStorage.setItem("qui-delete-files-default", JSON.stringify(true))
+    const { result, refetchSpy } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete()
+
+    expect(mockedApi.bulkAction.mock.calls[0][1].deleteFiles).toBe(true)
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.deleteWithFiles/1")
+    refetchSpy.mockClear()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+  })
+
+  it("uses the 2000ms refetch when the user keeps the files", async () => {
+    const { result, refetchSpy } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete()
+
+    refetchSpy.mockClear()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1999)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+  })
+
+  it("leaves the dialog open, the cache and the selection as they are when the delete fails", async () => {
+    mockedApi.bulkAction.mockRejectedValueOnce(new Error("boom"))
+    const { result, queryClient } = renderModule({ actionTarget: ticks("h1", "h2") })
+    act(() => result.current.dispatchSelection({ type: "tick", keys: ["h1", "h2"], checked: true }))
+    queryClient.setQueryData(TORRENTS_LIST_KEY, { torrents: [makeTorrent({ hash: "h1" }), makeTorrent({ hash: "h2" })], total: 2, totalCount: 2 })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete()
+
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.delete/2", { description: "boom" })
+    expect((queryClient.getQueryData(TORRENTS_LIST_KEY) as CachedList).torrents.map(t => t.hash)).toEqual(["h1", "h2"])
+    expect(hasSelection(result.current.selection)).toBe(true)
+    expect(deleteTitle()).toBe("deleteDialog.title/2")
+  })
+
+  it("starts each open with \"also delete cross-seeds\" cleared and no cross-seed result", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })])
+    expect(checkbox("deleteCrossSeeds").getAttribute("aria-checked")).toBe("true")
+    clickButton("deleteDialog.cancel")
+    await flush()
+
+    act(() => result.current.pick({ action: "delete" }))
+    expect(document.getElementById("deleteCrossSeeds")).toBeNull()
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })], { tick: false })
+    expect(checkbox("deleteCrossSeeds").getAttribute("aria-checked")).toBe("false")
+  })
+
+  it("lists the chosen cross-seeds in the same request, as plain hashes on one instance", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })])
+    await confirmDelete()
+
+    expect(mockedApi.getDeleteCrossSeeds).toHaveBeenCalledWith(INSTANCE_ID, { targets: [{ instanceId: INSTANCE_ID, hash: "h1" }] }, expect.any(AbortSignal))
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ hashes: ["h1", "cs1"], targets: undefined })]])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
+  })
+
+  it("lists the chosen cross-seeds as pairs, and no bare hash, on the cross-instance endpoint", async () => {
+    const { result } = renderModule({ actionTarget: pairs([{ instanceId: INSTANCE_ID, hash: "h1" }], [makeTorrent({ hash: "h1" })]) })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })])
+    await confirmDelete()
+
+    const [, body] = mockedApi.bulkAction.mock.calls[0]
+    expect(body.hashes).toEqual([])
+    expect(body.targets).toEqual([{ instanceId: INSTANCE_ID, hash: "h1" }, { instanceId: INSTANCE_ID, hash: "cs1" }])
+  })
+
+  it("checks the Select all scope, and deletes the chosen cross-seeds in a second request with the same delete-files choice", async () => {
+    localStorage.setItem("qui-delete-files-lock", JSON.stringify(true))
+    localStorage.setItem("qui-delete-files-default", JSON.stringify(true))
+    const scope = { filters: makeFilters(), search: "", excludeHashes: ["cs1"] }
+    const { result } = renderModule({ actionTarget: selectAll(50, scope, ["a"]) })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" }), crossSeedMatch({ instanceId: 9, hash: "cs2" })])
+    await confirmDelete("deleteDialog.deleteCount/52")
+
+    expect(mockedApi.getDeleteCrossSeeds).toHaveBeenCalledWith(INSTANCE_ID, { selectAll: true, ...scope }, expect.any(AbortSignal))
+    expect(mockedApi.bulkAction.mock.calls).toEqual([
+      [INSTANCE_ID, expect.objectContaining({ hashes: [], selectAll: true, excludeHashes: ["cs1"], deleteFiles: true })],
+      [0, { action: "delete", deleteFiles: true, instanceIds: undefined, hashes: [], targets: [{ instanceId: INSTANCE_ID, hash: "cs1" }, { instanceId: 9, hash: "cs2" }] }],
+    ])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.deleteWithFiles/50")
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.deleteWithFiles/2")
+  })
+
+  // A request on one instance leaves out targets on other instances.
+  // regression: #3592
+  it("sends the chosen cross-seeds to the all-instances scope when one is on another instance", async () => {
+    const { result, queryClient } = renderModule({ actionTarget: ticks("h1") })
+    queryClient.setQueryData(TORRENTS_LIST_KEY, {
+      torrents: [makeTorrent({ hash: "h1" }), makeTorrent({ hash: "cs1" }), makeTorrent({ hash: "keep" })],
+      total: 10,
+      totalCount: 10,
+    })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" }), crossSeedMatch({ instanceId: 9, hash: "cs2" })])
+    await confirmDelete()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([
+      [INSTANCE_ID, expect.objectContaining({ hashes: ["h1"] })],
+      [0, expect.objectContaining({ hashes: [], targets: [{ instanceId: INSTANCE_ID, hash: "cs1" }, { instanceId: 9, hash: "cs2" }] })],
+    ])
+    // The cross-seed on instance 9 is not in the list of this instance.
+    const cache = queryClient.getQueryData(TORRENTS_LIST_KEY) as CachedList
+    expect(cache.torrents.map(t => t.hash)).toEqual(["keep"])
+    expect(cache.totalCount).toBe(8)
+  })
+
+  // A retry would send the Select all delete again, and delete each torrent that joined the filter since.
+  it("closes the dialog and clears the selection when only the cross-seed request fails", async () => {
+    mockedApi.bulkAction.mockResolvedValueOnce(undefined as never).mockRejectedValueOnce(new Error("boom"))
+    const { result } = renderModule({ actionTarget: selectAll(50, {}, ["a"]) })
+    act(() => result.current.dispatchSelection({ type: "selectAll" }))
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })])
+    await confirmDelete("deleteDialog.deleteCount/51")
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
+    expect(mockedToast.error).toHaveBeenCalledTimes(1)
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.delete/1", { description: "boom" })
+    expect(hasSelection(result.current.selection)).toBe(false)
+    expect(deleteTitle()).toBeNull()
+  })
+
+  it("blocks the tagged torrent before the delete, only when the user asks", async () => {
+    const order: string[] = []
+    mockedApi.addCrossSeedBlocklist.mockImplementation(async () => {
+      order.push("block")
+      return {} as Awaited<ReturnType<typeof api.addCrossSeedBlocklist>>
+    })
+    mockedApi.bulkAction.mockImplementation(async (_id, body) => {
+      order.push(body.action)
+    })
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a", tags: "cross-seed" })] }
+    const { result } = renderModule({ actionTarget })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await confirmDelete()
+    expect(order).toEqual(["delete"])
+
+    order.length = 0
+    act(() => result.current.pick({ action: "delete" }))
+    fireEvent.click(checkbox("blockCrossSeeds"))
+    await confirmDelete()
+    expect(order).toEqual(["block", "delete"])
+    expect(mockedApi.addCrossSeedBlocklist).toHaveBeenCalledWith({ instanceId: INSTANCE_ID, infoHash: "a" })
+  })
+
+  it("offers no block for a target without the tag", () => {
+    const { result } = renderModule({ actionTarget: ticks("a") })
+
+    act(() => result.current.pick({ action: "delete" }))
+
+    expect(document.getElementById("blockCrossSeeds")).toBeNull()
+  })
+
+  it("offers the block for a tagged cross-seed, and blocks no untagged target", async () => {
+    localStorage.setItem(`qui-cross-seed-blocklist-${INSTANCE_ID}`, JSON.stringify(true))
+    const { result } = renderModule({ actionTarget: ticks("a") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    expect(document.getElementById("blockCrossSeeds")).toBeNull()
+    await findCrossSeeds([crossSeedMatch({ instanceId: 9, hash: "a", tags: "cross-seed" })], { tick: false })
+    expect(checkbox("blockCrossSeeds").getAttribute("aria-checked")).toBe("true")
+    await confirmDelete()
+
+    expect(mockedApi.addCrossSeedBlocklist).not.toHaveBeenCalled()
+  })
+
+  it("blocks no torrent on another instance that the delete keeps", async () => {
+    localStorage.setItem(`qui-cross-seed-blocklist-${INSTANCE_ID}`, JSON.stringify(true))
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a", tags: "cross-seed" })] }
+    const { result } = renderModule({ actionTarget })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ instanceId: 9, hash: "a", tags: "cross-seed" })], { tick: false })
+    await confirmDelete()
+
+    expect(mockedApi.addCrossSeedBlocklist.mock.calls).toEqual([[{ instanceId: INSTANCE_ID, infoHash: "a" }]])
+  })
+})
+
 describe("bulk action module - renders", () => {
   // The desktop table reads the module. A dialog that opens or closes must not render the table again.
   it("keeps the value of an Action surface when a dialog opens and closes", () => {
@@ -326,7 +654,7 @@ describe("bulk action module - renders", () => {
     }
     function Layout() {
       const { publishSummary } = useTorrentSelectionContext()
-      return <button onClick={() => publishSummary({ instanceId: INSTANCE_ID, selectedTotalSize: 0, actionTarget: ticks("h1", "h2") })}>publish</button>
+      return <button onClick={() => publishSummary({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, actionTarget: ticks("h1", "h2") })}>publish</button>
     }
     render(<><Layout /><Surface /></>, { wrapper })
     clickButton("publish")
