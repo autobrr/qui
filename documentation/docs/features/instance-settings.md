@@ -2,7 +2,7 @@
 sidebar_position: 3
 title: Add qBittorrent instances to qui
 sidebar_label: Instance Settings
-description: Connect one or more qBittorrent instances to qui, with connection settings, local filesystem access, incognito mode, and qBittorrent preferences.
+description: Connect one or more qBittorrent instances to qui, with connection settings, local filesystem access, SSH access, incognito mode, and qBittorrent preferences.
 ---
 
 # Instance Settings
@@ -57,7 +57,7 @@ If enabled, qui reads the same filesystem as qBittorrent. This setting turns on 
 - **Free space (path)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports.
 - **Has Missing Files condition**: Automation rules check whether a completed torrent has files missing on disk.
 - **MediaInfo**: Show MediaInfo for a file in the Content tab.
-- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy. Hardlink mode also works on a remote instance; reflink mode needs local access.
+- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy. Hardlink mode also works on a [remote instance](./ssh-access.md). Reflink mode needs local access.
 - **Cross-seed ID fallback**: Read IMDb, TMDb, and TVDb tags from MKV files when a search finds no results.
 - **Directory scan**: Use the instance as a directory scan target.
 
@@ -66,6 +66,14 @@ Enable this setting only if qui runs on the same machine as qBittorrent or has t
 :::
 
 If qui runs in Docker, mount the same data volumes in the qui container. See [Docker configuration](../getting-started/docker.md) for details.
+
+## SSH Access
+
+If qBittorrent runs on another machine and qui cannot mount its files, set up SSH access on the **SSH** tab of the instance settings dialog. qui then reaches the files of the instance over SSH. Some features still need Local Filesystem Access.
+
+The Add Instance form has no SSH tab. Add the instance first, then edit it.
+
+See [SSH Access](./ssh-access.md) for the setup and for the list of features that work over SSH.
 
 ## Incognito mode
 

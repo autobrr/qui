@@ -135,7 +135,7 @@ qui ranks torrents from the same instance by file-size overlap with the uploaded
 
 When the upload parses as a season pack, you can select several episode torrents from the same instance. One selected target uses the existing manual match. If the upload does not parse as a season pack, the dialog permits only one target.
 
-Multiple targets require local filesystem access, hardlink or reflink mode, and a configured link base directory. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
+Multiple targets require a configured link base directory, and one of these: local filesystem access with hardlink or reflink mode, or a [remote instance](../ssh-access.md) with hardlink mode. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
 
 The check first selects a complete matching pack alone, if one exists. Otherwise, it suggests the episodes that automatic discovery pairs. You can change the selection or use search to add targets that the proposal list omits. The proposal limit grows with the pack episode count, up to 60 torrents. The dialog reports this limit when it truncates the list.
 
@@ -184,7 +184,7 @@ The delete dialog lists such a torrent with its instance name. qui finds it when
 
 qui does not compare every file of every torrent. It checks a torrent on another instance when it has the same save path or content path, the same name, the same release, or the same total size. Known limit: qui does not find a torrent that reads a file inside the folder of the selected torrent through a mount with another path, and that has another name, release, and total size. An example is a single episode that reads a file in a season pack through a second mount.
 
-qui does not check remote instances, also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
+qui does not check [remote instances](../ssh-access.md), also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
 
 If qui cannot read the torrent list of an instance with local filesystem access, the dialog shows the matches that it found and adds a line that it could not check that instance. If an instance with local filesystem access is turned off in qui, the dialog adds a line that it did not check that instance.
 

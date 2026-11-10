@@ -135,7 +135,7 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- The target instance must have **Local filesystem access** enabled, or be a [remote instance](../ssh-access.md)
 - You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
