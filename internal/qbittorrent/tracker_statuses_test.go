@@ -164,6 +164,7 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 		},
 
 		// Non-matching messages
+		// regression: #3987
 		{
 			name:    "UNIT3D old passkey",
 			message: "Passkey does not exist! Please Re-download the .torrent",
