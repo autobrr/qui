@@ -484,6 +484,7 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBe("deleteDialog.title/2")
   })
 
+  // regression: #3989
   it("keeps the dialog open while the delete runs, so Cancel and Escape do not suggest that they stop it", async () => {
     let finish = () => {}
     mockedApi.bulkAction.mockReturnValueOnce(new Promise(resolve => {
