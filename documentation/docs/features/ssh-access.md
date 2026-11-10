@@ -141,7 +141,15 @@ If the server presents a key that is not the pinned key, the test shows **Host k
 
 A change of the SSH host or port in qui also drops the pinned key. The next test is a first contact again.
 
-If the test shows **Pinned key unreadable**, qui cannot decrypt the stored key. This usually means that the encryption key of qui changed. Click **Replace host key** to pin the key that the server presents.
+If the test shows **Pinned key unreadable**, qui cannot decrypt the pinned host key. Compare the fingerprint in the test result with the one that the server has, as for a first contact. If the fingerprints are the same, click **Replace host key**.
+
+### The encryption key of qui changed
+
+qui makes its encryption key from [`sessionSecret`](../configuration/reference.md). If that value changes, qui cannot read the stored private key or the pinned host key. The test then shows **Connection failed** with the text "Failed to read SSH credentials", and no host key.
+
+1. Paste the private key again and click **Save SSH settings**.
+2. Click **Test connection**. The test shows **Pinned key unreadable** and the fingerprint of the host key.
+3. Compare the fingerprint with the one that the server has. If the fingerprints are the same, click **Replace host key**.
 
 ## Change or remove SSH access
 
