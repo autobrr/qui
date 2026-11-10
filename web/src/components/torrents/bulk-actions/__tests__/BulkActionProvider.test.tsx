@@ -937,6 +937,7 @@ describe("bulk action module - dialogs with values", () => {
     expect(dialogTitle()).toBeNull()
   })
 
+  // regression: #3992
   it("stays pending until both speed-limit requests settle", async () => {
     let finishUpload: () => void = () => {}
     mockedApi.bulkAction
