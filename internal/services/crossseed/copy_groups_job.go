@@ -51,8 +51,12 @@ type copyGroupsJob struct {
 	running    bool
 	lastDemand time.Time
 	rebuilding bool
-	listing    map[int]bool
-	firstReads map[int]bool
+	// wake starts a tick before the ticker does.
+	wake chan struct{}
+	// firstReadEnded: an instance ended its first read after the last rebuild started.
+	firstReadEnded bool
+	listing        map[int]bool
+	firstReads     map[int]bool
 	// record holds the instances that ended a first read. No instance leaves it.
 	record map[int]struct{}
 	// fingerprints holds no value for an instance whose last read failed.
@@ -68,7 +72,7 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	return &copyGroupsJob{
-		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick,
+		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, wake: make(chan struct{}, 1),
 		listing: map[int]bool{}, firstReads: map[int]bool{}, record: map[int]struct{}{},
 		failed: map[int]map[string]time.Time{},
 	}
@@ -124,6 +128,13 @@ func (j *copyGroupsJob) mark() {
 	j.marks++
 }
 
+func (j *copyGroupsJob) wakeLoop() {
+	select {
+	case j.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (j *copyGroupsJob) loop(ctx context.Context) {
 	ticker := time.NewTicker(j.interval)
 	defer ticker.Stop()
@@ -131,6 +142,7 @@ func (j *copyGroupsJob) loop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 		case <-ticker.C:
+		case <-j.wake:
 		}
 	}
 }
@@ -222,6 +234,7 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 	run.read = slices.Sorted(maps.Keys(j.record))
 	run.prev = j.ids
 	j.rebuilding = true
+	j.firstReadEnded = false
 	go j.rebuild(ctx, run)
 	return true
 }
@@ -339,6 +352,10 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, torrents 
 	}
 	j.failed[instanceID] = failed
 	j.record[instanceID] = struct{}{}
+	j.firstReadEnded = true
+	if !j.rebuilding {
+		j.wakeLoop()
+	}
 }
 
 func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
@@ -346,6 +363,9 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	defer func() {
 		j.mu.Lock()
 		j.rebuilding = false
+		if j.firstReadEnded {
+			j.wakeLoop()
+		}
 		j.mu.Unlock()
 	}()
 	ctx, cancel := context.WithTimeout(ctx, localReadFillTimeout)
