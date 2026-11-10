@@ -16,24 +16,52 @@ import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contex
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
-import { actionRefetchDelay, failedActionCount, getActionErrorMessage, removeDeletedTorrents, scheduleTorrentListRefetches, showSuccessToast } from "@/hooks/useTorrentActions"
+import { actionRefetchDelay, failedActionCount, getActionErrorMessage, removeDeletedTorrents, scheduleTorrentListRefetches, showSuccessToast, showTagUpdateError, updateTags } from "@/hooks/useTorrentActions"
+import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { api } from "@/lib/api"
+import { useIncognitoMode } from "@/lib/incognito"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
+import type { TagUpdatePlan } from "@/lib/tag-editor"
 import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
-import { EMPTY_ACTION_TARGET } from "@/lib/torrent-selection"
-import { anyTorrentHasTag, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { actionTargetInstanceIds, actionTargetRequest, EMPTY_ACTION_TARGET } from "@/lib/torrent-selection"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
+import type { CrossInstanceTorrent } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type MouseEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { DeleteTorrentDialog } from "../DeleteTorrentDialog"
-import { TmmConfirmDialog } from "../TorrentDialogs"
-import { BulkActionsContext } from "./bulk-actions-context"
-import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, deleteRequests, deleteSize, dialogPick, resolvePick, type BulkActionPick, type DeleteRequest } from "./bulk-action-state"
+import {
+  LocationWarningDialog,
+  RenameTorrentDialog,
+  SetCategoryDialog,
+  SetCommentDialog,
+  SetLocationDialog,
+  ShareLimitDialog,
+  SpeedLimitsDialog,
+  TagEditorDialog,
+  TmmConfirmDialog
+} from "../TorrentDialogs"
+import { BulkActionCategoriesContext, BulkActionsContext } from "./bulk-actions-context"
+import { bulkDialogReducer, bulkRequest, CLOSED_DIALOG, deleteRequests, deleteSize, dialogLists, dialogPick, requestInstanceId, resolvePick, type BulkActionPick, type BulkRequestValues, type DeleteRequest } from "./bulk-action-state"
 
 type BulkRequest = ReturnType<typeof bulkRequest>
+
+interface TagRequest {
+  scope: number
+  count: number
+  plan: TagUpdatePlan
+  request: Parameters<typeof updateTags>[2]
+}
+
+interface RenameRequest {
+  instanceId: number
+  hash: string
+  name: string
+}
 
 interface DeletePlan {
   instanceId: number
@@ -43,10 +71,11 @@ interface DeletePlan {
 
 /**
  * The bulk action module (ADR 0049). It acts on the Action target that the
- * Layout publishes, opens the dialog that a pick needs, and sends the
- * requests. An open dialog follows the live selection, and it closes when the
- * selection becomes empty or the Layout publishes nothing. A failed request
- * leaves it open. A delete clears the selection when the Action target is deleted.
+ * Layout publishes, opens the dialog that a pick needs, sends the requests,
+ * and exports. An open dialog follows the live selection, and it closes when
+ * the selection becomes empty or the Layout publishes nothing. A failed
+ * request leaves it open, except the tag editor, which closes after a
+ * failure. A delete clears the selection when the Action target is deleted.
  */
 export function BulkActionProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("torrents")
@@ -73,6 +102,23 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
 
   const instanceId = published?.instanceId ?? -1
   const actionTarget = published?.actionTarget ?? EMPTY_ACTION_TARGET
+  const listFacts = published?.listFacts
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(Math.max(instanceId, 0), {
+    fallbackDelayMs: 1500,
+  })
+  const lists = useMemo(() => dialogLists(listFacts, metadata, isMetadataLoading), [listFacts, metadata, isMetadataLoading])
+  const allowSubcategories = listFacts?.allowSubcategories ?? false
+  const categoriesValue = useMemo(
+    () => ({ categories: lists.categories, useSubcategories: allowSubcategories }),
+    [lists.categories, allowSubcategories]
+  )
+
+  const [incognitoMode] = useIncognitoMode()
+  const { exportTorrents, isExporting } = useTorrentExporter({ instanceId, incognitoMode })
+  const exportRef = useRef(exportTorrents)
+  useLayoutEffect(() => {
+    exportRef.current = exportTorrents
+  }, [exportTorrents])
   const {
     deleteFiles,
     setDeleteFiles,
@@ -98,7 +144,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     if (!isDeleteOpen) resetCrossSeedWarning()
   }, [isDeleteOpen, resetCrossSeedWarning])
 
-  const { mutate, isPending: isRequestPending } = useMutation({
+  const { mutate, mutateAsync, isPending: isRequestPending } = useMutation({
     mutationFn: ({ scope, body }: BulkRequest) => api.bulkAction(scope, body),
     onSuccess: (_, { body, count }) => {
       scheduleTorrentListRefetches(queryClient, actionRefetchDelay(body.action))
@@ -147,12 +193,48 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     },
   })
 
-  const isPending = isRequestPending || isDeletePending
+  // The tag editor closes after a failure, and the toast names the step that failed.
+  const { mutate: mutateTags, isPending: isTagsPending } = useMutation({
+    mutationFn: async ({ scope, plan, request }: TagRequest) => {
+      try {
+        await updateTags(scope, plan, request)
+      } catch (error) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["torrents-list", scope], exact: false }),
+          queryClient.invalidateQueries({ queryKey: ["instance-metadata", scope], exact: false }),
+        ])
+        throw error
+      }
+    },
+    onSuccess: (_, { count }) => {
+      scheduleTorrentListRefetches(queryClient, 1000)
+      dispatch({ type: "requestSucceeded", action: "setTags" })
+      toast.success(t("actionToasts.updatedTags", { count: Math.max(1, count) }))
+    },
+    onError: (error: Error, { count }) => {
+      dispatch({ type: "close" })
+      showTagUpdateError(t, error, count)
+    },
+  })
 
-  const send = useCallback((pick: BulkActionPick) => {
+  const { mutate: mutateRename, isPending: isRenamePending } = useMutation({
+    mutationFn: ({ instanceId, hash, name }: RenameRequest) => api.renameTorrent(instanceId, hash, name),
+    onSuccess: (_, { name }) => {
+      dispatch({ type: "requestSucceeded", action: "renameTorrent" })
+      scheduleTorrentListRefetches(queryClient, 750)
+      toast.success(t("actionToasts.renameTorrentSuccess", { name }))
+    },
+    onError: (error: Error) => {
+      toast.error(t("actionToasts.renameTorrentFailed", { error: error.message }))
+    },
+  })
+
+  const isPending = isRequestPending || isDeletePending || isTagsPending || isRenamePending
+
+  const send = useCallback((values: BulkRequestValues) => {
     const target = publishedRef.current
     if (target) {
-      mutate(bulkRequest(pick, target))
+      mutate(bulkRequest(values, target))
     }
   }, [mutate])
 
@@ -162,18 +244,56 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     const outcome = resolvePick(pick, target.actionTarget.count)
     if (outcome.kind === "open") {
       dispatch({ type: "open", dialog: outcome.dialog })
+    } else if (outcome.kind === "export") {
+      void exportRef.current(target.actionTarget, target.listFacts.sortField, target.listFacts.sortOrder)
     } else {
       send(outcome.pick)
     }
   }, [send])
 
-  const value = useMemo(() => ({ pick, isPending }), [pick, isPending])
+  const value = useMemo(() => ({ pick, isPending, isExporting }), [pick, isPending, isExporting])
   const count = actionTarget.count
-  const close = (open: boolean) => {
+  const { previewTorrents } = actionTarget
+  // Stable, because the tag editor runs its reset effect again when onOpenChange changes.
+  const close = useCallback((open: boolean) => {
     if (!open) dispatch({ type: "close" })
-  }
+  }, [])
   const confirm = () => {
-    if (dialog.name !== "closed" && dialog.name !== "delete") send(dialogPick(dialog))
+    if (dialog.name === "recheck" || dialog.name === "reannounce" || dialog.name === "toggleAutoTMM") send(dialogPick(dialog))
+  }
+
+  const confirmTags = (plan: TagUpdatePlan) => {
+    if (!published) return
+    if (plan.add.length === 0 && plan.remove.length === 0) {
+      dispatch({ type: "close" })
+      return
+    }
+    const request = { instanceIds: published.instanceIds, ...actionTargetRequest(published.actionTarget) }
+    mutateTags({ scope: requestInstanceId(published), count: published.actionTarget.count, plan, request })
+  }
+
+  // The dialog closes when both requests succeed.
+  const confirmSpeedLimits = async (uploadLimit: number, downloadLimit: number) => {
+    if (!published) return
+    const requests: BulkRequestValues[] = []
+    if (uploadLimit >= 0) requests.push({ action: "setUploadLimit", uploadLimit })
+    if (downloadLimit >= 0) requests.push({ action: "setDownloadLimit", downloadLimit })
+    const results = await Promise.allSettled(requests.map(values => mutateAsync(bulkRequest(values, published))))
+    if (results.every(result => result.status === "fulfilled")) {
+      dispatch({ type: "requestSucceeded", action: "setSpeedLimits" })
+    }
+  }
+
+  // Rename acts on the first torrent of the Action target, on the instance of the page.
+  const confirmRename = (name: string) => {
+    const hash = previewTorrents[0]?.hash
+    if (!hash) return
+    const trimmed = name.trim()
+    if (!trimmed) {
+      toast.error(t("actionToasts.renameTorrentEmpty"))
+      return
+    }
+    mutateRename({ instanceId, hash, name: trimmed })
   }
 
   // The dialog stays open until the Action target is deleted.
@@ -190,10 +310,15 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
   }
 
   const totalDeleteSize = useMemo(() => published ? deleteSize(published) : 0, [published])
+  const tagSelectionRequest = useMemo(() => ({ instanceId, ...actionTargetRequest(actionTarget) }), [instanceId, actionTarget])
+  const limitInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
+  const singleTorrent = previewTorrents.length === 1 ? previewTorrents[0] : undefined
 
   return (
     <BulkActionsContext.Provider value={value}>
-      {children}
+      <BulkActionCategoriesContext.Provider value={categoriesValue}>
+        {children}
+      </BulkActionCategoriesContext.Provider>
 
       <Dialog open={dialog.name === "recheck"} onOpenChange={close}>
         <DialogContent>
@@ -262,6 +387,86 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         isPending={isPending}
         isAllSelected={actionTarget.kind === "selectAll"}
         previewTorrents={actionTarget.previewTorrents}
+      />
+
+      <TagEditorDialog
+        open={dialog.name === "setTags"}
+        onOpenChange={close}
+        availableTags={lists.tags}
+        selectedTorrents={previewTorrents}
+        hashCount={count}
+        selectionRequest={tagSelectionRequest}
+        onConfirm={confirmTags}
+        isPending={isPending}
+        isLoadingTags={lists.isLoadingTags}
+      />
+
+      <SetCategoryDialog
+        open={dialog.name === "setCategory"}
+        onOpenChange={close}
+        availableCategories={lists.categories}
+        hashCount={count}
+        onConfirm={(category) => send({ action: "setCategory", category })}
+        isPending={isPending}
+        initialCategory={getCommonCategory(previewTorrents)}
+        isLoadingCategories={lists.isLoadingCategories}
+        useSubcategories={allowSubcategories}
+      />
+
+      <LocationWarningDialog
+        open={dialog.name === "locationWarning"}
+        onOpenChange={close}
+        count={count}
+        onConfirm={() => dispatch({ type: "locationWarningConfirmed" })}
+        isPending={isPending}
+      />
+
+      <SetLocationDialog
+        open={dialog.name === "setLocation"}
+        onOpenChange={close}
+        hashCount={count}
+        onConfirm={(location) => send({ action: "setLocation", location })}
+        isPending={isPending}
+        initialLocation={getCommonSavePath(previewTorrents)}
+        instanceId={instanceId}
+        capabilities={listFacts?.capabilities}
+      />
+
+      <ShareLimitDialog
+        open={dialog.name === "setShareLimit"}
+        onOpenChange={close}
+        hashCount={count}
+        torrents={previewTorrents}
+        onConfirm={(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode) => send({ action: "setShareLimit", ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode })}
+        isPending={isPending}
+        instanceIds={limitInstanceIds}
+      />
+
+      <SpeedLimitsDialog
+        open={dialog.name === "setSpeedLimits"}
+        onOpenChange={close}
+        hashCount={count}
+        torrents={previewTorrents}
+        onConfirm={(uploadLimit, downloadLimit) => void confirmSpeedLimits(uploadLimit, downloadLimit)}
+        isPending={isPending}
+      />
+
+      <SetCommentDialog
+        open={dialog.name === "setComment"}
+        onOpenChange={close}
+        hashCount={count}
+        instanceId={(singleTorrent as CrossInstanceTorrent | undefined)?.instanceId ?? instanceId}
+        torrentHash={singleTorrent?.hash}
+        onConfirm={(comment) => send({ action: "setComment", comment })}
+        isPending={isPending}
+      />
+
+      <RenameTorrentDialog
+        open={dialog.name === "renameTorrent"}
+        onOpenChange={close}
+        currentName={previewTorrents[0]?.name}
+        onConfirm={confirmRename}
+        isPending={isPending}
       />
     </BulkActionsContext.Provider>
   )

@@ -23,7 +23,7 @@ import type { TorrentFieldName, TorrentFieldSelection } from "@/lib/torrent-fiel
 import { actionTargetInstanceIds, type ActionTarget } from "@/lib/torrent-selection"
 import { getToggleSelectionState, getTorrentDisplayHash, getTorrentFullPaths } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import type { ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import {
   Blocks,
@@ -51,6 +51,7 @@ import { memo, useCallback, useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { BulkActionPick } from "./bulk-actions/bulk-action-state"
+import { useBulkActionCategories } from "./bulk-actions/bulk-actions-context"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -66,21 +67,9 @@ export interface TorrentContextMenuProps {
   onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
   // Sends a Bulk action to the bulk action module, which acts on the Action target.
   onPick: (pick: BulkActionPick) => void
-  onPrepareTags: () => void
-  onPrepareComment?: () => void
-  onPrepareCategory: () => void
-  onPrepareCreateCategory: () => void
-  onPrepareShareLimit: () => void
-  onPrepareSpeedLimits: () => void
-  onPrepareLocation: () => void
-  onPrepareRenameTorrent: () => void
-  availableCategories?: Record<string, Category>
-  onSetCategory: (category: string) => void
   isPending?: boolean
-  onExport?: () => void
   isExporting?: boolean
   capabilities?: InstanceCapabilities
-  useSubcategories?: boolean
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
@@ -108,19 +97,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   actionTarget,
   onTorrentSelect,
   onPick,
-  onPrepareTags,
-  onPrepareComment,
-  onPrepareShareLimit,
-  onPrepareSpeedLimits,
-  onPrepareLocation,
-  onPrepareRenameTorrent,
-  availableCategories = {},
-  onSetCategory,
   isPending = false,
-  onExport,
   isExporting = false,
   capabilities,
-  useSubcategories = false,
   canCrossSeedSearch = false,
   onCrossSeedSearch,
   isCrossSeedSearching = false,
@@ -480,23 +459,20 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             )}
             {(canCrossSeedSearch || onManualCrossSeed || (onFilterChange && supportsInstanceScopedActions)) && <ContextMenuSeparator />}
             <ContextMenuItem
-              onClick={() => onPrepareTags()}
+              onClick={() => onPick({ action: "setTags" })}
               disabled={isPending}
             >
               <Tag className="mr-2 h-4 w-4" />
               {t("contextMenu.setTags")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
-            <CategorySubmenu
-              type="context"
+            <BulkCategorySubmenu
               hashCount={count}
-              availableCategories={availableCategories}
-              onSetCategory={onSetCategory}
+              onPick={onPick}
               isPending={isPending}
               currentCategory={torrent.category}
-              useSubcategories={useSubcategories}
             />
             <ContextMenuItem
-              onClick={onPrepareLocation}
+              onClick={() => onPick({ action: "setLocation" })}
               disabled={isPending}
             >
               <FolderOpen className="mr-2 h-4 w-4" />
@@ -506,34 +482,32 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               <RenameSubmenu
                 type="context"
                 hashCount={count}
-                onRenameTorrent={() => onPrepareRenameTorrent()}
+                onRenameTorrent={() => onPick({ action: "renameTorrent" })}
                 onRenameFile={() => onTorrentSelect?.(torrent, "content")}
                 onRenameFolder={() => onTorrentSelect?.(torrent, "content")}
                 isPending={isPending}
                 capabilities={capabilities}
               />
             )}
-            {onPrepareComment && (
-              <WhenSupported instanceIds={targetInstanceIds} capability="supportsSetComment">
-                <ContextMenuItem
-                  onClick={() => onPrepareComment()}
-                  disabled={isPending}
-                >
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  {t("contextMenu.setComment")} {count > 1 ? `(${count})` : ""}
-                </ContextMenuItem>
-              </WhenSupported>
-            )}
+            <WhenSupported instanceIds={targetInstanceIds} capability="supportsSetComment">
+              <ContextMenuItem
+                onClick={() => onPick({ action: "setComment" })}
+                disabled={isPending}
+              >
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {t("contextMenu.setComment")} {count > 1 ? `(${count})` : ""}
+              </ContextMenuItem>
+            </WhenSupported>
             <ContextMenuSeparator />
             <ContextMenuItem
-              onClick={() => onPrepareShareLimit()}
+              onClick={() => onPick({ action: "setShareLimit" })}
               disabled={isPending}
             >
               <Sprout className="mr-2 h-4 w-4" />
               {t("contextMenu.setShareLimits")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onPrepareSpeedLimits()}
+              onClick={() => onPick({ action: "setSpeedLimits" })}
               disabled={isPending}
             >
               <Gauge className="mr-2 h-4 w-4" />
@@ -579,7 +553,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             {supportsInstanceScopedActions && <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />}
             <WhenSupported instanceIds={targetInstanceIds} capability="supportsTorrentExport">
               <ContextMenuItem
-                onClick={onExport}
+                onClick={() => onPick({ action: "export" })}
                 disabled={isExporting}
               >
                 <Download className="mr-2 h-4 w-4" />
@@ -621,6 +595,28 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     </ContextMenu>
   )
 })
+
+// The category submenu mounts only with the open menu, so a closed row menu does not read the category list.
+function BulkCategorySubmenu({ hashCount, onPick, isPending, currentCategory }: {
+  hashCount: number
+  onPick: (pick: BulkActionPick) => void
+  isPending: boolean
+  currentCategory?: string
+}) {
+  const { categories, useSubcategories } = useBulkActionCategories()
+  const onSetCategory = useCallback((category: string) => onPick({ action: "setCategory", category }), [onPick])
+  return (
+    <CategorySubmenu
+      type="context"
+      hashCount={hashCount}
+      availableCategories={categories}
+      onSetCategory={onSetCategory}
+      isPending={isPending}
+      currentCategory={currentCategory}
+      useSubcategories={useSubcategories}
+    />
+  )
+}
 
 interface ExternalProgramsSubmenuProps {
   instanceId: number

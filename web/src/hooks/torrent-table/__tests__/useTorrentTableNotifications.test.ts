@@ -5,6 +5,7 @@
 
 import { type UseTorrentTableNotificationsParams, useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
 import { EMPTY_ACTION_TARGET, type ActionTarget } from "@/lib/torrent-selection"
+import { LIST_FACTS } from "@/test/mockListFacts"
 import { makeTorrent } from "@/test/mockTorrent"
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
@@ -29,6 +30,7 @@ function makeParams(overrides: Partial<UseTorrentTableNotificationsParams> = {})
     onSelectionChange: vi.fn(),
     actionTarget: EMPTY_ACTION_TARGET,
     totalSize: 0, excludedSize: 0,
+    listFacts: LIST_FACTS,
     ...overrides,
   }
 }
@@ -101,7 +103,7 @@ describe("useTorrentTableNotifications — onSelectionChange", () => {
     const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a" })] }
     const params = makeParams({ actionTarget, totalSize: 600, excludedSize: 100 })
     renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, totalSize: 600, excludedSize: 100, instanceId: 1, instanceIds: undefined })
+    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, totalSize: 600, excludedSize: 100, instanceId: 1, instanceIds: undefined, listFacts: LIST_FACTS })
   })
 
   it("publishes the instance subset of the Unified view", () => {

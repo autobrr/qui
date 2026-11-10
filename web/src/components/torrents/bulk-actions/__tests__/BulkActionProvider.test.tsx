@@ -9,19 +9,44 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api", () => ({
-  api: { bulkAction: vi.fn(), getDeleteCrossSeeds: vi.fn(), addCrossSeedBlocklist: vi.fn() },
+  api: { bulkAction: vi.fn(), getDeleteCrossSeeds: vi.fn(), addCrossSeedBlocklist: vi.fn(), renameTorrent: vi.fn(), getTorrents: vi.fn() },
 }))
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
+// Each dialog with values shows the values that the module gives it, and its
+// confirm button sends the values of the test. The confirmations stay real.
+const stubs = vi.hoisted(() => ({ confirmArgs: {} as Record<string, unknown[]> }))
+vi.mock("@/components/torrents/TorrentDialogs", async (importOriginal) => {
+  const { createElement } = await import("react")
+  type StubProps = Record<string, unknown> & { open: boolean; onConfirm: (...args: unknown[]) => void; onOpenChange: (open: boolean) => void }
+  const stub = (name: string, show: (props: StubProps) => unknown[]) => (props: StubProps) => props.open ? createElement("div", { role: "dialog" },
+    createElement("h2", null, name),
+    createElement("p", null, show(props).map(value => JSON.stringify(value)).join(" ")),
+    createElement("button", { onClick: () => props.onConfirm(...(stubs.confirmArgs[name] ?? [])) }, `confirm:${name}`)
+  ) : null
+  return {
+    ...(await importOriginal<typeof import("@/components/torrents/TorrentDialogs")>()),
+    TagEditorDialog: stub("tags", p => [p.hashCount, p.availableTags, p.isLoadingTags]),
+    SetCategoryDialog: stub("category", p => [p.hashCount, Object.keys(p.availableCategories as object), p.isLoadingCategories, p.useSubcategories, p.initialCategory]),
+    SetLocationDialog: stub("location", p => [p.hashCount, p.instanceId, p.capabilities, p.initialLocation]),
+    ShareLimitDialog: stub("shareLimit", p => [p.hashCount, p.instanceIds]),
+    SpeedLimitsDialog: stub("speedLimits", p => [p.hashCount]),
+    SetCommentDialog: stub("comment", p => [p.hashCount, p.instanceId, p.torrentHash]),
+    RenameTorrentDialog: stub("rename", p => [p.currentName]),
+  }
+})
+
 // Keeps the count and the size in the text, so a test can read them in a toast or a dialog.
+// One translator for every render: the tag editor runs an effect again when t changes.
+const translation = vi.hoisted(() => ({
+  t: (key: string, opts?: Record<string, unknown>) => opts && "count" in opts ? `${key}/${opts.count}` : opts && "size" in opts ? `${key}/${opts.size}` : opts && "name" in opts ? `${key}/${opts.name}` : key,
+}))
 vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => opts && "count" in opts ? `${key}/${opts.count}` : opts && "size" in opts ? `${key}/${opts.size}` : key,
-  }),
+  useTranslation: () => translation,
 }))
 
 // The size formatter of the delete dialog reads its unit labels from the i18n resources.
@@ -37,6 +62,7 @@ import { resetPendingListRefetchesForTests } from "@/hooks/useTorrentActions"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { EMPTY_ACTION_TARGET, hasSelection, type ActionTarget, type SelectAllTarget } from "@/lib/torrent-selection"
 import { makeFilters } from "@/test/mockFilters"
+import { LIST_FACTS } from "@/test/mockListFacts"
 import { makeTorrent } from "@/test/mockTorrent"
 import { formatBytes } from "@/lib/utils"
 import type { LocalCrossSeedMatch, Torrent } from "@/types"
@@ -73,7 +99,7 @@ function renderModule(published?: Partial<TorrentSelectionSummary> & { actionTar
     return { ...useBulkActions(), publish: publishSummary, selection, dispatchSelection: dispatch }
   }, { wrapper: harness.wrapper })
   const publish = (value: Partial<TorrentSelectionSummary> & { actionTarget: ActionTarget }) => act(() => {
-    result.current.publish({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, ...value })
+    result.current.publish({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, ...value, listFacts: value.listFacts ?? LIST_FACTS })
   })
   if (published) publish(published)
   return { ...harness, result, publish }
@@ -114,6 +140,7 @@ const countListRefetches = (refetchSpy: ReturnType<typeof makeHarness>["refetchS
   }).length
 
 beforeEach(() => {
+  stubs.confirmArgs = {}
   vi.useFakeTimers()
   resetPendingListRefetchesForTests()
   localStorage.clear()
@@ -718,6 +745,296 @@ describe("bulk action module - delete", () => {
   })
 })
 
+// The values that a stub dialog shows, in the order of its stub.
+function dialogValues(name: string) {
+  const title = Array.from(document.body.querySelectorAll("[role=\"dialog\"] h2")).find(h => h.textContent === name)
+  return title?.nextElementSibling?.textContent ?? null
+}
+
+function confirmDialog(name: string, ...args: unknown[]) {
+  stubs.confirmArgs[name] = args
+  clickButton(`confirm:${name}`)
+}
+
+const CROSS_INSTANCE_FACTS = { ...LIST_FACTS, isCrossInstance: true, categories: { movies: { name: "movies", savePath: "/m" }, tv: { name: "tv", savePath: "/t" } }, tags: ["one", "two"], allowSubcategories: true }
+
+describe("bulk action module - dialogs with values", () => {
+  it("updates the tags in two steps, the removal first, then closes and names the count", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1", "h2") })
+
+    act(() => result.current.pick({ action: "setTags" }))
+    expect(dialogTitle()).toBe("tags")
+    confirmDialog("tags", { add: ["new1", "new2"], remove: ["old1"] })
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([
+      [INSTANCE_ID, expect.objectContaining({ action: "removeTags", tags: "old1", hashes: ["h1", "h2"], selectAll: false })],
+      [INSTANCE_ID, expect.objectContaining({ action: "addTags", tags: "new1,new2", hashes: ["h1", "h2"], selectAll: false })],
+    ])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.updatedTags/2")
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("closes the tag editor with no request when the plan is empty", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setTags" }))
+    confirmDialog("tags", { add: [], remove: [] })
+    await flush()
+
+    expect(mockedApi.bulkAction).not.toHaveBeenCalled()
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("closes the tag editor after a partial failure, and names the step that failed", async () => {
+    mockedApi.bulkAction.mockResolvedValueOnce(undefined as never).mockRejectedValueOnce(new Error("add failed"))
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setTags" }))
+    confirmDialog("tags", { add: ["new1"], remove: ["old1"] })
+    await flush()
+
+    const errorKeys = mockedToast.error.mock.calls.map(call => call[0])
+    expect(errorKeys).toEqual(["actionToasts.partialTags.title/1"])
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("sends the Select all scope, not the loaded rows, for the tags", async () => {
+    const filters = makeFilters({ categories: ["movies"] })
+    const { result } = renderModule({ actionTarget: selectAll(40, { filters, search: "linux", excludeHashes: ["b"] }, ["a"]) })
+
+    act(() => result.current.pick({ action: "setTags" }))
+    confirmDialog("tags", { add: ["keep"], remove: [] })
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "addTags", hashes: [], selectAll: true, search: "linux", excludeHashes: ["b"] })]])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.updatedTags/40")
+  })
+
+  it("schedules the follow-up list refetch after a tag update", async () => {
+    const { result, refetchSpy } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setTags" }))
+    confirmDialog("tags", { add: ["tag1"], remove: [] })
+    await flush()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("lists each category and each tag of the list response in the Unified view", () => {
+    const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: pairs([{ instanceId: 3, hash: "a" }]), listFacts: CROSS_INSTANCE_FACTS })
+
+    act(() => result.current.pick({ action: "setCategory" }))
+    expect(dialogValues("category")).toBe("1 [\"movies\",\"tv\"] false true \"\"")
+    act(() => result.current.pick({ action: "setTags" }))
+    expect(dialogValues("tags")).toBe("1 [\"one\",\"two\"] false")
+  })
+
+  it("shows the loading state on a single instance until the metadata loads", () => {
+    const { result } = renderModule({ actionTarget: ticks("h1"), listFacts: { ...CROSS_INSTANCE_FACTS, isCrossInstance: false } })
+
+    act(() => result.current.pick({ action: "setCategory" }))
+    expect(dialogValues("category")).toBe("1 [] true true \"\"")
+  })
+
+  it("sets the category of the dialog, closes on success, and stays open on a failure", async () => {
+    mockedApi.bulkAction.mockRejectedValueOnce(new Error("qbit down"))
+    const { result } = renderModule({ actionTarget: ticks("h1", "h2") })
+
+    act(() => result.current.pick({ action: "setCategory" }))
+    confirmDialog("category", "movies")
+    await flush()
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.setCategory/2", { description: "qbit down" })
+    expect(dialogTitle()).toBe("category")
+
+    confirmDialog("category", "movies")
+    await flush()
+    expect(mockedApi.bulkAction.mock.calls[1]).toEqual([INSTANCE_ID, expect.objectContaining({ action: "setCategory", category: "movies", hashes: ["h1", "h2"] })])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setCategory/2")
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("sets the category of the submenu at once", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setCategory", category: "" }))
+    await flush()
+
+    expect(dialogTitle()).toBeNull()
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "setCategory", category: "", hashes: ["h1"] })]])
+  })
+
+  it("opens the warning before the location dialog, then sets the location with the 1000ms refetch", async () => {
+    const capabilities = { supportsSetLocation: true } as unknown as NonNullable<typeof LIST_FACTS.capabilities>
+    const { result, refetchSpy } = renderModule({ actionTarget: ticks("h1"), listFacts: { ...LIST_FACTS, capabilities } })
+
+    act(() => result.current.pick({ action: "setLocation" }))
+    expect(dialogTitle()).toBe("dialogs.locationWarning.title/1")
+    expect(mockedApi.bulkAction).not.toHaveBeenCalled()
+    clickButton("dialogs.locationWarning.continue")
+    expect(dialogValues("location")).toBe(`1 ${INSTANCE_ID} {"supportsSetLocation":true} "/downloads"`)
+
+    confirmDialog("location", "/data/new")
+    await flush()
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "setLocation", location: "/data/new", hashes: ["h1"] })]])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setLocation/1")
+    expect(dialogTitle()).toBeNull()
+
+    refetchSpy.mockClear()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+  })
+
+  it("sends the share limits", async () => {
+    const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: pairs([{ instanceId: 3, hash: "a" }, { instanceId: 4, hash: "b" }]) })
+
+    act(() => result.current.pick({ action: "setShareLimit" }))
+    expect(dialogValues("shareLimit")).toBe("2 [3,4]")
+    confirmDialog("shareLimit", 2, 60, -1)
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[0, expect.objectContaining({ action: "setShareLimit", ratioLimit: 2, seedingTimeLimit: 60, inactiveSeedingTimeLimit: -1, targets: [{ instanceId: 3, hash: "a" }, { instanceId: 4, hash: "b" }] })]])
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("sends the two speed limits in two requests, and closes when both succeed", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setSpeedLimits" }))
+    confirmDialog("speedLimits", 100, 200)
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([
+      [INSTANCE_ID, expect.objectContaining({ action: "setUploadLimit", uploadLimit: 100, hashes: ["h1"] })],
+      [INSTANCE_ID, expect.objectContaining({ action: "setDownloadLimit", downloadLimit: 200, hashes: ["h1"] })],
+    ])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setUploadLimit/1")
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setDownloadLimit/1")
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("sends only the upload limit when the download limit is negative", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setSpeedLimits" }))
+    confirmDialog("speedLimits", 500, -1)
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "setUploadLimit", uploadLimit: 500 })]])
+  })
+
+  it("leaves the speed limits open when one request fails", async () => {
+    mockedApi.bulkAction.mockResolvedValueOnce(undefined as never).mockRejectedValueOnce(new Error("qbit down"))
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "setSpeedLimits" }))
+    confirmDialog("speedLimits", 100, 200)
+    await flush()
+
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.setDownloadLimit/1", { description: "qbit down" })
+    expect(dialogTitle()).toBe("speedLimits")
+  })
+
+  it("shows the comment of one torrent from its instance, and sends the comment", async () => {
+    const torrent = { ...makeTorrent({ hash: "a" }), instanceId: 3 }
+    const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: pairs([{ instanceId: 3, hash: "a" }], [torrent]) })
+
+    act(() => result.current.pick({ action: "setComment" }))
+    expect(dialogValues("comment")).toBe("1 3 \"a\"")
+    confirmDialog("comment", "note")
+    await flush()
+
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[0, expect.objectContaining({ action: "setComment", comment: "note", targets: [{ instanceId: 3, hash: "a" }] })]])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setComment/1")
+    expect(dialogTitle()).toBeNull()
+  })
+
+  it("renames the first torrent of the Action target on the instance of the page, with the follow-up refetch", async () => {
+    mockedApi.renameTorrent.mockResolvedValue(undefined)
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a", "b"], count: 2, previewTorrents: [makeTorrent({ hash: "a", name: "Old.Name" }), makeTorrent({ hash: "b" })] }
+    const { result, refetchSpy } = renderModule({ actionTarget })
+
+    act(() => result.current.pick({ action: "renameTorrent" }))
+    expect(dialogValues("rename")).toBe("\"Old.Name\"")
+    confirmDialog("rename", "  New.Name ")
+    await flush()
+
+    expect(mockedApi.renameTorrent.mock.calls).toEqual([[INSTANCE_ID, "a", "New.Name"]])
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.renameTorrentSuccess/New.Name")
+    expect(dialogTitle()).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("rejects an empty name with an error toast and no request", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "renameTorrent" }))
+    confirmDialog("rename", "   ")
+    await flush()
+
+    expect(mockedApi.renameTorrent).not.toHaveBeenCalled()
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.renameTorrentEmpty")
+    expect(dialogTitle()).toBe("rename")
+  })
+
+  it("leaves the rename open when the request fails", async () => {
+    mockedApi.renameTorrent.mockRejectedValueOnce(new Error("taken"))
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+
+    act(() => result.current.pick({ action: "renameTorrent" }))
+    confirmDialog("rename", "new")
+    await flush()
+
+    expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.renameTorrentFailed")
+    expect(dialogTitle()).toBe("rename")
+  })
+})
+
+describe("bulk action module - export", () => {
+  it("exports the Select all scope in the sort of the list, with its own busy state", async () => {
+    let finish = () => {}
+    mockedApi.getTorrents.mockReturnValueOnce(new Promise(resolve => {
+      finish = () => resolve({ torrents: [], hasMore: false } as never)
+    }))
+    const { result } = renderModule({ actionTarget: selectAll(40, { search: "linux" }), listFacts: { ...LIST_FACTS, sortField: "size", sortOrder: "asc" } })
+
+    act(() => result.current.pick({ action: "export" }))
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenCalledWith(INSTANCE_ID, expect.objectContaining({ search: "linux", sort: "size", order: "asc" }))
+    expect(result.current.isExporting).toBe(true)
+    expect(result.current.isPending).toBe(false)
+
+    act(() => result.current.pick({ action: "pause" }))
+    await flush()
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "pause", selectAll: true })]])
+
+    finish()
+    await flush()
+    expect(result.current.isExporting).toBe(false)
+    expect(mockedToast.info).toHaveBeenCalledWith("contextMenu.toast.noTorrentsFoundToExport")
+  })
+})
+
 describe("bulk action module - renders", () => {
   // The desktop table reads the module. A dialog that opens or closes must not render the table again.
   it("keeps the value of an Action surface when a dialog opens and closes", () => {
@@ -731,7 +1048,7 @@ describe("bulk action module - renders", () => {
     }
     function Layout() {
       const { publishSummary } = useTorrentSelectionContext()
-      return <button onClick={() => publishSummary({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, actionTarget: ticks("h1", "h2") })}>publish</button>
+      return <button onClick={() => publishSummary({ instanceId: INSTANCE_ID, totalSize: 0, excludedSize: 0, listFacts: LIST_FACTS, actionTarget: ticks("h1", "h2") })}>publish</button>
     }
     render(<><Layout /><Surface /></>, { wrapper })
     clickButton("publish")

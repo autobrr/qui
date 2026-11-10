@@ -4,8 +4,21 @@
  */
 
 import { EMPTY_SELECTION, selectionReducer, type ActionTarget, type TorrentSelectionEvent, type TorrentSelectionState } from "@/lib/torrent-selection"
+import type { Category, InstanceCapabilities } from "@/types"
 import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
+
+// The facts of the list that the bulk action dialogs and Export read.
+export interface ListFacts {
+  // The list comes from the cross-instance endpoint, and categories and tags are those of its response.
+  isCrossInstance: boolean
+  categories?: Record<string, Category>
+  tags?: string[]
+  allowSubcategories: boolean
+  capabilities?: InstanceCapabilities
+  sortField: string
+  sortOrder: "asc" | "desc"
+}
 
 // What the desktop table publishes for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
@@ -17,6 +30,7 @@ export interface TorrentSelectionSummary {
   // The instance of the page, and the instance subset of the Unified view.
   instanceId: number
   instanceIds?: number[]
+  listFacts: ListFacts
 }
 
 interface TorrentSelectionContextType {

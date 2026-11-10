@@ -3,20 +3,32 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import type { ListFacts, TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
+import type { TorrentAction } from "@/hooks/useTorrentActions"
 import type { api } from "@/lib/api"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { actionTargetRequest } from "@/lib/torrent-selection"
 import { getTotalSize } from "@/lib/torrent-utils"
+import type { Category } from "@/types"
 
 type QueueAction = "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority"
+type ValueDialogAction = "setTags" | "setShareLimit" | "setSpeedLimits" | "setComment" | "renameTorrent"
+
+// A pick that runs its request at once.
+export type RequestPick =
+  | { action: "pause" | "resume" | "recheck" | "reannounce" | QueueAction }
+  | { action: "forceStart" | "toggleSequentialDownload" | "toggleAutoTMM"; enable: boolean }
+  | { action: "setCategory"; category: string }
 
 // The Bulk action that the user picked on an Action surface, with its option.
 // It holds no Action target and no request: the module reads the published target.
+// Set category with a category comes from the category submenu, and runs at once.
 export type BulkActionPick =
-  | { action: "pause" | "resume" | "recheck" | "reannounce" | "delete" | QueueAction }
-  | { action: "forceStart" | "toggleSequentialDownload" | "toggleAutoTMM"; enable: boolean }
+  | RequestPick
+  | { action: "delete" | "setLocation" | "export" | ValueDialogAction }
+  | { action: "setCategory"; category?: undefined }
 
 export type BulkDialog =
   | { name: "closed" }
@@ -24,15 +36,18 @@ export type BulkDialog =
   | { name: "reannounce" }
   | { name: "toggleAutoTMM"; enable: boolean }
   | { name: "delete"; deleteCrossSeeds: boolean }
+  | { name: "locationWarning" }
+  | { name: "setLocation" | "setCategory" | ValueDialogAction }
 
 type OpenBulkDialog = Exclude<BulkDialog, { name: "closed" }>
-type ConfirmationDialog = Exclude<OpenBulkDialog, { name: "delete" }>
+type ConfirmationDialog = Extract<OpenBulkDialog, { name: "recheck" | "reannounce" | "toggleAutoTMM" }>
 
 export type BulkDialogEvent =
   | { type: "open"; dialog: OpenBulkDialog }
   | { type: "close" }
-  | { type: "requestSucceeded"; action: BulkActionPick["action"] }
+  | { type: "requestSucceeded"; action: BulkActionPick["action"] | TorrentAction }
   | { type: "deleteCrossSeeds"; checked: boolean }
+  | { type: "locationWarningConfirmed" }
 
 export const CLOSED_DIALOG: BulkDialog = { name: "closed" }
 
@@ -46,10 +61,12 @@ export function bulkDialogReducer(state: BulkDialog, event: BulkDialogEvent): Bu
       return state.name === event.action ? CLOSED_DIALOG : state
     case "deleteCrossSeeds":
       return state.name === "delete" ? { ...state, deleteCrossSeeds: event.checked } : state
+    case "locationWarningConfirmed":
+      return state.name === "locationWarning" ? { name: "setLocation" } : state
   }
 }
 
-export type PickOutcome = { kind: "run"; pick: BulkActionPick } | { kind: "open"; dialog: OpenBulkDialog }
+export type PickOutcome = { kind: "run"; pick: RequestPick } | { kind: "open"; dialog: OpenBulkDialog } | { kind: "export" }
 
 // count is the count of the Action target. One torrent needs no confirmation.
 export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
@@ -61,13 +78,25 @@ export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
       return { kind: "open", dialog: { name: pick.action, enable: pick.enable } }
     case "delete":
       return { kind: "open", dialog: { name: pick.action, deleteCrossSeeds: false } }
+    case "setLocation":
+      return { kind: "open", dialog: { name: "locationWarning" } }
+    case "setCategory":
+      return pick.category === undefined ? { kind: "open", dialog: { name: pick.action } } : { kind: "run", pick }
+    case "setTags":
+    case "setShareLimit":
+    case "setSpeedLimits":
+    case "setComment":
+    case "renameTorrent":
+      return { kind: "open", dialog: { name: pick.action } }
+    case "export":
+      return { kind: "export" }
     default:
       return { kind: "run", pick }
   }
 }
 
-// The pick that the confirm button of an open dialog runs.
-export function dialogPick(dialog: ConfirmationDialog): BulkActionPick {
+// The pick that the confirm button of an open confirmation runs.
+export function dialogPick(dialog: ConfirmationDialog): RequestPick {
   return dialog.name === "toggleAutoTMM" ? { action: dialog.name, enable: dialog.enable } : { action: dialog.name }
 }
 
@@ -79,14 +108,18 @@ export function requestInstanceId(published: TorrentSelectionSummary, targets: T
   return targets.some(target => target.instanceId !== published.instanceId) ? ALL_INSTANCES_ID : published.instanceId
 }
 
-// The request of a pick on the published Action target (ADR 0034), with the
-// count for the toast. A Select all target carries its own instance subset.
-export function bulkRequest(pick: BulkActionPick, published: TorrentSelectionSummary) {
+// The values of a request that a dialog sends, without the Action target.
+export type BulkRequestValues = Omit<Parameters<typeof api.bulkAction>[1], "action" | "hashes" | "targets" | "selectAll" | "filters" | "search" | "excludeHashes" | "excludeTargets" | "instanceIds"> & { action: TorrentAction }
+
+// The request of a pick or a dialog value on the published Action target
+// (ADR 0034), with the count for the toast. A Select all target carries its own
+// instance subset.
+export function bulkRequest(values: BulkRequestValues, published: TorrentSelectionSummary) {
   const { actionTarget, instanceIds } = published
   return {
     scope: requestInstanceId(published),
     count: actionTarget.count,
-    body: { ...pick, instanceIds, ...actionTargetRequest(actionTarget) },
+    body: { ...values, instanceIds, ...actionTargetRequest(actionTarget) },
   }
 }
 
@@ -140,4 +173,28 @@ export function deleteRequests(published: TorrentSelectionSummary, crossSeedTarg
 export function deleteSize({ actionTarget, totalSize, excludedSize }: TorrentSelectionSummary): number {
   const size = actionTarget.kind === "selectAll" ? Math.max(totalSize - excludedSize, 0) : getTotalSize(actionTarget.previewTorrents)
   return size > 0 ? size : getTotalSize(actionTarget.previewTorrents)
+}
+
+export interface DialogLists {
+  tags: string[]
+  categories: Record<string, Category>
+  isLoadingTags: boolean
+  isLoadingCategories: boolean
+}
+
+// The tags and the categories that the tag editor, Set category, and the
+// category submenu list. A cross-instance list shows those of its response,
+// with the metadata of the instance as the fallback. A single instance shows
+// its metadata.
+export function dialogLists(facts: ListFacts | undefined, metadata: InstanceMetadata | undefined, isMetadataLoading: boolean): DialogLists {
+  const metadataTags = metadata?.tags ?? []
+  const metadataCategories = metadata?.categories ?? {}
+  const tags = facts?.isCrossInstance ? (facts.tags ?? metadataTags) : metadataTags
+  const categories = facts?.isCrossInstance ? (facts.categories ?? metadataCategories) : metadataCategories
+  return {
+    tags,
+    categories,
+    isLoadingTags: isMetadataLoading && tags.length === 0,
+    isLoadingCategories: isMetadataLoading && Object.keys(categories).length === 0,
+  }
 }
