@@ -177,7 +177,7 @@ func newListTestClient(t testing.TB, instanceID int, torrents []qbt.Torrent, tra
 	return client
 }
 
-// TestSingleInstanceSortGolden pins the order GetTorrentsWithFilters gives each
+// TestSingleInstanceSortGolden pins the order ListTorrents gives each
 // sort column. Rewrite the golden file with:
 //
 //	go test ./internal/qbittorrent -run TestSingleInstanceSortGolden -update
@@ -192,7 +192,7 @@ func TestSingleInstanceSortGolden(t *testing.T) {
 	var got strings.Builder
 	for _, column := range sortGoldenColumns() {
 		for _, order := range []string{"asc", "desc"} {
-			resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, column, order, "", FilterOptions{})
+			resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1, Sort: column, Order: order})
 			require.NoError(t, err, "%s %s", column, order)
 			require.Len(t, resp.Torrents, len(torrents), "%s %s", column, order)
 

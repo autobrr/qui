@@ -60,9 +60,9 @@ func TestBaselineOwnsPageRows(t *testing.T) {
 		for _, init := range []bool{false, true} {
 			t.Run(fmt.Sprintf("cross=%t/init=%t", cross, init), func(t *testing.T) {
 				response := snapshotPage(1000, 1, cross)
-				opts := StreamOptions{InstanceID: 1}
+				opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 				if cross {
-					opts = StreamOptions{InstanceIDs: []int{1}}
+					opts = StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 				}
 				group := &subscriptionGroup{}
 				if init {
@@ -90,9 +90,9 @@ func TestBaselineRefreshesVolatileFieldsWithoutResendingRows(t *testing.T) {
 	for _, cross := range []bool{false, true} {
 		t.Run(fmt.Sprintf("cross=%t", cross), func(t *testing.T) {
 			response := snapshotPage(1000, 1, cross)
-			opts := StreamOptions{InstanceID: 1}
+			opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 			if cross {
-				opts = StreamOptions{InstanceIDs: []int{1}}
+				opts = StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 			}
 			group := &subscriptionGroup{}
 			first := group.buildInitPayload(opts, response, &StreamMeta{})
@@ -128,9 +128,9 @@ func BenchmarkBuildUpdatePayload(b *testing.B) {
 			for _, changed := range []int{0, min(10, pageSize)} {
 				b.Run(fmt.Sprintf("cross=%t/rows=%d/changed=%d", cross, pageSize, changed), func(b *testing.B) {
 					response := snapshotPage(20000, pageSize, cross)
-					opts := StreamOptions{InstanceID: 1}
+					opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 					if cross {
-						opts = StreamOptions{InstanceIDs: []int{1}}
+						opts = StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 					}
 					group := &subscriptionGroup{}
 					group.buildInitPayload(opts, response, &StreamMeta{})

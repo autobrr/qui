@@ -43,7 +43,7 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	multiOpts := StreamOptions{InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}
+	multiOpts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}}
 	conn := manager.openConnection(false, 0)
 	multi, err := manager.registerSubscription(multiOpts, "multi", conn, false)
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	require.Equal(t, 3, manager.instanceLoopCount())
 
 	// A single-instance subscription that overlaps member instance 2.
-	singleOpts := StreamOptions{InstanceID: 2, Limit: 100, Sort: "added_on", Order: "desc"}
+	singleOpts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 2, Limit: 100, Sort: "added_on", Order: "desc"}}
 	single, err := manager.registerSubscription(singleOpts, "single", conn, false)
 	require.NoError(t, err)
 	require.Equal(t, 2, manager.instanceSubCount(2))
@@ -81,8 +81,8 @@ func TestToStreamOptionsMultiInstance(t *testing.T) {
 		opts, err := streamRequestPayload{InstanceIDs: []int{3, 1, 1, 2}}.toStreamOptions()
 		require.NoError(t, err)
 		require.True(t, opts.isMultiInstance())
-		require.Equal(t, 0, opts.InstanceID)
-		require.Equal(t, []int{3, 1, 2}, opts.InstanceIDs)
+		require.Equal(t, 0, opts.View.InstanceID)
+		require.Equal(t, []int{3, 1, 2}, opts.View.InstanceIDs)
 		require.ElementsMatch(t, []int{1, 2, 3}, opts.instanceIDs())
 	})
 
@@ -110,21 +110,21 @@ func TestMaterializeGroupResponseOmitsInstanceScopedMetaWithoutSingleConcreteIns
 	}{
 		{
 			name: "two member aggregate",
-			opts: StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100},
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}},
 			provider: &fakeSyncProvider{
 				crossInstanceErr: errors.New("boom"),
 			},
 		},
 		{
 			name: "empty ids with zero instance",
-			opts: StreamOptions{Limit: 100},
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Limit: 100}},
 			provider: &fakeSyncProvider{
 				torrentsErr: errors.New("boom"),
 			},
 		},
 		{
 			name: "zero representative aggregate",
-			opts: StreamOptions{InstanceIDs: []int{0}, Limit: 100},
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{0}, Limit: 100}},
 			provider: &fakeSyncProvider{
 				crossInstanceErr: errors.New("boom"),
 			},
@@ -168,7 +168,7 @@ func TestMaterializeGroupResponseOmitsRetryForMultiMemberAggregateWithDifferentB
 
 	lastSuccessfulSync := time.Now().Add(-time.Minute)
 	_, errPayload := manager.materializeGroupResponse(
-		StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100},
+		StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}},
 		&StreamMeta{Timestamp: time.Now(), RetryInSeconds: 99, LastSuccessfulSync: &lastSuccessfulSync},
 		"test-group",
 	)
@@ -188,7 +188,7 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	manager := NewStreamManager(nil, provider, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	_, err := manager.registerSubscription(StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100}, "multi", manager.openConnection(false, 0), false)
+	_, err := manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}}, "multi", manager.openConnection(false, 0), false)
 	require.NoError(t, err)
 	builds := provider.signalBuilds()
 
@@ -198,7 +198,7 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build via GetCrossInstanceTorrentsWithFilters")
-	require.True(t, provider.crossSkipFresh, "a stream read must not start a sync")
+	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build as a Unified view")
+	require.True(t, provider.crossView.CacheOnly, "a stream read must not start a sync")
 	require.Zero(t, provider.torrentsCalls)
 }

@@ -43,14 +43,14 @@ func TestCopyGroupsInTheListResponse(t *testing.T) {
 	svc.StartCopyGroups(ctx)
 	t.Cleanup(svc.StopCopyGroups)
 
-	flat, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", "", qbittorrent.FilterOptions{})
+	flat, err := sm.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID})
 	require.NoError(t, err)
 	require.Len(t, flat.Torrents, 3)
 	require.Nil(t, flat.CopyGroupsReady)
 
 	var grouped *qbittorrent.TorrentResponse
 	require.Eventually(t, func() bool {
-		grouped, err = sm.GetTorrentsWithFilters(qbittorrent.WithGroupCopies(ctx), instance.ID, 0, 0, "", "", "", qbittorrent.FilterOptions{})
+		grouped, err = sm.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, CopyGroups: true})
 		return err != nil || *grouped.CopyGroupsReady && grouped.Torrents[0].CopyGroup != nil
 	}, 10*time.Second, 10*time.Millisecond)
 	require.NoError(t, err)

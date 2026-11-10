@@ -34,46 +34,52 @@ import (
 type fakeSyncProvider struct {
 	mu sync.Mutex
 
-	torrentsResponse      *qbittorrent.TorrentResponse
-	torrentsErr           error
-	torrentsCalls         int
-	torrentsGate          chan struct{}
-	builds                chan struct{}
-	torrentsSkipFresh     bool
-	torrentsSkipTracker   bool
-	torrentsCachedCounts  bool
-	torrentsSummary       bool
+	torrentsResponse *qbittorrent.TorrentResponse
+	torrentsErr      error
+	torrentsCalls    int
+	torrentsGate     chan struct{}
+	builds           chan struct{}
+	// torrentsView and crossView are the last view that the stream asked for.
+	torrentsView          qbittorrent.TorrentListView
 	groupedResponse       *qbittorrent.TorrentResponse
 	demands               []time.Time
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
-	crossSkipFresh        bool
-	crossSkipTracker      bool
-	crossCachedCounts     bool
+	crossView             qbittorrent.TorrentListView
 	connectionStatus      string
 	taskCountDeadline     bool
 	// webAPIVersions is the version of each instance in the client pool.
 	webAPIVersions map[int]string
 }
 
-func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
+func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.TorrentListView) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
-	f.torrentsCalls++
-	f.torrentsSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
-	f.torrentsSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
-	f.torrentsCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
-	f.torrentsSummary = qbittorrent.SummaryRequested(ctx)
-	err := f.torrentsErr
-	gate := f.torrentsGate
-	builds := f.builds
-	var resp *qbittorrent.TorrentResponse
-	if err == nil {
-		resp = cloneTorrentResponse(f.torrentsResponse)
-		if qbittorrent.GroupCopiesRequested(ctx) && f.groupedResponse != nil {
-			resp = cloneTorrentResponse(f.groupedResponse)
+	var (
+		resp *qbittorrent.TorrentResponse
+		err  error
+		gate chan struct{}
+	)
+	if view.Unified {
+		f.crossInstanceCalls++
+		f.crossView = view
+		err = f.crossInstanceErr
+		if err == nil {
+			resp = cloneTorrentResponse(f.crossInstanceResponse)
+		}
+	} else {
+		f.torrentsCalls++
+		f.torrentsView = view
+		err = f.torrentsErr
+		gate = f.torrentsGate
+		if err == nil {
+			resp = cloneTorrentResponse(f.torrentsResponse)
+			if view.CopyGroups && f.groupedResponse != nil {
+				resp = cloneTorrentResponse(f.groupedResponse)
+			}
 		}
 	}
+	builds := f.builds
 	f.mu.Unlock()
 
 	if builds != nil {
@@ -87,26 +93,6 @@ func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _,
 		<-gate
 	}
 
-	return resp, err
-}
-
-func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(ctx context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
-	f.mu.Lock()
-	f.crossInstanceCalls++
-	f.crossSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
-	f.crossSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
-	f.crossCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
-	err := f.crossInstanceErr
-	builds := f.builds
-	var resp *qbittorrent.TorrentResponse
-	if err == nil {
-		resp = cloneTorrentResponse(f.crossInstanceResponse)
-	}
-	f.mu.Unlock()
-
-	if builds != nil {
-		builds <- struct{}{}
-	}
 	return resp, err
 }
 
@@ -158,7 +144,7 @@ func (f *fakeSyncProvider) torrentsCallCount() int {
 	return f.torrentsCalls
 }
 
-func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T) {
+func TestMaterializeGroupResponseReadsTheCacheWithoutCounts(t *testing.T) {
 	canned := cannedResponse()
 	canned.TrackerHealthSupported = true
 	provider := &fakeSyncProvider{torrentsResponse: canned}
@@ -166,9 +152,9 @@ func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	response, errPayload := manager.materializeGroupResponse(
-		StreamOptions{InstanceID: 1, Limit: 100},
+		StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 100}},
 		&StreamMeta{Timestamp: time.Now()},
-		"skip-hydration",
+		"cache-only",
 	)
 
 	require.NotNil(t, response)
@@ -177,8 +163,8 @@ func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T)
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	require.True(t, provider.torrentsSkipFresh)
-	require.True(t, provider.torrentsSkipTracker)
+	require.True(t, provider.torrentsView.CacheOnly)
+	require.False(t, provider.torrentsView.SidebarCounts)
 }
 
 func TestMaterializeGroupResponsePassesSummary(t *testing.T) {
@@ -186,16 +172,16 @@ func TestMaterializeGroupResponsePassesSummary(t *testing.T) {
 	manager := NewStreamManager(nil, provider, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	_, errPayload := manager.materializeGroupResponse(StreamOptions{InstanceID: 1, Limit: 1}, &StreamMeta{}, "rows")
+	_, errPayload := manager.materializeGroupResponse(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 1}}, &StreamMeta{}, "rows")
 	require.Nil(t, errPayload)
 	provider.mu.Lock()
-	require.False(t, provider.torrentsSummary)
+	require.False(t, provider.torrentsView.NoRows)
 	provider.mu.Unlock()
 
-	_, errPayload = manager.materializeGroupResponse(StreamOptions{InstanceID: 1, Limit: 1, Summary: true}, &StreamMeta{}, "summary")
+	_, errPayload = manager.materializeGroupResponse(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 1, NoRows: true}}, &StreamMeta{}, "summary")
 	require.Nil(t, errPayload)
 	provider.mu.Lock()
-	require.True(t, provider.torrentsSummary)
+	require.True(t, provider.torrentsView.NoRows)
 	provider.mu.Unlock()
 }
 
@@ -255,7 +241,7 @@ func TestInitBuildUsesBaselinePublishedWhileMaterializing(t *testing.T) {
 	manager := NewStreamManager(nil, provider, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	opts := StreamOptions{InstanceID: 1, Limit: 300}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 300}}
 	group := &subscriptionGroup{
 		key:     streamOptionsKey(opts),
 		options: opts,
@@ -625,9 +611,8 @@ func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
 	require.True(t, updatePayload.Meta.IncludeCounts)
 
 	provider.mu.Lock()
-	require.True(t, provider.torrentsSkipFresh, "tracker-health tick should use cached qbit data")
-	require.True(t, provider.torrentsSkipTracker, "tracker-health tick should not hydrate trackers inline")
-	require.True(t, provider.torrentsCachedCounts, "tracker-health tick should still request cached counts")
+	require.True(t, provider.torrentsView.CacheOnly, "tracker-health tick should use cached qbit data")
+	require.True(t, provider.torrentsView.SidebarCounts, "tracker-health tick should still request cached counts")
 	provider.mu.Unlock()
 }
 
@@ -1133,7 +1118,7 @@ func TestInitRequestsCounts(t *testing.T) {
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	require.True(t, provider.torrentsCachedCounts, "the init frame must carry counts")
+	require.True(t, provider.torrentsView.SidebarCounts, "the init frame must carry counts")
 }
 
 func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {

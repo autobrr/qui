@@ -404,7 +404,7 @@ type TorrentResponse struct {
 	HasMore               bool                       `json:"hasMore"`               // Whether more pages are available
 	SessionID             string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata         *CacheMetadata             `json:"cacheMetadata,omitempty"`
-	// TrackerHealthSupported reports capability even when this response skipped inline tracker hydration.
+	// TrackerHealthSupported reports capability, also when the view asked for no Sidebar counts.
 	TrackerHealthSupported bool          `json:"trackerHealthSupported"`
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
@@ -1566,13 +1566,9 @@ func (sm *SyncManager) checkVersion(ctx context.Context, instanceID int, check f
 	return check(client)
 }
 
-// GetTorrentsWithFilters returns torrents plus sidebar metadata after applying
-// filters, search, sorting, and pagination. When the context requests stale data,
-// torrent and preference metadata are read from the existing sync caches instead
-// of forcing fresh qBittorrent calls; unavailable cached preferences are omitted
-// from the response. When the context skips tracker hydration, cached tracker
-// health is still used for tracker-health filters and state sorting when available.
-func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+// listInstanceTorrents reads the view of one instance. Its rows keep their passkeys.
+func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentListView) (*TorrentResponse, error) {
+	instanceID, filters := view.InstanceID, view.Filters
 	var filteredTorrents []qbt.Torrent
 	var allTorrentsForCounts []qbt.Torrent
 	var err error
@@ -1588,11 +1584,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// also moves the generation past it and invalidates the entry.
 	countsGen := client.countsGen.Load()
 
-	skipFreshData := shouldSkipFreshData(ctx)
-	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
-	// Tracker-health stream ticks skip inline hydration but still need cached
-	// aggregate counts so dashboard health totals update without navigation.
-	includeCachedCounts := !skipTrackerHydration || shouldIncludeCachedCountsWhenSkippingTrackerHydration(ctx)
+	skipFreshData := view.CacheOnly
 
 	// The state sort and the tracker-health filters read the health that the
 	// background pass stores. A request never fetches tracker details.
@@ -1645,21 +1637,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	var counts *TorrentCounts
 
-	// Fetch categories and tags (cached separately for 60s)
-	var categories map[string]qbt.Category
-	var tags []string
-
-	categories, err = sm.GetCategories(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get categories")
-		categories = make(map[string]qbt.Category)
-	}
-
-	tags, err = sm.GetTags(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get tags")
-		tags = []string{}
-	}
+	categories := readCategories(syncManager, skipFreshData)
+	tags := readTags(syncManager, skipFreshData)
 
 	supportsSubcategories := client.Supports(CapSubcategories)
 	subcategoriesAlwaysEnabled := client.Supports(CapSubcategoriesAlwaysEnabled)
@@ -1680,7 +1659,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	if filters.Expr != "" {
-		filteredTorrents = sm.filterTorrentsByExpr(filteredTorrents, filters.Expr, filters.HideTrackerPasskeys)
+		filteredTorrents = sm.filterTorrentsByExpr(filteredTorrents, filters.Expr, !view.FullPasskeyAccess)
 	}
 
 	log.Trace().
@@ -1690,13 +1669,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Applied initial filtering")
 
 	// Apply search filter if provided (library doesn't support search)
-	if search != "" {
-		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
+	if view.Search != "" {
+		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, view.Search)
 	}
 
-	summary := SummaryRequested(ctx)
-	if sort != "" && !summary {
-		sm.sortTorrents(filteredTorrents, sort, order == "desc", trackerHealthSupported, cachedHealth)
+	if view.Sort != "" && !view.NoRows {
+		sm.sortTorrents(filteredTorrents, view.Sort, view.Order == "desc", trackerHealthSupported, cachedHealth)
 	}
 
 	// Calculate stats from filtered torrents
@@ -1704,36 +1682,34 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Apply pagination to filtered results; limit <= 0 means "unbounded"
 	totalTorrents := len(filteredTorrents)
-	start := min(max(offset, 0), totalTorrents)
+	start := min(max(view.Offset, 0), totalTorrents)
 
 	end := totalTorrents
-	if limit > 0 {
-		end = min(start+limit, totalTorrents)
+	if view.Limit > 0 {
+		end = min(start+view.Limit, totalTorrents)
 	}
 
 	paginatedTorrents := filteredTorrents[start:end]
 
 	// Check if there are more pages (only meaningful when limit > 0)
-	hasMore := limit > 0 && end < totalTorrents
-	if summary {
+	hasMore := view.Limit > 0 && end < totalTorrents
+	if view.NoRows {
 		paginatedTorrents, hasMore = nil, false
 	}
 
 	var copyGroupsReady *bool
 	var groupedRows []copyGroupPageRow
-	if GroupCopiesRequested(ctx) {
+	if view.CopyGroups {
 		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
-		if *copyGroupsReady && !summary {
-			groupedRows, hasMore = collapseInstanceTorrents(filteredTorrents, instanceID, groups, offset, limit)
+		if *copyGroupsReady && !view.NoRows {
+			groupedRows, hasMore = collapseInstanceTorrents(filteredTorrents, instanceID, groups, view.Offset, view.Limit)
 			paginatedTorrents = nil
 		}
 	}
 
-	if !includeCachedCounts {
-		counts = nil
-	} else {
+	if view.SidebarCounts {
 		// Counts come from ALL torrents (not filtered) for the sidebar. Called only
 		// on a counts-cache miss; the clone is the expensive part of a cached request.
 		allTorrents := func() []qbt.Torrent {
@@ -1823,7 +1799,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
-		Str("search", search).
+		Str("search", view.Search).
 		Bool("hasMore", hasMore)
 	if !filters.IsEmpty() {
 		freshEvent = freshEvent.Interface("filters", filters)
@@ -1900,14 +1876,14 @@ func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, inst
 	return views
 }
 
-// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
-// When instanceIDs is non-empty, only the provided active instance IDs are included.
-// Without [WithSkipFreshData], each instance with data returns its cached rows
-// at once and, if they are stale, starts a background sync. An instance without
-// data gives no rows and marks the response partial, and its first sync starts
-// in the background.
-func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions, instanceIDs []int) (*TorrentResponse, error) {
-	skipFreshData := shouldSkipFreshData(ctx)
+// listUnifiedTorrents reads the Unified view. Its rows keep their passkeys.
+// Without CacheOnly, each instance with data returns its cached rows at once
+// and, if they are stale, starts a background sync. An instance without data
+// gives no rows and marks the response partial, and its first sync starts in
+// the background.
+func (sm *SyncManager) listUnifiedTorrents(ctx context.Context, view *TorrentListView) (*TorrentResponse, error) {
+	skipFreshData := view.CacheOnly
+	limit, offset := view.Limit, view.Offset
 
 	// Get all instances
 	instances, err := sm.clientPool.instanceStore.List(ctx)
@@ -1915,15 +1891,18 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
-	groupCopies := GroupCopiesRequested(ctx)
-	instanceCtx := ctx
-	if groupCopies {
-		instanceCtx = withoutGroupCopies(ctx)
+	groupCopies := view.CopyGroups
+	instanceView := TorrentListView{
+		Search:            view.Search,
+		Filters:           view.Filters,
+		SidebarCounts:     view.SidebarCounts,
+		CacheOnly:         view.CacheOnly,
+		FullPasskeyAccess: view.FullPasskeyAccess,
 	}
 	var requestInstanceIDs []int
 
-	selectedInstanceIDs := make(map[int]struct{}, len(instanceIDs))
-	for _, instanceID := range instanceIDs {
+	selectedInstanceIDs := make(map[int]struct{}, len(view.InstanceIDs))
+	for _, instanceID := range view.InstanceIDs {
 		if instanceID > 0 {
 			selectedInstanceIDs[instanceID] = struct{}{}
 		}
@@ -1982,7 +1961,8 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 		}
 
-		instanceResponse, err := sm.GetTorrentsWithFilters(instanceCtx, instance.ID, 0, 0, "", "", search, filters)
+		instanceView.InstanceID = instance.ID
+		instanceResponse, err := sm.listInstanceTorrents(ctx, &instanceView)
 		if err != nil {
 			// A caller cancellation mid-fetch (including on the last/only instance,
 			// which the top-of-loop check can't catch on a later iteration) must
@@ -2029,7 +2009,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	}
 
 	// An empty sort column sorts by name, as an unknown column does.
-	sm.sortCrossInstanceTorrents(allTorrents, sort, order == "desc")
+	sm.sortCrossInstanceTorrents(allTorrents, view.Sort, view.Order == "desc")
 
 	// Apply pagination
 	// Clamp offset to valid range [0, len(allTorrents)]
@@ -2626,11 +2606,12 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 		return nil, err
 	}
 
-	skipFreshData := shouldSkipFreshData(ctx)
+	return readCategories(syncManager, false), nil
+}
 
-	// Get categories from sync manager
+func readCategories(syncManager *qbt.SyncManager, cacheOnly bool) map[string]qbt.Category {
 	var categories map[string]qbt.Category
-	if skipFreshData {
+	if cacheOnly {
 		categories = syncManager.GetCategoriesUnchecked()
 	} else {
 		categories = syncManager.GetCategories()
@@ -2638,8 +2619,7 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	if categories == nil {
 		categories = make(map[string]qbt.Category)
 	}
-
-	return categories, nil
+	return categories
 }
 
 // GetTags gets all tags
@@ -2650,11 +2630,12 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		return nil, err
 	}
 
-	skipFreshData := shouldSkipFreshData(ctx)
+	return readTags(syncManager, false), nil
+}
 
-	// Get tags from sync manager
+func readTags(syncManager *qbt.SyncManager, cacheOnly bool) []string {
 	var tags []string
-	if skipFreshData {
+	if cacheOnly {
 		tags = syncManager.GetTagsUnchecked()
 	} else {
 		tags = syncManager.GetTags()
@@ -2664,8 +2645,7 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	}
 
 	slices.SortFunc(tags, stringutils.CompareFold)
-
-	return tags, nil
+	return tags
 }
 
 // GetTorrentProperties gets detailed properties for a specific torrent

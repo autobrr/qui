@@ -25,6 +25,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Torrent list
 
+- **Torrent view**: One reading of the torrent list: the instances, the page, the sort, the search, the filters, the passkey access of the reader, and what the reader gets (rows, Sidebar counts, Copy groups). The main table, a Dashboard card, and the details panel each hold one. _Avoid_: list request, list query.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. A Copy group takes the place of its first-sorted member, so with more than one instance, the rows of an instance can leave the order of its own view. _Avoid_: Consistency, sync.
 - **Copy group**: Torrents that the Batch matcher links and that have equal file sizes, shown as one entry in the torrent list. It is a view of the list. _Avoid_: parent and children, Shared-file group, Duplicate group.

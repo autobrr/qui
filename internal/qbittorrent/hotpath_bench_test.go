@@ -333,7 +333,7 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 // --- filtered list --------------------------------------------------------
 
 // BenchmarkFilteredList sends one filtered page of 300 rows through
-// GetTorrentsWithFilters, with the counts cached and the cached read, as a
+// ListTorrents, with the counts cached and the cached read, as a
 // stream tick between syncs does.
 func BenchmarkFilteredList(b *testing.B) {
 	benchSilence(b)
@@ -351,8 +351,6 @@ func BenchmarkFilteredList(b *testing.B) {
 		if !sm.hasTrackerMapping(1) {
 			b.Fatal("no tracker mapping")
 		}
-		ctx := WithSkipFreshData(b.Context())
-
 		for _, tc := range []struct {
 			name    string
 			filters FilterOptions
@@ -370,13 +368,14 @@ func BenchmarkFilteredList(b *testing.B) {
 			{"completed+tag", FilterOptions{Status: []string{"completed"}, Tags: []string{"permaseed"}}},
 		} {
 			b.Run(fmt.Sprintf("%d/%s", size, tc.name), func(b *testing.B) {
-				resp, err := sm.GetTorrentsWithFilters(ctx, 1, 300, 0, "added_on", "desc", "", tc.filters)
+				view := TorrentListView{InstanceID: 1, Limit: 300, Sort: "added_on", Order: "desc", Filters: tc.filters, SidebarCounts: true, CacheOnly: true, FullPasskeyAccess: true}
+				resp, err := sm.ListTorrents(b.Context(), view)
 				if err != nil || resp.Counts == nil {
 					b.Fatal("warm-up request failed", err)
 				}
 				cached := client.countsCache.Load()
 				for b.Loop() {
-					_, _ = sm.GetTorrentsWithFilters(ctx, 1, 300, 0, "added_on", "desc", "", tc.filters)
+					_, _ = sm.ListTorrents(b.Context(), view)
 				}
 				if cached == nil || client.countsCache.Load() != cached {
 					b.Fatal("the counts were not served from the cache")
