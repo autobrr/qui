@@ -7,7 +7,7 @@ import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
-import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, type ListFacts } from "@/contexts/TorrentSelectionContext"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
 import { useTorrentTableArrowNavigation } from "@/hooks/torrent-table/useTorrentTableArrowNavigation"
@@ -24,10 +24,8 @@ import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
-import { useTorrentActions } from "@/hooks/useTorrentActions"
-import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
-import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListController } from "@/hooks/useTorrentListController"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { GROUPED_SELECT_COLUMN_WIDTH } from "@/lib/torrent-table/row-display"
@@ -61,7 +59,6 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -117,7 +114,6 @@ import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
 import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
-import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
@@ -236,7 +232,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   useLayoutEffect(() => {
     setStatusBarContainer(document.getElementById("qui-status-bar-container"))
   }, [])
-  const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const instanceMaxRatio = useGlobalMaxRatio(instanceId)
@@ -273,52 +268,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Delayed loading state to avoid flicker on fast loads
   const [showLoadingState, setShowLoadingState] = useState(false)
 
-  // Use the shared torrent actions hook
-  const torrentActions = useTorrentActions({ instanceId, instanceIds })
-  const {
-    showTagsDialog,
-    setShowTagsDialog,
-    showCommentDialog,
-    setShowCommentDialog,
-    showCategoryDialog,
-    setShowCategoryDialog,
-    showCreateCategoryDialog,
-    setShowCreateCategoryDialog,
-    showShareLimitDialog,
-    setShowShareLimitDialog,
-    showSpeedLimitDialog,
-    setShowSpeedLimitDialog,
-    showLocationDialog,
-    setShowLocationDialog,
-    showRenameTorrentDialog,
-    setShowRenameTorrentDialog,
-    showRenameFileDialog,
-    setShowRenameFileDialog,
-    showRenameFolderDialog,
-    setShowRenameFolderDialog,
-    showLocationWarningDialog,
-    setShowLocationWarningDialog,
-    isPending: isActionPending,
-    proceedToLocationDialog,
-    prepareTagsAction,
-    prepareCommentAction,
-    prepareCategoryAction,
-    prepareCreateCategoryAction,
-    prepareShareLimitAction,
-    prepareSpeedLimitAction,
-    prepareLocationAction,
-    prepareRenameTorrentAction,
-  } = torrentActions
-  // Until the other Bulk actions move to the module, a request of either one keeps every action busy.
-  const { pick: pickBulkAction, isPending: isBulkPending } = useBulkActions()
-  const isPending = isActionPending || isBulkPending
-
-  // Fetch metadata using shared hook
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
-    fallbackDelayMs: 1500,
-  })
-  const metadataTags = metadata?.tags || []
-  const metadataCategories = metadata?.categories || {}
+  const { pick: pickBulkAction, isPending, isExporting } = useBulkActions()
 
   const navigate = useNavigate()
 
@@ -511,10 +461,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
   const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
-  const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
-  const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
-  const isLoadingTags = isMetadataLoading && availableTags.length === 0
-  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -787,6 +733,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
+  const listFacts = useMemo<ListFacts>(() => ({
+    isCrossInstance: Boolean(isCrossInstanceEndpoint),
+    categories,
+    tags,
+    allowSubcategories,
+    capabilities,
+    sortField: activeSortField,
+    sortOrder: activeSortOrder,
+  }), [isCrossInstanceEndpoint, categories, tags, allowSubcategories, capabilities, activeSortField, activeSortOrder])
+
   // Fire parent-facing notifications when filtered data or selection changes
   useTorrentTableNotifications({
     onFilteredDataUpdate,
@@ -804,6 +760,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     totalSize,
     excludedSize,
     instanceIds,
+    listFacts,
   })
 
   // Callback for context menu to fetch field values on demand: explicit
@@ -898,28 +855,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { isMac, selectAllWithShortcut } = useTorrentTableHotkeys({
     sortedTorrents,
     selectAll,
-  })
-
-  // Dialog wiring: each wrapper passes its value with the Action target to the handler.
-  const {
-    renameHash,
-    handleExportWrapper,
-    handleSetCommentWrapper,
-    handleTagsWrapper,
-    handleSetCategoryWrapper,
-    handleSetLocationWrapper,
-    handleRenameTorrentWrapper,
-    handleRenameFileWrapper,
-    handleRenameFolderWrapper,
-    handleSetShareLimitWrapper,
-    handleSetSpeedLimitsWrapper,
-  } = useTorrentListActions({
-    instanceId,
-    actionTarget,
-    actions: torrentActions,
-    exportTorrents,
-    sort: activeSortField,
-    order: activeSortOrder,
   })
 
   const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
@@ -1024,28 +959,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     actionTarget,
     onTorrentSelect,
     onPick: pickBulkAction,
-    onPrepareTags: prepareTagsAction,
-    onPrepareComment: prepareCommentAction,
-    onPrepareCategory: prepareCategoryAction,
-    onPrepareCreateCategory: prepareCreateCategoryAction,
-    onPrepareShareLimit: prepareShareLimitAction,
-    onPrepareSpeedLimits: prepareSpeedLimitAction,
-    onPrepareLocation: prepareLocationAction,
-    onPrepareRenameTorrent: prepareRenameTorrentAction,
-    availableCategories,
-    onSetCategory: handleSetCategoryWrapper,
     isPending,
-    onExport: handleExportWrapper,
-    isExporting: isExportingTorrent,
+    isExporting,
     capabilities,
-    useSubcategories: allowSubcategories,
     canCrossSeedSearch,
     onCrossSeedSearch,
     isCrossSeedSearching,
     onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, isPending, isExporting, capabilities, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1635,51 +1558,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             return statusBarContainer ? createPortal(statusBarContent, statusBarContainer) : statusBarContent
           })()}
         </div>
-
-        <TorrentTableDialogs
-          instanceId={instanceId}
-          actionTarget={actionTarget}
-          isPending={isPending}
-          showCommentDialog={showCommentDialog}
-          setShowCommentDialog={setShowCommentDialog}
-          showTagsDialog={showTagsDialog}
-          setShowTagsDialog={setShowTagsDialog}
-          showCategoryDialog={showCategoryDialog}
-          setShowCategoryDialog={setShowCategoryDialog}
-          showCreateCategoryDialog={showCreateCategoryDialog}
-          setShowCreateCategoryDialog={setShowCreateCategoryDialog}
-          showShareLimitDialog={showShareLimitDialog}
-          setShowShareLimitDialog={setShowShareLimitDialog}
-          showSpeedLimitDialog={showSpeedLimitDialog}
-          setShowSpeedLimitDialog={setShowSpeedLimitDialog}
-          showLocationDialog={showLocationDialog}
-          setShowLocationDialog={setShowLocationDialog}
-          showRenameTorrentDialog={showRenameTorrentDialog}
-          setShowRenameTorrentDialog={setShowRenameTorrentDialog}
-          showRenameFileDialog={showRenameFileDialog}
-          setShowRenameFileDialog={setShowRenameFileDialog}
-          showRenameFolderDialog={showRenameFolderDialog}
-          setShowRenameFolderDialog={setShowRenameFolderDialog}
-          showLocationWarningDialog={showLocationWarningDialog}
-          setShowLocationWarningDialog={setShowLocationWarningDialog}
-          handleSetCommentWrapper={handleSetCommentWrapper}
-          handleTagsWrapper={handleTagsWrapper}
-          handleSetCategoryWrapper={handleSetCategoryWrapper}
-          handleSetShareLimitWrapper={handleSetShareLimitWrapper}
-          handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
-          handleSetLocationWrapper={handleSetLocationWrapper}
-          renameHash={renameHash}
-          handleRenameTorrentWrapper={handleRenameTorrentWrapper}
-          handleRenameFileWrapper={handleRenameFileWrapper}
-          handleRenameFolderWrapper={handleRenameFolderWrapper}
-          proceedToLocationDialog={proceedToLocationDialog}
-          availableTags={availableTags}
-          availableCategories={availableCategories}
-          isLoadingTags={isLoadingTags}
-          isLoadingCategories={isLoadingCategories}
-          allowSubcategories={allowSubcategories}
-          capabilities={capabilities}
-        />
 
         {/* Instance Preferences Dialog */}
         {instance && instanceId > 0 && (

@@ -25,6 +25,7 @@ import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimiz
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
+import { useBulkActions } from "@/components/torrents/bulk-actions/bulk-actions-context"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
@@ -46,7 +47,6 @@ const scenario = vi.hoisted(() => ({
   totalCount: 3,
   // The loaded rows; undefined means `torrents`.
   rows: undefined as Torrent[] | undefined,
-  renameDialogOpen: false,
   totalSize: 0,
   copyGroupsReady: undefined as boolean | undefined,
   // The options that the table last gave the list hook.
@@ -223,31 +223,6 @@ vi.mock("@/hooks/useTorrentsList", () => {
   }
 })
 
-// The action hook that drives the dialog state of the actions that the bulk
-// action module does not own yet (all dialogs closed).
-vi.mock("@/hooks/useTorrentActions", async (importOriginal) => {
-  const noop = vi.fn()
-  const actions = new Proxy(
-    {
-      pendingTmmEnable: false,
-      isPending: false,
-    } as Record<string, unknown>,
-    {
-      // Unknown dialog flags read as falsy; unknown handlers read as no-ops.
-      get(target, prop: string) {
-        if (prop in target) return target[prop]
-        if (prop === "showRenameTorrentDialog") return scenario.renameDialogOpen
-        if (prop.startsWith("show")) return false
-        return noop
-      },
-    }
-  )
-  return {
-    ...await importOriginal<typeof import("@/hooks/useTorrentActions")>(),
-    useTorrentActions: () => actions,
-  }
-})
-
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -266,8 +241,10 @@ function checkedRows(container: HTMLElement) {
 
 // The Action target that the table publishes to the bulk action module.
 let publishedTarget: ActionTarget | undefined
+let bulkPick: ReturnType<typeof useBulkActions>["pick"] = () => {}
 function PublishedTargetProbe() {
   publishedTarget = useTorrentSelectionSummary()?.actionTarget
+  bulkPick = useBulkActions().pick
   return null
 }
 
@@ -304,7 +281,6 @@ describe("TorrentTableOptimized smoke", () => {
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length
     scenario.rows = undefined
-    scenario.renameDialogOpen = false
   })
 
   it("renders a row for each torrent", () => {
@@ -538,7 +514,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.rows = undefined
-    scenario.renameDialogOpen = false
     scenario.totalSize = 0
     scenario.copyGroupsReady = undefined
   })
@@ -641,8 +616,7 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(onTorrentSelect).toHaveBeenLastCalledWith(rows[0])
 
       fireEvent.contextMenu(within(view.container).getByText("Alpha Copy Of Delta"))
-      scenario.renameDialogOpen = true
-      view.showRows(rows)
+      act(() => bulkPick({ action: "renameTorrent" }))
 
       const input = await view.findByDisplayValue("Delta Release")
       expect((input as HTMLInputElement).value).toBe("Delta Release")

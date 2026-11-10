@@ -9,6 +9,7 @@ import { startTransition, Suspense, useEffect } from "react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { LIST_FACTS } from "@/test/mockListFacts"
 import { makeTorrent } from "@/test/mockTorrent"
 import type {
   StreamParams,
@@ -2489,6 +2490,7 @@ describe("useTorrentsList categories and tags", () => {
         supportsTrackerHealth: false,
         actionTarget: EMPTY_ACTION_TARGET,
         totalSize: 0, excludedSize: 0,
+        listFacts: LIST_FACTS,
       })
       return list
     }, { wrapper: makeWrapper() })
