@@ -505,6 +505,28 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBeNull()
   })
 
+  // regression: #3989
+  it("locks the delete options while the delete runs, so the dialog shows the choices that the request carries", async () => {
+    let finish = () => {}
+    mockedApi.bulkAction.mockReturnValueOnce(new Promise(resolve => {
+      finish = () => resolve(undefined as never)
+    }))
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a", tags: "cross-seed" })] }
+    const { result } = renderModule({ actionTarget })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await findCrossSeeds([crossSeedMatch({ hash: "cs1" })])
+    await confirmDelete()
+    const options = ["deleteFiles", "deleteCrossSeeds", "blockCrossSeeds"]
+    options.forEach(id => fireEvent.click(checkbox(id)))
+
+    expect(options.map(id => checkbox(id).getAttribute("aria-checked"))).toEqual(["false", "true", "false"])
+
+    finish()
+    await flush()
+    expect(deleteTitle()).toBeNull()
+  })
+
   it("starts each open with \"also delete cross-seeds\" cleared and no cross-seed result", async () => {
     const { result } = renderModule({ actionTarget: ticks("h1") })
 
@@ -617,6 +639,25 @@ describe("bulk action module - delete", () => {
     expect(mockedToast.error).toHaveBeenCalledWith("actionToasts.failed.delete/1", { description: "boom" })
     expect(hasSelection(result.current.selection)).toBe(false)
     expect(deleteTitle()).toBeNull()
+  })
+
+  // The server can delete on one instance before the request fails on the next one.
+  // regression: #3989
+  it("refetches the list when a delete fails in the Unified view, for Select all and for ticked torrents", async () => {
+    const targets: ActionTarget[] = [selectAll(50, {}, ["a"]), pairs([{ instanceId: INSTANCE_ID, hash: "h1" }, { instanceId: 9, hash: "h2" }])]
+    for (const actionTarget of targets) {
+      mockedApi.bulkAction.mockRejectedValueOnce(new Error("boom"))
+      const { result, refetchSpy } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget })
+
+      act(() => result.current.pick({ action: "delete" }))
+      await confirmDelete(actionTarget.kind === "selectAll" ? "deleteDialog.deleteCount/50" : "deleteDialog.delete")
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000)
+      })
+
+      expect(countListRefetches(refetchSpy)).toBe(1)
+      cleanup()
+    }
   })
 
   it("blocks the tagged torrent before the delete, only when the user asks", async () => {

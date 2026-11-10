@@ -124,11 +124,14 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
           toast.error(getActionErrorMessage(t, "delete", failedActionCount(body)), {
             description: (error instanceof Error && error.message) || t("actionToasts.unexpectedError"),
           })
-          // The server deletes on one instance after another, so a failure can follow deletes on other
-          // instances. A retry would resolve the filter again and delete torrents that joined it since.
-          if (scope === ALL_INSTANCES_ID && body.selectAll) {
-            dispatch({ type: "close" })
-            dispatchSelection({ type: "clear" })
+          // The server deletes on one instance after another, so a failure can follow deletes on other instances.
+          if (scope === ALL_INSTANCES_ID) {
+            scheduleTorrentListRefetches(queryClient, body.deleteFiles ? 5000 : 2000)
+            // A retry would resolve the filter again and delete torrents that joined it since.
+            if (body.selectAll) {
+              dispatch({ type: "close" })
+              dispatchSelection({ type: "clear" })
+            }
           }
           throw error
         }

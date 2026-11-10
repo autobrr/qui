@@ -121,6 +121,7 @@ export function DeleteTorrentDialog({
           onCheckedChange={onDeleteFilesChange}
           isLocked={isDeleteFilesLocked}
           onToggleLock={onToggleDeleteFilesLock}
+          disabled={isPending}
         />
         {crossSeedWarning && (
           <CrossSeedWarning
@@ -132,6 +133,7 @@ export function DeleteTorrentDialog({
             deleteCrossSeeds={deleteCrossSeeds}
             onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
             onSearch={crossSeedWarning.search}
+            disabled={isPending}
           />
         )}
         {showBlockCrossSeeds && (
@@ -140,6 +142,7 @@ export function DeleteTorrentDialog({
               id="blockCrossSeeds"
               checked={blockCrossSeeds}
               onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
+              disabled={isPending}
             />
             <label
               htmlFor="blockCrossSeeds"
