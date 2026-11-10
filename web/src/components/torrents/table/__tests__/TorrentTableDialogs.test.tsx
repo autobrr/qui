@@ -10,11 +10,6 @@ import { cleanup, fireEvent, render } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// i18n passthrough (the inline recheck/reannounce dialogs call t()).
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}))
-
 // Network boundary for the moved rename useQuery.
 vi.mock("@/lib/api", () => ({ api: new Proxy({}, { get: () => vi.fn(() => Promise.resolve(undefined)) }) }))
 
@@ -43,7 +38,6 @@ vi.mock("@/components/torrents/TorrentDialogs", () => ({
   SetCommentDialog: stub("SetCommentDialog"),
   ShareLimitDialog: stub("ShareLimitDialog"),
   SpeedLimitsDialog: stub("SpeedLimitsDialog"),
-  TmmConfirmDialog: stub("TmmConfirmDialog"),
 }))
 
 afterEach(cleanup)
@@ -54,8 +48,8 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
     [
       "showDeleteDialog", "showCommentDialog", "showTagsDialog", "showCategoryDialog", "showCreateCategoryDialog",
       "showShareLimitDialog", "showSpeedLimitDialog", "showLocationDialog", "showRenameTorrentDialog",
-      "showRenameFileDialog", "showRenameFolderDialog", "showRecheckDialog", "showReannounceDialog", "showTmmDialog",
-      "showLocationWarningDialog", "pendingTmmEnable", "deleteFiles", "isDeleteFilesLocked", "blockCrossSeeds",
+      "showRenameFileDialog", "showRenameFolderDialog",
+      "showLocationWarningDialog", "deleteFiles", "isDeleteFilesLocked", "blockCrossSeeds",
       "deleteCrossSeeds", "isPending", "hasCrossSeedTag", "isLoadingTags", "isLoadingCategories",
       "allowSubcategories",
     ].map(k => [k, false])
@@ -68,13 +62,12 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
     setShowCommentDialog: noop, setShowTagsDialog: noop, setShowCategoryDialog: noop, setShowCreateCategoryDialog: noop,
     setShowShareLimitDialog: noop, setShowSpeedLimitDialog: noop, setShowLocationDialog: noop,
     setShowRenameTorrentDialog: noop, setShowRenameFileDialog: noop, setShowRenameFolderDialog: noop,
-    setShowRecheckDialog: vi.fn(), setShowReannounceDialog: noop, setShowTmmDialog: noop, setShowLocationWarningDialog: noop,
+    setShowLocationWarningDialog: noop,
     setDeleteFiles: noop, toggleDeleteFilesLock: noop, setBlockCrossSeeds: noop, setDeleteCrossSeeds: noop,
     handleDeleteWrapper: vi.fn(), handleSetCommentWrapper: vi.fn(), handleTagsWrapper: vi.fn(),
     handleSetCategoryWrapper: vi.fn(), handleSetShareLimitWrapper: vi.fn(), handleSetSpeedLimitsWrapper: vi.fn(),
     handleSetLocationWrapper: vi.fn(), handleRenameTorrentWrapper: vi.fn(), handleRenameFileWrapper: vi.fn(),
-    handleRenameFolderWrapper: vi.fn(), handleRecheckWrapper: vi.fn(), handleReannounceWrapper: vi.fn(),
-    handleTmmConfirmWrapper: vi.fn(), proceedToLocationDialog: vi.fn(),
+    handleRenameFolderWrapper: vi.fn(), proceedToLocationDialog: vi.fn(),
     deleteDialogTotalSize: 0, deleteDialogFormattedSize: "0 B",
     crossSeedWarning: { affectedTorrents: [], reset: vi.fn() } as unknown as TorrentTableDialogsProps["crossSeedWarning"],
     availableTags: [], availableCategories: {}, capabilities: undefined,
@@ -115,22 +108,12 @@ describe("TorrentTableDialogs", () => {
 
   it("passes the select-all count (not the loaded length) in Select all mode", () => {
     const actionTarget: TorrentTableDialogsProps["actionTarget"] = { kind: "selectAll", selectAll: { filters: {} as never, search: "" }, count: 5, previewTorrents: [] }
-    const { getByTestId } = renderDialogs(makeProps({ showTmmDialog: true, actionTarget }))
-    expect(getByTestId("TmmConfirmDialog").getAttribute("data-count")).toBe("5")
+    const { getByTestId } = renderDialogs(makeProps({ showLocationWarningDialog: true, actionTarget }))
+    expect(getByTestId("LocationWarningDialog").getAttribute("data-count")).toBe("5")
   })
 
   it("renders the rename-file dialog (the moved useQuery wiring) without throwing", () => {
     const { getByTestId } = renderDialogs(makeProps({ showRenameFileDialog: true }))
     expect(getByTestId("RenameTorrentFileDialog").getAttribute("data-open")).toBe("true")
-  })
-
-  it("renders the inline recheck confirm dialog and fires the wrapper", () => {
-    const props = makeProps({ showRecheckDialog: true })
-    renderDialogs(props)
-    // The inline Dialog portals into document.body; its confirm button carries the (passthrough) key text.
-    const confirm = Array.from(document.body.querySelectorAll("button")).find(b => b.textContent === "recheckDialog.confirm")
-    expect(confirm).toBeTruthy()
-    fireEvent.click(confirm!)
-    expect(vi.mocked(props.handleRecheckWrapper)).toHaveBeenCalled()
   })
 })

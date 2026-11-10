@@ -37,6 +37,8 @@ export interface UseTorrentTableNotificationsParams {
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
   actionTarget: ActionTarget
   selectedTotalSize: number
+  // The instance subset of the Unified view, published with the instance.
+  instanceIds?: number[]
 }
 
 /**
@@ -66,6 +68,7 @@ export function useTorrentTableNotifications({
   onSelectionChange,
   actionTarget,
   selectedTotalSize,
+  instanceIds,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
     instanceId?: number
@@ -148,8 +151,8 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    onSelectionChange?.({ actionTarget, selectedTotalSize })
-  }, [onSelectionChange, actionTarget, selectedTotalSize])
+    onSelectionChange?.({ actionTarget, selectedTotalSize, instanceId, instanceIds })
+  }, [onSelectionChange, actionTarget, selectedTotalSize, instanceId, instanceIds])
 
   useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

@@ -5,14 +5,6 @@
 
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -52,6 +44,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   LocationWarningDialog,
@@ -59,8 +52,7 @@ import {
   SetLocationDialog,
   TagEditorDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog,
-  TmmConfirmDialog
+  SpeedLimitsDialog
 } from "./TorrentDialogs"
 
 interface TorrentManagementBarProps {
@@ -152,26 +144,15 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowSpeedLimitDialog,
     showLocationDialog,
     setShowLocationDialog,
-    showRecheckDialog,
-    setShowRecheckDialog,
-    showReannounceDialog,
-    setShowReannounceDialog,
-    showTmmDialog,
-    setShowTmmDialog,
-    pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
-    isPending,
-    handleAction,
+    isPending: isActionPending,
     handleDelete,
     handleUpdateTags,
     handleSetCategory,
     handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
-    handleRecheck,
-    handleReannounce,
-    handleTmmConfirm,
     proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
@@ -179,9 +160,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
-    prepareRecheckAction,
-    prepareReannounceAction,
-    prepareTmmAction,
   } = useTorrentActions({
     instanceId: actionInstanceId,
     instanceIds,
@@ -191,6 +169,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       }
     },
   })
+
+  // Until the other Bulk actions move to the module, a request of either one keeps every action busy.
+  const { pick, isPending: isBulkPending } = useBulkActions()
+  const isPending = isActionPending || isBulkPending
 
   // Cross-seed warning for delete dialog
   const crossSeedWarning = useCrossSeedWarning({
@@ -223,10 +205,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     return 0
   }, [totalSelectionSize, selectedTorrents])
   const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
-
-  const triggerAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], options?: { enable?: boolean }) => {
-    handleAction(action, actionTarget, options)
-  }, [handleAction, actionTarget])
 
   const handleDeleteWrapper = useCallback(async () => {
     const crossSeedTargets = deleteCrossSeeds ? buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId) : []
@@ -261,14 +239,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleSetLocation, actionTarget])
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    const actionMap = {
-      topPriority: TORRENT_ACTIONS.TOP_PRIORITY,
-      increasePriority: TORRENT_ACTIONS.INCREASE_PRIORITY,
-      decreasePriority: TORRENT_ACTIONS.DECREASE_PRIORITY,
-      bottomPriority: TORRENT_ACTIONS.BOTTOM_PRIORITY,
-    }
-    triggerAction(actionMap[action])
-  }, [triggerAction])
+    pick({ action })
+  }, [pick])
 
   const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => {
     void handleSetShareLimit({ ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode }, actionTarget)
@@ -306,7 +278,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => triggerAction(TORRENT_ACTIONS.RESUME)}
+                onClick={() => pick({ action: TORRENT_ACTIONS.RESUME })}
                 disabled={isPending || isDisabled}
               >
                 <Play className="h-4 w-4" />
@@ -320,7 +292,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => triggerAction(TORRENT_ACTIONS.PAUSE)}
+                onClick={() => pick({ action: TORRENT_ACTIONS.PAUSE })}
                 disabled={isPending || isDisabled}
               >
                 <Pause className="h-4 w-4" />
@@ -334,7 +306,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => prepareRecheckAction(actionTarget)}
+                onClick={() => pick({ action: TORRENT_ACTIONS.RECHECK })}
                 disabled={isPending || isDisabled}
               >
                 <CheckCircle className="h-4 w-4" />
@@ -348,7 +320,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => prepareReannounceAction(actionTarget)}
+                onClick={() => pick({ action: TORRENT_ACTIONS.REANNOUNCE })}
                 disabled={isPending || isDisabled}
               >
                 <Radio className="h-4 w-4" />
@@ -367,7 +339,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                    onClick={() => pick({ action: TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, enable: !allSeqDlEnabled })}
                     disabled={isPending || isDisabled}
                   >
                     <Blocks className="h-4 w-4" />
@@ -514,7 +486,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => prepareTmmAction(!allEnabled)}
+                    onClick={() => pick({ action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM, enable: !allEnabled })}
                     disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />
@@ -624,56 +596,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         hashCount={selectionCount}
         torrents={selectedTorrents}
         onConfirm={handleSetSpeedLimitsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Force Recheck Confirmation Dialog */}
-      <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("recheckDialog.title", { count: selectionCount })}</DialogTitle>
-            <DialogDescription>
-              {t("recheckDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-              {t("recheckDialog.cancel")}
-            </Button>
-            <Button onClick={() => void handleRecheck(actionTarget)} disabled={isPending}>
-              {t("recheckDialog.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reannounce Confirmation Dialog */}
-      <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("reannounceDialog.title", { count: selectionCount })}</DialogTitle>
-            <DialogDescription>
-              {t("reannounceDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-              {t("reannounceDialog.cancel")}
-            </Button>
-            <Button onClick={() => void handleReannounce(actionTarget)} disabled={isPending}>
-              {t("reannounceDialog.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* TMM Confirmation Dialog */}
-      <TmmConfirmDialog
-        open={showTmmDialog}
-        onOpenChange={setShowTmmDialog}
-        count={selectionCount}
-        enable={pendingTmmEnable}
-        onConfirm={() => handleTmmConfirm(actionTarget)}
         isPending={isPending}
       />
 

@@ -23,7 +23,8 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
@@ -223,11 +224,10 @@ vi.mock("@/hooks/useTorrentsList", () => {
   }
 })
 
-// The action hook that drives dialog state (all dialogs closed). Every handler
-// is the same spy, so a test can read the Action target that an action got.
-const actionHandler = vi.hoisted(() => vi.fn())
-vi.mock("@/hooks/useTorrentActions", () => {
-  const noop = actionHandler
+// The action hook that drives the dialog state of the actions that the bulk
+// action module does not own yet (all dialogs closed).
+vi.mock("@/hooks/useTorrentActions", async (importOriginal) => {
+  const noop = vi.fn()
   const actions = new Proxy(
     {
       blockCrossSeeds: false,
@@ -249,7 +249,7 @@ vi.mock("@/hooks/useTorrentActions", () => {
     }
   )
   return {
-    TORRENT_ACTIONS: { DELETE: "delete" },
+    ...await importOriginal<typeof import("@/hooks/useTorrentActions")>(),
     useTorrentActions: () => actions,
   }
 })
@@ -270,12 +270,20 @@ function checkedRows(container: HTMLElement) {
   return torrents.map(t => t.name).filter(name => isRowChecked(container, name))
 }
 
-// Opens the menu of the row and clicks Pause. Returns the ticked hashes of the Action target, undefined in Select all mode.
+// The Action target that the table publishes to the bulk action module.
+let publishedTarget: ActionTarget | undefined
+function PublishedTargetProbe() {
+  publishedTarget = useTorrentSelectionSummary()?.actionTarget
+  return null
+}
+
+// Opens the menu of the row and clicks Pause. Returns the ticked hashes of the request, undefined in Select all mode.
 async function pauseFromMenu(container: HTMLElement, name: string, findByRole: (role: string, options: { name: RegExp }) => Promise<HTMLElement>) {
   fireEvent.contextMenu(within(container).getByText(name))
   fireEvent.click(await findByRole("menuitem", { name: /^contextMenu\.pause/ }))
-  await waitFor(() => expect(actionHandler).toHaveBeenCalled())
-  return (actionHandler.mock.calls[0][1] as { hashes?: string[] }).hashes
+  await waitFor(() => expect(api.bulkAction).toHaveBeenCalled())
+  const [, body] = vi.mocked(api.bulkAction).mock.calls[0]
+  return body.selectAll ? undefined : body.hashes
 }
 
 function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
@@ -283,7 +291,10 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <TorrentSelectionProvider>
-        <TooltipProvider>{children}</TooltipProvider>
+        <BulkActionProvider>
+          <PublishedTargetProbe />
+          <TooltipProvider>{children}</TooltipProvider>
+        </BulkActionProvider>
       </TorrentSelectionProvider>
     </QueryClientProvider>
   )
@@ -743,7 +754,7 @@ describe("TorrentTableOptimized Copy groups", () => {
   })
 
   describe("selection", () => {
-    const actionTargetOf = (call = 0) => actionHandler.mock.calls[call][1] as ActionTarget
+    const actionTargetOf = () => publishedTarget!
     const headerCheckbox = (container: HTMLElement) => container.querySelector("[role=\"checkbox\"]") as HTMLElement
     const pillText = (container: HTMLElement) => pills(container)[0].textContent
 
@@ -836,7 +847,7 @@ describe("TorrentTableOptimized Copy groups", () => {
         await pauseFromMenu(container, "Echo Release", findByRole)
         const target = actionTargetOf()
         unmount()
-        actionHandler.mockClear()
+        vi.mocked(api.bulkAction).mockClear()
         return target.kind === "selectAll" ? target.selectAll : undefined
       }
       const flat = await selectAllRequest(copyGroupRows().map(({ copy_group: _, ...row }) => row as Torrent))

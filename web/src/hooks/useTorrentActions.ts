@@ -203,8 +203,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
-  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
-  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showLocationDialog, setShowLocationDialog] = useState(false)
   const [showRenameTorrentDialog, setShowRenameTorrentDialog] = useState(false)
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
@@ -293,8 +291,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         // Refetch later to sync with server
         scheduleListRefetches(variables.deleteFiles ? 5000 : 2000)
       } else {
-        // For other operations, refetch after delay
-        scheduleListRefetches(variables.action === "resume" || variables.action === "forceStart" ? 2000 : 1000)
+        scheduleListRefetches(actionRefetchDelay(variables.action))
       }
 
       // Show success toast
@@ -322,17 +319,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         setShowSpeedLimitDialog(false)
       } else if (variables.action === "setLocation") {
         setShowLocationDialog(false)
-      } else if (variables.action === "recheck") {
-        setShowRecheckDialog(false)
-      } else if (variables.action === "reannounce") {
-        setShowReannounceDialog(false)
       }
 
       onActionComplete?.(variables.action)
     },
     onError: (error: Error, variables) => {
-      const count = variables.hashes.length || variables.targets?.length || 1
-      toast.error(getActionErrorMessage(t, variables.action, count), {
+      toast.error(getActionErrorMessage(t, variables.action, failedActionCount(variables)), {
         description: error.message || t("actionToasts.unexpectedError"),
       })
     },
@@ -583,16 +575,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowSpeedLimitDialog(false)
   }, [mutateAsync, instanceIds])
 
-  const handleRecheck = useCallback(async (target: ActionTarget) => {
-    await mutateAsync({ action: "recheck", instanceIds, ...targetData(target) })
-    setShowRecheckDialog(false)
-  }, [mutateAsync, instanceIds])
-
-  const handleReannounce = useCallback(async (target: ActionTarget) => {
-    await mutateAsync({ action: "reannounce", instanceIds, ...targetData(target) })
-    setShowReannounceDialog(false)
-  }, [mutateAsync, instanceIds])
-
   const handleSetLocation = useCallback(async (location: string, target: ActionTarget) => {
     await mutateAsync({ action: "setLocation", instanceIds, ...targetData(target), location })
     setShowLocationDialog(false)
@@ -658,23 +640,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const prepareRenameFileAction = useCallback(() => setShowRenameFileDialog(true), [])
   const prepareRenameFolderAction = useCallback(() => setShowRenameFolderDialog(true), [])
 
-  // One torrent needs no confirmation.
-  const prepareRecheckAction = useCallback((target: ActionTarget) => {
-    if (target.count > 1) {
-      setShowRecheckDialog(true)
-    } else {
-      handleAction("recheck", target)
-    }
-  }, [handleAction])
-
-  const prepareReannounceAction = useCallback((target: ActionTarget) => {
-    if (target.count > 1) {
-      setShowReannounceDialog(true)
-    } else {
-      handleAction("reannounce", target)
-    }
-  }, [handleAction])
-
   const prepareTmmAction = useCallback((enable: boolean) => {
     setPendingTmmEnable(enable)
     setShowTmmDialog(true)
@@ -718,10 +683,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowShareLimitDialog,
     showSpeedLimitDialog,
     setShowSpeedLimitDialog,
-    showRecheckDialog,
-    setShowRecheckDialog,
-    showReannounceDialog,
-    setShowReannounceDialog,
     showLocationDialog,
     setShowLocationDialog,
     showRenameTorrentDialog,
@@ -747,8 +708,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     handleSetCategory,
     handleSetShareLimit,
     handleSetSpeedLimits,
-    handleRecheck,
-    handleReannounce,
     handleSetLocation,
     handleRenameTorrent,
     handleRenameFile,
@@ -762,8 +721,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
-    prepareRecheckAction,
-    prepareReannounceAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
     prepareRenameFileAction,
@@ -776,7 +733,17 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
-function getActionErrorMessage(t: Translate, action: TorrentAction, count: number) {
+// The delay of the first list refetch after a successful action, other than a delete.
+export function actionRefetchDelay(action: TorrentAction) {
+  return action === "resume" || action === "forceStart" ? 2000 : 1000
+}
+
+// The count that a failure toast names.
+export function failedActionCount(request: { hashes: string[]; targets?: TorrentActionTarget[] }) {
+  return request.hashes.length || request.targets?.length || 1
+}
+
+export function getActionErrorMessage(t: Translate, action: TorrentAction, count: number) {
   switch (action) {
     case "resume":
       return t("actionToasts.failed.resume", { count })
@@ -822,7 +789,7 @@ function getActionErrorMessage(t: Translate, action: TorrentAction, count: numbe
 }
 
 // Helper function for success toasts
-function showSuccessToast(t: Translate, action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
+export function showSuccessToast(t: Translate, action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
   switch (action) {
     case "resume":
       toast.success(t("actionToasts.success.resume", { count }))

@@ -118,6 +118,7 @@ import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
 import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
+import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -313,16 +314,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowRenameFileDialog,
     showRenameFolderDialog,
     setShowRenameFolderDialog,
-    showRecheckDialog,
-    setShowRecheckDialog,
-    showReannounceDialog,
-    setShowReannounceDialog,
-    showTmmDialog,
-    setShowTmmDialog,
-    pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
-    isPending,
+    isPending: isActionPending,
     proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
@@ -333,8 +327,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
-    prepareTmmAction,
   } = torrentActions
+  // Until the other Bulk actions move to the module, a request of either one keeps every action busy.
+  const { pick: pickBulkAction, isPending: isBulkPending } = useBulkActions()
+  const isPending = isActionPending || isBulkPending
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
@@ -825,6 +821,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onSelectionChange: publishSummary,
     actionTarget,
     selectedTotalSize,
+    instanceIds,
   })
 
   // Callback for context menu to fetch field values on demand: explicit
@@ -926,7 +923,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     crossSeedWarning,
     hasCrossSeedTag,
     renameHash,
-    runAction,
     handleExportWrapper,
     handleDeleteWrapper,
     handleSetCommentWrapper,
@@ -936,11 +932,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleRenameTorrentWrapper,
     handleRenameFileWrapper,
     handleRenameFolderWrapper,
-    prepareRecheckWrapper,
-    prepareReannounceWrapper,
-    handleRecheckWrapper,
-    handleReannounceWrapper,
-    handleTmmConfirmWrapper,
     handleSetShareLimitWrapper,
     handleSetSpeedLimitsWrapper,
   } = useTorrentListActions({
@@ -1053,7 +1044,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     readOnly: isReadOnly,
     actionTarget,
     onTorrentSelect,
-    onAction: runAction,
+    onPick: pickBulkAction,
     onPrepareDelete: prepareDeleteAction,
     onPrepareTags: prepareTagsAction,
     onPrepareComment: prepareCommentAction,
@@ -1063,9 +1054,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onPrepareSpeedLimits: prepareSpeedLimitAction,
     onPrepareLocation: prepareLocationAction,
     onPrepareRenameTorrent: prepareRenameTorrentAction,
-    onPrepareRecheck: prepareRecheckWrapper,
-    onPrepareReannounce: prepareReannounceWrapper,
-    onPrepareTmm: prepareTmmAction,
     availableCategories,
     onSetCategory: handleSetCategoryWrapper,
     isPending,
@@ -1079,7 +1067,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckWrapper, prepareReannounceWrapper, prepareTmmAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1696,13 +1684,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           setShowRenameFileDialog={setShowRenameFileDialog}
           showRenameFolderDialog={showRenameFolderDialog}
           setShowRenameFolderDialog={setShowRenameFolderDialog}
-          showRecheckDialog={showRecheckDialog}
-          setShowRecheckDialog={setShowRecheckDialog}
-          showReannounceDialog={showReannounceDialog}
-          setShowReannounceDialog={setShowReannounceDialog}
-          showTmmDialog={showTmmDialog}
-          setShowTmmDialog={setShowTmmDialog}
-          pendingTmmEnable={pendingTmmEnable}
           showLocationWarningDialog={showLocationWarningDialog}
           setShowLocationWarningDialog={setShowLocationWarningDialog}
           deleteFiles={deleteFiles}
@@ -1724,9 +1705,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleRenameTorrentWrapper={handleRenameTorrentWrapper}
           handleRenameFileWrapper={handleRenameFileWrapper}
           handleRenameFolderWrapper={handleRenameFolderWrapper}
-          handleRecheckWrapper={handleRecheckWrapper}
-          handleReannounceWrapper={handleReannounceWrapper}
-          handleTmmConfirmWrapper={handleTmmConfirmWrapper}
           proceedToLocationDialog={proceedToLocationDialog}
           deleteDialogTotalSize={deleteDialogTotalSize}
           deleteDialogFormattedSize={deleteDialogFormattedSize}
