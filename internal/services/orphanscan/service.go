@@ -309,16 +309,11 @@ func scanRootsOverlap(d fsops.PathDialect, a, b []string) bool {
 		return false
 	}
 
-	for _, ra := range a {
-		na := fsops.NormalizePath(d, ra)
-		if na == "" {
-			continue
-		}
-		for _, rb := range b {
-			nb := fsops.NormalizePath(d, rb)
-			if nb == "" {
-				continue
-			}
+	isEmpty := func(p string) bool { return p == "" }
+	normA := slices.DeleteFunc(normalizePaths(d, a), isEmpty)
+	normB := slices.DeleteFunc(normalizePaths(d, b), isEmpty)
+	for _, na := range normA {
+		for _, nb := range normB {
 			if na == nb || isPathUnderNormalized(d, na, nb) || isPathUnderNormalized(d, nb, na) {
 				return true
 			}
@@ -966,7 +961,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 	}
 
-	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
+	allOrphans = dropAliasOrphans(ctx, backend, instance, dedupeOrphans(d, allOrphans), keys)
 	// The default is incomplete, which refuses a remote delete, so a failed write only costs the confirm.
 	if err := s.store.UpdateRunIdentityComplete(ctx, runID, !keys.incomplete); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to record file identity")

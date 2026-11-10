@@ -15,8 +15,6 @@ type FilterOptions struct {
 	Trackers          []string `json:"trackers"`
 	ExcludeTrackers   []string `json:"excludeTrackers"`
 	Expr              string   `json:"expr"`
-
-	HideTrackerPasskeys bool `json:"-"`
 }
 
 // IsEmpty reports whether no filter is set.

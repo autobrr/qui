@@ -25,13 +25,21 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Torrent list
 
+- **Torrent view**: One reading of the torrent list: the instances, the page, the sort, the search, the filters, the passkey access of the reader, and what the reader gets (rows, Sidebar counts, Copy groups). The main table, a Dashboard card, and the details panel each hold one. _Avoid_: list request, list query.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
-- **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. _Avoid_: Consistency, sync.
+- **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. A Copy group takes the place of its first-sorted member, so with more than one instance, the rows of an instance can leave the order of its own view. _Avoid_: Consistency, sync.
+- **Copy group**: Torrents that the Batch matcher links and that have equal file sizes, shown as one entry in the torrent list. It is a view of the list. _Avoid_: parent and children, Shared-file group, Duplicate group.
+- **Group representative**: The member of a group that stands for the group: the oldest by added time, with the infohash as the tie-break, then the instance. _Avoid_: parent, canonical copy, primary copy.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
 - **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. _Avoid_: Action scope, selection payload.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
 - **Mixed value**: A dialog field whose value is different across the selected torrents.
+- **Sidebar count**: The number beside a sidebar filter. It equals the rows that filter shows with no other filter or search. A merged tracker shows the largest count of its domains. _Avoid_: Filter total.
+- **Completed**: A torrent whose state says it has all its wanted data, also during a recheck. An automation rule with State `completed` uses 100% progress instead. See autobrr/qui#3870. _Avoid_: 100% progress, outside automations.
+- **Stopped**: A torrent in a paused or stopped state. Running is the opposite. _Avoid_: Paused, as a separate meaning.
+- **Seeding**: A torrent in an upload state, whether or not it sends data. Dashboard "active" counts only those that send data. _Avoid_: Uploading, in user text.
+- **Trackers**: The tracker domains that a torrent belongs to. A torrent with none is in No tracker. _Avoid_: Tracker membership, and the Tracker column for the full set.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
 ## Peers
@@ -62,6 +70,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
 - **Protected path**: A path that orphan scan never reports and never deletes: a file in a torrent, a folder that holds a file in a torrent, a path that an ignore path covers, or a folder that holds an ignore path. Folder cleanup uses the ignore path half of this rule. _Avoid_: Owned path, in-use path, safe path.
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
+- **Scan path**: A folder that one orphan scan run walks. It is a torrent's save or content folder, or an Instance folder that the settings select. _Avoid_: scan root.
 
 ## Folder cleanup
 
@@ -96,7 +105,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Title key**: One normalized form of a release title that matching compares, such as the main title, an alternate or AKA title, one side of a slash title, or the title without its Season numeral. Two releases share a title when any of their Title keys are equal. _Avoid_: normalized title, match title.
 - **Listing**: The name that a tracker shows for one search result. It can differ from the `info.name` of the torrent that the result downloads: a tracker retitles a release, adds a group tag, or drops one. _Avoid_: search result title, indexer title.
 - **Match path**: One place in qui that decides whether two release names are the same release, such as the webhook check, apply, the season pack check, the Batch matcher, or dedup. Every match path must give the same verdict for a pair unless the corpus lists the difference with a reason. _Avoid_: entry point, matcher (the matcher is the shared rules, not the path).
-- **Batch matcher**: The Match path that finds the cross-seeds of torrents already in qBittorrent. The Cross-Seed tab, Filter Cross-Seeds, the delete check, and automations read it. _Avoid_: Local matches, cross-match sets.
+- **Batch matcher**: The Match path that finds the cross-seeds of torrents already in qBittorrent. The Cross-Seed tab, Filter Cross-Seeds, the delete check, automations, and Copy groups read it. Copy groups narrow it (ADR 0041). _Avoid_: Local matches, cross-match sets.
 - **Match verdict**: The decision of one Match path on a pair of Read releases: no match, or a match class (strict, web source relabel, exact size, title rescue) with the fields that differ. A CRC tag on one name only is never a difference. Two CRC tags that differ are. _Avoid_: Verdict (alone), decision.
 - **Match policy**: The switches that a Match path sets on the Match verdict: title rescue, individual episodes, size tolerance, a missing candidate group, no size check, and the season pack matching settings. With a missing candidate group allowed, a group or site that only the local name carries does not count as a difference. The unknown-size preflight of the webhook check allows a missing group. The season pack check allows it too, because a pack name does not carry the group of each episode. Its first pass also has no size check, because its file check compares exact file sizes. The Batch matcher and the content prefilter have no size check for the same reason. Dedup has no size check because it reads names only. _Avoid_: Trigger settings.
 - **Match evidence**: What a Match path knows about a pair beyond the two Read releases: sizes, file lists, Sonarr alternate titles, and the episode map. A Match path that lacks one gives the Match verdict less to work with. It does not change the rules. _Avoid_: Evidence (alone), context.
@@ -107,13 +116,17 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Indexers
 
 - **Native indexer**: An indexer that qui reaches at the tracker's own Torznab endpoint, with no Prowlarr or Jackett between them. _Avoid_: Direct indexer.
-- **Rate-limit cooldown**: The time qui blocks an indexer after it answers 429, for as long as its `Retry-After` header says. _Avoid_: Cooldown (alone), rate limit.
+- **Request slot**: The right to send one request to one indexer now. Each indexer has one. qui refuses it during a Rate-limit cooldown. On a Native indexer, a search and a Dir Scan download wait for it. _Avoid_: rate limiter, pacing.
+- **Request gap**: The 60 seconds that qui waits after a Native indexer answers a search or a Dir Scan download. Then qui sends the next search or Dir Scan download to that indexer. An indexer behind Prowlarr or Jackett has no Request gap. It is not the interval between two items of a Library Scan or a Dir Scan. _Avoid_: minimum interval, pacing.
+- **Rate-limit cooldown**: The time qui blocks an indexer after it answers 429. It lasts as long as the `Retry-After` header says, or 1 minute when the answer has none. Searches and capabilities requests share one cooldown. Torrent downloads have their own, so a 429 on a search does not block a download. _Avoid_: Cooldown (alone), rate limit.
 
 ## Cross-seed scans
 
 - **Dir Scan**: The cross-seed search that reads content from folders on disk and searches indexers for releases that match it. It needs no torrent in qBittorrent. _Avoid_: Directory scan (outside UI copy), dirscan.
 - **Library Scan**: The cross-seed search that goes through the torrents an instance already seeds and searches indexers for each one. _Avoid_: Seeded search, search run.
 - **Searchee**: A top-level folder or file in a Dir Scan directory that Dir Scan tries to match to a release.
+- **Searchee outcome**: The status that one Dir Scan run gives each file of a Searchee, with the indexers that count as searched for that file. _Avoid_: final status, file result.
+- **Work item**: One search that Dir Scan runs for a Searchee: the whole Searchee, one season of a TV folder, or one episode. _Avoid_: sub-searchee, search unit.
 - **Webhook scan**: A Dir Scan run that an import webhook starts. The webhook comes from Sonarr, Radarr, Lidarr, or Readarr, or from a script that sends a path. The run scans only the imported folder and ignores the age cutoff. It is not the autobrr webhook that calls `/check` and `/apply`. That webhook is a Trigger. _Avoid_: webhook run, triggered scan.
 - **Full scan**: A Dir Scan run of the whole directory, started by hand or by the schedule. _Avoid_: long scan.
 
@@ -148,7 +161,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.
 - **Deletion selection**: The torrents that the delete rules of a run choose to remove: the Delete triggers and the torrents that their expansion pulls in. The preview shows the Deletion selection of one rule. _Avoid_: Shared-file group (when referring to selected torrents).
 - **Run plan**: What one run of the Automation rules will do: for each Action, the torrents it reaches and the rule that chose each torrent. The live run carries it out. The dry run records it. The Deletion selection is the delete part of the Run plan. The category and tag previews show the plan of one rule. The plan also names each rule that gets no Action on the instance, and why. _Avoid_: Desired state, batches.
-- **Projected freed bytes**: The estimated space recovered by removing the selected files. Shared paths count once. _Avoid_: Actual freed space.
+- **Rule scope**: The torrents that one Automation rule evaluates in one run: their Trackers match the tracker pattern, they are not in the Skip window, and they have a value for each field that the rule reads. A group or a cross-seed expansion can reach a torrent outside it. _Avoid_: Tracker scope, matched torrents.
+- **Skip window**: The 2 minutes after a live run selected a torrent for a delete. No rule evaluates the torrent in that time. A dry run and a preview have none. _Avoid_: Cooldown, recently processed.
+- **Projected freed bytes**: The estimated space that the deletes of one rule recover in one run. A Shared file counts one time. Each rule counts only its own deletes. _Avoid_: Actual freed space.
+- **Projected free space**: The free space of the source of a rule at the start of the run, plus the Projected freed bytes of the rule. A FREE_SPACE Condition reads it. A sort on FREE_SPACE reads the free space at the start. _Avoid_: Current free space.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
 
 ## Disc reports

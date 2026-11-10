@@ -5,6 +5,7 @@
 
 import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,7 +43,6 @@ import {
   Edit,
   Eye,
   EyeOff,
-  HardDrive,
   MoreVertical,
   Power,
   RefreshCw,
@@ -313,14 +313,8 @@ export function InstanceCard({
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">{t("card.labels.localFileAccess")}</span>
-            <span className={cn(
-              "flex items-center gap-1",
-              instance.hasLocalFilesystemAccess ? "text-primary" : "text-muted-foreground"
-            )}>
-              <HardDrive className="h-3 w-3" />
-              {instance.hasLocalFilesystemAccess ? t("card.status.enabled") : t("card.status.disabled")}
-            </span>
+            <span className="text-muted-foreground">{t("card.labels.fileAccess")}</span>
+            <RemoteAccessIndicator instance={instance} variant="value" />
           </div>
         </div>
 

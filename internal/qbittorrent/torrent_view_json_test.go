@@ -148,7 +148,7 @@ func TestTorrentListLeavesOutPopularityAndPrivateThatTheInstanceDoesNotSend(t *t
 	}
 
 	for id, version := range versions {
-		resp, err := sm.GetTorrentsWithFilters(t.Context(), id, 0, 0, "", "", "", FilterOptions{})
+		resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: id})
 		require.NoError(t, err)
 		require.Len(t, resp.Torrents, 2)
 		for _, row := range resp.Torrents {
@@ -156,7 +156,7 @@ func TestTorrentListLeavesOutPopularityAndPrivateThatTheInstanceDoesNotSend(t *t
 		}
 	}
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true})
 	require.NoError(t, err)
 	require.Len(t, resp.CrossInstanceTorrents, 4)
 	for _, row := range resp.CrossInstanceTorrents {

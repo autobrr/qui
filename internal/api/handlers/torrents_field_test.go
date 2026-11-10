@@ -325,8 +325,8 @@ func TestCrossInstanceStreamReadStartsNoSync(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
 
-	// The stream reads the Unified view through the same function, with this context.
-	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(quiqbt.WithSkipFreshData(t.Context()), 0, 0, "", "", "", quiqbt.FilterOptions{}, []int{h.warmID})
+	// The stream reads the Unified view through the same function, with CacheOnly.
+	response, err := h.syncManager.ListTorrents(t.Context(), quiqbt.TorrentListView{Unified: true, InstanceIDs: []int{h.warmID}, CacheOnly: true})
 	require.NoError(t, err)
 	require.Len(t, response.CrossInstanceTorrents, 1)
 

@@ -42,7 +42,7 @@ func TestWithoutTrackerPasskeysKeepsTheCachedRows(t *testing.T) {
 		CrossInstanceTorrents: []CrossInstanceTorrentView{{TorrentView: &TorrentView{Torrent: cross}, InstanceID: 1}},
 	}
 
-	hidden := response.WithoutTrackerPasskeys()
+	hidden := response.withoutTrackerPasskeys()
 
 	want := &qbt.Torrent{Tracker: origin, Trackers: []qbt.TorrentTracker{{Url: origin}}}
 	require.Equal(t, want, hidden.Torrents[0].Torrent)

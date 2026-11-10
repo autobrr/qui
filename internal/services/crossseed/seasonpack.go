@@ -154,6 +154,8 @@ type seasonPackPrep struct {
 
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
+const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
+
 func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -201,7 +203,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	threshold := settings.SeasonPackCoverageThreshold
@@ -255,7 +257,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	// Try to get episode total from metadata chain (Sonarr -> TVDB/TVMaze).

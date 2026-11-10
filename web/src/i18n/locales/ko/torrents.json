@@ -1169,6 +1169,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1426,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
     },
-    "ratio": "비율:"
+    "ratio": "비율:",
+    "added": "{{time}} 추가됨"
   },
   "tableView": {
     "ascending": "오름차순",
@@ -1580,7 +1582,7 @@
       "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_filesystem_access": "이 인스턴스가 팩을 조립하려면 파일시스템 쓰기 접근이 필요합니다. 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하거나 SSH 접근을 설정하세요.",
         "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
         "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
         "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",
@@ -1602,5 +1604,17 @@
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "copiesWithProblem_other": "{{name}}의 추가 사본 {{count}}개. 숨겨진 사본에 문제가 있습니다",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "사본 묶기",
+    "expandAll": "모두 펼치기",
+    "collapseAll": "모두 접기",
+    "grouping": "묶는 중…"
   }
 }

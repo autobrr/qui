@@ -58,7 +58,6 @@
     "errors": "Chyby",
     "reannounceTooltip": "Automatické opětovné ohlášení trackeru povoleno",
     "altSpeedLimits": "Alternativní rychlostní limity: {{status}}",
-    "localFileAccess": "Přístup k místním souborům povoleno",
     "connectable": "Připojitelné",
     "portInfo": ". Port: {{port}}",
     "connectionStatus": "Stav připojení qBittorrentu: {{status}}",

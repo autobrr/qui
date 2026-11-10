@@ -8,7 +8,6 @@
 package orphanscan
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -55,16 +54,19 @@ func TestScanWalker_AliasDedup(t *testing.T) {
 			name:    "hardlink of an in-use file walked first",
 			inUse:   true,
 			entries: []fsops.WalkEntry{entry(early, fid, 2), entry(inUse, fid, 2)},
+			want:    []string{early},
 		},
 		{
 			name:    "hardlink of an in-use file walked last",
 			inUse:   true,
 			entries: []fsops.WalkEntry{entry(inUse, fid, 2), entry(late, fid, 2)},
+			want:    []string{late},
 		},
 		{
 			name:    "two hardlinks of an in-use file",
 			inUse:   true,
 			entries: []fsops.WalkEntry{entry(early, fid, 3), entry(inUse, fid, 3), entry(late, fid, 3)},
+			want:    []string{early, late},
 		},
 		{
 			name:    "two aliases of an in-use file",
@@ -116,51 +118,12 @@ func TestScanWalker_AliasDedup(t *testing.T) {
 	}
 }
 
-// aliasWalkBackend gives the listed paths of a real tree one shared nlink=1
-// FileID, the way a bind mount presents one file twice.
-type aliasWalkBackend struct {
-	fsops.Backend
-	ids map[string]hardlink.FileID
-}
-
-func (b *aliasWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
-	in, err := b.Backend.WalkDir(ctx, root, opts)
-	if err != nil {
-		return nil, err
-	}
-	out := make(chan fsops.WalkEntry)
-	go func() {
-		defer close(out)
-		for e := range in {
-			if id, ok := b.ids[e.Path]; ok {
-				e.FileID, e.Nlinks = id, 1
-			}
-			select {
-			case out <- e:
-			case <-ctx.Done():
-				for range in { //nolint:revive // drain to release the inner walk
-				}
-				return
-			}
-		}
-	}()
-	return out, nil
-}
-
 func listedPaths(orphans []OrphanFile) []string {
 	paths := make([]string, 0, len(orphans))
 	for _, o := range orphans {
 		paths = append(paths, o.Path)
 	}
 	return paths
-}
-
-func sameFile(paths ...string) map[string]hardlink.FileID {
-	ids := make(map[string]hardlink.FileID, len(paths))
-	for _, p := range paths {
-		ids[p] = hardlink.UnixFileID(1, 1)
-	}
-	return ids
 }
 
 // The disc unit's delete would remove the alias, so the whole unit stays.

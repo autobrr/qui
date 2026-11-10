@@ -67,16 +67,16 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 	}
 }
 
-// Expression filters had no coverage in this package, and the manual filter
-// loop now hands expr.Run a dereferenced pointer. Pin that the env still works.
-func TestApplyManualFiltersExprFilter(t *testing.T) {
+// The expression filter hands expr.Run a copy of each torrent. Pin that the
+// env still works.
+func TestListRulesExprFilter(t *testing.T) {
 	sm := &SyncManager{exprCache: ttlcache.New[string, *vm.Program](ttlcache.SetDefaultTTL(5 * time.Minute))}
 	torrents := []qbt.Torrent{
 		{Hash: "A", Name: "low", Ratio: 0.5},
 		{Hash: "B", Name: "high", Ratio: 2.5},
 	}
 
-	filtered := sm.applyManualFilters(nil, torrents, FilterOptions{Expr: "Ratio > 1"}, nil, nil, false)
+	filtered := listRows(sm, nil, torrents, FilterOptions{Expr: "Ratio > 1"}, nil, false, nil)
 
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "B", filtered[0].Hash)

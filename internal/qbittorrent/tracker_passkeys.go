@@ -44,8 +44,8 @@ func torrentWithoutPasskeys(t *qbt.Torrent) qbt.Torrent {
 	return hidden
 }
 
-// WithoutTrackerPasskeys copies the rows, because they point into the sync cache.
-func (r *TorrentResponse) WithoutTrackerPasskeys() *TorrentResponse {
+// withoutTrackerPasskeys copies the rows, because they point into the sync cache.
+func (r *TorrentResponse) withoutTrackerPasskeys() *TorrentResponse {
 	hidden := *r
 	hidden.Torrents = slices.Clone(r.Torrents)
 	for i := range hidden.Torrents {

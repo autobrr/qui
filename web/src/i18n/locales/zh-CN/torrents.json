@@ -1169,6 +1169,7 @@
     "status": "状态",
     "tracker": "Tracker",
     "seeds": "做种",
+    "peers": "节点",
     "leeches": "下载",
     "downloaded": "已完成",
     "message": "消息",
@@ -1426,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "输入后自动搜索"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "添加于{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1580,7 +1582,7 @@
       "dropped": "整季包已添加。已排除的目标：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_filesystem_access": "此实例需要文件系统写入权限才能组装整季包。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。",
         "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
         "no_base_directory": "请为此实例配置链接基础目录。",
         "no_episode_files": "此整季包中未找到可播放的单集文件。",
@@ -1602,5 +1604,17 @@
         "add_failed": "添加种子失败。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 个副本",
+    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 个副本。某个隐藏的副本有问题",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已选 {{count}} 个",
+    "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合并副本",
+    "expandAll": "全部展开",
+    "collapseAll": "全部收起",
+    "grouping": "正在分组…"
   }
 }

@@ -1309,6 +1309,7 @@
     "status": "Stav",
     "tracker": "Tracker",
     "seeds": "Seedy",
+    "peers": "Peerové",
     "leeches": "Stahovatelé",
     "downloaded": "Stáhnuto",
     "message": "Zpráva",
@@ -1570,7 +1571,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "ratio": "Poměr:"
+    "ratio": "Poměr:",
+    "added": "Přidáno {{time}}"
   },
   "tableView": {
     "ascending": "vzestupně",
@@ -1734,7 +1736,7 @@
       "dropped": "Balíček přidán. Vynechané cíle: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Tato instance potřebuje přístup k místnímu souborovému systému pro sestavení balíčku.",
+        "no_filesystem_access": "Tato instance potřebuje přístup k souborovému systému pro zápis, aby mohla sestavit balíček. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
         "no_link_mode": "Pro výběr více cílů povolte v této instanci pevné odkazy nebo reflinky.",
         "no_base_directory": "Nastavte základní adresář odkazů této instance.",
         "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",
@@ -1756,5 +1758,25 @@
         "add_failed": "Torrent nelze přidat."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} další kopie položky {{name}}",
+    "copies_few": "{{count}} další kopie položky {{name}}",
+    "copies_other": "{{count}} dalších kopií položky {{name}}",
+    "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
+    "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} vybraná",
+    "badgeTicked_few": "+{{hidden}} · {{count}} vybrané",
+    "badgeTicked_other": "+{{hidden}} · {{count}} vybraných",
+    "hiddenTicked_one": "{{count}} skrytá kopie je vybraná",
+    "hiddenTicked_few": "{{count}} skryté kopie jsou vybrané",
+    "hiddenTicked_other": "{{count}} skrytých kopií je vybraných",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Seskupit kopie",
+    "expandAll": "Rozbalit vše",
+    "collapseAll": "Sbalit vše",
+    "grouping": "Seskupování…"
   }
 }

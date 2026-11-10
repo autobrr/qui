@@ -198,8 +198,8 @@ export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isR
         t("queryBuilder.capabilityReasons.remoteInstance", { ns: "automations" }) :
         t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
     case "read":
-      // An instance without Read has no filesystem access, and local access is the setting that gives it.
-      return t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
+      // An instance without Read has no filesystem access; local access or SSH access gives it.
+      return t("queryBuilder.capabilityReasons.filesystemAccess", { ns: "automations" });
     default:
       // A new requirement in the Go table fails the type check here until it has a reason.
       return capability satisfies never;

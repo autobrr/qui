@@ -141,7 +141,9 @@ import type {
   User,
   VersionInfo,
   WarningResponse,
-  WebSeed
+  WebSeed,
+  SSHCredentials,
+  SSHTestResponse
 } from "@/types"
 import type {
   ArrInstance,
@@ -568,6 +570,7 @@ export interface StreamSubscription {
   search?: string
   filters?: TorrentFilters | null
   summary?: boolean
+  groupCopies?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -582,6 +585,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     search: stream.search ?? "",
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
   }
 }
 
@@ -818,6 +822,26 @@ class ApiClient {
     return this.request(`/instances/${id}/test`, { method: "POST" })
   }
 
+  async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async clearSSHCredentials(id: number): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "DELETE" })
+  }
+
+  async testSSH(id: number): Promise<SSHTestResponse> {
+    return this.request<SSHTestResponse>(`/instances/${id}/ssh-test`, { method: "POST" })
+  }
+
+  async confirmSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async replaceSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key/replace`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
@@ -1008,6 +1032,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1019,6 +1044,7 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,
@@ -1102,6 +1128,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1115,6 +1142,7 @@ class ApiClient {
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`,

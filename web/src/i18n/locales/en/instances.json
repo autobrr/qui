@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Disabled",
-      "enabled": "Enabled",
       "connected": "Connected",
       "disconnected": "Disconnected"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS Verification:",
       "tlsSkipped": "Skipped",
       "tlsStrict": "Strict",
-      "localFileAccess": "Local File Access:",
-      "testingConnection": "Testing connection..."
+      "testingConnection": "Testing connection...",
+      "fileAccess": "File access:"
     },
     "deleteDialog": {
       "title": "Delete Instance",
@@ -111,7 +110,8 @@
       "none": "None",
       "usernamePassword": "Username and Password",
       "apiKey": "API Key"
-    }
+    },
+    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
   },
   "settingsButton": {
     "tooltip": "Instance Settings"
@@ -150,7 +150,8 @@
         "downloads": "Downloads",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Seeding Limits"
+        },
+        "ssh": {
+          "title": "SSH Access",
+          "description": "Reach this instance's files over SSH when qui and qBittorrent run on different machines"
         }
       }
     },
@@ -730,10 +735,8 @@
     "orphanScanOverview": {
       "title": "Orphan Scan",
       "noInstancesDescription": "No instances configured. Add one in Settings to use this service.",
-      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nRequires local filesystem access to be enabled for each instance.",
+      "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent.\nNeeds access to each instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
       "description": "Scans download directories and identifies orphan files for cleanup.",
-      "noLocalAccess": "No Local Access",
-      "noLocalAccessTooltip": "qui and qBittorrent must run on the same machine. Enable \"Local Filesystem Access\" in instance settings to use orphan scanning.",
       "remoteLimits": "Deletion and auto-cleanup on a remote instance need file identity, which qui reads only when the server lets it run GNU find and stat.",
       "remoteNoIdentity": "This remote instance does not let qui run them, so qui cannot tell when two paths are the same file, and a file reachable at a second path, such as through a bind mount, can be listed even when a torrent uses it. Scans here can be previewed and exported, but not deleted.",
       "on": "On",
@@ -759,6 +762,8 @@
       "viewPreview": "View Preview",
       "recentScans": "Recent Scans",
       "scannedPaths": "Selected scan paths ({{total}})",
+      "scanPathsLoading": "Loading scan paths...",
+      "scanPathsLoadFailed": "Failed to load scan paths",
       "zeroOrphans": "0 orphans",
       "deletedStats": "{{deleted}} deleted · {{size}}",
       "deletedFiles_one": "{{count}} file",
@@ -789,7 +794,9 @@
         "cancelFailed": "Failed to cancel"
       },
       "errorMessage": "Error message",
-      "scanPaths": "Scan paths"
+      "scanPaths": "Scan paths",
+      "noFilesystemAccess": "No filesystem access",
+      "noFilesystemAccessTooltip": "Orphan scanning needs access to this instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings."
     },
     "orphanScanPreview": {
       "title": "Orphan Preview",
@@ -1284,14 +1291,14 @@
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
-        "pathSourceLocalAccessRequired": "Path on server (requires Local Access)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
-          "localAccessRequired": "Path-based free space source requires Local Filesystem Access.",
-          "pathRequired": "Path is required when using \"Path on server\"."
-        }
+          "pathRequired": "Path is required when using \"Path on server\".",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+        },
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
       },
       "grouping": {
         "title": "Grouped condition groups",
@@ -1482,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
-        "enableLocalAccessOrDefault": "Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",
         "addScoreRule": "Add at least one score rule for Score sorting",
         "fieldMultiplierInvalid": "Field multiplier must be a valid number",
@@ -1499,7 +1505,8 @@
         "groupIdInvalid": "Group ID must contain only alphanumeric characters and underscores",
         "selectGroupKey": "Select at least one key",
         "groupExists": "A group with this ID already exists",
-        "customGroupAdded": "Custom group added"
+        "customGroupAdded": "Custom group added",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)"
       },
       "trackerMatchInclude": "Include",
       "trackerMatchExclude": "Exclude"
@@ -1749,6 +1756,92 @@
       "testEmailQueued": "qBittorrent queued the test email",
       "testEmailQueuedDescription": "qBittorrent uses the saved settings. Check your inbox, and check the qBittorrent log for errors.",
       "testEmailFailed": "Failed to send the test email"
+    },
+    "ssh": {
+      "localWins": "Local Filesystem Access is on, so qui reads this instance's files locally and does not use these SSH settings.",
+      "labels": {
+        "host": "SSH host",
+        "hostDescription": "Hostname or IP address of the machine that holds this instance's files, without a scheme or port. Changing the host or port drops the pinned host key, so the next test is a first contact again.",
+        "port": "Port",
+        "username": "Username",
+        "privateKey": "Private key",
+        "privateKeyDescription": "An OpenSSH private key without a passphrase. qui stores it encrypted and never shows it again. It is needed again when the host, port or username changes."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "A key is stored. Paste a new one to replace it."
+      },
+      "validation": {
+        "hostRequired": "SSH host is required",
+        "portRange": "Port must be between 1 and 65535",
+        "usernameRequired": "Username is required",
+        "keyRequired": "The private key is needed when the host, port or username changes"
+      },
+      "buttons": {
+        "save": "Save SSH settings",
+        "clear": "Remove SSH access",
+        "test": "Test connection",
+        "testing": "Testing...",
+        "confirm": "Confirm host key",
+        "replace": "Replace host key"
+      },
+      "test": {
+        "title": "Connection",
+        "pinnedAtRest": "Host key pinned. Test the connection to see what the host allows.",
+        "unpinnedAtRest": "No host key pinned yet. Test the connection to confirm the host's fingerprint.",
+        "saveFirst": "Save the changes first. A test runs against the stored credentials."
+      },
+      "status": {
+        "unpinned": {
+          "title": "First contact",
+          "text": "Compare this fingerprint with the host's before you confirm it. Later connections refuse any other key."
+        },
+        "pinned": {
+          "title": "Host key pinned"
+        },
+        "mismatch": {
+          "title": "Host key changed",
+          "text": "The host presented a different key than the pinned one. Replace the pin only if you expect the change, for example after the server was reinstalled."
+        },
+        "pinUnreadable": {
+          "title": "Pinned key unreadable",
+          "text": "The stored pin cannot be decrypted, usually because qui's encryption key changed. Replace it to continue.",
+          "noKey": "The host did not answer, so there is no key to replace it with."
+        },
+        "error": {
+          "title": "Connection failed"
+        }
+      },
+      "fingerprint": {
+        "label": "Fingerprint",
+        "pinned": "Pinned",
+        "presented": "Presented"
+      },
+      "probes": {
+        "tier": "Tier: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + commands",
+        "tierHint": "Commands need a POSIX shell with GNU find and stat on the host. Without them qui uses SFTP only and cannot read file identity.",
+        "sftp": "SFTP",
+        "statvfs": "Free space (statvfs)",
+        "hardlink": "Hardlinks (hardlink@openssh.com)",
+        "limits": "Limits extension",
+        "exec": "Commands",
+        "gnuUserland": "GNU find and stat",
+        "yes": "Available",
+        "no": "Not available"
+      },
+      "replaceDialog": {
+        "title": "Replace the pinned host key?",
+        "description": "qui will trust the presented key for this host from now on and refuse the pinned one.",
+        "cancel": "Cancel",
+        "confirm": "Replace"
+      },
+      "toast": {
+        "saved": "SSH settings saved",
+        "cleared": "SSH access removed"
+      }
     }
   },
   "backups": {
@@ -1997,6 +2090,17 @@
       "failedToDeleteBackup": "Failed to delete backup run",
       "allBackupsDeleted": "Deleted all backups",
       "failedToDeleteBackups": "Failed to delete backups"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Over SSH",
+    "none": "None",
+    "localFull": "qui reads and writes this instance's files on this machine.",
+    "limits": {
+      "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
+      "noReflinks": "No reflinks on a remote instance.",
+      "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
     }
   }
 }

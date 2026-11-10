@@ -52,6 +52,23 @@ export function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolea
   return ""
 }
 
+export const SELECT_COLUMN_WIDTH = 40
+// With the Name column hidden, the select column of a grouped list also holds
+// the Copy group pill, so the pill never takes room from a data value.
+export const GROUPED_SELECT_COLUMN_WIDTH = 112
+
+// A widened select column also holds the Copy group pill, so its checkbox
+// aligns left in the header and in every row instead of in the center.
+export function centersSelectCheckbox(columnWidth: number): boolean {
+  return columnWidth <= SELECT_COLUMN_WIDTH
+}
+
+// The left bar on every row of an open Copy group. On the top row the bar
+// starts 8px down, so two open groups next to each other stay apart.
+export function getCopyGroupAccentClass(isTopRow: boolean): string {
+  return `before:pointer-events-none before:absolute before:left-0 before:bottom-0 before:w-0.5 before:bg-primary before:content-[''] ${isTopRow ? "before:top-2 before:rounded-t-full" : "before:top-0"}`
+}
+
 export function getStatusBadgeVariant(state: string): StatusBadgeVariant {
   switch (state) {
     case "downloading":

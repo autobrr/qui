@@ -153,6 +153,14 @@ type InjectResult struct {
 	// Success is true if the torrent was added successfully.
 	Success bool
 
+	// Class is the Result class of the add. It is failed when Inject stops
+	// before the Adder.
+	Class crossseed.ResultClass
+
+	// SettleQueueFull is set when the added torrent stays paused because the
+	// Settle queue was full. Class is then added.
+	SettleQueueFull bool
+
 	// Mode describes how the torrent was added: hardlink, reflink, or regular.
 	Mode string
 
@@ -165,7 +173,7 @@ type InjectResult struct {
 
 // Inject downloads a torrent and injects it into qBittorrent.
 func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResult, error) {
-	result := &InjectResult{}
+	result := &InjectResult{Class: crossseed.ClassFailed}
 
 	if err := i.validateInjectRequest(req); err != nil {
 		return result, err
@@ -258,6 +266,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		Placement: placement,
 		AfterAdd:  afterAdd,
 	})
+	result.Class = added.Class()
 
 	switch {
 	case added.Outcome == crossseed.AddRefused:
@@ -271,6 +280,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		result.ErrorMessage = "alignment failed; torrent added paused for inspection"
 	case added.Settled.QueueFull && added.Paused:
 		// Nothing rechecks or resumes the paused torrent. A running add downloads without Settle.
+		result.SettleQueueFull = true
 		result.ErrorMessage = "torrent added paused: " + errSettleQueueFull.Error()
 	default:
 		result.Success = true
@@ -598,7 +608,7 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 		return errors.New("instance is nil")
 	}
 	if !models.FilesystemCapabilitiesOf(instance).Write {
-		return errors.New("instance does not have local filesystem access enabled")
+		return errors.New("instance does not have filesystem write access")
 	}
 	if instance.HardlinkBaseDir == "" {
 		return errors.New("hardlink base directory is not configured")
