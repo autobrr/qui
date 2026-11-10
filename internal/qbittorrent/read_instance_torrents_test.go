@@ -67,7 +67,7 @@ func newWriteRig(t *testing.T) *SyncManager {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), 1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
