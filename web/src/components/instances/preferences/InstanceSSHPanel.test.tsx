@@ -262,6 +262,17 @@ describe("InstanceSSHPanel", () => {
     expect(document.querySelector("[data-ssh-status]")).toBeNull()
   })
 
+  // regression: #3732
+  it("an endpoint that changed under the panel drops the old endpoint's result", async () => {
+    const { rerender } = render(<InstanceSSHPanel instance={{ ...storedInstance, sshHostKeyPinned: true }} />)
+    await runTest({ status: "pinned", fingerprint: "SHA256:abc" })
+
+    rerender(<InstanceSSHPanel instance={{ ...storedInstance, sshHost: "other.example" }} />)
+    await waitFor(() => expect((document.getElementById("ssh-host") as HTMLInputElement).value).toBe("other.example"))
+    expect(document.querySelector("[data-ssh-status]")).toBeNull()
+    expect(screen.getByText("preferences.ssh.test.unpinnedAtRest")).not.toBeNull()
+  })
+
   it("a refused clear shows the server text inline", async () => {
     mocks.api.clearSSHCredentials.mockRejectedValue(new APIError("Disable hardlink or reflink mode on this instance before removing its SSH credentials", 400))
     render(<InstanceSSHPanel instance={storedInstance} />)
