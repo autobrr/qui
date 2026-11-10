@@ -90,7 +90,7 @@ Common reasons:
 - **Coverage is below your threshold**: qui did not find enough matching episodes
 - **Episodes are still downloading**: only fully completed episode torrents count toward coverage
 - **Release details do not match**: the episodes must match the pack's title, season, and normal release details such as source, resolution, and release group
-- **No eligible instance was scanned**: the instance requires local filesystem access plus hardlink or reflink mode, or it is a [remote instance](../ssh-access.md) with hardlink mode
+- **No eligible instance was scanned**: an eligible instance has a link base directory, and either local filesystem access with hardlink or reflink mode, or [SSH access](../ssh-access.md) with hardlink mode
 - **Webhook source filters excluded your episodes**: include/exclude category or tag filters removed them from the scan
 - **The release is not a season pack** or **season-pack matching is disabled**
 
