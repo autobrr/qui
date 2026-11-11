@@ -20,11 +20,24 @@ type CopyGroups struct {
 	ids   map[int]map[string]uint64
 	read  map[int]struct{}
 	parts map[int]map[string][]SharedPart
+	// partIDs is one more than the highest id of a Shared part.
+	partIDs uint64
+	// sizes holds what the Unique size reads of each torrent of ids and parts,
+	// so that it looks up a hash one time.
+	sizes map[int]map[string]uniqueSizeEntry
+}
+
+// uniqueSizeEntry is the Copy group and the Shared parts of one torrent.
+type uniqueSizeEntry struct {
+	group             uint64
+	grouped, hasParts bool
+	parts             []SharedPart
 }
 
 // SharedPart is one part of the data of torrents that share some files but
 // not all (GLOSSARY.md). Each torrent that holds the part has it in its list,
-// and the Unique size counts the part one time.
+// and the Unique size counts the part one time. The ids of one map are low
+// numbers from 0, so a slice can hold a mark for each part.
 type SharedPart struct {
 	ID   uint64
 	Size int64
@@ -37,7 +50,26 @@ func NewCopyGroups(ids map[int]map[string]uint64, parts map[int]map[string][]Sha
 	for _, id := range read {
 		record[id] = struct{}{}
 	}
-	return &CopyGroups{ids: ids, parts: parts, read: record}
+	g := &CopyGroups{ids: ids, parts: parts, read: record, sizes: make(map[int]map[string]uniqueSizeEntry, len(ids))}
+	for instanceID, byHash := range ids {
+		g.sizes[instanceID] = make(map[string]uniqueSizeEntry, len(byHash)+len(parts[instanceID]))
+		for hash, group := range byHash {
+			g.sizes[instanceID][hash] = uniqueSizeEntry{group: group, grouped: true}
+		}
+	}
+	for instanceID, byHash := range parts {
+		if g.sizes[instanceID] == nil {
+			g.sizes[instanceID] = make(map[string]uniqueSizeEntry, len(byHash))
+		}
+		for hash, list := range byHash {
+			// The Unique size reads only the parts of a torrent that has them.
+			g.sizes[instanceID][hash] = uniqueSizeEntry{hasParts: true, parts: list}
+			for _, part := range list {
+				g.partIDs = max(g.partIDs, part.ID+1)
+			}
+		}
+	}
+	return g
 }
 
 func (g *CopyGroups) hasRead(instanceID int) bool {
@@ -63,12 +95,12 @@ func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
 // count one time, as in TotalSize, so a copy that the last build did not group
 // does not count twice.
 type uniqueSizes struct {
-	ids   map[string]uint64
-	parts map[string][]SharedPart
-	// counted and countedSeeding hold the Shared parts that the totals hold.
-	counted, countedSeeding map[uint64]struct{}
-	// pathParts holds the Shared parts of the torrents on each content path set.
-	pathParts map[int32][]SharedPart
+	entries map[string]uniqueSizeEntry
+	// counted and countedSeeding mark the Shared parts that the totals hold, by id.
+	counted, countedSeeding []bool
+	// onPath holds each torrent with Shared parts whose content path another
+	// torrent has.
+	onPath []partsOnPath
 	// parent joins the Copy groups and the content paths that hold the same data.
 	parent  []int32
 	byGroup map[uint64]int32
@@ -76,6 +108,11 @@ type uniqueSizes struct {
 	members []uniqueSizeMember
 	// total and seeding count the torrents that share their data with no torrent.
 	total, seeding int64
+}
+
+type partsOnPath struct {
+	path  string
+	parts []SharedPart
 }
 
 type uniqueSizeMember struct {
@@ -89,11 +126,11 @@ func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	if !g.hasRead(instanceID) {
 		return nil
 	}
-	return &uniqueSizes{
-		ids: g.ids[instanceID], parts: g.parts[instanceID],
-		counted: map[uint64]struct{}{}, countedSeeding: map[uint64]struct{}{}, pathParts: map[int32][]SharedPart{},
-		byGroup: map[uint64]int32{}, byPath: map[string]int32{},
+	u := &uniqueSizes{entries: g.sizes[instanceID], byGroup: map[uint64]int32{}, byPath: map[string]int32{}}
+	if len(g.parts[instanceID]) > 0 {
+		u.counted, u.countedSeeding = make([]bool, g.partIDs), make([]bool, g.partIDs)
 	}
+	return u
 }
 
 // add counts one torrent. sharedPath is its mark from findSharedContentPaths.
@@ -104,16 +141,15 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 		return
 	}
 	sharedPath = sharedPath && t.ContentPath != ""
-	if parts, ok := u.parts[t.Hash]; ok {
-		u.count(parts, seeding)
+	entry := u.entries[t.Hash]
+	if entry.hasParts {
+		u.count(entry.parts, seeding)
 		if sharedPath {
-			set := u.set(u.byPath, t.ContentPath)
-			u.pathParts[set] = append(u.pathParts[set], parts...)
+			u.onPath = append(u.onPath, partsOnPath{path: t.ContentPath, parts: entry.parts})
 		}
 		return
 	}
-	id, grouped := u.ids[t.Hash]
-	if !grouped && !sharedPath {
+	if !entry.grouped && !sharedPath {
 		u.total += t.Size
 		if seeding {
 			u.seeding += t.Size
@@ -121,8 +157,8 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 		return
 	}
 	set := int32(-1)
-	if grouped {
-		set = u.set(u.byGroup, id)
+	if entry.grouped {
+		set = u.set(u.byGroup, entry.group)
 	}
 	if sharedPath {
 		path := u.set(u.byPath, t.ContentPath)
@@ -145,11 +181,11 @@ func (u *uniqueSizes) count(parts []SharedPart, seeding bool) {
 }
 
 // countOnce returns the size of part the first time that it sees the part.
-func countOnce(counted map[uint64]struct{}, part SharedPart) int64 {
-	if _, ok := counted[part.ID]; ok {
+func countOnce(counted []bool, part SharedPart) int64 {
+	if counted[part.ID] {
 		return 0
 	}
-	counted[part.ID] = struct{}{}
+	counted[part.ID] = true
 	return part.Size
 }
 
@@ -184,15 +220,23 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 		}
 	}
 	// A torrent on the content path of a torrent with Shared parts holds those
-	// parts, so only its bytes above them count.
+	// parts, so only its bytes above them count. Only a torrent without Shared
+	// parts gives its content path a set.
 	held := make([]int64, len(u.parent))
-	heldParts := map[[2]uint64]struct{}{}
-	for set, parts := range u.pathParts {
+	var heldParts map[[2]uint64]struct{}
+	for _, holder := range u.onPath {
+		set, ok := u.byPath[holder.path]
+		if !ok {
+			continue
+		}
 		root := u.root(set)
-		u.count(parts, seeds[root] > 0)
-		for _, part := range parts {
+		u.count(holder.parts, seeds[root] > 0)
+		for _, part := range holder.parts {
 			key := [2]uint64{uint64(root), part.ID} //nolint:gosec // A set index is not negative.
 			if _, ok := heldParts[key]; !ok {
+				if heldParts == nil {
+					heldParts = map[[2]uint64]struct{}{}
+				}
 				heldParts[key] = struct{}{}
 				held[root] += part.Size
 			}
