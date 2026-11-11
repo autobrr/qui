@@ -55,6 +55,10 @@ type torrentContentResolver interface {
 	GetTorrents(ctx context.Context, instanceID int, options qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 }
 
+type torrentDeleter interface {
+	DeleteTorrents(ctx context.Context, instanceID int, hashes []string, deleteFiles bool, actor qbittorrent.DeleteActor) error
+}
+
 type TorrentsHandler struct {
 	syncManager   *qbittorrent.SyncManager
 	instanceStore *models.InstanceStore
@@ -64,6 +68,7 @@ type TorrentsHandler struct {
 	contentResolver   torrentContentResolver
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
+	deleter           torrentDeleter
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -114,6 +119,7 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *ja
 		contentResolver: syncManager,
 		archiveExporter: syncManager,
 		deleteMatches:   crossSeedService,
+		deleter:         syncManager,
 	}
 	if jackettService != nil {
 		h.torrentDownloader = jackettService
@@ -1567,12 +1573,9 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 			return errors.New("trackerURLs parameter is required for removeTrackers action")
 		}
 		return h.syncManager.BulkRemoveTrackers(ctx, instanceID, hashes, req.TrackerURLs)
-	case "delete":
-		action := req.Action
-		if req.DeleteFiles {
-			action = "deleteWithFiles"
-		}
-		return h.syncManager.BulkAction(ctx, instanceID, hashes, action)
+	case "delete", "deleteWithFiles":
+		deleteFiles := req.Action == "deleteWithFiles" || req.DeleteFiles
+		return h.deleter.DeleteTorrents(ctx, instanceID, hashes, deleteFiles, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorUser})
 	default:
 		return h.syncManager.BulkAction(ctx, instanceID, hashes, req.Action)
 	}
