@@ -724,10 +724,7 @@
     "bottomPriorityBatch": "Нижній пріоритет ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Перейменувати",
-    "renameTorrent": "Перейменувати торент",
-    "renameFile": "Перейменувати файл",
-    "renameFolder": "Перейменувати папку"
+    "renameTorrent": "Перейменувати торент"
   },
   "tagCategoryManagement": {
     "createTag": {

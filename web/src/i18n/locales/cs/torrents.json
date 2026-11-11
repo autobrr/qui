@@ -672,10 +672,7 @@
     "bottomPriorityBatch": "Nejnižší priorita ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Přejmenovat",
-    "renameTorrent": "Přejmenovat torrent",
-    "renameFile": "Přejmenovat soubor",
-    "renameFolder": "Přejmenovat složku"
+    "renameTorrent": "Přejmenovat torrent"
   },
   "tagCategoryManagement": {
     "createTag": {

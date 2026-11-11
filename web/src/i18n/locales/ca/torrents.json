@@ -265,10 +265,7 @@
     "bottomPriorityBatch": "Prioritat mínima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Reanomena",
-    "renameTorrent": "Reanomena el torrent",
-    "renameFile": "Reanomena el fitxer",
-    "renameFolder": "Reanomena la carpeta"
+    "renameTorrent": "Reanomena el torrent"
   },
   "trackersTable": {
     "status": "Estat",

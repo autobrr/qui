@@ -568,10 +568,7 @@
     "bottomPriorityBatch": "최하위 우선순위 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "이름 바꾸기",
-    "renameTorrent": "토렌트 이름 바꾸기",
-    "renameFile": "파일 이름 바꾸기",
-    "renameFolder": "폴더 이름 바꾸기"
+    "renameTorrent": "토렌트 이름 바꾸기"
   },
   "tagCategoryManagement": {
     "createTag": {

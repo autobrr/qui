@@ -38,7 +38,7 @@ import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import { formatBytes } from "@/lib/utils"
-import type { LocalCrossSeedMatch, Torrent } from "@/types"
+import type { InstanceCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
 const scenario = vi.hoisted(() => ({
@@ -52,6 +52,7 @@ const scenario = vi.hoisted(() => ({
   // The options that the table last gave the list hook.
   listOptions: undefined as { groupCopies?: boolean } | undefined,
   isDemo: false,
+  capabilities: undefined as InstanceCapabilities | undefined,
 }))
 // The real list controller, so a test can read its load-more window.
 const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
@@ -199,7 +200,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
         tags: [] as string[],
         trackerHealthSupported: false,
         serverState: null,
-        capabilities: undefined,
+        get capabilities() { return scenario.capabilities },
         useSubcategories: false,
         isLoading: false,
         isCachedData: false,
@@ -281,6 +282,7 @@ describe("TorrentTableOptimized smoke", () => {
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length
     scenario.rows = undefined
+    scenario.capabilities = undefined
   })
 
   it("renders a row for each torrent", () => {
@@ -393,6 +395,41 @@ describe("TorrentTableOptimized smoke", () => {
     fireEvent.click(within(container).getByText("Bravo Release"))
     expect(onTorrentSelect).toHaveBeenLastCalledWith(null)
     expect(checkedRows(container)).toEqual([])
+  })
+
+  // regression: #4023
+  // The menu renames only the torrent. The user renames files and folders in the Content tab.
+  it("right-click shows one Rename Torrent item that opens the Rename Torrent dialog", async () => {
+    const { container, findByRole, queryByRole, findByText } = renderTable()
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+
+    const item = await findByRole("menuitem", { name: "renameSubmenu.renameTorrent" })
+    expect(item.getAttribute("aria-disabled")).toBeNull()
+    for (const name of ["renameSubmenu.rename", "renameSubmenu.renameFile", "renameSubmenu.renameFolder"]) {
+      expect(queryByRole("menuitem", { name })).toBeNull()
+    }
+
+    fireEvent.click(item)
+    expect(await findByText("dialogs.renameTorrent.title")).toBeTruthy()
+  })
+
+  it("disables Rename Torrent when the Action target holds more than one torrent", async () => {
+    const { container, findByRole } = renderTable()
+    fireEvent.click(within(container).getByText("Alpha Release"))
+    fireEvent.click(within(container).getByText("Bravo Release"), { ctrlKey: true })
+    fireEvent.contextMenu(within(container).getByText("Bravo Release"))
+
+    const item = await findByRole("menuitem", { name: "renameSubmenu.renameTorrent" })
+    expect(item.getAttribute("aria-disabled")).toBe("true")
+  })
+
+  it("hides Rename Torrent when the instance cannot rename torrents", async () => {
+    scenario.capabilities = { supportsRenameTorrent: false } as InstanceCapabilities
+    const { container, findByRole, queryByRole } = renderTable()
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+
+    await findByRole("menuitem", { name: "contextMenu.viewDetails" })
+    expect(queryByRole("menuitem", { name: "renameSubmenu.renameTorrent" })).toBeNull()
   })
 
   // Issue #2525: in cross-seed mode the table filters client-side. The search

@@ -620,10 +620,7 @@
     "bottomPriorityBatch": "Bottom Priority ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Rename",
-    "renameTorrent": "Rename Torrent",
-    "renameFile": "Rename File",
-    "renameFolder": "Rename Folder"
+    "renameTorrent": "Rename Torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
