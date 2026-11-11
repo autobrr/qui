@@ -42,7 +42,7 @@ func (sm *SyncManager) ReadInstanceTorrents(ctx context.Context, instanceID int)
 		facts.lastAttempt = syncManager.LastSyncTime()
 		facts.synced = !syncManager.LastSuccessfulSyncTime().IsZero()
 		snapshot = syncManager.SnapshotUnchecked()
-		facts.anyMoving = anyMoving(snapshot)
+		facts.anyMoving = len(snapshotMatching(snapshot, func(t *qbt.Torrent) bool { return t.State == qbt.TorrentStateMoving })) > 0
 	}
 	// The 120 s rule relies on the tracker health loop, which syncs each
 	// connected instance every 60 s (refreshTrackerHealthCounts in sync_manager.go).
@@ -55,13 +55,6 @@ func (sm *SyncManager) ReadInstanceTorrents(ctx context.Context, instanceID int)
 		return nil, err
 	}
 	return sm.instanceTorrentViews(client, instanceID, name, TorrentRefFilter{}.Select(snapshot)), nil
-}
-
-func anyMoving(snapshot *qbt.SyncSnapshot) bool {
-	if snapshot == nil {
-		return false
-	}
-	return len(snapshot.Matching(func(t *qbt.Torrent) bool { return t.State == qbt.TorrentStateMoving })) > 0
 }
 
 // rideFacts is what ReadInstanceTorrents knows about an instance before it picks a path.

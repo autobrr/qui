@@ -53,14 +53,14 @@ func hasExactTag(tags, target string) bool {
 // torrents are shared with every other reader: copy a torrent before you
 // change it (ADR 0051).
 func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
-	if snapshot == nil {
-		return nil
-	}
 	if len(f.Hashes) == 0 {
 		if f.Category == "" && f.Tag == "" && !f.Completed {
-			return snapshot.Torrents()
+			return snapshotTorrents(snapshot)
 		}
-		return snapshot.Matching(f.matches)
+		return snapshotMatching(snapshot, f.matches)
+	}
+	if snapshot == nil {
+		return nil
 	}
 	refs := make([]*qbt.Torrent, 0, len(f.Hashes))
 	for _, hash := range f.Hashes {

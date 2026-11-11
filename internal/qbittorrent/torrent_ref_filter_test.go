@@ -85,7 +85,8 @@ func TestGetTorrentRefsSelectsWhatGetTorrentsSelects(t *testing.T) {
 				got = append(got, *ref)
 			}
 			if tc.hashOrder {
-				require.Equal(t, tc.refs.Hashes[:2], []string{got[0].Hash, got[1].Hash})
+				order := []string{got[0].Hash, got[1].Hash}
+				require.Equal(t, []string{"aa04", "aa01"}, order)
 				require.ElementsMatch(t, want, got)
 				return
 			}
