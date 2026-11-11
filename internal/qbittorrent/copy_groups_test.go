@@ -370,6 +370,7 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		{name: "keep leaves torrents out", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), stalled}, keep: activelySeeding, want: 1000},
 		{name: "a torrent outside a group with the content path of a member counts one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/data/Rel")}, want: 1000},
 		{name: "two torrents outside a group with one content path count one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300},
+		// regression: #4020
 		{name: "a member that keep leaves out still joins its content path", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, keep: activelySeeding, want: 1000},
 		{name: "a group joins the torrents of its content paths", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000},
 	}
