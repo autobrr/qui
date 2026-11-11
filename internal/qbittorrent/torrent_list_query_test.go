@@ -348,11 +348,12 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		"a.example.invalid": {"h1": {}, "h2": {}},
 		"b.example.invalid": {"h1": {}},
 	}
-	counts := countTorrents(torrentCountsInput{
+	in := torrentCountsInput{
 		torrents:       torrents,
 		domainToHashes: mapping,
 		trackers:       trackerSources{extractDomain: ExtractDomainFromURL},
-	}).counts
+	}
+	counts := countTorrents(in).counts
 
 	// The per-domain numbers that the Dashboard reads still count h1 twice.
 	require.Equal(t, 2, counts.TrackerTransfers["a.example.invalid"].Count)
@@ -370,7 +371,7 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 	}
 
 	t.Run("no customization", func(t *testing.T) {
-		groups := counts.TrackerGroups(trackergroup.New(nil))
+		groups := groupTrackers(in, trackergroup.New(nil))
 		require.Equal(t, map[trackergroup.Group]TrackerTransferStats{
 			groupOf("a.example.invalid", trackergroup.Domain): {Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100},
 			groupOf("Public", trackergroup.Public):            {Count: 1, Uploaded: 30, Downloaded: 1, TotalSize: 300},
@@ -386,7 +387,7 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		mapper := trackergroup.New([]*models.TrackerCustomization{
 			{DisplayName: "Example", Domains: []string{"b.example.invalid", "d.example.invalid"}},
 		})
-		groups := counts.TrackerGroups(mapper)
+		groups := groupTrackers(in, mapper)
 		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 50, Downloaded: 2, TotalSize: 500},
 			groups[groupOf("Example", trackergroup.Customization)])
 		require.Equal(t, TrackerTransferStats{Count: 1, Uploaded: 20, Downloaded: 1, TotalSize: 100},
@@ -401,7 +402,7 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 			{DisplayName: "Example", Domains: []string{"a.example.invalid", "b.example.invalid"}},
 		})
 		// h1 has the sets {a, b} and h2 has {a}. Both are in Example and share a path.
-		stats := counts.TrackerGroups(mapper)[groupOf("Example", trackergroup.Customization)]
+		stats := groupTrackers(in, mapper)[groupOf("Example", trackergroup.Customization)]
 		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100}, stats)
 	})
 }

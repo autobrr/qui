@@ -3401,34 +3401,6 @@ type TorrentCounts struct {
 	Trackers         map[string]int                  `json:"trackers"`
 	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
 	Total            int                             `json:"total"`
-
-	// trackerSets feeds TrackerGroups. It stays out of the JSON, because the
-	// Tracker group depends on the customizations of the moment of the read.
-	trackerSets []*trackerSet
-}
-
-// TrackerGroups returns the totals of each Tracker group, where a torrent
-// counts toward exactly one group.
-func (c *TorrentCounts) TrackerGroups(mapper *trackergroup.Mapper) map[trackergroup.Group]TrackerTransferStats {
-	merged := make(map[trackergroup.Group]*trackerDomainStats)
-	for _, set := range c.trackerSets {
-		var private *bool
-		if set.public {
-			private = new(false)
-		}
-		group := mapper.Of(set.domains, private)
-		total := merged[group]
-		if total == nil {
-			total = &trackerDomainStats{}
-			merged[group] = total
-		}
-		total.merge(&set.stats)
-	}
-	groups := make(map[trackergroup.Group]TrackerTransferStats, len(merged))
-	for group, total := range merged {
-		groups[group] = total.totals()
-	}
-	return groups
 }
 
 // ExtractDomainFromURL calls the package-level ExtractDomainFromURL.
@@ -3675,6 +3647,23 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		client.clearTrackerExclusions(result.emptiedDomains)
 	}
 	return result.counts
+}
+
+// TrackerGroups returns the totals of each Tracker group of an instance, where
+// a torrent counts toward exactly one group. It reads the library again, so a
+// customization change shows at the next call.
+func (sm *SyncManager) TrackerGroups(ctx context.Context, instanceID int, mapper *trackergroup.Mapper) (map[trackergroup.Group]TrackerTransferStats, error) {
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	mainData := resolveMainData(syncManager, mainDataModeForRequest(false, syncManager.LastSyncTime()))
+	in := torrentCountsInput{
+		torrents:       syncManager.GetTorrents(qbt.TorrentFilterOptions{}),
+		domainToHashes: sm.getAuthoritativeDomainToHashes(instanceID),
+		trackers:       sm.trackerSources(client, mainData),
+	}
+	return groupTrackers(in, mapper), nil
 }
 
 // torrentListRuleFor builds the rule of a list request. It reads the tracker

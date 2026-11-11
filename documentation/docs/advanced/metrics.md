@@ -108,6 +108,7 @@ Each torrent counts once, so you can add the torrent count, upload, and download
 Before this change, qui counted the full bytes of a torrent under each of its tracker domains. The tracker series change one time at the upgrade:
 
 - A tracker with more than one domain shows its bytes once, so its series is smaller than before.
+- A secondary domain of such a tracker no longer has its own series. Update a saved query or alert that matches its `tracker_name` to use the group name.
 - A `Public` series and a `No tracker` series appear.
 - The "counts toward statistics" setting of a tracker customization no longer changes these metrics.
 

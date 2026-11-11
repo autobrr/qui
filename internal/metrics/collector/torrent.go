@@ -298,7 +298,16 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				)
 			}
 
-			for trackerName, stats := range trackerGroupStats(counts, mapper) {
+			groups, groupsErr := c.syncManager.TrackerGroups(ctx, instance.ID, mapper)
+			if groupsErr != nil {
+				log.Warn().
+					Err(groupsErr).
+					Int("instanceID", instance.ID).
+					Str("instanceName", instanceName).
+					Msg("Failed to group torrents by tracker for metrics")
+				c.reportError(ch, instanceIDStr, instanceName, "tracker_groups")
+			}
+			for trackerName, stats := range mergeByName(groups) {
 				ch <- prometheus.MustNewConstMetric(
 					c.trackerTorrentsDesc,
 					prometheus.GaugeValue,
@@ -371,12 +380,6 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			Str("instanceName", instanceName).
 			Msg("Collected metrics for instance")
 	}
-}
-
-// trackerGroupStats returns the totals of each tracker series, keyed by its
-// tracker_name label.
-func trackerGroupStats(counts *qbittorrent.TorrentCounts, mapper *trackergroup.Mapper) map[string]qbittorrent.TrackerTransferStats {
-	return mergeByName(counts.TrackerGroups(mapper))
 }
 
 // mergeByName adds the groups that share one label, because a duplicate label
