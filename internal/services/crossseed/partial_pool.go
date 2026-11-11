@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
@@ -71,7 +72,7 @@ type partialPoolSync interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
-	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 }
 
 // partialPoolCoordinator owns durable partial link-mode completion. Code
@@ -902,7 +903,7 @@ func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Con
 	if s == nil || s.syncManager == nil {
 		return nil, false
 	}
-	syncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
+	syncManager, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil || syncManager == nil {
 		return nil, false
 	}

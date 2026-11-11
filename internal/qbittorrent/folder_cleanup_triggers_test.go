@@ -97,7 +97,7 @@ func (r *triggerRig) add(torrents ...qbtstub.Torrent) {
 	}
 	client, err := r.sm.clientPool.GetClientOffline(r.t.Context(), r.instanceID)
 	require.NoError(r.t, err)
-	require.NoError(r.t, client.GetSyncManager().Sync(r.t.Context()))
+	require.NoError(r.t, client.SyncOwner().Sync(r.t.Context()))
 }
 
 func (r *triggerRig) requireGone(rel string) {
@@ -490,12 +490,12 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 			r.stub.SlowMoves = true
 			client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
 			require.NoError(t, err)
-			before := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+			before := client.SyncOwner().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
 			syncs := r.stub.Syncs()
 
 			require.NoError(t, tc.op(r))
 			require.Eventually(t, func() bool {
-				row := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+				row := client.SyncOwner().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
 				return row.SavePath != before.SavePath && row.ContentPath == before.ContentPath
 			}, 5*time.Second, 20*time.Millisecond, "the cache must show the new save path with the old content path")
 			// Let the second sync after the request land before the files move.

@@ -23,6 +23,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 type peerSyncTestTransport func(*http.Request) (*http.Response, error)
@@ -122,19 +124,19 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	active := client.GetOrCreatePeerSyncManager(activeHash)
 	removed := client.GetOrCreatePeerSyncManager(strings.ToUpper(removedHash))
 	t.Cleanup(func() { client.prunePeerSyncManagers(&qbt.MainData{}) })
 
 	phase.Store(1)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.NotContains(t, client.peerSyncManager, removedHash)
 	require.Same(t, active, client.GetOrCreatePeerSyncManager(activeHash), "an unchanged torrent survives a delta")
 	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(removedHash))
 
 	phase.Store(2)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Empty(t, client.peerSyncManager, "a full refresh removes absent torrents")
 }
 
@@ -291,7 +293,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncOpts.DynamicSync = true
 	client := &Client{
 		Client:      qbtClient,
-		syncManager: qbtClient.NewSyncManager(syncOpts),
+		syncManager: syncowner.New(qbtClient, syncOpts),
 		version:     semver.MustParse("2.16.0"),
 	}
 

@@ -555,7 +555,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	syncManager, err := h.syncManager.GetQBittorrentSyncManager(r.Context(), instanceID)
+	syncManager, err := h.syncManager.GetSyncOwner(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:checkDuplicates") {
 			return

@@ -130,7 +130,7 @@ func TestTorrentListLeavesOutPopularityAndPrivateThatTheInstanceDoesNotSend(t *t
 		client, err := NewClientWithTimeout(instance.ID, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 		require.NoError(t, err)
 		t.Cleanup(client.optimisticUpdates.Close)
-		require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+		require.NoError(t, client.SyncOwner().Sync(t.Context()))
 		clients[instance.ID] = client
 		versions[instance.ID] = version
 	}

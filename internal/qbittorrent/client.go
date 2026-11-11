@@ -22,6 +22,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // splitHostUserinfo strips userinfo credentials from a host URL, returning the
@@ -59,7 +61,7 @@ type Client struct {
 	version         *semver.Version
 	lastHealthCheck time.Time
 	isHealthy       bool
-	syncManager     *qbt.SyncManager
+	syncManager     *syncowner.Owner
 	peerSyncManager map[string]*peerSyncEntry
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
@@ -188,7 +190,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.BeforeFullUpdate = client.refreshCapabilitiesBeforeFullUpdate
 	syncOpts.OnTorrentsLeftOut = client.handleTorrentsLeftOut
 
-	client.syncManager = qbtClient.NewSyncManager(syncOpts)
+	client.syncManager = syncowner.New(qbtClient, syncOpts)
 	// The tracker manager did not exist during the capability refresh above.
 	client.syncManager.Trackers().SetUseIncludeTrackers(client.Supports(CapTrackerHealth))
 
@@ -217,7 +219,7 @@ func (c *Client) GetLastHealthCheck() time.Time {
 // advances on failed sync attempts too and would mask a stalled instance from
 // readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return time.Time{}
 	}
@@ -486,7 +488,7 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 // hasAnyTorrent reports whether at least one of hashes is in the cache. It stops
 // at the first hit and copies no torrents.
 func (c *Client) hasAnyTorrent(hashes []string) bool {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return false
 	}
@@ -498,7 +500,7 @@ func (c *Client) hasAnyTorrent(hashes []string) bool {
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
@@ -509,7 +511,7 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 // getTorrentsByHashesUnchecked returns the maindata entries of the hashes,
 // visiting only those, and never starts a sync.
 func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
@@ -546,14 +548,14 @@ func (c *Client) GetWebAPIVersion() string {
 	return c.version.Original()
 }
 
-func (c *Client) GetSyncManager() *qbt.SyncManager {
+func (c *Client) SyncOwner() *syncowner.Owner {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.syncManager
 }
 
 func (c *Client) trackerManager() *qbt.TrackerManager {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
@@ -980,7 +982,7 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 
 	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {

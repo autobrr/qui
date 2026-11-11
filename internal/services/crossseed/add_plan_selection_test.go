@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -99,7 +100,7 @@ func (*alignmentFailureSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*alignmentFailureSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*alignmentFailureSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

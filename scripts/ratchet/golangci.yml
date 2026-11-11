@@ -22,6 +22,15 @@ linters:
     - errchkjson
     - gocognit
     - contextcheck
+    - forbidigo
   settings:
     gocognit:
       min-complexity: 30
+    # The temporary copying reads of the sync owner (#4029). A call through an
+    # interface is not counted.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^syncowner\.Owner\.(GetData|GetDataUnchecked|GetTorrents|GetTorrentsUnchecked|GetTorrentsMatching|GetTorrentsMatchingUnchecked|GetTorrentMap|GetTorrent|GetTorrentUnchecked)$
+          pkg: ^github\.com/autobrr/qui/internal/qbittorrent/syncowner$
+          msg: this read copies torrents; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)

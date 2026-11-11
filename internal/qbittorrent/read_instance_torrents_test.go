@@ -17,6 +17,8 @@ import (
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 func TestRideOnSyncs(t *testing.T) {
@@ -70,7 +72,7 @@ func newWriteRig(t *testing.T) *SyncManager {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	return NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 }
 
@@ -124,7 +126,7 @@ func TestReadInstanceTorrentsRidesOnTrackerHealthSyncs(t *testing.T) {
 	client := &Client{
 		Client:            qbtClient,
 		instanceID:        1,
-		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
 	}
 	client.updateHealthStatus(true)

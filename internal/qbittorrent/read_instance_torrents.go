@@ -9,6 +9,8 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 const (
@@ -29,11 +31,11 @@ func (sm *SyncManager) ReadInstanceTorrents(ctx context.Context, instanceID int)
 	}
 
 	facts := rideFacts{lastWrite: sm.lastWriteAt(instanceID)}
-	var syncManager *qbt.SyncManager
+	var syncManager *syncowner.Owner
 	if err == nil {
 		facts.hasClient = true
 		facts.healthy = client.IsHealthy()
-		syncManager = client.GetSyncManager()
+		syncManager = client.SyncOwner()
 	}
 	if syncManager != nil {
 		facts.lastAttempt = syncManager.LastSyncTime()

@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -151,7 +152,7 @@ func (m *completionGazelleSyncMock) ExtractDomainFromURL(urlStr string) string {
 	return strings.TrimSpace(urlStr)
 }
 
-func (m *completionGazelleSyncMock) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *completionGazelleSyncMock) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

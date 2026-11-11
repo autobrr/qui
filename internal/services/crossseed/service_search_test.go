@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 
 	"github.com/autobrr/qui/internal/models"
@@ -1047,7 +1048,7 @@ func (*queueTestSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(host)
 }
 
-func (*queueTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*queueTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -1146,7 +1147,7 @@ func (*gazelleSkipHashSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(host)
 }
 
-func (*gazelleSkipHashSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*gazelleSkipHashSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // localMatchSyncManager is a minimal fake for testing file overlap logic.
@@ -74,7 +75,7 @@ func (m *localMatchSyncManager) ExtractDomainFromURL(_ string) string {
 	return ""
 }
 
-func (m *localMatchSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
+func (m *localMatchSyncManager) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

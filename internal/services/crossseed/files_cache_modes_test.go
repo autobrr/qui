@@ -71,7 +71,7 @@ func (r *filesCacheRig) rename(t *testing.T, torrent qbtstub.Torrent, name strin
 	r.stub.Add(torrent)
 	client, err := r.clients.GetClient(t.Context(), r.instanceID)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }
 
 // age moves the write of the hash's cached list back by d. withoutPrint

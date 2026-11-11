@@ -6,6 +6,8 @@ package buildinfo
 import (
 	"fmt"
 	"runtime"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 var (
@@ -20,4 +22,11 @@ var (
 
 func init() {
 	UserAgent = fmt.Sprintf("qui/%s (%s %s)", Version, runtime.GOOS, runtime.GOARCH)
+}
+
+// IsRelease rejects dev builds ("0.0.0-dev") and git describe builds
+// ("v1.30.0-30-gde99118d"): both parse as semver but carry a prerelease part.
+func IsRelease(version string) bool {
+	v, err := semver.NewVersion(version)
+	return err == nil && v.Prerelease() == "" && v.Metadata() == ""
 }

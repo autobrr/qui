@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -102,7 +103,7 @@ type qbittorrentSync interface {
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
-	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 	RenameTorrent(ctx context.Context, instanceID int, hash, name string) error
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error

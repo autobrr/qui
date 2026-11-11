@@ -38,6 +38,7 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down:
 
 - A file without an entry must have no problems. A new problem in a listed file makes its count too high, and the check fails.
+- A new rule in the ratchet starts with the count of each file. Rule 3 in `scripts/ratchet/main.go` skips a linter that the allowlist of the base does not list.
 - When you fix a problem, lower the count of its file in the same change. Delete the entry at 0. The check fails until the count matches.
 - Do not hide `gocognit` with a `nolint` comment. Split the function.
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.

@@ -102,7 +102,7 @@ func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
 	t.Cleanup(func() { _ = pool.Close() })
 	client, err := pool.GetClient(t.Context(), instance.ID)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	return NewHandler(pool, nil, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/"), instance.ID
 }
 

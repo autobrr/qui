@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 func TestNormalizeConnectionStatus(t *testing.T) {
@@ -2393,7 +2394,7 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 	// A go-qbittorrent sync manager starts a cache goroutine that never ends,
 	// so it must not start inside the bubble.
 	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
-	qbtSync := qbtClient.NewSyncManager(qbt.DefaultSyncOptions())
+	qbtSync := syncowner.New(qbtClient, qbt.DefaultSyncOptions())
 
 	synctest.Test(t, func(t *testing.T) {
 		var maindataCalls atomic.Int32
@@ -2430,7 +2431,7 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		leaderDone := make(chan struct{})
 		go func() {
 			defer close(leaderDone)
-			_ = client.GetSyncManager().Sync(context.Background())
+			_ = client.SyncOwner().Sync(context.Background())
 		}()
 
 		<-firstSyncStarted
@@ -2598,7 +2599,7 @@ func TestListTorrentsCarriesNoPreferences(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  inst.ID,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
@@ -2658,7 +2659,7 @@ func TestListTorrentsSearchKeepsWholeLibraryCounts(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  inst.ID,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
@@ -2723,7 +2724,7 @@ func TestListTorrentsSummaryOmitsRows(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  inst.ID,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
@@ -3263,7 +3264,7 @@ func TestListTorrentsSingleHashSkipsLibraryCopy(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  inst.ID,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
@@ -3336,7 +3337,7 @@ func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  1,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
@@ -3408,7 +3409,7 @@ func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 	client := &Client{
 		Client:            qbtClient,
 		instanceID:        1,
-		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
 	}
 	client.updateHealthStatus(true)
@@ -3485,7 +3486,7 @@ func TestAddTagsSyncsWhenTheHashIsMissingFromTheCache(t *testing.T) {
 	client := &Client{
 		Client:            qbtClient,
 		instanceID:        inst.ID,
-		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
 	}
 	client.updateHealthStatus(true)
@@ -3535,7 +3536,7 @@ func TestSetTagsFallbackRemovesTagsAddedSinceTheLastSync(t *testing.T) {
 	client := &Client{
 		Client:            qbtClient,
 		instanceID:        inst.ID,
-		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
 	}
 	client.updateHealthStatus(true)
@@ -3566,7 +3567,7 @@ func TestResumeWhenCompletePollersShareSync(t *testing.T) {
 	client := &Client{
 		Client:      qbtClient,
 		instanceID:  1,
-		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 	}
 	client.updateHealthStatus(true)
 	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
@@ -3626,7 +3627,7 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 	client := &Client{
 		Client:            qbtClient,
 		instanceID:        1,
-		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](ttlcache.SetDefaultTTL(30 * time.Second)),
 	}
 	client.updateHealthStatus(true)

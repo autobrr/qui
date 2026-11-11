@@ -134,7 +134,7 @@ func (rig *flagsRig) pass(t *testing.T) [][]string {
 	t.Helper()
 	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 	rig.mu.Lock()
 	before := len(rig.requests)
@@ -301,7 +301,7 @@ func TestAttachTrackerURLsReadsMainData(t *testing.T) {
 	rig := newFlagsRig(t)
 	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 	torrents := rig.sm.AttachTrackerURLs(t.Context(), 1, []qbt.Torrent{{Hash: flagsHashHealthy}, {Hash: "unknown"}})
 	urls := make([]string, 0, len(torrents[0].Trackers))
