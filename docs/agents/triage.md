@@ -177,7 +177,7 @@ If a cross-seed match bug gives no release names in its text or in a Paste, and 
 
 Each question must name the exact detail you need. Put everything you established into the first list, so the next pass does not repeat your work.
 
-A bug report whose code path no longer matches the report, with no fix found in merged pull requests, is also `needs-info`: ask the reporter to retest on the current release and name that release. A report that still matches the code goes through "Bug or enhancement". The daily sweep closes a `needs-info` discussion if nobody answers in 30 days.
+A bug report whose code path no longer matches the report, with no fix found in merged pull requests, is also `needs-info`: ask the reporter to retest on the current release and name that release. A report that still matches the code goes through "Bug or enhancement". The daily sweep closes a `needs-info` discussion if nobody answers in 30 days. In Issue Triage, a later human comment reopens the discussion and starts triage again.
 
 ### ready-for-agent
 
