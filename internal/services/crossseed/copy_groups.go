@@ -83,7 +83,7 @@ func (s *Service) FindCopyGroups(
 	reads := search.fileReads(rules)
 	idx := s.buildIndexFromViews(search.all, false, reads)
 	if idx == nil {
-		return nil, search.links(nil, nil, reads), nil
+		return nil, search.links(nil, nil, nil, reads), nil
 	}
 	picks := s.selectAllCandidates(ctx, search.all, idx, false, reads)
 	if err := ctx.Err(); err != nil {
@@ -98,7 +98,7 @@ func (s *Service) FindCopyGroups(
 			picks[instance.lo+k] = append(picks[instance.lo+k], shared[k]...)
 		}
 	}
-	search.addPackPicks(idx, reads, picks)
+	search.addPackPicks(idx, picks)
 	if err := search.readPicks(ctx, picks); err != nil {
 		return nil, nil, err
 	}
@@ -106,7 +106,7 @@ func (s *Service) FindCopyGroups(
 	if err != nil {
 		return nil, nil, err
 	}
-	return copyGroupsOf(search.all, roots, key), search.links(pairs, shared, reads), nil
+	return copyGroupsOf(search.all, roots, key), search.links(roots, pairs, shared, reads), nil
 }
 
 // copyGroupSearch holds the torrents of one FindCopyGroups call and the file
@@ -226,45 +226,39 @@ func (l *copyGroupSearch) readPicks(ctx context.Context, picks [][]*candidatePic
 
 // addPackPicks gives each single episode the season packs of its release as
 // picks. A pack is no copy of an episode, so the pick has no name tier: it can
-// only share files.
-func (l *copyGroupSearch) addPackPicks(idx *matchIndex, reads localReads, picks [][]*candidatePick) {
+// only share files. An episode and a pack that did not change keep their link
+// of last.
+func (l *copyGroupSearch) addPackPicks(idx *matchIndex, picks [][]*candidatePick) {
 	m := l.svc.matcher()
-	read := func(i int) namedRelease { return reads.read(m, l.all[i].InstanceID, l.all[i].Torrent) }
-	// An episode that did not change keeps its links of last, if no pack changed.
-	packChanged := slices.ContainsFunc(l.changedTorrents(), func(i int) bool { return isTVSeasonPack(read(i).release) })
 	policy := localMatchPolicy
 	policy.IndividualEpisodes = true
-	for i := range l.all {
-		if !l.changed[i] && !packChanged {
+	// A torrent with two Title keys meets a pack two times.
+	picked := map[[2]int]struct{}{}
+	for key, episodes := range idx.byTitleKey {
+		if key.episode == 0 {
 			continue
 		}
-		episode := read(i)
-		if !isTVEpisode(episode.release) {
-			continue
-		}
-		date := releaseDate(episode.release)
-		for _, title := range m.titleKeys(episode) {
-			for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, date: date}] {
-				if isTVSeasonPack(c.read.release) && m.matchVerdict(c.read, episode, matchEvidence{}, policy).Matched {
-					picks[i] = append(picks[i], &candidatePick{entry: c.candidateEntry})
+		packs := idx.byTitleKey[titleEpisodeKey{title: key.title, date: key.date}]
+		for _, episode := range episodes {
+			e := l.places[episode.key()]
+			for _, pack := range packs {
+				p := l.places[pack.key()]
+				if _, done := picked[[2]int{e, p}]; done || !l.changed[e] && !l.changed[p] {
+					continue
+				}
+				picked[[2]int{e, p}] = struct{}{}
+				if isTVEpisode(episode.read.release) && isTVSeasonPack(pack.read.release) &&
+					m.matchVerdict(pack.read, episode.read, matchEvidence{}, policy).Matched {
+					picks[e] = append(picks[e], &candidatePick{entry: pack.candidateEntry})
 				}
 			}
 		}
 	}
 }
 
-func (l *copyGroupSearch) changedTorrents() []int {
-	var changed []int
-	for i, isChanged := range l.changed {
-		if isChanged {
-			changed = append(changed, i)
-		}
-	}
-	return changed
-}
-
-// links returns what the next call starts from, with the Shared parts.
-func (l *copyGroupSearch) links(pairs, shared [][2]string, reads localReads) *CopyLinks {
+// links returns what the next call starts from, with the Shared parts. roots
+// holds the root of the Copy group of each torrent.
+func (l *copyGroupSearch) links(roots []int, pairs, shared [][2]string, reads localReads) *CopyLinks {
 	next := &CopyLinks{prints: make(map[string]copyGroupsPrint, len(l.all)), pairs: pairs, shared: shared, sizes: map[string][]int64{}, reads: reads}
 	for i := range l.all {
 		// A torrent whose list did not read is a changed torrent in the next call.
@@ -279,7 +273,7 @@ func (l *copyGroupSearch) links(pairs, shared [][2]string, reads localReads) *Co
 			}
 		}
 	}
-	next.parts = sharedParts(l.all, l.index, pairs, shared, next.sizes)
+	next.parts = sharedParts(l.all, roots, l.index, shared, next.sizes)
 	return next
 }
 
@@ -456,36 +450,33 @@ func copyGroupID(key []byte, instanceID int, hash string) uint64 {
 	return binary.BigEndian.Uint64(mac.Sum(nil))
 }
 
-// sharedParts splits the data of each set of torrents that pairs and shared
-// link, when shared holds a pair of the set, into the parts that the same
-// torrents hold. Inside a set, files of equal size hold the same data. Only
-// the torrents of one instance share a part.
-func sharedParts(all []qbittorrent.CrossInstanceTorrentView, index map[string]int, pairs, shared [][2]string, sizes map[string][]int64) map[int]map[string][]qbittorrent.SharedPart {
+// sharedParts splits the data of each set of torrents that the Copy groups
+// of roots and the pairs of shared link, when shared holds a pair of the set,
+// into the parts that the same torrents hold. Inside a set, files of equal
+// size hold the same data. Only the torrents of one instance share a part.
+func sharedParts(all []qbittorrent.CrossInstanceTorrentView, roots []int, index map[string]int, shared [][2]string, sizes map[string][]int64) map[int]map[string][]qbittorrent.SharedPart {
 	if len(shared) == 0 {
 		return nil
 	}
-	parent := map[int]int{}
+	parent := slices.Clone(roots)
 	root := func(i int) int {
-		if _, ok := parent[i]; !ok {
-			parent[i] = i
-		}
 		for parent[i] != i {
 			parent[i] = parent[parent[i]]
 			i = parent[i]
 		}
 		return i
 	}
-	for _, pair := range slices.Concat(pairs, shared) {
+	for _, pair := range shared {
 		parent[root(index[pair[1]])] = root(index[pair[0]])
 	}
-	split := map[int]bool{}
+	split := make(map[int]bool, len(shared))
 	for _, pair := range shared {
 		split[root(index[pair[0]])] = true
 	}
 	type setOnInstance struct{ root, instanceID int }
 	members := map[setOnInstance][]int{}
 	var order []setOnInstance
-	for _, i := range slices.Sorted(maps.Keys(parent)) {
+	for i := range all {
 		key := setOnInstance{root(i), all[i].InstanceID}
 		if !split[key.root] {
 			continue

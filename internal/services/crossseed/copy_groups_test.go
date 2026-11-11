@@ -319,7 +319,7 @@ func TestFindCopyGroups_AnUnreadFlatFolderCostsItsTorrentCount(t *testing.T) {
 }
 
 func TestFindCopyGroups_ACopyThatHoldsSomeFilesSharesThemButStaysOutOfTheGroup(t *testing.T) {
-	a, b, c, d, e, f := cgHash('a'), cgHash('b'), cgHash('c'), cgHash('d'), cgHash('e'), cgHash('f')
+	a, b, c, d, e, f, g := cgHash('a'), cgHash('b'), cgHash('c'), cgHash('d'), cgHash('e'), cgHash('f'), cgHash('g')
 	episode3 := qbt.TorrentFile{Name: cgPack + "/Harbor.Watch.S01E03.1080p.WEB.h264-GRP.mkv", Size: 500}
 	fixture := func(hash, name, folder string, files qbt.TorrentFiles) copyGroupFixture {
 		return copyGroupFixture{instanceID: 1, hash: hash, name: name, savePath: folder, content: folder + "/" + name, files: wanted(files)}
@@ -345,11 +345,13 @@ func TestFindCopyGroups_ACopyThatHoldsSomeFilesSharesThemButStaysOutOfTheGroup(t
 			{Name: cgPack + "/Harbor.Watch.S01E03.1080p.WEB.h264-GRP.mkv", Size: 500},
 			{Name: cgPack + "/Harbor.Watch.S01.Extras.mkv", Size: 777, Priority: 1},
 		}},
+		// g has another name, but it uses the files of a. Only a links it to b.
+		copyGroupFixture{instanceID: 1, hash: g, name: "Calm.Orchard.S01.1080p.WEB.h264-THIRD", savePath: "/data", content: "/data/" + cgPack, files: wanted(cgPackFiles(episode3))},
 	)
-	require.Equal(t, [][]string{{"1|" + a, "1|" + c, "1|" + e}}, members, "only the copies with equal file sizes group")
+	require.Equal(t, [][]string{{"1|" + a, "1|" + c, "1|" + e, "1|" + g}}, members, "only the copies with equal file sizes group")
 	require.Equal(t, []string{
-		fmt.Sprintf("3000 [1|%s 1|%s 1|%s 1|%s]", a, b, c, e),
-		fmt.Sprintf("500 [1|%s 1|%s]", a, c),
+		fmt.Sprintf("3000 [1|%s 1|%s 1|%s 1|%s 1|%s]", a, b, c, e, g),
+		fmt.Sprintf("500 [1|%s 1|%s 1|%s]", a, c, g),
 	}, partHolders(links.parts), "the torrents of the release share the files that they hold, and d and f share nothing")
 }
 
