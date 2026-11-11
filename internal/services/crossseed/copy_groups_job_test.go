@@ -788,6 +788,7 @@ func TestCopyGroupsJob_AChangeDuringARebuildStartsATickWhenTheRebuildEnds(t *tes
 		h.add(1, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
 		h.synced(1, cgC)
 		h.wait(copyGroupsSettle)
+		require.Positive(t, h.requested(1, cgC), "the rebuild for the first change waits at its read")
 
 		h.add(1, cgD, "/data/d", cgOld.Add(3*time.Hour), cgPackFiles())
 		h.synced(1, cgD)
