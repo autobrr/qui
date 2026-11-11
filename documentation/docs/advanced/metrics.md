@@ -90,9 +90,29 @@ Disabled and disconnected instances expose only `qbittorrent_instance_connection
 
 Tracker metrics describe torrents that remain in qBittorrent. qui does not store tracker history. If you remove a torrent, its transfer totals leave the tracker metrics.
 
-qui assigns a torrent's full transfer totals to each tracker group associated with that torrent. Do not sum tracker groups to calculate unique instance traffic.
+Each torrent counts toward one series. A series is a Tracker group, and the `tracker_name` label holds its name. qui picks the group with these rules, in this order:
 
-If you configure a [tracker customization](../features/tracker-customizations.md) display name, the `tracker_name` label uses that name. Otherwise, it uses the tracker domain. Included secondary domains contribute to their configured group.
+1. If the torrent is not private, the group is `Public`. The tracker list of a public torrent does not show where its bytes went.
+2. If the torrent has no tracker, the group is `No tracker`.
+3. If a [tracker customization](../features/tracker-customizations.md) holds one of the domains of the torrent, the group is that customization. The label is its display name, or the domain if the customization has no display name.
+4. Otherwise, the group is the first tracker domain of the torrent in alphabetical order.
+
+A tracker that announces on three domains that you did not merge shows as one series under one of the domains. Merge the domains in a tracker customization to give the series a name.
+
+If qBittorrent does not report the private flag, rules 2 to 4 apply. qBittorrent sends the flag from version 5.0, and only for a torrent that has metadata.
+
+Each torrent counts once, so you can add the torrent count, upload, and download series of an instance together. The sum of `qbittorrent_tracker_torrents` equals the number of torrents in the instance. The size series do not add up to the data on disk, because a cross-seed in another group shares its content path and counts in both groups.
+
+### Change at the upgrade
+
+Before this change, qui counted the full bytes of a torrent under each of its tracker domains. The tracker series change one time at the upgrade:
+
+- A tracker with more than one domain shows its bytes once, so its series is smaller than before.
+- A domain counts a torrent only when it is the group of that torrent. Its series holds the torrents where it is the first domain or the only domain, and it can be smaller than before. Check each saved query or alert that matches the `tracker_name` of a domain, and use the group name where it applies.
+- A `Public` series and a `No tracker` series appear.
+- The "counts toward statistics" setting of a tracker customization no longer changes these metrics.
+
+A Grafana panel that covers the upgrade shows a step at that time.
 
 ## PromQL examples
 
@@ -175,4 +195,4 @@ The dashboard has an instance filter and these panel groups:
 - Trackers: torrent count, content size, ratio, and upload and download totals for each tracker group.
 - qui process: CPU, memory, goroutines, threads, open files, wedged database transactions, and uptime.
 
-A torrent can be in more than one tracker group, so the tracker panels can add up to more than the whole instance. The process panels show only the qui process that exports the selected instances.
+Each torrent counts toward one tracker group, so the torrent count, upload, and download panels add up to the whole instance. The process panels show only the qui process that exports the selected instances.
