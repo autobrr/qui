@@ -47,6 +47,103 @@ func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
 	return id, ok
 }
 
+// uniqueSizes adds up the Unique size (GLOSSARY.md) of the torrents of one
+// instance, and of the torrents among them that seed. Torrents with the same
+// content path also count one time, as in TotalSize, so a copy that the last
+// build did not group does not count twice.
+type uniqueSizes struct {
+	ids map[string]uint64
+	// parent joins the Copy groups and the content paths that hold the same data.
+	parent  []int32
+	byGroup map[uint64]int32
+	byPath  map[string]int32
+	members []uniqueSizeMember
+	// total and seeding count the torrents that share their data with no torrent.
+	total, seeding int64
+}
+
+type uniqueSizeMember struct {
+	set     int32
+	size    int64
+	seeding bool
+}
+
+// uniqueSizes is nil until a build that read the instance ends.
+func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
+	if !g.hasRead(instanceID) {
+		return nil
+	}
+	return &uniqueSizes{ids: g.ids[instanceID], byGroup: map[uint64]int32{}, byPath: map[string]int32{}}
+}
+
+// add counts one torrent. sharedPath is its mark from findSharedContentPaths.
+// A torrent that does not seed still joins its group and its content path, so
+// it can link two torrents that seed.
+func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
+	if u == nil {
+		return
+	}
+	id, grouped := u.ids[t.Hash]
+	sharedPath = sharedPath && t.ContentPath != ""
+	if !grouped && !sharedPath {
+		u.total += t.Size
+		if seeding {
+			u.seeding += t.Size
+		}
+		return
+	}
+	set := int32(-1)
+	if grouped {
+		set = u.set(u.byGroup, id)
+	}
+	if sharedPath {
+		path := u.set(u.byPath, t.ContentPath)
+		if set >= 0 {
+			u.parent[u.root(set)] = u.root(path)
+		}
+		set = path
+	}
+	u.members = append(u.members, uniqueSizeMember{set: set, size: t.Size, seeding: seeding})
+}
+
+func (u *uniqueSizes) set[K comparable](sets map[K]int32, key K) int32 {
+	set, ok := sets[key]
+	if !ok {
+		set = int32(len(u.parent))
+		u.parent = append(u.parent, set)
+		sets[key] = set
+	}
+	return set
+}
+
+func (u *uniqueSizes) root(set int32) int32 {
+	for u.parent[set] != set {
+		u.parent[set] = u.parent[u.parent[set]]
+		set = u.parent[set]
+	}
+	return set
+}
+
+// totals counts each joined set at the size of its largest torrent: a copy can
+// skip files.
+func (u *uniqueSizes) totals() (total, seeding int64) {
+	all := make([]int64, len(u.parent))
+	seeds := make([]int64, len(u.parent))
+	for _, m := range u.members {
+		set := u.root(m.set)
+		all[set] = max(all[set], m.size)
+		if m.seeding {
+			seeds[set] = max(seeds[set], m.size)
+		}
+	}
+	total, seeding = u.total, u.seeding
+	for set := range all {
+		total += all[set]
+		seeding += seeds[set]
+	}
+	return total, seeding
+}
+
 type CopyGroupRow struct {
 	ID string `json:"id"`
 	// FirstSorted is set on the Group representative only.

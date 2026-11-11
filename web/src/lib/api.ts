@@ -571,6 +571,7 @@ export interface StreamSubscription {
   filters?: TorrentFilters | null
   summary?: boolean
   groupCopies?: boolean
+  uniqueSize?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -586,6 +587,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
     ...(stream.groupCopies ? { groupCopies: true } : {}),
+    ...(stream.uniqueSize ? { uniqueSize: true } : {}),
   }
 }
 
@@ -1033,6 +1035,7 @@ class ApiClient {
       filters?: TorrentFilters
       preferCached?: boolean
       groupCopies?: boolean
+      uniqueSize?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1045,6 +1048,7 @@ class ApiClient {
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
     if (params.groupCopies) searchParams.set("groupCopies", "true")
+    if (params.uniqueSize) searchParams.set("uniqueSize", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,

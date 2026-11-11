@@ -40,7 +40,7 @@
     "download": "下載",
     "upload": "上傳",
     "totalSize": "總大小",
-    "totalSizeTooltip": "所有種子的總大小，包括輔種",
+    "totalSizeTooltip": "所有種子的總大小。同一發佈的副本只計算一次。",
     "freeSpace": "可用空間",
     "showMore": "展開更多",
     "showLess": "收起",
@@ -75,6 +75,10 @@
       "disable": "停用",
       "cancel": "取消"
     }
+  },
+  "uniqueSize": {
+    "calculating": "計算中",
+    "calculatingTooltip": "qui 正在讀取檔案清單以尋找每個發佈的副本。在完成之前，此大小會完整計算每個連結的輔種。"
   },
   "mobileOverview": {
     "instances": "實例",

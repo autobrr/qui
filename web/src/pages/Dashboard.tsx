@@ -64,6 +64,7 @@ import {
   createDashboardStatsFallbackQueryKey,
   hasDashboardStatsPayload,
   resolveDashboardDataStatusKind,
+  resolveDashboardSizes,
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
   resolveDashboardStreamError,
@@ -101,6 +102,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 
+import { DashboardTotalSize, SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
 import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
 import { createStreamKey, useSyncStreamManager, type StreamState } from "@/contexts/SyncStreamContext"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
@@ -283,12 +285,10 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
       sum + (stats?.totalUploadSpeed || 0), 0)
     const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
-    const totalSize = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalSize || 0), 0)
+    const { totalSize, seedingSize: totalSeedingSize, calculating: sizeCalculating } =
+      resolveDashboardSizes(statsData.map(({ stats }) => stats))
     const totalRemainingSize = statsData.reduce((sum, { stats }) =>
       sum + (stats?.totalRemainingSize || 0), 0)
-    const totalSeedingSize = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalSeedingSize || 0), 0)
     const downloadingTorrents = statsData.reduce((sum, { stats }) =>
       sum + (stats?.downloading || 0), 0)
     const seedingTorrents = statsData.reduce((sum, { stats }) =>
@@ -319,6 +319,7 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
       totalSize,
       totalRemainingSize,
       totalSeedingSize,
+      sizeCalculating,
       downloadingTorrents,
       seedingTorrents,
       alltimeDl,
@@ -353,6 +354,7 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
       sort: "added_on",
       order: "desc" as const,
       summary: true,
+      uniqueSize: true,
     }),
     []
   )
@@ -378,6 +380,7 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
           limit: 1,
           sort: DASHBOARD_STATS_FALLBACK_SORT,
           order: DASHBOARD_STATS_FALLBACK_ORDER,
+          uniqueSize: true,
         }),
         enabled: fallbackEnabled,
         refetchInterval: fallbackEnabled ? (streamState?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS) : false,
@@ -1104,7 +1107,7 @@ function InstanceCard({
                       {t("instanceCard.totalSizeTooltip")}
                     </TooltipContent>
                   </Tooltip>
-                  <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
+                  <DashboardTotalSize stats={stats} />
                 </div>
               </div>
 
@@ -1262,6 +1265,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
           <div className="text-2xl font-bold">{globalStats.totalTorrents}</div>
           <p className="text-xs text-muted-foreground">
             {t("globalStats.activeTotal", { active: globalStats.activeTorrents, size: formatBytes(globalStats.totalSize) })}
+            {globalStats.sizeCalculating && <> <SizeCalculatingMark /></>}
           </p>
         </CardContent>
       </Card>
@@ -1288,6 +1292,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
             {t("globalStats.seedingActive", { count: globalStats.seedingTorrents, size: formatBytes(globalStats.totalSeedingSize) })}
+            {globalStats.sizeCalculating && <> <SizeCalculatingMark /></>}
           </p>
         </CardContent>
       </Card>

@@ -40,7 +40,7 @@
     "download": "Download",
     "upload": "Upload",
     "totalSize": "Tamanho Total",
-    "totalSizeTooltip": "Tamanho total de todos os torrents, incluindo cross-seeds",
+    "totalSizeTooltip": "Tamanho total de todos os torrents. As cópias de um release contam uma vez.",
     "freeSpace": "Espaço Livre",
     "showMore": "Mostrar mais",
     "showLess": "Mostrar menos",
@@ -75,6 +75,10 @@
       "disable": "Desativar",
       "cancel": "Cancelar"
     }
+  },
+  "uniqueSize": {
+    "calculating": "calculando",
+    "calculatingTooltip": "O qui está lendo as listas de arquivos para encontrar as cópias de cada release. Até terminar, este tamanho conta cada cross-seed vinculado por inteiro."
   },
   "mobileOverview": {
     "instances": "Instâncias",

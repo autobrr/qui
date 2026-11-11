@@ -51,6 +51,8 @@ export interface StreamParams {
   // summary asks for the totals of the view without its rows.
   summary?: boolean
   groupCopies?: boolean
+  // uniqueSize adds the Unique size to the stats of a single-instance view.
+  uniqueSize?: boolean
 }
 
 // normalizeInstanceIds returns a sorted, de-duplicated, positive-only copy used for
@@ -469,6 +471,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         filters: entry.params.filters ?? null,
         summary: entry.params.summary ?? false,
         groupCopies: entry.params.groupCopies,
+        uniqueSize: entry.params.uniqueSize,
       }))
       .sort((a, b) => a.key.localeCompare(b.key))
 
@@ -1489,6 +1492,7 @@ export function createStreamKey(params: StreamParams): string {
       filters: params.filters ?? null,
       summary: params.summary ?? false,
       ...(params.groupCopies ? { groupCopies: true } : {}),
+      ...(params.uniqueSize ? { uniqueSize: true } : {}),
     })
   } catch (err) {
     // Fallback for non-serializable filters - log for debugging
@@ -1506,7 +1510,8 @@ function isSameParams(a: StreamParams, b: StreamParams): boolean {
     a.sort !== b.sort ||
     a.order !== b.order ||
     (a.search || "") !== (b.search || "") ||
-    Boolean(a.groupCopies) !== Boolean(b.groupCopies)
+    Boolean(a.groupCopies) !== Boolean(b.groupCopies) ||
+    Boolean(a.uniqueSize) !== Boolean(b.uniqueSize)
   ) {
     return false
   }

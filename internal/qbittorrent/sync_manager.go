@@ -432,6 +432,10 @@ type TorrentStats struct {
 	TotalSize          int64 `json:"totalSize"`
 	TotalRemainingSize int64 `json:"totalRemainingSize"`
 	TotalSeedingSize   int64 `json:"totalSeedingSize"`
+	// UniqueSize and UniqueSeedingSize are set when the view asks for the
+	// Unique size and a Copy groups build that read the instance has ended.
+	UniqueSize        *int64 `json:"uniqueSize,omitempty"`
+	UniqueSeedingSize *int64 `json:"uniqueSeedingSize,omitempty"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
@@ -1678,7 +1682,11 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	}
 
 	// Calculate stats from filtered torrents
-	stats := sm.calculateStats(filteredTorrents)
+	var unique *uniqueSizes
+	if view.UniqueSize {
+		unique = sm.copyGroups.Load().uniqueSizes(instanceID)
+	}
+	stats := sm.calculateStats(filteredTorrents, unique)
 
 	// Apply pagination to filtered results; limit <= 0 means "unbounded"
 	totalTorrents := len(filteredTorrents)
@@ -4784,7 +4792,8 @@ func (t *trackerDomainStats) totals() TrackerTransferStats {
 
 // calculateStats calculates torrent statistics from a list of torrents.
 // Sizes are deduplicated by ContentPath to avoid inflating totals with cross-seeds.
-func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
+// With unique, the statistics also hold the Unique size.
+func (sm *SyncManager) calculateStats(torrents []qbt.Torrent, unique *uniqueSizes) *TorrentStats {
 	stats := &TorrentStats{
 		Total: len(torrents),
 	}
@@ -4806,6 +4815,7 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		totalSize.add(torrent, sharedPath)
 
 		// Count states and calculate specific sizes
+		seeding := false
 		switch torrent.State {
 		case qbt.TorrentStateDownloading:
 			stats.Downloading++
@@ -4817,6 +4827,7 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 			// These are downloading states but not actively downloading
 		case qbt.TorrentStateUploading, qbt.TorrentStateForcedUp:
 			stats.Seeding++
+			seeding = true
 			// Seeding size deduplicated by ContentPath
 			seedingSize.add(torrent, sharedPath)
 		case qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp:
@@ -4830,10 +4841,15 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		default:
 			// Unknown or transitional states count towards the totals only.
 		}
+		unique.add(torrent, sharedPath, seeding)
 	}
 
 	stats.TotalSize = totalSize.total()
 	stats.TotalSeedingSize = seedingSize.total()
+	if unique != nil {
+		total, seeding := unique.totals()
+		stats.UniqueSize, stats.UniqueSeedingSize = new(total), new(seeding)
+	}
 
 	return stats
 }

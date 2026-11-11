@@ -227,6 +227,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Filters:           filters,
 		SidebarCounts:     true,
 		CopyGroups:        groupCopiesParam(r),
+		UniqueSize:        uniqueSizeParam(r),
 		CacheOnly:         preferCached,
 		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
 	})
@@ -260,6 +261,11 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 func groupCopiesParam(r *http.Request) bool {
 	groupCopies, _ := strconv.ParseBool(r.URL.Query().Get("groupCopies"))
 	return groupCopies
+}
+
+func uniqueSizeParam(r *http.Request) bool {
+	uniqueSize, _ := strconv.ParseBool(r.URL.Query().Get("uniqueSize"))
+	return uniqueSize
 }
 
 // GetTorrentField returns field values for torrents matching either the current filters

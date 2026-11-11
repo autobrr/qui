@@ -42,6 +42,17 @@ func TestParseStreamRequests_GroupCopies(t *testing.T) {
 
 	_, err = parse(map[string]any{"instanceId": 1, "groupCopies": true, "summary": true})
 	require.Error(t, err, "a summary has no rows to group")
+
+	summary, err := parse(map[string]any{"instanceId": 1, "summary": true})
+	require.NoError(t, err)
+	unique, err := parse(map[string]any{"instanceId": 1, "summary": true, "uniqueSize": true})
+	require.NoError(t, err)
+	require.True(t, unique[0].options.View.UniqueSize)
+	require.NotEqual(t, streamOptionsKey(summary[0].options), streamOptionsKey(unique[0].options),
+		"a stream with the Unique size must not share a payload with one without it")
+
+	_, err = parse(map[string]any{"instanceIds": []int{1, 2}, "uniqueSize": true})
+	require.EqualError(t, err, "the Unique size needs a single instance")
 }
 
 // A Copy group change with no torrent change sends the row again in each view.

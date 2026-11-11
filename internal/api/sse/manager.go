@@ -156,7 +156,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s|%t|%t",
+		"%s|%d|%d|%s|%s|%s|%s|%t|%t|%t",
 		instanceKey,
 		// A client that sends no key gets this text as its stream key, so it keeps the page number.
 		view.Offset/max(view.Limit, 1),
@@ -167,6 +167,7 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(filtersKey),
 		view.NoRows,
 		view.CopyGroups,
+		view.UniqueSize,
 	)
 }
 
@@ -2552,6 +2553,7 @@ type streamRequestPayload struct {
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
 	Summary     bool                       `json:"summary"`
 	GroupCopies bool                       `json:"groupCopies"`
+	UniqueSize  bool                       `json:"uniqueSize"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2634,6 +2636,7 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		Filters:    filters,
 		NoRows:     p.Summary,
 		CopyGroups: p.GroupCopies,
+		UniqueSize: p.UniqueSize,
 	}
 	if err := view.Validate(); err != nil {
 		return StreamOptions{}, err

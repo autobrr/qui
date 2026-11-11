@@ -31,6 +31,8 @@ type TorrentListView struct {
 	NoRows        bool
 	SidebarCounts bool
 	CopyGroups    bool
+	// UniqueSize adds the Unique size to the stats of a single-instance view.
+	UniqueSize bool
 	// CacheOnly reads the sync cache and starts no sync.
 	CacheOnly bool
 	// FullPasskeyAccess keeps the tracker passkeys in the rows and in the value
@@ -39,14 +41,17 @@ type TorrentListView struct {
 	FullPasskeyAccess bool
 }
 
-// Validate rejects a view without rows that asks for Copy groups, and a Unified
-// view without rows, whose total counts rows.
+// Validate rejects a view without rows that asks for Copy groups, a Unified
+// view without rows, whose total counts rows, and a Unified view that asks for
+// the Unique size.
 func (v *TorrentListView) Validate() error {
 	switch {
 	case v.NoRows && v.CopyGroups:
 		return errors.New("summary has no rows to group")
 	case v.NoRows && v.Unified:
 		return errors.New("summary needs a single instance")
+	case v.UniqueSize && v.Unified:
+		return errors.New("the Unique size needs a single instance")
 	}
 	return nil
 }
