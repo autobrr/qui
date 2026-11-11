@@ -506,28 +506,15 @@ function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Tor
   ]
 }
 
-const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label^=\"copyGroups.\"]"))
-const warnings = (container: HTMLElement) => container.querySelectorAll("button[aria-label^=\"copyGroups.copiesWithProblem\"]")
+// In the grid only: the toolbar button also has a copyGroups label.
+const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("[role=grid] button[aria-label^=\"copyGroups.\"]"))
+const warnings = (container: HTMLElement) => container.querySelectorAll("[role=grid] button[aria-label^=\"copyGroups.copiesWithProblem\"]")
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
 const cellOf = (row: HTMLElement, columnId: string) => row.querySelector(`[data-torrent-column-measure="${columnId}"]`) as HTMLElement
 
 const GROUP_COPIES_KEY = "qui-group-copies"
 
-// The columns menu in Table and Dense, the sort menu in Stacked. The menu stays open after a press of its items.
-async function listMenuItem(view: ReturnType<typeof render>, role: "menuitem" | "menuitemcheckbox", name: string | RegExp) {
-  if (!view.queryByRole("menu")) {
-    const trigger = localStorage.getItem("qui-torrent-desktop-view-mode") === "compact"
-      ? view.container.querySelector<HTMLElement>("[aria-haspopup='menu']")
-      : view.getByRole("button", { name: "tableView.toggleColumns" })
-    if (!trigger) throw new Error("no list menu")
-    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
-  }
-  return view.findByRole(role, { name })
-}
-
-async function pressExpandAll(view: ReturnType<typeof render>) {
-  fireEvent.click(await listMenuItem(view, "menuitem", /^copyGroups\.(expandAll|collapseAll)$/))
-}
+const groupSwitch = (view: ReturnType<typeof render>) => view.getByRole("button", { name: "copyGroups.groupCopies" })
 
 function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
   localStorage.setItem(GROUP_COPIES_KEY, "true")
@@ -612,18 +599,6 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(container.textContent).not.toContain("Delta Release copy C")
       expect(isRowChecked(container, "Echo Release")).toBe(true)
       expect(onTorrentSelect).not.toHaveBeenCalled()
-    })
-
-    it("opens and closes all groups from Expand all in the menu, with one pill while they are open", async () => {
-      const view = renderGroups(copyGroupRows())
-
-      await pressExpandAll(view)
-      expect(view.container.textContent).toContain("Delta Release copy C")
-      expect(pills(view.container).length).toBe(1)
-      expect((await listMenuItem(view, "menuitem", "copyGroups.collapseAll"))).toBeTruthy()
-
-      await pressExpandAll(view)
-      expect(view.container.textContent).not.toContain("Delta Release copy C")
     })
 
     it("shows the warning pill when a hidden copy changes to an error, and a plain pill when the group is open", () => {
@@ -787,15 +762,11 @@ describe("TorrentTableOptimized Copy groups", () => {
       expect(await pauseFromMenu(container, "Echo Release", findByRole)).toEqual(["hash-first", "hash-top", "hash-plain"])
     })
 
-    it.each([
-      ["a group opens", async (view: ReturnType<typeof render>) => fireEvent.click(pills(view.container)[0])],
-      ["a press of the Expand all button", pressExpandAll],
-    ])("starts a Shift-select at the clicked row after %s", async (_, expand) => {
-      const view = renderGroups(copyGroupRows())
-      const { container } = view
+    it("starts a Shift-select at the clicked row after a group opens", () => {
+      const { container } = renderGroups(copyGroupRows())
       fireEvent.click(within(container).getByText("Echo Release"))
 
-      await expand(view)
+      fireEvent.click(pills(container)[0])
       fireEvent.click(within(container).getByText("Delta Release"), { shiftKey: true })
 
       expect(isRowChecked(container, "Delta Release copy B")).toBe(false)
@@ -927,41 +898,37 @@ describe("TorrentTableOptimized Group copies switch", () => {
     delete (window as { matchMedia?: unknown }).matchMedia
   })
 
-  // Table and Dense share the columns menu; Stacked has the sort menu.
   describe.each(["normal", "compact"] as const)("in the %s row style", (viewMode) => {
     beforeEach(() => {
       localStorage.setItem("qui-torrent-desktop-view-mode", viewMode)
     })
 
-    it("asks for groups while the switch is on, with Expand all beside it", async () => {
+    it("asks for groups while the switch is on", () => {
       const view = renderTable()
       expect(scenario.listOptions?.groupCopies).toBe(false)
-      const groupSwitch = await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
-      expect(groupSwitch.getAttribute("aria-checked")).toBe("false")
-      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+      expect(groupSwitch(view).getAttribute("aria-pressed")).toBe("false")
 
-      fireEvent.click(groupSwitch)
+      fireEvent.click(groupSwitch(view))
 
       expect(scenario.listOptions?.groupCopies).toBe(true)
       expect(localStorage.getItem(GROUP_COPIES_KEY)).toBe("true")
-      expect(groupSwitch.getAttribute("aria-checked")).toBe("true")
-      expect(view.getByRole("menuitem", { name: "copyGroups.expandAll" })).toBeTruthy()
+      expect(groupSwitch(view).getAttribute("aria-pressed")).toBe("true")
 
-      fireEvent.click(groupSwitch)
+      fireEvent.click(groupSwitch(view))
 
       expect(scenario.listOptions?.groupCopies).toBe(false)
-      expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+      expect(groupSwitch(view).getAttribute("aria-pressed")).toBe("false")
     })
   })
 
-  it("starts the loaded rows again at the first rows on a press of the switch", async () => {
+  it("starts the loaded rows again at the first rows on a press of the switch", () => {
     scenario.rows = Array.from({ length: 300 }, (_, i) => makeTorrent({ hash: `hash-${i}`, name: `Release ${i}` }))
     scenario.totalCount = 300
     const view = renderTable()
     act(() => controller.current?.reportNearEnd())
     expect(controller.current?.loadedRows).toBe(200)
 
-    fireEvent.click(await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies"))
+    fireEvent.click(groupSwitch(view))
 
     expect(controller.current?.loadedRows).toBe(100)
   })
@@ -977,7 +944,7 @@ describe("TorrentTableOptimized Group copies switch", () => {
   })
 
   // A phone reaches this table in the Unified view.
-  it("asks for groups and shows the switch on a phone", async () => {
+  it("asks for groups and shows the switch on a phone", () => {
     window.matchMedia = ((query: string) => ({
       matches: query === "(max-width: 767px)",
       media: query,
@@ -988,18 +955,15 @@ describe("TorrentTableOptimized Group copies switch", () => {
     const view = renderTable()
 
     expect(scenario.listOptions?.groupCopies).toBe(true)
-    expect((await listMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")).getAttribute("aria-checked")).toBe("true")
+    expect(groupSwitch(view).getAttribute("aria-pressed")).toBe("true")
   })
 
-  it("asks for no groups and shows no switch in the demo", async () => {
+  it("asks for no groups and shows no switch in the demo", () => {
     scenario.isDemo = true
     localStorage.setItem(GROUP_COPIES_KEY, "true")
     const view = renderTable()
 
-    fireEvent.pointerDown(view.getByRole("button", { name: "tableView.toggleColumns" }), { button: 0, ctrlKey: false })
-    await view.findByRole("menu")
-
     expect(scenario.listOptions?.groupCopies).toBe(false)
-    expect(view.queryByRole("menuitemcheckbox", { name: "copyGroups.groupCopies" })).toBeNull()
+    expect(view.queryByRole("button", { name: "copyGroups.groupCopies" })).toBeNull()
   })
 })

@@ -1691,8 +1691,7 @@
     "hiddenTicked_other": "{{count}} ausgeblendete Kopien sind ausgewählt",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Kopien gruppieren",
-    "expandAll": "Alle aufklappen",
-    "collapseAll": "Alle zuklappen",
+    "ungroupCopies": "Gruppierung der Kopien aufheben",
     "grouping": "Gruppiere…"
   }
 }

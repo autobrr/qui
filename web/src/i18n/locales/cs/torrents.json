@@ -1772,8 +1772,7 @@
     "hiddenTicked_other": "{{count}} skrytých kopií je vybraných",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Seskupit kopie",
-    "expandAll": "Rozbalit vše",
-    "collapseAll": "Sbalit vše",
+    "ungroupCopies": "Zrušit seskupení kopií",
     "grouping": "Seskupování…"
   }
 }

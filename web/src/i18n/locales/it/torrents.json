@@ -1691,8 +1691,7 @@
     "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Raggruppa le copie",
-    "expandAll": "Espandi tutto",
-    "collapseAll": "Comprimi tutto",
+    "ungroupCopies": "Separa le copie",
     "grouping": "Raggruppamento…"
   }
 }

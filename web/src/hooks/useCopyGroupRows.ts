@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { countTickedCopies, isCopyGroupOpen, summarizeCopyGroups, type CopyGroupExpansion } from "@/lib/copy-groups"
+import { countTickedCopies, summarizeCopyGroups, type CopyGroupExpansion } from "@/lib/copy-groups"
 import type { TorrentSelectionState } from "@/lib/torrent-selection"
 import type { Torrent } from "@/types"
 import { useCallback, useMemo } from "react"
@@ -60,7 +60,7 @@ export function useCopyGroupRows<T extends Torrent>({ rows, expansion, selection
     if (group.top !== row) {
       return NESTED_COPY
     }
-    const open = isCopyGroupOpen(expansion, id)
+    const open = expansion.has(id)
     return {
       groupId: id,
       open,

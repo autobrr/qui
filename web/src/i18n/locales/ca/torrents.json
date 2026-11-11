@@ -1691,8 +1691,7 @@
     "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Agrupa les còpies",
-    "expandAll": "Desplega-ho tot",
-    "collapseAll": "Plega-ho tot",
+    "ungroupCopies": "Desagrupa les còpies",
     "grouping": "S'està agrupant…"
   }
 }

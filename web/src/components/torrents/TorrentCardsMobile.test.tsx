@@ -238,16 +238,11 @@ const warnings = (container: HTMLElement) => container.querySelectorAll("button[
 const tickedCards = (container: HTMLElement) =>
   Array.from(container.querySelectorAll("[role=\"checkbox\"][aria-checked=\"true\"]"), box => box.closest(".cursor-pointer")?.querySelector("h3")?.textContent)
 
-// The sort menu stays open after a press of the switch or of Expand all.
 async function sortMenuItem(view: ReturnType<typeof render>, role: "menuitem" | "menuitemcheckbox", name: string | RegExp) {
   if (!view.queryByRole("menu")) {
     fireEvent.pointerDown(view.getByRole("button", { name: /^mobileCards\.sort:/ }), { button: 0, ctrlKey: false })
   }
   return view.findByRole(role, { name })
-}
-
-async function pressExpandAll(view: ReturnType<typeof render>) {
-  fireEvent.click(await sortMenuItem(view, "menuitem", /^copyGroups\.(expandAll|collapseAll)$/))
 }
 
 function longPress(card: HTMLElement) {
@@ -270,23 +265,21 @@ beforeEach(() => {
 })
 
 describe("TorrentCardsMobile Group copies switch", () => {
-  it("holds the switch in the sort menu, asks for groups while it is on, and shows Expand all only then", async () => {
+  it("holds the switch in the sort menu and asks for groups while it is on", async () => {
     const view = renderCards(flatRows(3))
+    const groupSwitch = () => sortMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
     expect(scenario.listOptions?.groupCopies).toBe(false)
-    const groupSwitch = await sortMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
-    expect(groupSwitch.getAttribute("aria-checked")).toBe("false")
-    expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
+    expect((await groupSwitch()).getAttribute("aria-checked")).toBe("false")
 
-    fireEvent.click(groupSwitch)
+    fireEvent.click(await groupSwitch())
 
     expect(scenario.listOptions?.groupCopies).toBe(true)
     expect(localStorage.getItem(GROUP_COPIES_KEY)).toBe("true")
-    expect(view.getByRole("menuitem", { name: "copyGroups.expandAll" })).toBeTruthy()
+    expect((await groupSwitch()).getAttribute("aria-checked")).toBe("true")
 
-    fireEvent.click(groupSwitch)
+    fireEvent.click(await groupSwitch())
 
     expect(scenario.listOptions?.groupCopies).toBe(false)
-    expect(view.queryByRole("menuitem", { name: "copyGroups.expandAll" })).toBeNull()
   })
 
   it("asks for no groups in Filter Cross-Seeds", () => {
@@ -430,16 +423,6 @@ describe("TorrentCardsMobile Copy groups", () => {
     })
   })
 
-  it("opens and closes all groups from Expand all in the sort menu", async () => {
-    const view = renderGroups()
-
-    await pressExpandAll(view)
-    expect(cardNames(view.container)).toEqual(["Delta Release", "Delta Release copy B", "Delta Release copy C", "Echo Release"])
-    expect(await sortMenuItem(view, "menuitem", "copyGroups.collapseAll")).toBeTruthy()
-
-    await pressExpandAll(view)
-    expect(cardNames(view.container)).toEqual(["Delta Release", "Echo Release"])
-  })
 })
 
 describe("TorrentCardsMobile Compact card", () => {

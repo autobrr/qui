@@ -1610,8 +1610,7 @@
     "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "사본 묶기",
-    "expandAll": "모두 펼치기",
-    "collapseAll": "모두 접기",
+    "ungroupCopies": "사본 묶음 풀기",
     "grouping": "묶는 중…"
   }
 }

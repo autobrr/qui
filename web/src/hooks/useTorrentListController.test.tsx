@@ -404,7 +404,7 @@ describe("useTorrentListController — Copy groups", () => {
     expect(result.current.list.visibleRows).toBe(result.current.list.torrents)
   })
 
-  it("starts each group collapsed and opens one group or all groups", async () => {
+  it("starts each group collapsed and opens one group at a time", async () => {
     mockedApi.getTorrents.mockResolvedValue(makeResponse({
       torrents: [representative("A", "g1"), member("a1", "g1"), makeTorrent({ hash: "B" }), representative("C", "g2"), member("c1", "g2")],
       total: 5,
@@ -418,15 +418,11 @@ describe("useTorrentListController — Copy groups", () => {
     act(() => result.current.list.toggleGroup("g1"))
     expect(visible(result)).toEqual(["A", "a1", "B", "C"])
 
-    act(() => result.current.list.toggleExpandAll())
-    expect(result.current.list.groupExpansion.expandAll).toBe(true)
+    act(() => result.current.list.toggleGroup("g2"))
     expect(visible(result)).toEqual(["A", "a1", "B", "C", "c1"])
 
-    act(() => result.current.list.toggleGroup("g2"))
-    expect(visible(result)).toEqual(["A", "a1", "B", "C"])
-
-    act(() => result.current.list.toggleExpandAll())
-    expect(visible(result)).toEqual(["A", "B", "C"])
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "B", "C", "c1"])
   })
 
   it("puts a group at the place of its first row and its representative on top when a merge moved a member", async () => {
@@ -451,14 +447,12 @@ describe("useTorrentListController — Copy groups", () => {
     }))
     const { result, rerender } = renderLayout({ groupCopies: true })
     await flush()
-    act(() => result.current.list.toggleExpandAll())
     act(() => result.current.list.toggleGroup("g1"))
     act(() => result.current.list.toggleGroup("g9"))
 
     rerender({ groupCopies: true, sort: "name" })
     await flush()
-    expect(result.current.list.groupExpansion.expandAll).toBe(true)
-    expect([...result.current.list.groupExpansion.toggled]).toEqual(["g1", "g9"])
+    expect([...result.current.list.groupExpansion]).toEqual(["g1", "g9"])
 
     const scopes: LayoutProps[] = [
       { filters: { ...FILTERS, status: ["downloading"] } },
@@ -468,13 +462,11 @@ describe("useTorrentListController — Copy groups", () => {
     for (const scope of scopes) {
       rerender({ groupCopies: true, sort: "name" })
       await flush()
-      act(() => result.current.list.toggleExpandAll())
       act(() => result.current.list.toggleGroup("g1"))
 
       rerender({ groupCopies: true, sort: "name", ...scope })
       await flush()
-      expect(result.current.list.groupExpansion.expandAll).toBe(false)
-      expect(result.current.list.groupExpansion.toggled.size).toBe(0)
+      expect(result.current.list.groupExpansion.size).toBe(0)
       expect(visible(result)).toEqual(["A"])
     }
   })

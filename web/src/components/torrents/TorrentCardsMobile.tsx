@@ -873,7 +873,6 @@ export function TorrentCardsMobile({
     visibleRows,
     groupExpansion,
     toggleGroup,
-    toggleExpandAll,
     copyGroupsReady,
   } = useTorrentListController({
     instanceId,
@@ -1136,12 +1135,7 @@ export function TorrentCardsMobile({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
-                  <CopyGroupMenuItems
-                    groupCopies={groupCopiesSetting}
-                    expandAll={groupExpansion.expandAll}
-                    onToggleGroupCopies={toggleGroupCopies}
-                    onToggleExpandAll={toggleExpandAll}
-                  />
+                  <CopyGroupMenuItems groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={sortField}

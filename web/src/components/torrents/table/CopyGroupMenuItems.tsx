@@ -3,44 +3,24 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
+import { DropdownMenuCheckboxItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { isDemo } from "@/lib/demo"
-import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 interface CopyGroupMenuItemsProps {
   groupCopies: boolean
-  expandAll: boolean
   onToggleGroupCopies: () => void
-  onToggleExpandAll: () => void
 }
 
-// Both items keep the menu open, so the user sees Expand all appear after the switch.
-const keepMenuOpen = (event: Event) => event.preventDefault()
-
-/** The Group copies switch and Expand all, with a separator under them. The demo shows none of them. */
-export function CopyGroupMenuItems({ groupCopies, expandAll, onToggleGroupCopies, onToggleExpandAll }: CopyGroupMenuItemsProps) {
+/** The Group copies switch, with a separator under it. The demo shows none. */
+export function CopyGroupMenuItems({ groupCopies, onToggleGroupCopies }: CopyGroupMenuItemsProps) {
   const { t } = useTranslation("torrents")
   if (isDemo) return null
   return (
     <>
-      <DropdownMenuCheckboxItem
-        checked={groupCopies}
-        onCheckedChange={onToggleGroupCopies}
-        onSelect={keepMenuOpen}
-        className="text-sm"
-      >
+      <DropdownMenuCheckboxItem checked={groupCopies} onCheckedChange={onToggleGroupCopies} className="text-sm">
         {t("copyGroups.groupCopies")}
       </DropdownMenuCheckboxItem>
-      {groupCopies && (
-        <DropdownMenuItem onSelect={(event) => {
-          keepMenuOpen(event)
-          onToggleExpandAll()
-        }} className="text-sm">
-          {expandAll ? <ChevronsDownUp className="h-4 w-4" /> : <ChevronsUpDown className="h-4 w-4" />}
-          {expandAll ? t("copyGroups.collapseAll") : t("copyGroups.expandAll")}
-        </DropdownMenuItem>
-      )}
       <DropdownMenuSeparator />
     </>
   )
