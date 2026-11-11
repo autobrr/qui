@@ -776,6 +776,30 @@ func TestCopyGroupsJob_ASyncThatChangesATorrentStartsATick(t *testing.T) {
 	})
 }
 
+// regression: #4026
+func TestCopyGroupsJob_AChangeDuringARebuildStartsATickWhenTheRebuildEnds(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.firstMap()
+		h.synced(1)
+		gate := make(chan struct{})
+		h.sync.mu.Lock()
+		h.sync.batchGate[1] = gate
+		h.sync.mu.Unlock()
+		h.add(1, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
+		h.synced(1, cgC)
+		h.wait(copyGroupsSettle)
+
+		h.add(1, cgD, "/data/d", cgOld.Add(3*time.Hour), cgPackFiles())
+		h.synced(1, cgD)
+		h.wait(copyGroupsSettle)
+		require.Equal(t, 1, h.publishes(), "the rebuild for the first change still reads")
+
+		close(gate)
+		synctest.Wait()
+		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(1, cgC), cgMember(1, cgD)}), h.last())
+	})
+}
+
 func TestCopyGroupsJob_TheFirstSyncOfAnInstanceStartsATickAtOnce(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.setSynced(1, false)

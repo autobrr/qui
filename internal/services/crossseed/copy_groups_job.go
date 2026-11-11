@@ -59,8 +59,10 @@ type copyGroupsJob struct {
 	settling bool
 	// firstReadEnded: an instance ended its first read after the last rebuild started.
 	firstReadEnded bool
-	listing        map[int]bool
-	firstReads     map[int]bool
+	// tickSkipped: a tick came while the rebuild ran, so it started no rebuild.
+	tickSkipped bool
+	listing     map[int]bool
+	firstReads  map[int]bool
 	// record holds the instances that ended a first read. No instance leaves it.
 	record map[int]struct{}
 	// fingerprints holds no value for an instance whose last read failed.
@@ -318,13 +320,14 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 		j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(j.ids, nil))
 	}
 	if j.rebuilding || len(run.torrents) == 0 {
+		j.tickSkipped = j.rebuilding
 		return true
 	}
 	run.retry = j.marks == j.builtMarks && maps.Equal(run.fingerprints, j.fingerprints)
 	run.read = slices.Sorted(maps.Keys(j.record))
 	run.prev = j.ids
 	j.rebuilding = true
-	j.firstReadEnded = false
+	j.firstReadEnded, j.tickSkipped = false, false
 	go j.rebuild(ctx, run)
 	return true
 }
@@ -532,7 +535,7 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	defer func() {
 		j.mu.Lock()
 		j.rebuilding = false
-		if j.firstReadEnded {
+		if j.firstReadEnded || j.tickSkipped {
 			j.wakeLoop()
 		}
 		j.mu.Unlock()
