@@ -63,7 +63,8 @@ func Torrents(n int) []qbt.Torrent {
 }
 
 // Serve starts a fake qBittorrent that serves torrents and returns its URL.
-// A sync gets a full update. Each torrent has one working tracker.
+// The first sync gets a full update, and a later sync gets no change, as a
+// quiet qBittorrent answers. Each torrent has one working tracker.
 func Serve(t testing.TB, torrents []qbt.Torrent) string {
 	t.Helper()
 
@@ -81,6 +82,10 @@ func Serve(t testing.TB, torrents []qbt.Torrent) string {
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, "2.11.4")
 		case "/api/v2/sync/maindata":
+			if r.URL.Query().Get("rid") != "0" {
+				_, _ = io.WriteString(w, `{"rid":2}`)
+				return
+			}
 			_, _ = w.Write(mainData)
 		case "/api/v2/torrents/info":
 			out := []qbt.Torrent{}
