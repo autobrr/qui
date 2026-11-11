@@ -99,7 +99,6 @@ func TestBuildCategorySavePaths(t *testing.T) {
 				"tvs":       {Name: "tvs", SavePath: "/media/tv/"},
 				"tvs/anime": {Name: "tvs/anime"},
 				"rel":       {Name: "rel", SavePath: "shows/"},
-				"win":       {Name: "win", SavePath: `D:\media\`},
 			},
 			defaultPath: "/downloads/",
 			want: map[string]string{
@@ -107,20 +106,36 @@ func TestBuildCategorySavePaths(t *testing.T) {
 				"tvs":       "/media/tv",
 				"tvs/anime": "/media/tv/anime",
 				"rel":       "/downloads/shows",
-				"win":       `D:\media`,
 			},
 		},
 		{
 			name: "roots keep their separator",
 			categories: map[string]qbt.Category{
 				"music": {Name: "music"},
-				"drive": {Name: "drive", SavePath: `D:\`},
 			},
 			defaultPath: "/",
 			want: map[string]string{
 				"":      "/",
 				"music": "/music",
-				"drive": `D:\`,
+			},
+		},
+		{
+			name: "posix paths read a colon and a backslash as file name characters",
+			categories: map[string]qbt.Category{
+				"colon":    {Name: "colon", SavePath: "tv:hd"},
+				"drive":    {Name: "drive", SavePath: "C:"},
+				"lead":     {Name: "lead", SavePath: `\x`},
+				"trail":    {Name: "trail", SavePath: `/data/foo\`},
+				"reltrail": {Name: "reltrail", SavePath: `movies\`},
+			},
+			defaultPath: "/downloads",
+			want: map[string]string{
+				"":         "/downloads",
+				"colon":    "/downloads/tv:hd",
+				"drive":    "/downloads/C:",
+				"lead":     `/downloads/\x`,
+				"trail":    `/data/foo\`,
+				"reltrail": `/downloads/movies\`,
 			},
 		},
 		{
@@ -170,6 +185,25 @@ func TestBuildCategorySavePaths(t *testing.T) {
 				"unc":    `\\nas\share`,
 			},
 		},
+		{
+			name: "windows paths",
+			categories: map[string]qbt.Category{
+				"tv/anime": {Name: "tv/anime"},
+				"rel":      {Name: "rel", SavePath: `shows\new\`},
+				"slash":    {Name: "slash", SavePath: "D:/media/"},
+				"drive":    {Name: "drive", SavePath: `D:\`},
+				"rooted":   {Name: "rooted", SavePath: `\media`},
+			},
+			defaultPath: `C:\`,
+			want: map[string]string{
+				"":         `C:\`,
+				"tv/anime": `C:\tv\anime`,
+				"rel":      `C:\shows\new`,
+				"slash":    "D:/media",
+				"drive":    `D:\`,
+				"rooted":   `\media`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -180,14 +214,20 @@ func TestBuildCategorySavePaths(t *testing.T) {
 }
 
 func TestTrimTrailingSeparators(t *testing.T) {
-	tests := map[string]string{
-		"":              "",
-		"/":             "/",
-		"//":            "/",
-		"/downloads/":   "/downloads",
-		"/downloads//":  "/downloads",
-		"/downloads":    "/downloads",
-		"shows/":        "shows",
+	posix := map[string]string{
+		"":             "",
+		"/":            "/",
+		"//":           "/",
+		"/downloads/":  "/downloads",
+		"/downloads//": "/downloads",
+		"/downloads":   "/downloads",
+		"shows/":       "shows",
+		`/data/foo\`:   `/data/foo\`,
+	}
+	for in, want := range posix {
+		require.Equal(t, want, savePathGrammar{}.trimTrailingSeparators(in), "posix input %q", in)
+	}
+	windows := map[string]string{
 		`\`:             `\`,
 		`C:\`:           `C:\`,
 		"C:/":           "C:/",
@@ -195,8 +235,8 @@ func TestTrimTrailingSeparators(t *testing.T) {
 		`C:\Downloads\`: `C:\Downloads`,
 		`\\nas\share\`:  `\\nas\share`,
 	}
-	for in, want := range tests {
-		require.Equal(t, want, trimTrailingSeparators(in), "input %q", in)
+	for in, want := range windows {
+		require.Equal(t, want, savePathGrammar{windows: true}.trimTrailingSeparators(in), "windows input %q", in)
 	}
 }
 
