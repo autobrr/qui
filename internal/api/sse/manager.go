@@ -731,50 +731,72 @@ func (m *StreamManager) Unregister(id string) {
 		groupKey := state.groupKey
 		delete(m.subscriptions, id)
 
-		groupRemoved := false
-		if group, exists := m.groups[groupKey]; exists {
-			group.subsMu.Lock()
-			delete(group.subs, id)
-			remaining := len(group.subs)
-			group.subsMu.Unlock()
-
-			if remaining == 0 {
-				delete(m.groups, groupKey)
-				groupRemoved = true
-			}
-		}
+		groupRemoved := m.removeGroupSubscriberLocked(groupKey, id)
 
 		// Detach from every instance the subscription was registered under. A
 		// per-instance sync/heartbeat loop is stopped only once no remaining
 		// subscription (single- or multi-instance) still depends on that instance.
 		for _, instanceID := range state.options.instanceIDs() {
 			if groupRemoved {
-				if groups := m.instanceGroups[instanceID]; groups != nil {
-					delete(groups, groupKey)
-					if len(groups) == 0 {
-						delete(m.instanceGroups, instanceID)
-					}
-				}
+				m.removeInstanceGroupLocked(instanceID, groupKey)
 			}
-
-			if subs := m.instanceIndex[instanceID]; subs != nil {
-				delete(subs, id)
-				if len(subs) == 0 {
-					delete(m.instanceIndex, instanceID)
-					if loop, ok := m.syncLoops[instanceID]; ok {
-						loop.cancel()
-						delete(m.syncLoops, instanceID)
-					}
-					if hbLoop, ok := m.heartbeatLoops[instanceID]; ok {
-						hbLoop.cancel()
-						delete(m.heartbeatLoops, instanceID)
-					}
-					delete(m.syncBackoff, instanceID)
-				}
-			}
+			m.removeInstanceSubscriberLocked(instanceID, id)
 		}
 	}
 	m.mu.Unlock()
+}
+
+// removeGroupSubscriberLocked drops the subscriber from its group and deletes
+// the group once it is empty. It reports whether the group was deleted.
+func (m *StreamManager) removeGroupSubscriberLocked(groupKey, id string) bool {
+	group, exists := m.groups[groupKey]
+	if !exists {
+		return false
+	}
+
+	group.subsMu.Lock()
+	delete(group.subs, id)
+	remaining := len(group.subs)
+	group.subsMu.Unlock()
+
+	if remaining != 0 {
+		return false
+	}
+	delete(m.groups, groupKey)
+	return true
+}
+
+func (m *StreamManager) removeInstanceGroupLocked(instanceID int, groupKey string) {
+	groups := m.instanceGroups[instanceID]
+	if groups == nil {
+		return
+	}
+	delete(groups, groupKey)
+	if len(groups) == 0 {
+		delete(m.instanceGroups, instanceID)
+	}
+}
+
+func (m *StreamManager) removeInstanceSubscriberLocked(instanceID int, id string) {
+	subs := m.instanceIndex[instanceID]
+	if subs == nil {
+		return
+	}
+	delete(subs, id)
+	if len(subs) != 0 {
+		return
+	}
+
+	delete(m.instanceIndex, instanceID)
+	if loop, ok := m.syncLoops[instanceID]; ok {
+		loop.cancel()
+		delete(m.syncLoops, instanceID)
+	}
+	if hbLoop, ok := m.heartbeatLoops[instanceID]; ok {
+		hbLoop.cancel()
+		delete(m.heartbeatLoops, instanceID)
+	}
+	delete(m.syncBackoff, instanceID)
 }
 
 // HandleMainData implements qbittorrent.SyncEventSink.
